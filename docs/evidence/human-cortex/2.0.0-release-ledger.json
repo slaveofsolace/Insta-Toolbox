@@ -3,7 +3,7 @@
   "ledger_id": "insta_aio_200_release",
   "created_at": "2026-08-22T17:14:47.888Z",
   "depth": "DEEP",
-  "iteration": 3,
+  "iteration": 4,
   "root": {
     "kind": "DECISION",
     "node_id": "root_release",
@@ -185,7 +185,7 @@
       "functional_implementation": {"status":"PASS","signal":"The current source and generated bundles pass 248 of 248 repository tests.","evidence_ids":["ev_automated_matrix"],"rationale":"Fresh tests cover follower retry/export, account and DM flows, contracts, parity, and safe stops."},
       "runtime_integration": {"status":"PASS","signal":"Isolated Chromium fixtures and real disposable-Chrome PWA/extension pairing passed.","evidence_ids":["ev_runtime_matrix"],"rationale":"This proves the packaged mechanisms against controlled runtimes, not current authenticated Instagram."},
       "player_eye_presentation": {"status":"PASS","signal":"Nine PWA and 43 overlay states passed after rendered deltas were reviewed at desktop, mobile, short-laptop, forced-color, translucent, and 200-percent zoom sizes.","evidence_ids":["ev_visual_matrix"],"rationale":"Baselines were reviewed rather than thresholds widened."},
-      "evidence_regression_coverage": {"status":"PASS","signal":"Automated, runtime, visual, security, hygiene, dependency, and Windows packaging gates are current.","evidence_ids":["ev_automated_matrix","ev_runtime_matrix","ev_visual_matrix","ev_security_review","ev_artifacts"],"rationale":"The remaining gates require human or native-macOS observation."},
+      "evidence_regression_coverage": {"status":"PASS","signal":"Automated, runtime, visual, security, hygiene, dependency, Windows packaging, and macOS package-lifecycle gates are current.","evidence_ids":["ev_automated_matrix","ev_runtime_matrix","ev_visual_matrix","ev_security_review","ev_artifacts","ev_ci_matrix"],"rationale":"The remaining gates require authenticated or human observation and release credentials."},
       "human_acceptance": {"status":"UNKNOWN","signal":"NVDA and authenticated read-only walkthroughs remain human acceptance gates.","evidence_ids":[],"rationale":"Automation does not substitute for human acceptance."}
     }
   },
@@ -218,7 +218,7 @@
       "id": "claim_mechanism",
       "label": "MEASURED",
       "statement": "Bounded follower retries, readable exports, direct finite account workflows, and a permanent scan-first Unsend button pass the current automated and runtime fixture matrix.",
-      "evidence_ids": ["ev_automated_matrix", "ev_runtime_matrix", "ev_visual_matrix"],
+      "evidence_ids": ["ev_automated_matrix", "ev_runtime_matrix", "ev_visual_matrix", "ev_ci_matrix"],
       "contradiction_claim_ids": [],
       "confidence": {"level":"HIGH","basis":"Fresh source, fixture, pairing, and visual gates passed on the generated 2.0.0 outputs."}
     },
@@ -258,6 +258,16 @@
       "captured_at": "2026-08-22T17:14:47.888Z",
       "integrity": "Current task instruction retained in the conversation context.",
       "supports_claim_ids": ["claim_objective", "claim_boundary"],
+      "contradicts_claim_ids": []
+    },
+    {
+      "id": "ev_ci_matrix",
+      "kind": "TEST_RESULT",
+      "access": "INSPECTED_CURRENT",
+      "locator": "GitHub Actions CI run 109 for aacadceb4811fad88f0c81f45aa9a3d1696051e9.",
+      "captured_at": "2026-08-22T18:31:35.485Z",
+      "integrity": "All four lanes passed: core/Chrome acceptance, Windows overlay, Windows NSIS packaging, and macOS companion acceptance plus DMG/ZIP lifecycle and artifact upload.",
+      "supports_claim_ids": ["claim_objective", "claim_mechanism", "claim_safety"],
       "contradicts_claim_ids": []
     },
     {
@@ -479,14 +489,14 @@
     }
   ],
   "verification": {
-    "mechanism":{"status":"PASS","signal":"The 2.0.0 mechanisms pass 248 tests, production fixtures, userscript parity, Chrome pairing, and Windows packaging.","evidence_ids":["ev_automated_matrix","ev_runtime_matrix","ev_artifacts"],"rationale":"Fresh current generated outputs were exercised."},
-    "endpoint":{"status":"PASS","signal":"The owned branch was committed and the exact commit was observed on origin after push.","evidence_ids":["ev_git_endpoint"],"rationale":"Local and remote branch identities matched at the requested endpoint."},
+    "mechanism":{"status":"PASS","signal":"The 2.0.0 mechanisms pass 248 tests, production fixtures, userscript parity, Chrome pairing, and Windows/macOS package checks.","evidence_ids":["ev_automated_matrix","ev_runtime_matrix","ev_artifacts","ev_ci_matrix"],"rationale":"Fresh generated outputs were exercised locally and in all four exact-code CI lanes."},
+    "endpoint":{"status":"PASS","signal":"The owned branch was pushed and its code head passed every GitHub CI lane.","evidence_ids":["ev_git_endpoint","ev_ci_matrix"],"rationale":"The remote branch contained the reviewed candidate and CI validated its code head."},
     "guardrails":{"status":"PASS","signal":"The security inventory, migration tests, default-off checks, and every exact mutation boundary pass without a surviving candidate.","evidence_ids":["ev_automated_matrix","ev_security_review"],"rationale":"The review covered all changed security-sensitive sources plus PWA fragments."},
     "recovery":{"status":"PASS","signal":"The work is isolated and the protected checkout is clean.","evidence_ids":["ev_git_baseline"],"rationale":"Owned branch changes can be reverted without touching the protected checkout."}
   },
   "closure": {
     "status":"BOUNDED",
-    "summary":"The tested 2.0.0 candidate is committed and pushed on the owned branch. Merge, public release, native macOS acceptance, NVDA, and authenticated Instagram acceptance remain human or external gates.",
+    "summary":"The tested 2.0.0 candidate is committed, pushed, and green across all four GitHub CI lanes. Merge, public release, signing/notarization, NVDA, and authenticated Instagram acceptance remain human or external gates.",
     "residual_risks":["Current Instagram DOM compatibility may differ from fixtures.","NVDA and subjective UI acceptance remain unproven."],
     "human_acceptance_required":true,
     "accepted_by":"",

@@ -113,6 +113,9 @@ The Windows 2.0.0 installer remains intentionally unsigned.
   translucent floating, and 200-percent zoom cases.
 - Windows NSIS packaging completed for the intentionally unsigned installer.
   Native macOS lifecycle acceptance remains CI-only from this Windows host.
+- GitHub Actions run 109 passed all four lanes on code head `aacadce`: core and
+  real-Chrome acceptance, Windows overlay baselines, Windows NSIS packaging,
+  and macOS companion acceptance plus DMG/ZIP lifecycle and artifact upload.
 
 Release-candidate SHA-256 values:
 
