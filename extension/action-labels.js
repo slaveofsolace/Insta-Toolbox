@@ -27,6 +27,7 @@
     "[aria-label*='opciones']",
     "[aria-label*='options']",
     "[role='button'][aria-haspopup='menu']",
+    "[role='button']",
   ]);
   const relationshipByLabel = new Map(relationshipEntries);
   const dmUnsendLabelSet = new Set(dmUnsendLabels);
@@ -39,6 +40,17 @@
       .toLowerCase();
   }
 
+  function isDmMessageOptionsLabel(value) {
+    const label = normalizeActionLabel(value);
+    return label.startsWith('see more options for message')
+      || label.startsWith('more options')
+      || label.startsWith('altre opzioni')
+      || label.startsWith('opzioni')
+      || label.startsWith('opciones')
+      || label.startsWith('options')
+      || label === 'more';
+  }
+
   const api = Object.freeze({
     dmActionSelectors,
     dmUnsendLabels,
@@ -46,6 +58,7 @@
     isDmUnsendLabel(value) {
       return dmUnsendLabelSet.has(normalizeActionLabel(value));
     },
+    isDmMessageOptionsLabel,
     normalizeActionLabel,
     relationshipForLabel(value) {
       return relationshipByLabel.get(normalizeActionLabel(value)) || null;
@@ -254,10 +267,22 @@
   }
 
   function currentThreadId() {
-    const match = String(location.pathname || '').match(/^\/direct\/t\/([^/?#]+)/i);
-    if (!match) return '';
+    const match = String(location.pathname || '').match(/^\/direct\/t\/([^/?#]+)\/?$/i);
+    if (match) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return '';
+      }
+    }
+    const roots = [...document.querySelectorAll("[data-pagelet='IGDMessagesList']")].filter(isVisible);
+    if (roots.length !== 1) return '';
+    const links = [...document.querySelectorAll("a[href*='/direct/t/']")].filter(isVisible);
+    if (links.length !== 1) return '';
+    const linkMatch = String(links[0].getAttribute?.('href') || '').match(/\/direct\/t\/([^/?#]+)/i);
+    if (!linkMatch) return '';
     try {
-      return decodeURIComponent(match[1]);
+      return decodeURIComponent(linkMatch[1]);
     } catch {
       return '';
     }
@@ -297,7 +322,8 @@
     if (!threadId) {
       return { ok: false, reason: 'Open an Instagram conversation first.' };
     }
-    const root = document.querySelector("[data-pagelet='IGDMessagesList']");
+    const roots = [...document.querySelectorAll("[data-pagelet='IGDMessagesList']")].filter(isVisible);
+    const root = roots.length === 1 ? roots[0] : null;
     if (!root) {
       return { ok: false, reason: 'The message list is still loading. Keep the conversation open and try again.' };
     }
@@ -455,6 +481,12 @@
     return control && scope.contains(control) ? control : null;
   }
 
+  function isDmMessageOptionsControl(control) {
+    if (actionLabels.isDmMessageOptionsLabel(visibleText(control))) return true;
+    return [...control?.querySelectorAll?.('[aria-label]') || []]
+      .some((element) => actionLabels.isDmMessageOptionsLabel(visibleText(element)));
+  }
+
   function actionButton(row) {
     const matches = [];
     for (const selector of actionLabels.dmActionSelectors) {
@@ -463,7 +495,9 @@
         if (control) matches.push(control);
       }
     }
-    return [...new Set(matches)].find(isVisible) || null;
+    return [...new Set(matches)]
+      .filter(isDmMessageOptionsControl)
+      .find(isVisible) || null;
   }
 
   function activateControl(control) {
@@ -1115,6 +1149,8 @@
     publicApi.__test = Object.freeze({
       deepestMessageContainer,
       advanceHistoryProgress,
+      actionButton,
+      currentThreadId,
       hasMessageContent,
       isVisible,
       nextSentRow,

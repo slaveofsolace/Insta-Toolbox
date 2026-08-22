@@ -11,7 +11,7 @@ session value is stored here.
 
 - Tampermonkey injected `#insta-aio-userscript-root` with an open shadow root on
   `instagram.com`.
-- The compact AIO launcher opened the movable, translucent toolbox.
+- The compact Toolbox launcher opened the movable, translucent panel.
 - The installed surface reported `Userscript mode · live actions locked`; the
   live-action checkbox was unchecked throughout the walkthrough.
 - The authenticated home route produced the safe unsupported-route context.

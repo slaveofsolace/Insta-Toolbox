@@ -82,7 +82,7 @@
       {
         "id": "inv_protected",
         "statement": "The protected checkout remains unchanged.",
-        "owner": "Codex",
+        "owner": "Release maintainer",
         "status": "PRESERVED",
         "hard_gate": true,
         "evidence_ids": ["ev_git_baseline"]
@@ -90,7 +90,7 @@
       {
         "id": "inv_no_mutation",
         "statement": "No authenticated Follow, Unfollow, or Unsend action is executed during this release pass.",
-        "owner": "Codex",
+        "owner": "Release maintainer",
         "status": "PRESERVED",
         "hard_gate": true,
         "evidence_ids": []
@@ -469,7 +469,7 @@
       "irreversible":false,
       "monitoring":"Run focused checks after each bounded change and preserve exact logs.",
       "rollback":{"kind":"TRUE_ROLLBACK","procedure":"Revert only the owned coherent branch commit if later rejected.","preconditions":["Identify the exact owned commit."],"verification":"Git diff and tests return to the prior known state.","evidence_ids":["ev_git_endpoint"],"irreversible_residue":"None in the isolated worktree."},
-      "recovery":{"procedure":"Resume from the last clean or documented dirty checkpoint without altering the protected checkout.","owner":"Codex","evidence_ids":["ev_git_baseline"]},
+      "recovery":{"procedure":"Resume from the last clean or documented dirty checkpoint without altering the protected checkout.","owner":"Release maintainer","evidence_ids":["ev_git_baseline"]},
       "mitigation_consequence_node_ids":["mitigation_no_mutation"]
     },
     {

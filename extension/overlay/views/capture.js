@@ -5,6 +5,7 @@
   const shared = modules?.shared;
   if (!shared || modules.captureView) return;
   let relationshipController = null;
+  const formatCount = (value) => Number(value || 0).toLocaleString('en-US');
 
   function setState(runtime, title, detail, tone = 'neutral') {
     const state = runtime.query('[data-ia-role="capture-state"]');
@@ -121,9 +122,9 @@
       downloads.clear('comparison-report', reportDownload);
       downloads.clear('comparison-json', jsonDownload);
     }
-    setText('followers-count', String(followersVerified ? workspace.followers.length : 0));
-    setText('following-count', String(followingVerified ? workspace.following.length : 0));
-    setText('capture-count', String(accounts.length));
+    setText('followers-count', formatCount(followersVerified ? workspace.followers.length : 0));
+    setText('following-count', formatCount(followingVerified ? workspace.following.length : 0));
+    setText('capture-count', formatCount(accounts.length));
     setText(
       'capture-detail',
       accounts.length && selectedVerified
@@ -136,13 +137,13 @@
     const followingComplete = followingVerified && workspace.complete?.following === true;
     const comparisonComplete = followersComplete && followingComplete;
     setText('following-step-detail', workspace.following.length
-      ? `${workspace.following.length} unique · ${!followingVerified ? 'rescan required' : followingComplete ? 'complete' : 'partial'}`
+      ? `${formatCount(workspace.following.length)} unique · ${!followingVerified ? 'rescan required' : followingComplete ? 'complete' : 'partial'}`
       : 'Open your Following list first');
     setText('followers-step-detail', workspace.followers.length
-      ? `${workspace.followers.length} unique · ${!followersVerified ? 'rescan required' : followersComplete ? 'complete' : 'partial'}`
+      ? `${formatCount(workspace.followers.length)} unique · ${!followersVerified ? 'rescan required' : followersComplete ? 'complete' : 'partial'}`
       : 'Open your Followers list next');
     setText('compare-step-detail', comparisonReady
-      ? `${comparison.mutuals.length} mutual · ${comparison.notFollowingMeBack.length} not following back`
+      ? `${formatCount(comparison.mutuals.length)} mutual · ${formatCount(comparison.notFollowingMeBack.length)} not following back`
       : 'Scan both lists first');
     const compareBadge = query('[data-ia-role="compare-step-badge"]');
     if (compareBadge) {
@@ -162,7 +163,7 @@
       setState(
         runtime,
         comparisonComplete ? `Follower comparison complete${workspace.subjectUsername ? ` for @${workspace.subjectUsername}` : ''}` : 'Partial follower comparison ready',
-        `${workspace.followers.length} followers; ${workspace.following.length} following; ${comparison.notFollowingMeBack.length} not following you back.`,
+        `${formatCount(workspace.followers.length)} followers; ${formatCount(workspace.following.length)} following; ${formatCount(comparison.notFollowingMeBack.length)} not following you back.`,
         comparisonComplete ? 'good' : 'warning',
       );
     } else {
@@ -191,7 +192,7 @@
           const term = document.createElement('dt');
           term.textContent = label;
           const detail = document.createElement('dd');
-          detail.textContent = String(value);
+          detail.textContent = formatCount(value);
           facts.append(term, detail);
         }
         checker.append(facts);
@@ -428,7 +429,7 @@
             setState(
               runtime,
               `Finishing ${label} for @${username}`,
-              `${progress.found} of ${progress.expectedCount} found. Checking the final page once more.`,
+              `${(progress.passFound || 0).toLocaleString('en-US')} checked; ${progress.found.toLocaleString('en-US')} of ${progress.expectedCount.toLocaleString('en-US')} unique found.`,
               'warning',
             );
             return;
@@ -463,12 +464,12 @@
       model.capture = nextCapture;
       model.captureMeta = null;
       const mismatch = result.reasons.followers === 'count-mismatch'
-        ? ` Instagram reports ${result.expectedCounts.followers} followers; ${result.followers.length} were returned.`
+        ? ` Instagram returned ${result.followers.length.toLocaleString('en-US')} accessible followers; the profile shows ${result.expectedCounts.followers.toLocaleString('en-US')}. ${(result.expectedCounts.followers - result.followers.length).toLocaleString('en-US')} accounts were not returned.`
         : result.reasons.following === 'count-mismatch'
-          ? ` Instagram reports ${result.expectedCounts.following} following; ${result.following.length} were returned.`
+          ? ` Instagram returned ${result.following.length.toLocaleString('en-US')} accessible following; the profile shows ${result.expectedCounts.following.toLocaleString('en-US')}. ${(result.expectedCounts.following - result.following.length).toLocaleString('en-US')} accounts were not returned.`
           : ' A bounded read limit was reached.';
       status(
-        `Checked @${result.username}: ${result.followers.length} followers and ${result.following.length} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
+        `Checked @${result.username}: ${result.followers.length.toLocaleString('en-US')} followers and ${result.following.length.toLocaleString('en-US')} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
         result.complete.followers && result.complete.following ? 'good' : 'warning',
       );
     } catch (error) {

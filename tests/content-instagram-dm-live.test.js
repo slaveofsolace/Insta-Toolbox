@@ -96,6 +96,9 @@ class FakeElement {
         && element.getAttribute('aria-haspopup') === 'menu'
       ));
     }
+    if (selector === "[role='button']") {
+      return descendants.filter((element) => element.getAttribute('role') === 'button');
+    }
     if (selector === 'button, [role="button"], [role="menuitem"], span, div') {
       return descendants.filter((element) => (
         element.tagName === 'BUTTON'
@@ -163,6 +166,8 @@ function createHarness({
   postConfirmation = 'remove',
   preexistingDialog = false,
   secureCrypto = webcrypto,
+  textOnlyActionControl = false,
+  includeReplyControl = false,
   unsendLabel = 'Unsend',
 } = {}) {
   let runtimeListener = null;
@@ -226,11 +231,14 @@ function createHarness({
   });
   const actionControl = new FakeElement({
     attributes: {
-      'aria-haspopup': 'menu',
-      'aria-label': 'See more options for message sent-live-1',
+      ...(textOnlyActionControl ? {} : {
+        'aria-haspopup': 'menu',
+        'aria-label': 'See more options for message sent-live-1',
+      }),
       ...(bindSurfaces ? { 'aria-controls': 'dm-menu-1', id: 'dm-action-1' } : {}),
       role: 'button',
     },
+    text: textOnlyActionControl ? 'See more options for message from demo.creator' : '',
     onClick() {
       activations.push('action-menu');
       surfaces.menus = [new FakeElement({
@@ -240,6 +248,13 @@ function createHarness({
         },
         children: [menuChoice],
       })];
+    },
+  });
+  const replyControl = new FakeElement({
+    attributes: { role: 'button' },
+    text: 'Reply',
+    onClick() {
+      activations.push('reply');
     },
   });
   const contentElement = new FakeElement({
@@ -253,7 +268,7 @@ function createHarness({
       'data-timestamp-ms': String(item.timestamp),
       role: 'row',
     },
-    children: [contentElement, actionControl],
+    children: [contentElement, ...(includeReplyControl ? [replyControl] : []), actionControl],
   });
   const retainedIdentityControl = new FakeElement({
     attributes: { 'data-insta-aio-message-content': '', dir: 'auto' },
@@ -350,6 +365,21 @@ test('one exact DM token drives only its menu, Unsend choice, and confirmation o
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
   assert.equal(replay.reason, 'dm-resolution-expired-or-changed');
+  assert.deepEqual(harness.activations, ['action-menu', 'menu-choice', 'confirmation']);
+});
+
+test('current Instagram text-only message menu is selected while Reply is ignored', async () => {
+  const harness = createHarness({ textOnlyActionControl: true, includeReplyControl: true });
+  const resolution = await harness.send({
+    kind: 'insta-aio-inspect-reviewed-dm-item',
+    item: harness.item,
+  });
+  const result = await harness.send({
+    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    item: { ...harness.item, resolutionToken: resolution.resolutionToken },
+  });
+
+  assert.equal(result.result, 'unsent');
   assert.deepEqual(harness.activations, ['action-menu', 'menu-choice', 'confirmation']);
 });
 

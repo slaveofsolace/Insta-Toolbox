@@ -202,6 +202,7 @@
     "[aria-label*='opciones']",
     "[aria-label*='options']",
     "[role='button'][aria-haspopup='menu']",
+    "[role='button']",
   ]);
   const relationshipByLabel = new Map(relationshipEntries);
   const dmUnsendLabelSet = new Set(dmUnsendLabels);
@@ -214,6 +215,17 @@
       .toLowerCase();
   }
 
+  function isDmMessageOptionsLabel(value) {
+    const label = normalizeActionLabel(value);
+    return label.startsWith('see more options for message')
+      || label.startsWith('more options')
+      || label.startsWith('altre opzioni')
+      || label.startsWith('opzioni')
+      || label.startsWith('opciones')
+      || label.startsWith('options')
+      || label === 'more';
+  }
+
   const api = Object.freeze({
     dmActionSelectors,
     dmUnsendLabels,
@@ -221,6 +233,7 @@
     isDmUnsendLabel(value) {
       return dmUnsendLabelSet.has(normalizeActionLabel(value));
     },
+    isDmMessageOptionsLabel,
     normalizeActionLabel,
     relationshipForLabel(value) {
       return relationshipByLabel.get(normalizeActionLabel(value)) || null;
@@ -429,10 +442,22 @@
   }
 
   function currentThreadId() {
-    const match = String(location.pathname || '').match(/^\/direct\/t\/([^/?#]+)/i);
-    if (!match) return '';
+    const match = String(location.pathname || '').match(/^\/direct\/t\/([^/?#]+)\/?$/i);
+    if (match) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return '';
+      }
+    }
+    const roots = [...document.querySelectorAll("[data-pagelet='IGDMessagesList']")].filter(isVisible);
+    if (roots.length !== 1) return '';
+    const links = [...document.querySelectorAll("a[href*='/direct/t/']")].filter(isVisible);
+    if (links.length !== 1) return '';
+    const linkMatch = String(links[0].getAttribute?.('href') || '').match(/\/direct\/t\/([^/?#]+)/i);
+    if (!linkMatch) return '';
     try {
-      return decodeURIComponent(match[1]);
+      return decodeURIComponent(linkMatch[1]);
     } catch {
       return '';
     }
@@ -472,7 +497,8 @@
     if (!threadId) {
       return { ok: false, reason: 'Open an Instagram conversation first.' };
     }
-    const root = document.querySelector("[data-pagelet='IGDMessagesList']");
+    const roots = [...document.querySelectorAll("[data-pagelet='IGDMessagesList']")].filter(isVisible);
+    const root = roots.length === 1 ? roots[0] : null;
     if (!root) {
       return { ok: false, reason: 'The message list is still loading. Keep the conversation open and try again.' };
     }
@@ -630,6 +656,12 @@
     return control && scope.contains(control) ? control : null;
   }
 
+  function isDmMessageOptionsControl(control) {
+    if (actionLabels.isDmMessageOptionsLabel(visibleText(control))) return true;
+    return [...control?.querySelectorAll?.('[aria-label]') || []]
+      .some((element) => actionLabels.isDmMessageOptionsLabel(visibleText(element)));
+  }
+
   function actionButton(row) {
     const matches = [];
     for (const selector of actionLabels.dmActionSelectors) {
@@ -638,7 +670,9 @@
         if (control) matches.push(control);
       }
     }
-    return [...new Set(matches)].find(isVisible) || null;
+    return [...new Set(matches)]
+      .filter(isDmMessageOptionsControl)
+      .find(isVisible) || null;
   }
 
   function activateControl(control) {
@@ -1290,6 +1324,8 @@
     publicApi.__test = Object.freeze({
       deepestMessageContainer,
       advanceHistoryProgress,
+      actionButton,
+      currentThreadId,
       hasMessageContent,
       isVisible,
       nextSentRow,
@@ -1314,6 +1350,7 @@
   if (
     !actionLabels
     || typeof actionLabels.isDmUnsendLabel !== 'function'
+    || typeof actionLabels.isDmMessageOptionsLabel !== 'function'
     || typeof actionLabels.normalizeActionLabel !== 'function'
     || typeof actionLabels.relationshipForLabel !== 'function'
   ) return;
@@ -1344,6 +1381,7 @@
     "[aria-label*='opzioni']",
     "[aria-label*='opciones']",
     "[aria-label*='options']",
+    "[role='button']",
   ]);
   const INSTAGRAM_WEB_ORIGIN = 'https://www.instagram.com';
   const INSTAGRAM_WEB_APP_ID = '936619743392459';
@@ -1353,6 +1391,7 @@
   const RELATIONSHIP_MAX_DURATION_MS = 20 * 60 * 1_000;
   const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
   const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
+  const RELATIONSHIP_AUTO_RECONCILE_MAX_ACCOUNTS = 500;
   const RELATIONSHIP_RETRY_BASE_MS = 1_000;
 
   function normalizeUsername(value) {
@@ -1654,6 +1693,7 @@
   }) {
     const accounts = new Map();
     const seenTokens = new Set();
+    const passAccounts = new Set();
     let nextMaxId = '';
     let pages = 0;
     let reconciliationAttempts = 0;
@@ -1691,23 +1731,31 @@
           displayName: String(user?.full_name || '').trim().slice(0, 160),
           source: 'authenticated-instagram-web',
         });
+        if (reconciliationAttempts > 0) passAccounts.add(accountUsername);
         if (accounts.size >= maxAccounts) break;
       }
       onProgress?.(Object.freeze({
         found: accounts.size,
         listType,
         pages,
-        phase: 'loading',
+        ...(reconciliationAttempts > 0 ? {
+          attempt: reconciliationAttempts,
+          expectedCount,
+          passFound: passAccounts.size,
+        } : {}),
+        phase: reconciliationAttempts > 0 ? 'reconciling' : 'loading',
         username,
       }));
       const candidateToken = data.next_max_id;
       if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
         if (Number.isSafeInteger(expectedCount)
           && accounts.size < expectedCount
+          && expectedCount <= RELATIONSHIP_AUTO_RECONCILE_MAX_ACCOUNTS
           && reconciliationAttempts < 1) {
           reconciliationAttempts += 1;
           nextMaxId = '';
           seenTokens.clear();
+          passAccounts.clear();
           onProgress?.(Object.freeze({
             attempt: reconciliationAttempts,
             expectedCount,
@@ -1715,6 +1763,7 @@
             listType,
             pages,
             phase: 'reconciling',
+            passFound: 0,
             username,
           }));
           await sleepImpl(800, signal);
@@ -1888,15 +1937,15 @@
       `Account: ${record.subjectUsername ? `@${record.subjectUsername}` : 'Not recorded'}`,
       `Generated: ${record.generatedAt}`,
       `Source: ${source}`,
-      `Completeness: ${fullyComplete ? 'Complete — both lists reached their verified end.' : 'Partial — one or both lists did not reach a verified end.'}`,
+      `Completeness: ${fullyComplete ? 'Complete — both lists reached their verified end.' : 'Partial — one or both saved lists may omit accounts.'}`,
       '',
       'SUMMARY',
       '-------',
-      `Followers: ${followersCount}`,
-      `Following: ${followingCount}`,
-      `Mutual followers: ${record.mutuals.length}`,
-      `Not following you back: ${record.notFollowingMeBack.length}`,
-      `You do not follow back: ${record.iDoNotFollowBack.length}`,
+      `Followers: ${followersCount.toLocaleString('en-US')}`,
+      `Following: ${followingCount.toLocaleString('en-US')}`,
+      `Mutual followers: ${record.mutuals.length.toLocaleString('en-US')}`,
+      `Not following you back: ${record.notFollowingMeBack.length.toLocaleString('en-US')}`,
+      `You do not follow back: ${record.iDoNotFollowBack.length.toLocaleString('en-US')}`,
     ];
     const addSection = (title, accounts) => {
       lines.push('', title, '-'.repeat(title.length));
@@ -1964,8 +2013,19 @@
 
   function currentDirectThreadId() {
     const pathname = String(location.pathname || '').replaceAll('\\', '/');
-    if (!/^\/direct\/t\/[^/?#]+\/?$/i.test(pathname)) return null;
-    return directThreadId(pathname);
+    if (/^\/direct\/t\/[^/?#]+\/?$/i.test(pathname)) return directThreadId(pathname);
+    const visible = (element) => {
+      if (!element) return false;
+      const style = getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+      const rectangle = element.getBoundingClientRect?.();
+      return !rectangle || (rectangle.width > 0 && rectangle.height > 0);
+    };
+    const roots = [...document.querySelectorAll("[data-pagelet='IGDMessagesList']")].filter(visible);
+    if (roots.length !== 1) return null;
+    const links = [...document.querySelectorAll("a[href*='/direct/t/']")].filter(visible);
+    if (links.length !== 1) return null;
+    return directThreadId(links[0].getAttribute?.('href'));
   }
 
   function normalizedDmTimestamp(value) {
@@ -2496,7 +2556,11 @@
     for (const control of row?.querySelectorAll?.('[role="button"][aria-haspopup="menu"]') || []) {
       matches.push(control);
     }
-    return [...new Set(matches)].filter((control) => visibleText(control));
+    return [...new Set(matches)].filter((control) => (
+      actionLabels.isDmMessageOptionsLabel(visibleText(control))
+      || [...control?.querySelectorAll?.('[aria-label]') || []]
+        .some((element) => actionLabels.isDmMessageOptionsLabel(visibleText(element)))
+    ));
   }
 
   function exactDmUnsendControls(scope) {
@@ -3304,6 +3368,7 @@
   const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, Number(value) || 0));
   const safeText = (value, fallback = '') => (String(value ?? '').trim() || fallback).slice(0, 500);
   const nowIso = () => new Date().toISOString();
+  const formatCount = (value) => Number(value || 0).toLocaleString('en-US');
 
   function accountCapabilityDigest(action, usernames) {
     const source = JSON.stringify({
@@ -3727,8 +3792,19 @@
 
   function currentDirectThreadId() {
     const pathname = String(location.pathname || '').replaceAll('\\', '/');
-    if (!/^\/direct\/t\/[^/?#]+\/?$/i.test(pathname)) return null;
-    return directThreadId(pathname);
+    if (/^\/direct\/t\/[^/?#]+\/?$/i.test(pathname)) return directThreadId(pathname);
+    const visible = (element) => {
+      if (!element) return false;
+      const style = getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+      const rectangle = element.getBoundingClientRect?.();
+      return !rectangle || (rectangle.width > 0 && rectangle.height > 0);
+    };
+    const roots = [...document.querySelectorAll("[data-pagelet='IGDMessagesList']")].filter(visible);
+    if (roots.length !== 1) return null;
+    const links = [...document.querySelectorAll("a[href*='/direct/t/']")].filter(visible);
+    if (links.length !== 1) return null;
+    return directThreadId(links[0].getAttribute?.('href'));
   }
 
   function sentMessagesForThread(messages, threadId = currentDirectThreadId()) {
@@ -4096,7 +4172,7 @@
     const verifiedFollowing = verifiedCapture('following');
     const item = currentQueueItem();
     const tools = [
-      ['checker', 'Mutual Checker', `${verifiedFollowers.length} followers · ${verifiedFollowing.length} following · ${comparison.notFollowingMeBack.length} not following back`, 'read only'],
+      ['checker', 'Mutual Checker', `${formatCount(verifiedFollowers.length)} followers · ${formatCount(verifiedFollowing.length)} following · ${formatCount(comparison.notFollowingMeBack.length)} not following back`, 'read only'],
       ['account', 'Follow / Unfollow', item ? `${item.action} @${item.account.username} is next` : 'Choose an action and compatible targets', 'review then confirm'],
       ['messages', 'DM Unsend', dmThreadPreview ? `${dmThreadPreview.eligibleCount} eligible in this thread` : 'Checks this conversation when needed', 'scan then confirm'],
     ];
@@ -4139,8 +4215,8 @@
       runButton.classList.toggle('danger', Boolean(relationshipController));
       runButton.classList.toggle('primary', !relationshipController);
     }
-    setText('followers-count', verifiedFollowers.length);
-    setText('following-count', verifiedFollowing.length);
+    setText('followers-count', formatCount(verifiedFollowers.length));
+    setText('following-count', formatCount(verifiedFollowing.length));
     const comparison = compareCapture();
     const result = query('[data-role="comparison"]');
     result.replaceChildren();
@@ -4150,7 +4226,7 @@
       : 'No comparison loaded';
     const detail = document.createElement('p');
     detail.textContent = comparisonReady
-      ? `${verifiedFollowers.length} followers · ${verifiedFollowing.length} following · ${comparison.mutuals.length} mutual · ${comparison.notFollowingMeBack.length} not following me back · ${comparison.iDoNotFollowBack.length} I don't follow back.`
+      ? `${formatCount(verifiedFollowers.length)} followers · ${formatCount(verifiedFollowing.length)} following · ${formatCount(comparison.mutuals.length)} mutual · ${formatCount(comparison.notFollowingMeBack.length)} not following me back · ${formatCount(comparison.iDoNotFollowBack.length)} I don't follow back.`
       : 'Confirm your username above, then load Followers and Following in one read-only check.';
     result.append(title, detail);
 
@@ -4163,7 +4239,7 @@
     if (partial.length) {
       const warning = document.createElement('p');
       warning.className = 'notice';
-      warning.textContent = `The ${partial.join(' and ')} ${partial.length === 1 ? 'list' : 'lists'} did not reach the end, so these counts are incomplete. Scan again to finish.`;
+      warning.textContent = `Instagram returned a partial ${partial.join(' and ')} ${partial.length === 1 ? 'list' : 'lists'}, so some accounts may be missing. You can rerun the check later.`;
       result.append(warning);
     }
 
@@ -4814,9 +4890,9 @@
       const count = state.capture[listType].length;
       setText(`step-${listType}`,
         status === 'todo' ? 'Not scanned yet'
-          : !verified ? `${count} stored — rescan required`
-          : status === 'done' ? `${count} found — complete`
-            : `${count} found — did not reach the end`);
+          : !verified ? `${formatCount(count)} stored — rescan required`
+          : status === 'done' ? `${formatCount(count)} found — complete`
+            : `${formatCount(count)} accessible accounts found — partial`);
       const button = query(`[data-action="scan-${listType}"]`);
       const listLabel = listType === 'following' ? 'Following' : 'Followers';
       if (button) button.textContent = `${status === 'todo' ? 'Scan' : 'Rescan'} ${listLabel}`;
@@ -4826,7 +4902,7 @@
     const complete = scanState('following') === 'done' && scanState('followers') === 'done';
     if (compareStep) compareStep.dataset.state = both ? (complete ? 'done' : 'partial') : 'todo';
     setText('step-compare', both
-      ? `${comparison.mutuals.length} mutual · ${comparison.notFollowingMeBack.length} not following back${complete ? '' : ' (partial)'}`
+      ? `${formatCount(comparison.mutuals.length)} mutual · ${formatCount(comparison.notFollowingMeBack.length)} not following back${complete ? '' : ' (partial)'}`
       : 'Scan both lists first');
   }
 
@@ -4841,7 +4917,7 @@
       ? `Scanned ${found} ${listType} — complete.`
       : settled
         ? `Scanned ${found} ${listType} — incomplete.`
-        : `Scanning ${listType}… ${found} found so far.`);
+        : `Scanning ${listType}… ${formatCount(found)} found so far.`);
   }
 
   async function scanInto(listType) {
@@ -4902,7 +4978,7 @@
             const label = progress.listType === 'followers' ? 'Followers' : 'Following';
             setText(
               'scan-detail',
-              `Finishing ${label}: ${progress.found} of ${progress.expectedCount} found. Checking the final page once more.`,
+              `Retrying ${label}: ${(progress.passFound || 0).toLocaleString('en-US')} checked; ${progress.found.toLocaleString('en-US')} of ${progress.expectedCount.toLocaleString('en-US')} unique found.`,
             );
             showScanProgress(progress.listType, progress.found, false);
             return;
@@ -4929,12 +5005,12 @@
         throw error;
       }
       const mismatch = result.reasons.followers === 'count-mismatch'
-        ? ` Instagram reports ${result.expectedCounts.followers} followers; ${result.followers.length} were returned.`
+        ? ` Instagram returned ${result.followers.length.toLocaleString('en-US')} accessible followers; the profile shows ${result.expectedCounts.followers.toLocaleString('en-US')}. ${(result.expectedCounts.followers - result.followers.length).toLocaleString('en-US')} accounts were not returned.`
         : result.reasons.following === 'count-mismatch'
-          ? ` Instagram reports ${result.expectedCounts.following} following; ${result.following.length} were returned.`
+          ? ` Instagram returned ${result.following.length.toLocaleString('en-US')} accessible following; the profile shows ${result.expectedCounts.following.toLocaleString('en-US')}. ${(result.expectedCounts.following - result.following.length).toLocaleString('en-US')} accounts were not returned.`
           : ' A bounded read limit was reached.';
       status(
-        `Checked @${result.username}: ${result.followers.length} followers and ${result.following.length} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
+        `Checked @${result.username}: ${result.followers.length.toLocaleString('en-US')} followers and ${result.following.length.toLocaleString('en-US')} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
       );
     } catch (error) {
       status(error?.code === 'stopped'

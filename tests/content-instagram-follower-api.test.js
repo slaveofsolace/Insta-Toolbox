@@ -164,7 +164,11 @@ test('Mutual Checker retries a premature final Followers page once and unions th
   assert.equal(result.complete.followers, true);
   assert.ok(progress.some((entry) => entry.phase === 'reconciling'
     && entry.found === 100
+    && entry.passFound === 0
     && entry.expectedCount === 101));
+  assert.ok(progress.some((entry) => entry.phase === 'reconciling'
+    && entry.found === 101
+    && entry.passFound === 100));
 });
 
 test('Mutual Checker finishes partial instead of hanging when Instagram keeps one account hidden', async () => {
@@ -193,6 +197,38 @@ test('Mutual Checker finishes partial instead of hanging when Instagram keeps on
   assert.equal(result.followers.length, 100);
   assert.equal(result.complete.followers, false);
   assert.equal(result.reasons.followers, 'count-mismatch');
+});
+
+test('Mutual Checker does not repeat a large list after Instagram ends below the profile count', async () => {
+  const inspector = createInspector();
+  const followers = Array.from({ length: 2_070 }, (_, index) => ({ username: `follower.${index}` }));
+  let followerCalls = 0;
+  const progress = [];
+  const result = await inspector.fetchFollowerComparison({
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname.includes('topsearch')) {
+        return response({ users: [{ user: {
+          pk: '77', username: 'target_name', follower_count: 2_104, following_count: 1,
+        } }] });
+      }
+      if (url.pathname.includes('/followers/')) {
+        followerCalls += 1;
+        return response({ users: followers });
+      }
+      return response({ users: [{ username: 'following.one' }] });
+    },
+    onProgress: (entry) => progress.push(entry),
+    sleepImpl: async () => {},
+    username: 'target_name',
+  });
+
+  assert.equal(followerCalls, 1);
+  assert.equal(result.followers.length, 2_070);
+  assert.equal(result.expectedCounts.followers, 2_104);
+  assert.equal(result.complete.followers, false);
+  assert.equal(result.reasons.followers, 'count-mismatch');
+  assert.equal(progress.some((entry) => entry.phase === 'reconciling' && entry.listType === 'followers'), false);
 });
 
 test('authenticated follower check stops on rate limits before requesting another list', async () => {
@@ -405,4 +441,22 @@ test('follower comparison export provides a readable UTF-8 report and preserves 
   assert.equal(record.kind, 'insta-aio-comparison');
   assert.equal(record.generatedAt, generatedAt);
   assert.equal(record.notFollowingMeBack[0].username, 'outgoing.only');
+});
+
+test('follower comparison report formats large counts and does not claim a partial API list missed its end', () => {
+  const inspector = createInspector();
+  const workspace = {
+    subjectUsername: 'demo.creator',
+    followers: Array.from({ length: 2_070 }, (_, index) => ({ username: `follower.${index}` })),
+    following: Array.from({ length: 101 }, (_, index) => ({ username: `following.${index}` })),
+    complete: { followers: false, following: true },
+    verified: { followers: true, following: true },
+    source: { followers: 'authenticated-web', following: 'authenticated-web' },
+  };
+  const report = inspector.followerComparisonReport(workspace, {
+    mutuals: [], notFollowingMeBack: [], iDoNotFollowBack: [],
+  });
+  assert.match(report, /Followers: 2,070\r\nFollowing: 101/);
+  assert.match(report, /Partial — one or both saved lists may omit accounts/);
+  assert.doesNotMatch(report, /did not reach a verified end/);
 });
