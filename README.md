@@ -1,14 +1,15 @@
-# Insta AIO Tool
+# Insta Toolbox
 
 Three Instagram tools in one place, running entirely on your own machine:
 
-- **Follower checker** — see who doesn't follow you back, who you don't follow back, and who's mutual.
+- **Mutual Checker** — see who doesn't follow you back, who you don't follow back, and who's mutual.
 - **Follow / Unfollow** — work through a list of accounts one at a time, or let the batch runner pace it for you.
 - **DM Unsend** — find the messages *you* sent in a conversation and remove them, one or many.
 
-Your data never leaves your machine. Nothing is uploaded, and there is no account
-or server to sign in to. Instagram exports you import stay in local browser
-storage until you choose to export a file.
+There is no Insta Toolbox account or hosted data service. Imported exports and saved
+results stay in local browser storage until you export them. The in-page follower
+checker makes read-only, same-origin requests to Instagram using the session
+already open in that tab; it never reads, stores, or exports the session value.
 
 ## Which version should I install?
 
@@ -28,7 +29,7 @@ same safe-stop rules.
 Install [Tampermonkey](https://www.tampermonkey.net/), then open this link and
 select **Install**:
 
-**[Install Insta AIO Toolbox](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js)**
+**[Install Insta Toolbox](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js)**
 
 Then allow the userscript to run in Chrome:
 
@@ -57,37 +58,37 @@ Full steps and the other options are in [Installation](./docs/INSTALLATION.md).
 
 ## Safety model
 
-Live account changes and DM removal are disabled by default. Scans, comparisons,
-visible evidence, and exact-target dry runs remain available while locked. The
-extension batch controls require an exact typed arm phrase. Thread-wide Unsend
-requires a separate `UNSEND ALL DMS` arm followed by a second confirmation; its
-15-minute authorization is bound to the exact open thread and checked before
-every message and page control. The runner accepts only the one newly surfaced
-menu and confirmation control for the message it just opened. The
-userscript likewise starts with every destructive control disabled and requires
-`ENABLE LIVE ACTIONS` for a tab-scoped 15-minute window before any run can be
-confirmed. Account batches carry only that expiry across the profile navigation
-they cause, using the userscript manager's tab-local storage; an expired window
-stops before another action.
+Live account changes and DM removal are disabled on every load. Scans,
+comparisons, visible evidence, and exact-target dry runs need no unlock. A
+destructive run becomes eligible only after one ordinary confirmation naming its
+exact action, target or thread, and finite count. That confirmation mints a
+non-persistent capability bound to the reviewed targets and expiry; completion,
+Stop, expiry, a challenge, a block, a rate limit, or an unexpected state revokes
+it. Thread-wide Unsend first performs a no-click conversation check when needed,
+then creates a finite plan bound to the exact thread, scope (`all`, `newest`, or
+`oldest`), eligible count, digest, and 15-minute expiry. The runner revalidates
+the count before accepting only the newly surfaced menu and confirmation control
+for each message. Account runs retain only their finite target-bound capability
+across the profile navigation they cause in the userscript manager's tab-local
+storage; an expired run stops before another action.
 
 The signed PWA path adds stricter one-item controls. A live Follow or Unfollow
-requires a fresh signed batch of exactly one item, action permission, an exact
-phrase entered on the matching Instagram profile, a 90-second one-use arm, PWA
-and extension-side durable reservations, a relationship control inside a
-verified profile header, a newly created target-named Unfollow dialog when
-needed, and post-action relationship verification. A live Unsend additionally
-requires two fresh confirmations for exactly one sent message, exact
-thread/message/timestamp/content-digest/ownership binding, an `ARM UNSEND
-<code>` phrase in the matching Instagram conversation, independent PWA and
+requires a fresh signed batch of exactly one item, action permission, one exact
+profile/action confirmation, a transient one-use capability, PWA and
+extension-side durable reservations, a relationship control inside a verified
+profile header, a newly created target-named Unfollow dialog when needed, and
+post-action relationship verification. A live Unsend additionally requires a
+fresh exact thread/message confirmation for one sent message,
+thread/message/timestamp/content-digest/ownership binding, independent PWA and
 extension reservations, a one-use rendered-message token, structurally bound
 interactive menu/dialog controls, and exact-message removal proof while stable
 identity coverage remains available. DOM resolution tokens are issued only by
 Web Crypto; if neither `randomUUID` nor `getRandomValues` produces entropy,
 inspection returns `secure-random-unavailable` and no capability is stored.
 
-The project does not implement proxy rotation, fingerprint spoofing, challenge bypass, CAPTCHA solving, private endpoint reverse engineering, or unreviewed destructive actions.
+The project does not implement proxy rotation, fingerprint spoofing, challenge bypass, CAPTCHA solving, arbitrary endpoint discovery, mutation-capable endpoint clients, or unreviewed destructive actions.
 
-Insta AIO Tool is an independent project and is not affiliated with or endorsed
+Insta Toolbox is an independent project and is not affiliated with or endorsed
 by Instagram or Meta. Operators are responsible for protecting imported data
 and complying with the rules that apply to their accounts and environment.
 
@@ -131,7 +132,7 @@ Extracted JSON files and folders remain supported as a fallback. Recognized data
 - Instagram Helper `allMessagesItemsArray` data
 - SimpleInstaBot followed/unfollowed history
 - Saved follower-checker result objects
-- Insta AIO workspace and snapshot exports
+- Insta Toolbox workspace and snapshot exports
 
 Encrypted archives, unsafe paths, unsupported ZIP variants, integrity errors, and configured size-limit violations are rejected before data is committed.
 
@@ -151,19 +152,26 @@ Follow items enter a configurable waiting period before an unfollow review can b
 
 ## Reviewed action jobs
 
-Queue records must be selected explicitly. A preview lists the exact username and action for every item, calculates a digest, and requires the matching confirmation phrase.
+Queue records must be selected explicitly. A preview lists the exact username,
+action, duplicates, protected/skipped reasons, and remaining targets for every
+finite run. Starting requires one ordinary exact action/target/count confirmation.
 
-Dry runs inspect the current profile without clicking. The adapter safe-stops on the wrong profile, an unverified profile header, ambiguous controls, any pre-existing dialog, an unbound Unfollow dialog, session expiry, challenges, rate limits, action blocks, changed protection state, stale confirmation, or a missing/expired live arm. The PWA ledger and the extension's bounded mirror reserve before the isolated driver call and prevent duplicate or over-limit execution.
+Dry runs inspect the current profile without clicking. The adapter safe-stops on
+the wrong profile, an unverified profile header, ambiguous controls, any
+pre-existing dialog, an unbound Unfollow dialog, session expiry, challenges,
+rate limits, action blocks, changed protection state, stale confirmation, or a
+missing/expired finite capability. The PWA ledger and the extension's bounded
+mirror reserve before the isolated driver call and prevent duplicate or
+out-of-plan execution.
 
-Extension 0.10.6 preserves the stricter signed live paths for one reviewed PWA
-item. The PWA sends a signed intent; the Instagram overlay requires the matching
-profile or exact sent message plus `ARM FOLLOW @username`, `ARM UNFOLLOW
-@username`, or `ARM UNSEND <code>`; every arm expires after 90 seconds.
-Immediately before page control, the background persists its own reservation
-and consumes the arm, then finalizes that mirror as succeeded or uncertain. The
-PWA independently checkpoints its transactional ledger. These implemented paths
-still require authenticated selector acceptance before issues #3 and #4 can be
-closed.
+Extension 2.0.0 preserves the stricter signed live paths for one reviewed PWA
+item while removing typed arm phrases. The PWA sends a signed intent; the
+matching Instagram profile or exact sent message must receive one ordinary
+action-specific confirmation. The resulting capability exists only in memory,
+is consumed before page control, and is paired with a durable reservation that
+is finalized as succeeded or uncertain. The PWA independently checkpoints its
+transactional ledger. These implemented paths still require authenticated
+selector acceptance before issues #3 and #4 can be closed.
 
 ## Reviewed DM jobs
 
@@ -198,10 +206,10 @@ the bounded default. On narrow screens it becomes a fitted bottom sheet. It
 provides:
 
 - Current-page session, profile, relationship, and queue-match inspection
-- Guided full-list Following and Followers scans, followed by an explicit local Compare step
+- One-step authenticated Followers + Following pagination with username autofill/input and a local comparison; list-dialog scanning remains an Advanced fallback
 - A review-first account queue that freezes the exact targets before Start becomes available
 - Sanitized history for signed account/DM dry runs and controlled one-item results received from the PWA
-- Instagram-side, 90-second one-use arms for a fresh signed one-item Follow, Unfollow, or exact sent-message Unsend intent
+- Instagram-side transient one-use capabilities for a freshly confirmed signed one-item Follow, Unfollow, or exact sent-message Unsend intent
 - Read-only visible-message evidence plus conditional exact-identity DM dry runs that never open a menu
 - A direct link back to the exact paired PWA origin
 
@@ -211,49 +219,50 @@ Press **Alt + Shift + I** to toggle the sidecar.
 
 The sidecar carries the three tools in one place, each on its own tab.
 
-**Follower checker.** Open your Following dialog and choose **Scan Following**,
-then open Followers and choose **Scan Followers**. Each scan auto-scrolls the
-open dialog and reads every row it renders, so it is not limited to the first
-screen. It reports `complete` only when the list actually reaches its end; a
-truncated scan says so instead of silently under-reporting. **Compare** stays
-disabled until both lists are present and then shows mutuals,
-not-following-me-back, and I-don't-follow-back counts computed locally. The
-result browser switches between those groups and filters captured usernames or
-display names without sending a request.
+**Mutual Checker.** Confirm the username and choose **Check Followers +
+Following**. The shared extension/userscript engine resolves that exact account,
+loads both paginated lists through Instagram's authenticated web interface, and
+replaces the prior comparison only after both reads finish. It sends no request
+outside `www.instagram.com`, never reads or exports cookies, and activates no
+page control. The result browser switches among mutuals and both non-mutual
+groups and filters locally. If Instagram changes or rejects the read interface,
+the Advanced section retains the older exact-dialog scanner as a fallback.
 
-**Follow / Unfollow bot.** In the Follow / Unfollow tab, pick a target source
-(either checker result or the manual queue), an action, and how many to run.
-Choose **Review run** to freeze and inspect the exact targets, duplicates, and
+**Follow / Unfollow bot.** In the Follow / Unfollow tab, choose **Follow people**
+or **Unfollow people**, then pick one of the compatible current-profile, checker,
+scanned-list, or queue sources. Choose the explicit **Review N Follow targets**
+or **Review N Unfollow targets** action to freeze and inspect the exact targets,
+duplicates, already-correct relationships, protected/skipped reasons, and
 omissions. **Start** appears only while that review still matches the controls.
 Each target is opened, re-verified, and acted on one at a time. **Complete** and
 **Skip** remain available under the secondary options disclosure.
 
-**Mass DM unsend.** Open a conversation. The primary **Unsend all DMs** card
-starts `live locked`; the quieter **Check conversation** control provides a
-read-only evidence refresh. Choose **Unlock Unsend all DMs**, type `UNSEND ALL
-DMS`, then select **Unsend all DMs** again and accept the permanent-action
-confirmation. The authorization expires after 15 minutes, the runner re-checks
-it before every message, and only rows proven sent by the current account are
-eligible. The history loader no longer repeatedly repositions a thread that is
-already at its loaded boundary. Unsending is permanent.
+**DM Unsend.** Open a conversation and choose the always-visible **Unsend DMs**
+button. It automatically performs the no-click history check when needed and
+must prove a complete finite count before showing one permanent-action
+confirmation naming the exact thread and count. The default scope is all
+eligible sent messages; `newest N` and `oldest N` are under Advanced. Incomplete
+or capped checks do not create a destructive plan. The finite plan is reserved
+before the first page control and uses the saved delay range; only rows proven
+sent by the current account are eligible.
+Cancel preserves the read-only count and changes nothing. Unsending is permanent.
 
 ### Batch pacing and safety
 
 Batch runs reuse the audited one-item path: each item still runs a complete
-inspect, exact-resolution, reserve, act, and record cycle. A batch arm replaces
-per-item phrase typing; it is consumed by the run it authorises and cannot be
-replayed.
+inspect, exact-resolution, reserve, act, and record cycle. One finite capability
+is bound to the confirmed target list, consumed by that run, and cannot be
+replayed or widened.
 
 - Randomised delays between items, plus a longer rest every 20 items
-- Configurable daily caps and delays under **Settings → Batch pacing**, clamped
-  to hard ceilings (400 account actions/day, 300 unsends/day, 1.5 s minimum delay)
+- Configurable delays under **Settings → Batch pacing**, with a 1.5-second
+  minimum and a longer rest every 20 items
 - The whole run stops on the first rate limit, checkpoint, block, session
   expiry, or unexpected screen
 - A target whose relationship no longer matches is skipped, not forced
 - **Stop** aborts before the next item
 
-Automated following and bulk activity run against Instagram's terms and can get
-an account actioned. Pacing is yours to set; the ceilings only bound the worst case.
+Automated following and bulk activity can trigger Instagram restrictions.
 
 See
 [Instagram sidecar](./docs/INSTAGRAM_SIDECAR.md)
@@ -278,25 +287,27 @@ The handshake rotates the one-time code into a derived session secret. Messages 
 Install `userscripts/insta-aio-companion.user.js` in Tampermonkey.
 
 The generated script injects a movable, lower-right-resizable, translucent
-three-tab toolbox directly on `instagram.com`. It includes the full-list follower
-scanner and local comparison, queue and checker target sources for paced Follow
+three-tab toolbox directly on `instagram.com`. It includes the authenticated,
+paginated Mutual Checker plus a list-dialog fallback and local comparison, queue and checker target sources for paced Follow
 or Unfollow runs, and the source-audited thread-wide DM Unsend runner. It uses the
 same exact-target Instagram engine as the extension and remains self-contained:
-no remote `@require`, network connector, credential access, or cloud storage.
+no remote `@require`, third-party network connector, credential access, or cloud
+storage. The checker sends only fixed read-only requests to `www.instagram.com`
+with browser-managed credentials; it cannot read or export those credentials.
 It explicitly requests the userscript manager's isolated DOM sandbox.
 Resumable account runs use `GM_getTab`/`GM_saveTab`, so another Instagram tab
 cannot inherit a running batch. Tampermonkey is the supported manager; on a
 manager without those tab APIs, follower scanning, comparison, and no-click
 checks remain available but account batch execution stays disabled.
 
-Live controls are visible but disabled on every page load. Open the gear menu,
-select **Enable live actions for 15 minutes**, and type `ENABLE LIVE ACTIONS` to
-unlock them. Each destructive run then asks for a separate confirmation. The
-authorization expires during a run and is checked before every later item;
+Live execution is off on every page load. Each reviewed account run asks once
+for its exact action, target list, and count, then mints a finite capability for
+that run only. There is no general switch, arm control, or authorization phrase.
+The capability expires during a run and is checked before every later item;
 account navigation retains only the already-confirmed run and its expiry in the
-same manager tab. Thread-wide Unsend separately binds its arm to the current
-thread and rejects navigation, expired authority, pre-existing menu decoys, and
-ambiguous newly opened controls. The
+same manager tab. Thread-wide Unsend separately binds its finite plan to the
+current thread and rejects navigation, expired authority, pre-existing menu
+decoys, and ambiguous newly opened controls. The
 follower scanner, exported comparisons, visible-message scan, and exact no-click
 checks work while live controls are locked. The userscript does not include the
 extension's signed PWA bridge or its durable workspace ledgers.
@@ -354,7 +365,7 @@ ignored `test-results`.
 The overlay-specific commands rebuild the production extension before loading
 its manifest-ordered content scripts in the deterministic Instagram fixture.
 Use `pnpm run qa:overlay:update` only for an intentional, manually reviewed
-baseline replacement. The 42-state Windows baseline includes fresh-install and
+baseline replacement. The 43-state Windows baseline includes fresh-install and
 filtered-checker evidence, plus a centered,
 resized 62%-opacity proof plus desktop, tablet, mobile, zoom, forced-colors,
 collision, locked-action, and review-before-start states. It has been reproduced by
@@ -386,4 +397,4 @@ any user-selected live Instagram action remain manual release checks.
 
 ## License
 
-Insta AIO Tool is available under the [MIT License](./LICENSE). Reviewed third-party sources and their license boundaries are documented in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+Insta Toolbox is available under the [MIT License](./LICENSE). Reviewed third-party sources and their license boundaries are documented in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

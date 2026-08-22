@@ -104,7 +104,7 @@ try {
   ]);
   await run('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', installedApp]);
 
-  const executable = path.join(installedApp, 'Contents', 'MacOS', 'Insta AIO Tool');
+  const executable = path.join(installedApp, 'Contents', 'MacOS', 'Insta Toolbox');
   const smoke = await run(executable, ['--smoke-test'], {
     env: {
       ...process.env,
@@ -112,7 +112,7 @@ try {
     },
     timeoutMs: 30_000,
   });
-  assert.match(smoke.stdout, /Insta AIO desktop smoke test passed/);
+  assert.match(smoke.stdout, /Insta Toolbox desktop smoke test passed/);
   await rm(installedApp, { recursive: true, force: true });
   await assert.rejects(stat(installedApp), { code: 'ENOENT' });
   console.log(`Accepted macOS DMG/ZIP build, ad-hoc signing, install, launch, and removal: ${path.basename(dmgFiles[0])}`);

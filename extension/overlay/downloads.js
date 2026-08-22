@@ -17,12 +17,16 @@
       anchor?.setAttribute('aria-disabled', 'true');
     }
 
-    function update(name, anchor, { filename, payload } = {}) {
+    function update(name, anchor, {
+      filename, mimeType = 'application/json', payload, text,
+    } = {}) {
       clear(name, anchor);
-      if (payload === undefined) return null;
+      if (payload === undefined && text === undefined) return null;
+      const contents = text === undefined ? JSON.stringify(payload, null, 2) : String(text);
+      const type = text === undefined ? mimeType : 'text/plain;charset=utf-8';
       const url = UrlApi.createObjectURL(new BlobType([
-        JSON.stringify(payload, null, 2),
-      ], { type: 'application/json' }));
+        contents,
+      ], { type }));
       urls.set(name, url);
       anchor.href = url;
       anchor.download = filename;

@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Insta AIO Companion</title>
+  <title>Insta Toolbox</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <main>
     <header>
-      <div class="mark" aria-hidden="true">AIO</div>
+      <div class="mark" aria-hidden="true">IT</div>
       <div>
       <p class="eyebrow">Companion setup</p>
       <h1>Connect workspace</h1>
@@ -17,7 +17,7 @@
       </div>
     </header>
 
-    <p class="field-note"><strong>The working UI lives on Instagram.</strong> This popup only pairs the PWA. Reload Instagram after updating the extension to open the Field Desk sidecar.</p>
+    <p class="field-note"><strong>The toolbox lives on Instagram.</strong> This popup pairs the PWA.</p>
 
     <form id="pairing-form">
       <label for="pairing-code">One-time pairing code</label>
@@ -29,7 +29,7 @@
       <button type="submit">Pair exact workspace origin</button>
     </form>
 
-    <p class="notice"><strong>Locked by default.</strong> Dry runs never click. A one-item Follow, Unfollow, or exact sent-message Unsend additionally requires a fresh signed job, Instagram-side phrase, 90-second one-use arm, exact DOM revalidation, and independent durable ledgers. Instagram cookies never leave the browser.</p>
+    <p class="notice"><strong>Inactive by default.</strong> Each action requires an exact confirmation and is rechecked before Instagram is changed. Cookies stay in the browser.</p>
     <div id="status" role="status" aria-live="polite"></div>
     <section aria-labelledby="pairings-heading">
       <h2 id="pairings-heading">Saved pairings</h2>

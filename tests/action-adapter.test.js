@@ -575,7 +575,7 @@ test('cancellation after action dispatch preserves postcheck and durable outcome
   assert.equal(finalizations[0].completion.status, 'succeeded');
 });
 
-test('ledger enforces daily limits and duplicate prevention before actions', () => {
+test('ledger rejects duplicate actions without imposing a daily quota', () => {
   const settings = { dailyFollowLimit: 1, dailyUnfollowLimit: 1 };
   const now = Date.UTC(2026, 6, 30, 12);
   const first = reserveActionAttempt(defaultState(), {
@@ -605,14 +605,14 @@ test('ledger enforces daily limits and duplicate prevention before actions', () 
   }, settings, now);
   assert.equal(duplicateAcrossJobs.result.reason, 'duplicate-queue-item');
 
-  const limited = reserveActionAttempt(first.state, {
+  const second = reserveActionAttempt(first.state, {
     jobId: 'job-2',
     itemId: 'item-2',
     queueItemId: 'queue-2',
     action: 'follow',
     username: 'second',
   }, settings, now);
-  assert.equal(limited.result.reason, 'daily-limit');
+  assert.equal(second.result.ok, true);
 
   const finalized = finalizeActionAttempt(
     first.state,
@@ -622,7 +622,7 @@ test('ledger enforces daily limits and duplicate prevention before actions', () 
   assert.equal(finalized.actionLedger[0].status, 'succeeded');
 });
 
-test('ledger treats malformed daily limits as a fail-closed limit of one', () => {
+test('legacy daily-limit settings no longer block reviewed actions', () => {
   const now = Date.UTC(2026, 6, 30, 12);
   const first = reserveActionAttempt(defaultState(), {
     jobId: 'job-1',
@@ -640,8 +640,6 @@ test('ledger treats malformed daily limits as a fail-closed limit of one', () =>
       action: 'follow',
       username: `next_${String(malformed).replaceAll(/[^a-z0-9._]/gi, '_')}`,
     }, { dailyFollowLimit: malformed }, now);
-    assert.equal(outcome.result.ok, false);
-    assert.equal(outcome.result.reason, 'daily-limit');
-    assert.equal(outcome.result.limit, 1);
+    assert.equal(outcome.result.ok, true);
   }
 });

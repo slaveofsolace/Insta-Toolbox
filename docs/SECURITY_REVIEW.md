@@ -1,6 +1,6 @@
 # Security review
 
-Last reviewed: 2026-08-08
+Last reviewed: 2026-08-20
 
 ## Application boundaries
 
@@ -22,21 +22,37 @@ list. Any input change discards the draft and hides Start; live authorization is
 checked only after a matching review exists.
 
 The injected toolbox surfaces follow the same default-off rule. Tampermonkey
-does not persist a general live preference: `ENABLE LIVE ACTIONS` opens a
-15-minute tab window, each run still requires confirmation, and an account run
+does not persist a general live preference, switch, arm control, or typed phrase.
+Each already-reviewed account run requires one ordinary confirmation naming its
+exact action, targets, and count, then receives a capability bound only to that
+finite run. An account run
 persists only its original expiry across the profile navigations it causes.
 That resumable run is stored through `GM_getTab`/`GM_saveTab`, not the shared GM
 record; a manager without tab storage leaves account batches disabled. The
 metadata explicitly selects the DOM sandbox so page code does not share
 the toolbox's API globals. DM runs are dropped on reload. The shared thread-wide
-Unsend runner independently rejects a missing or expired
-`authorizationExpiresAt`, requires the armed thread ID to match the current
-thread, and checks both before every page control. It snapshots existing menu
-and dialog candidates and accepts exactly one newly surfaced control. The
-extension's thread tool first requires
-`UNSEND ALL DMS`, performs no action while arming, then requires a second
-permanent-action confirmation. No new host permission, remote dependency,
-credential field, private endpoint, or network request was added.
+Unsend runner independently requires a complete no-click history check and a
+finite plan bound to the exact thread, scope, eligible count, digest, and future
+expiry. It revalidates completeness and count before the first menu and checks
+expiry before every page control. The finite plan receives a one-use capability
+and uses the saved bounded delay range. It
+snapshots existing menu and dialog
+candidates and accepts exactly one newly surfaced control. The extension's
+thread tool requires one ordinary count-specific permanent-action confirmation.
+That DM patch added no host permission, remote dependency,
+credential field, private endpoint, or network request.
+
+The follower-checker next pass deliberately adds a narrow authenticated read
+client for the exact legacy checker behavior requested by the operator. It can
+call only `www.instagram.com/api/v1/web/search/topsearch/` and the exact
+`www.instagram.com/api/v1/friendships/<numeric-id>/(followers|following)/`
+GET routes. It uses browser-managed credentials without reading them, a fixed
+application header, 50-row pages, unique pagination tokens, 800–1499 ms pacing,
+25,000-account and 1,000-page limits per list, a shared 20-minute deadline, and
+user cancellation. Non-Instagram origins, arbitrary paths, invalid schemas,
+login loss, challenges, blocks, rate limits, repeated tokens, and request errors
+stop. Results replace both saved lists atomically and are never sent through the
+extension bridge.
 
 The PWA service worker uses network-first handling for same-origin GET requests,
 caches only successful same-origin responses, bypasses the HTTP cache while
@@ -75,8 +91,9 @@ candidate, and sent ownership before recording `resolved-no-click`. Missing,
 changed, duplicate, received, wrong-thread, and unknown-ownership states stop
 without opening a menu. The route returns no raw message text and cannot reach
 the live control activator. The controlled live consumer additionally requires
-two fresh confirmations, exactly one item, exact arm-code entry on the matching
-thread, an independent finite extension ledger, and a one-use row token. It
+one ordinary confirmation naming the exact thread and message, exactly one
+reviewed item, a matching-thread transient capability, an independent finite
+extension ledger, and a one-use row token. It
 rejects pre-existing menus or dialogs, revalidates the same row before each
 stage, accepts only new ARIA-bound interactive menu/dialog controls with exact
 localized Unsend labels, and reports success only when the same thread remains
@@ -93,7 +110,8 @@ currently open exact thread before it can show a destructive confirmation.
 Client-side Instagram route changes trigger a state rerender; they never inherit
 the prior thread's visible evidence or Unsend candidates.
 
-Restored daily limits are finite and bounded. Capability replay, stale
+There is no daily action quota. Restored legacy limit fields are normalized for
+migration compatibility but are not enforced. Capability replay, stale
 confirmation, changed controls, wrong profiles or messages, duplicate attempts,
 and ambiguous UI fail closed for both controlled paths.
 
@@ -123,8 +141,9 @@ The 2026-08-01 controlled-action review found and remediated four low-severity
 issues before release: profile controls were not structurally bound to the
 reviewed header, an existing Unfollow dialog could be mistaken for a newly
 opened target dialog, the extension lacked its own durable reservation, and
-malformed restored daily limits could fail open. Regression tests exercise each
-fixed boundary. The 2026-08-02 exact-message DM local-patch review reproduced
+malformed restored safety fields could fail open. Regression tests exercise each
+fixed boundary. Legacy daily-limit fields now remain only for migration
+compatibility and are not enforced. The 2026-08-02 exact-message DM local-patch review reproduced
 three bounded live-path defects and one packaging-gate hardening gap. All four
 were remediated during the scan, every changed source file received a full-file
 receipt, and no reportable finding survives in the current patch. The complete
@@ -137,8 +156,26 @@ to issue a profile or message capability when Web Crypto cannot supply entropy.
 The 2026-08-08 workflow patch received a complete diff-focused review over ten
 changed files plus two supporting safety-contract files. All twelve review
 receipts were closed and no plausible security candidate survived discovery.
+The 2026-08-20 usability correction received a complete diff-focused review of
+all six changed source-like files. It makes the DM plan discoverable and removes
+the unrelated global authorization phrase, while keeping the initial live lock,
+exact action confirmation, finite plan, reservation, pacing, safe-stop, and
+postcondition boundaries. No plausible security candidate survived discovery.
+The 2026-08-22 follower-checker pass received route-allowlist, response-shape,
+pagination-bound, provenance, atomic-replacement, and fallback-isolation tests.
+Authenticated acceptance remains an external release gate; fixture success does
+not prove that Instagram still serves these unsupported web routes.
+The final 2.0.0 diff review covered the 27 source-like release files in the
+security inventory plus all four PWA source fragments. Manifest and package
+changes are version-only; no host permission or production dependency was
+added. The new credentialed request is confined to the tested same-origin
+Followers/Following GET allowlist, and the added userscript anchor activation is
+the local comparison download path rather than an Instagram control. Every
+destructive entry point remains behind a finite exact confirmation, transient
+capability, target revalidation, reservation, pacing, Stop path, and
+postcondition check. No plausible security candidate survived discovery.
 The repository test suite, extension fixture acceptance, real disposable-Chrome
-pairing, nine PWA baselines, the 42-state overlay check, the production
+pairing, nine PWA baselines, the 43-state overlay check, the production
 dependency audit, and the 10,000-message ZIP benchmark passed. Native installer
 lifecycle and additional-platform gates remain release/CI requirements;
 extension packaging independently runs the executable controlled-live safety

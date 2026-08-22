@@ -5,12 +5,13 @@
 - Preserve the PWA, migrations, userscript, tests, and data contracts.
 - Keep live action settings disabled by default.
 - Keep every dry-run route no-click; it must never reach `activateLiveControl()`.
-- Keep extension live account execution to one fresh signed item, one exact Instagram-side phrase, one tab-scoped 90-second arm, one background-owned reservation, and one consumed capability.
-- Keep controlled extension DM execution to exactly one fresh twice-confirmed
-  item, one exact conversation/message/timestamp/content/ownership binding,
-  one tab-scoped 90-second arm, independent PWA and extension reservations, one
-  consumed row token, structurally bound interactive menu/dialog controls, and
-  same-thread verified removal with stable identity coverage.
+- Keep extension live account execution bound to one confirmed finite run, one
+  short-lived tab capability, one background-owned reservation, and exact
+  target revalidation before every page control.
+- Keep controlled extension DM execution bound to one confirmed finite plan,
+  the exact conversation, scope, count, digest, expiry, sent ownership,
+  structurally bound interactive menu/dialog controls, and same-thread verified
+  removal.
 - Keep the extension DM dry-run resolver limited to allowlisted stable message
   IDs, exact timestamps and content digests, matching direct-thread IDs, and
   proven sent ownership; a visual-text similarity alone must safe-stop.
@@ -21,7 +22,9 @@
 - Reserve both the PWA ledger and the extension mirror before any destructive driver call.
 - Preserve every import disposition.
 - Keep state migrations additive.
-- Do not introduce credential collection, session export, bypass behavior, or private endpoint dependencies.
+- Do not introduce credential collection, session export, bypass behavior,
+  arbitrary endpoints, or mutation-capable private endpoint dependencies. The
+  Mutual Checker exception is limited to its tested fixed Instagram GET-route allowlist.
 
 ## Change workflow
 
@@ -107,18 +110,18 @@ Driver boundaries return observations and results. They do not write application
 
 Before a live account action:
 
-1. Require a fresh digest-bound confirmation for exactly one item.
-2. Send the signed intent through an action-permission pairing.
-3. Match the exact Instagram profile header and its owned relationship control.
-4. Require the exact action/username phrase and create a tab-scoped 90-second arm.
+1. Require a fresh confirmation naming the exact action, targets, and finite count.
+2. Send a signed intent when the run originated from an action-permission pairing.
+3. Match each exact Instagram profile header and its owned relationship control.
+4. Create a short-lived tab capability for only the confirmed run.
 5. Inspect session safety and reapply whitelist, preexisting, mutual, and status protections.
 6. Resolve a short-lived exact DOM control token.
-7. Revalidate the one-use arm immediately before reservation.
-8. Reserve the PWA attempt transactionally.
-9. Persist the extension-side mirror reservation and consume the arm before the page-control request.
+7. Revalidate the one-use capability immediately before reservation.
+8. Reserve the attempt transactionally.
+9. Persist the extension-side mirror reservation and consume the capability before the page-control request.
 10. Stop on any pre-existing dialog; invoke only the exact token-bound control and, for Unfollow, a newly surfaced dialog that names the reviewed username.
 11. Reinspect and verify the relationship change.
-12. Finalize both ledgers and checkpoint the item.
+12. Finalize the ledgers and checkpoint the item.
 
 Before DM removal:
 

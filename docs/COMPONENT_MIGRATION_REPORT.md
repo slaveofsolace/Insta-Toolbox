@@ -7,7 +7,7 @@
 | Instagram Helper | `allMessagesItemsArray` | Normalized messages and migration report | No |
 | SimpleInstaBot | Followed/unfollowed history | Historical queue records and migration report | No |
 | SimpleInstaBot | Photo history | Unsupported disposition | No |
-| Follower checker | Two non-mutual arrays | Read-only relationship report | No |
+| Mutual Checker | Two non-mutual arrays | Read-only relationship report | No |
 | instagram-dm-unsender | Stateless userscript configuration | Migration report only | No |
 
 The dispatcher in `src/adapters/legacy-components.js` identifies supported data without evaluating supplied source code.
@@ -21,6 +21,13 @@ retains the existing `insta-aio-visible-list`, `insta-aio-manual-queue`, and
 current-page inspection, sanitized bridge dry-run history, and read-only DM
 evidence. The userscript remains available as a fallback; it was not removed or
 replaced.
+
+The follower-checker runtime now also provides an independent, bounded client
+for the source's exact authenticated read behavior. It resolves one exact
+username, pages only the fixed Instagram Followers and Following GET routes,
+stores both lists atomically with schema-5 provenance, and retains the dialog
+reader as an Advanced fallback. This does not change legacy result migration:
+old two-array reports remain incomplete and non-actionable.
 
 The DM migration also adds a conditional exact-identity inspection boundary for
 signed reviewed dry runs. It reuses only the supplied source's read-only
@@ -43,8 +50,8 @@ authenticated live Unsend acceptance.
 The independently reviewed account-action boundary now has an optional
 production extension driver. It does not reuse SimpleInstaBot's Puppeteer,
 session persistence, private routes, selector set, or retry automation. It
-accepts one fresh reviewed item, requires an Instagram-side exact phrase and
-short-lived one-use arm, consumes that arm before using the exact visible
+accepts one fresh reviewed item, requires one ordinary confirmation naming the
+exact action and target, and consumes a short-lived one-use capability before using the exact visible
 control, and returns before/after observations to the PWA ledger. This does not
 change the disposition of migrated SimpleInstaBot records: they remain
 historical and non-actionable.
@@ -70,7 +77,7 @@ historical and non-actionable.
 - Photo-history records become explicit unsupported dispositions.
 - Every migrated queue item has `migrationOnly: true`.
 
-### Follower checker
+### Mutual Checker
 
 - Both result arrays are normalized and deduplicated.
 - Invalid usernames are reported.

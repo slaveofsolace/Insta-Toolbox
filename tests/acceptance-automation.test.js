@@ -62,11 +62,11 @@ test('isolated Chromium acceptance executes production account and DM DOM chains
 
 test('browser acceptance covers accessibility, installability, and read-only pairing defaults', () => {
   assert.match(acceptance, /Accessibility\.getFullAXTree/);
-  assert.match(acceptance, /Insta AIO Instagram sidecar/);
+  assert.match(acceptance, /Insta Toolbox/);
   assert.match(acceptance, /sidecar collapse and focus restoration/);
   assert.match(acceptance, /navigator\.serviceWorker\.ready/);
   assert.match(acceptance, /manifest\.display/);
-  assert.match(acceptance, /actionPermission: false, liveAccount: false, liveDm: false/);
+  assert.match(acceptance, /actionPermission: false, globalLiveUnlocks: false/);
   assert.match(acceptance, /permissions, 'read'/);
   assert.match(acceptance, /setPermissionCheckHandler\(\(\) => false\)/);
   assert.match(acceptance, /setPermissionRequestHandler/);
@@ -76,7 +76,7 @@ test('browser acceptance covers accessibility, installability, and read-only pai
   assert.match(acceptance, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
   assert.match(acceptance, /details\.open = true;[\s\S]*?requestAnimationFrame/);
   assert.match(acceptance, /configuredMaxHeight/);
-  assert.match(acceptance, /--ig-primary-text'[\s\S]*?requestAnimationFrame/);
+  assert.match(acceptance, /--ig-primary-text'[\s\S]*?waitForPageValue[\s\S]*?settled userscript dark-theme tokens/);
 });
 
 test('Chrome acceptance loads and pairs the real extension through the restricted DevTools pipe', () => {
@@ -164,7 +164,7 @@ test('macOS CI builds and exercises the packaged lifecycle without release crede
   assert.match(desktop, /mkdtempSync\(path\.join\(configuredParent, 'insta-aio-desktop-smoke-'\)\)/);
   assert.doesNotMatch(desktop, /insta-aio-desktop-smoke-\$\{process\.pid\}/);
   assert.match(desktop, /if \(!DESKTOP_SMOKE_TEST && process\.platform !== 'darwin'\) app\.quit\(\)/);
-  assert.match(desktop, /Insta AIO desktop smoke test passed/);
+  assert.match(desktop, /Insta Toolbox desktop smoke test passed/);
   assert.doesNotMatch(desktop, /executeJavaScript/);
   assert.match(macVerifier, /process\.platform !== 'darwin'/);
   assert.match(macVerifier, /hdiutil/);

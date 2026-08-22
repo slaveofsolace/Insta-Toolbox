@@ -251,12 +251,12 @@ async function runDesktopSmokeTest(window) {
     }
   } catch (error) {
     exitCode = 1;
-    console.error(`Insta AIO desktop smoke test failed: ${error.message}`);
+    console.error(`Insta Toolbox desktop smoke test failed: ${error.message}`);
   } finally {
     clearTimeout(timer);
     if (!window.isDestroyed()) window.destroy();
     if (exitCode === 0) {
-      console.log(`Insta AIO desktop smoke test passed: ${loadedUrl}`);
+      console.log(`Insta Toolbox desktop smoke test passed: ${loadedUrl}`);
     }
     app.exit(exitCode);
   }

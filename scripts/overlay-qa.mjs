@@ -12,7 +12,7 @@ import { app, BrowserWindow, nativeImage, session } from 'electron';
 import { overlayQaScenarios, viewports } from './overlay-qa-scenarios.mjs';
 
 const viewTitles = Object.freeze({
-  capture: 'Follower checker',
+  capture: 'Mutual Checker',
   messages: 'DM Unsend',
   now: 'Instagram tools',
   queue: 'Follow / Unfollow',
@@ -72,6 +72,10 @@ mkdirSync(actualRoot, { recursive: true });
 writeFileSync(runnerLogPath, '', 'utf8');
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
+// Windows hosts can choose different LCD subpixel rasterization for the same
+// glyph. Force grayscale text so reviewed screenshots remain byte-stable
+// across local Windows and hosted Windows runners.
+app.commandLine.appendSwitch('disable-lcd-text');
 app.setPath('userData', userDataRoot);
 app.on('window-all-closed', () => {});
 
@@ -263,13 +267,29 @@ function scenarioUrl(baseUrl, scenario) {
 }
 
 async function applyAfterState(webContents, scenario) {
+  if (scenario.after === 'check-account-relationships') {
+    await webContents.executeJavaScript(`(() => {
+      const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+      const username = shadow.querySelector('[data-ia-role="checker-username"]');
+      const control = shadow.querySelector('[data-ia-action="check-account-relationships"]');
+      if (!username || !control) throw new Error('Mutual Checker controls are missing.');
+      username.value = 'demo_creator';
+      username.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+      control.click();
+    })()`, true);
+    await waitForValue(
+      webContents,
+      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="capture-state-title"]')?.textContent === 'Follower comparison complete for @demo_creator'`,
+      `${scenario.id}: authenticated follower comparison`,
+    );
+  }
   if (scenario.after === 'capture-visible' || scenario.after === 'inspect-messages') {
     const action = scenario.after;
     await webContents.executeJavaScript(`(() => {
       const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
       const captureListType = ${JSON.stringify(scenario.captureListType)};
       if (${JSON.stringify(action)} === 'capture-visible' && captureListType) {
-        const listType = shadow.querySelector('[data-ia-role="manual-list-type"]');
+        const listType = shadow.querySelector('[data-ia-role="list-type"]');
         if (!listType) throw new Error('Capture list-type control is missing.');
         listType.value = captureListType;
         listType.dispatchEvent(new Event('change', { bubbles: true }));
@@ -289,10 +309,13 @@ async function applyAfterState(webContents, scenario) {
     await webContents.executeJavaScript(`(() => {
       const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
       const disclosure = shadow.querySelector('[data-ia-role="bot-disclosure"]');
+      const action = shadow.querySelector('[data-ia-role="bot-action"]');
       const source = shadow.querySelector('[data-ia-role="bot-source"]');
       const control = shadow.querySelector('[data-ia-action="bot-review"]');
-      if (!disclosure || !source || !control) throw new Error('Follow / Unfollow review controls are missing.');
+      if (!disclosure || !action || !source || !control) throw new Error('Follow / Unfollow review controls are missing.');
       disclosure.open = true;
+      action.value = 'unfollow';
+      action.dispatchEvent(new Event('change', { bubbles: true }));
       source.value = 'queue';
       source.dispatchEvent(new Event('change', { bubbles: true }));
       control.click();
@@ -307,7 +330,7 @@ async function applyAfterState(webContents, scenario) {
     await webContents.executeJavaScript(`(() => {
       const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
       const search = shadow.querySelector('[data-ia-role="checker-search"]');
-      if (!search) throw new Error('Follower checker search control is missing.');
+      if (!search) throw new Error('Mutual Checker search control is missing.');
       search.value = 'beta';
       search.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
       shadow.querySelector('[data-ia-role="checker-browser"]')?.scrollIntoView({ block: 'center' });
@@ -316,14 +339,6 @@ async function applyAfterState(webContents, scenario) {
       webContents,
       `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="checker-filter-count"]')?.textContent === '1'`,
       `${scenario.id}: local follower result filter`,
-    );
-  }
-  if (scenario.after === 'wait-account-expired') {
-    await waitForValue(
-      webContents,
-      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="live-badge"]').textContent === 'expired'`,
-      `${scenario.id}: immutable arm expiry`,
-      5_000,
     );
   }
 }
@@ -534,6 +549,10 @@ function assertScenario(metrics, scenario) {
   }
   for (const expectation of scenario.semantics) {
     const actual = metrics.semantics[expectation.selector];
+    if (expectation.exists === false) {
+      assert.equal(actual?.exists, false, `${scenario.id}: semantic target should not exist: ${expectation.selector}`);
+      continue;
+    }
     assert.ok(actual?.exists, `${scenario.id}: semantic target is missing: ${expectation.selector}`);
     if (Object.hasOwn(expectation, 'equals')) {
       assert.equal(actual.text, expectation.equals, `${scenario.id}: semantic text mismatch: ${expectation.selector}`);
@@ -613,9 +632,9 @@ async function accessibilitySmoke(webContents, scenario) {
   );
   const names = new Set((tree.nodes || []).map((node) => node.name?.value).filter(Boolean));
   for (const expected of [
-    'Insta AIO Instagram sidecar',
+    'Insta Toolbox',
     'Toolbox',
-    'Follower checker',
+    'Mutual Checker',
     'Follow / Unfollow',
     'DM Unsend',
     'Workspace',
@@ -764,7 +783,10 @@ async function performanceMetrics(webContents) {
   assert.ok(routeTransitionMs < 500, `route transition is ${routeTransitionMs.toFixed(2)}ms`);
   assert.ok(queueResult.durationMs < 1_000, `2,000-item queue update is ${queueResult.durationMs.toFixed(2)}ms`);
   assert.equal(queueResult.renderedItems, 1, '2,000-item queue update did not render one bounded current item');
-  assert.ok(queueResult.totalOverlayNodes < 400, '2,000-item queue created unbounded overlay DOM');
+  assert.ok(
+    queueResult.totalOverlayNodes < 400,
+    `2,000-item queue created ${queueResult.totalOverlayNodes} overlay nodes; expected fewer than 400`,
+  );
   return { collapsedTaskMs, openTaskMs, queue: queueResult, routeTransitionMs };
 }
 
@@ -778,7 +800,7 @@ function fidelityLedger(results, performance) {
       current: `docs/evidence/overlay-ui-2026-08-02/after/${process.platform}`,
     },
     comparison: [
-      { area: 'shell', before: 'Default-open, visually dominant field desk', after: `Fresh collapsed launcher; standard open share ${(standard.metrics.panelAreaShare * 100).toFixed(2)}%`, status: 'MEASURED' },
+    { area: 'shell', before: 'Default-open, visually dominant overlay panel', after: `Fresh collapsed launcher; standard open share ${(standard.metrics.panelAreaShare * 100).toFixed(2)}%`, status: 'MEASURED' },
       { area: 'hierarchy', before: 'Multiple equal-weight cards and protocol copy', after: 'Current target, state, then one next safe step with progressive disclosure', status: 'MEASURED' },
       { area: 'theme', before: 'Forced light presentation', after: 'Explicit light/dark plus auto resolver', status: 'MEASURED' },
       { area: 'navigation', before: 'Text-heavy tabs', after: 'Five semantic 44px rail targets with keyboard roving tabindex', status: 'MEASURED' },

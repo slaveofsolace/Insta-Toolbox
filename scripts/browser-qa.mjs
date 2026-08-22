@@ -204,8 +204,8 @@ async function inspectView(webContents, viewId, expectedHeading, viewport) {
   }
   assert.equal(metrics.malformedClosingTag, false, `${viewId}: malformed closing tag is visible`);
   if (viewId === 'settings') {
-    assert.equal(metrics.liveActionEnabled, false, 'settings: live account actions must default off');
-    assert.equal(metrics.liveDmEnabled, false, 'settings: live DM actions must default off');
+    assert.equal(metrics.liveActionEnabled, null, 'settings: global live account toggle must not exist');
+    assert.equal(metrics.liveDmEnabled, null, 'settings: global live DM toggle must not exist');
   }
 }
 

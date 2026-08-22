@@ -9,9 +9,18 @@
   let pollTimer = null;
   let lastRun = null;
 
-  function armPhrase(kind, action, count) {
-    if (kind === 'dm') return `ARM MASS UNSEND ${count}`;
-    return `ARM BATCH ${String(action || '').toUpperCase()} ${count}`;
+  function targetDigest(kind, action, items) {
+    const source = JSON.stringify((items || []).map((item) => (
+      kind === 'account'
+        ? [String(item?.id || ''), String(item?.username || '').toLowerCase()]
+        : [String(item?.id || ''), String(item?.messageId || ''), String(item?.threadId || '')]
+    )));
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < source.length; index += 1) {
+      hash ^= source.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return `${kind}:${action || ''}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
   }
 
   function running(run) {
@@ -153,28 +162,31 @@
     }
 
     const count = items.length;
-    const phrase = await runtime.requestArmPhrase({
-      description,
-      phrase: armPhrase(kind, action, count),
-    });
-    if (phrase == null) return;
-
-    const armed = await runtime.sendBridge({
-      kind: 'insta-aio-arm-batch',
-      batchKind: kind,
-      action,
-      count,
-      jobId: `batch-${Date.now()}`,
-      phrase,
-    });
-    if (armed?.error) {
-      throw new Error(`Batch arm rejected: ${armed.error}.`);
+    const actionLabel = kind === 'dm' ? 'Unsend' : action === 'follow' ? 'Follow' : 'Unfollow';
+    const targetLines = items.map((item) => (
+      kind === 'account' ? `@${item.username}` : `message ${item.messageId || item.id}`
+    ));
+    const confirmed = runtime.window.confirm(
+      `${actionLabel} ${count} ${kind === 'dm' ? `message${count === 1 ? '' : 's'}` : `account${count === 1 ? '' : 's'}`}?\n\n`
+      + `${targetLines.join('\n')}\n\n${description}`,
+    );
+    if (!confirmed) {
+      runtime.status('Canceled. No Instagram action was performed.', 'neutral');
+      return;
     }
 
     const started = await runtime.sendBridge({
       kind: 'insta-aio-start-batch',
       batchKind: kind,
+      action,
+      confirmed: true,
+      confirmation: {
+        action,
+        count,
+        targetDigest: targetDigest(kind, action, items),
+      },
       items,
+      jobId: `batch-${Date.now()}`,
     });
     if (started?.error) {
       throw new Error(`Batch start rejected: ${started.error}.`);
@@ -200,8 +212,6 @@
   async function saveLimits(runtime) {
     const { query } = runtime;
     const limits = {
-      dailyActionLimit: Number(query('[data-ia-role="limit-actions"]')?.value),
-      dailyDmLimit: Number(query('[data-ia-role="limit-dms"]')?.value),
       minDelayMs: Number(query('[data-ia-role="limit-min-delay"]')?.value) * 1000,
       maxDelayMs: Number(query('[data-ia-role="limit-max-delay"]')?.value) * 1000,
     };
@@ -218,8 +228,6 @@
       const field = query(`[data-ia-role="${role}"]`);
       if (field) field.value = String(value);
     };
-    set('limit-actions', limits.dailyActionLimit);
-    set('limit-dms', limits.dailyDmLimit);
     set('limit-min-delay', Math.round(limits.minDelayMs / 1000));
     set('limit-max-delay', Math.round(limits.maxDelayMs / 1000));
   }
@@ -236,12 +244,12 @@
 
   shared.install('batch', {
     abort,
-    armPhrase,
     hydrate,
     refresh,
     render,
     saveLimits,
     start,
     stopPolling,
+    targetDigest,
   });
 })();

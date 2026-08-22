@@ -2,7 +2,7 @@
 
 ## System shape
 
-Insta AIO Tool is a local-first PWA with three optional delivery surfaces:
+Insta Toolbox is a local-first PWA with three optional delivery surfaces:
 
 1. A self-contained Tampermonkey toolbox with follower comparison, no-click review, and explicitly unlocked paced actions
 2. A Manifest V3 extension with a movable Instagram overlay, local toolbox runs, signed inspection requests, and controlled one-item PWA boundaries
@@ -93,19 +93,21 @@ Pairing uses:
 
 Every request includes a timestamp, request ID, nonce, type, payload, and HMAC-SHA-256 signature. Verification enforces origin, permission, maximum age, replay protection, payload size, and session-material rejection.
 
-The extension background worker serializes bridge requests and persists its replay cache. `action-labels.js` loads first and exposes one frozen normalization/allowlist surface for the reviewed relationship and localized Unsend labels. The Instagram inspector then exposes read-only page inspection. Ordered classic modules under `extension/overlay/` own preferences, routing, theme, bridge transport, downloads, accessibility, collision measurement, the static shell, and five bounded views; `instagram-overlay.js` owns their lifecycle and persistence. The isolated **Field Desk** renders in a closed shadow root after every dependency is available. The deterministic browser fixture explicitly opts into an open root for QA only.
+The extension background worker serializes bridge requests and persists its replay cache. `action-labels.js` loads first and exposes one frozen normalization/allowlist surface for the reviewed relationship and localized Unsend labels. The Instagram inspector then exposes read-only page inspection. Ordered classic modules under `extension/overlay/` own preferences, routing, theme, bridge transport, downloads, accessibility, collision measurement, the static shell, and five bounded views; `instagram-overlay.js` owns their lifecycle and persistence. The isolated **Insta Toolbox** renders in a closed shadow root after every dependency is available. The deterministic browser fixture explicitly opts into an open root for QA only.
 
 The sidecar owns only browser-local field state:
 
-- A bounded visible-list capture draft using the existing `insta-aio-visible-list` contract
+- A bounded relationship-check workspace that atomically stores both lists,
+  subject username, completeness, and authenticated-web or list-dialog provenance
+- Backward-compatible `insta-aio-visible-list` exports for individual raw lists
 - An imported `insta-aio-manual-queue` and extension-local completion/skip updates
 - Read-only visible-message evidence plus conditional stable-identity DM dry runs
 - Sanitized pairing and recent dry-run summaries returned by the background worker
-- A sanitized pending one-item account intent and 90-second one-use arm
-- A sanitized pending exact-message intent and 90-second one-use DM arm
+- Sanitized pending one-item account and exact-message intents; transient
+  capabilities remain in the background worker and are never returned to the page
 - A versioned V3 visual preference record; fresh state is collapsed, V1/V2
   choices migrate, and bounded position, size, and opacity fields do not change
-  capture or queue contracts
+  existing capture-export or queue contracts
 
 The PWA remains the system of record for imports, snapshots, comparisons,
 protections, reviewed jobs, ledgers, and backups. The background worker never
@@ -113,20 +115,21 @@ returns pairing secrets, signatures, or nonces to the Instagram sidecar.
 
 Account dry runs never reach a page-control method. A live account job must be
 fresh, signed with action permission, contain exactly one item, and match an
-Instagram-side intent. The operator must type the exact action and username on
-the matching profile. The resulting arm expires after 90 seconds. The
-background worker persists its own reservation and consumes the arm before it
+Instagram-side intent. The operator accepts one ordinary confirmation naming the
+exact action and username on the matching profile. The resulting transient
+capability expires and cannot persist across a worker restart. The background
+worker persists its own reservation and consumes the capability before it
 sends the single execution request, then finalizes that reservation after the
 result. The content script binds the request to a short-lived exact DOM token,
 requires one relationship control inside one header that independently names
 the pathname account, stops before any click when a dialog is already visible,
 and accepts only a newly surfaced Unfollow dialog that names the reviewed
 username. It then verifies the resulting relationship. The PWA independently
-rechecks the arm before its transactional reservation and checkpoints the
+rechecks the exact readiness before its transactional reservation and checkpoints the
 before/after result. DM dry runs use only the separate stable-identity inspector.
-The controlled DM path accepts exactly one twice-confirmed sent-message item,
-uses a separate signed intent and 90-second tab arm, reserves independent PWA
-and extension ledgers, consumes the arm before the isolated page driver, and
+The controlled DM path accepts exactly one freshly confirmed sent-message item,
+uses a separate signed intent and transient tab capability, reserves independent PWA
+and extension ledgers, consumes the capability before the isolated page driver, and
 revalidates the exact row before its action menu, localized Unsend option, and
 localized confirmation. The menu and dialog must be new, interactive, and
 structurally related to their triggering controls. Success requires the same
@@ -141,15 +144,15 @@ non-producing secure random source returns `secure-random-unavailable`, stores
 no token, and therefore cannot reach either controlled page driver.
 
 The overlay view modules do not implement Instagram selectors or page-control
-events. They can request an exact signed one-item arm, a phrase-gated local
-account batch, or a separately phrase-gated thread-wide Unsend. Execution stays
-inside the shared inspected drivers. The thread runner refuses to start without
-a future authorization expiry and the exact current thread ID. It rechecks both
-before every page control, snapshots pre-existing menu/dialog candidates, and
-accepts exactly one newly surfaced control for the item it just opened.
+events. They can request a signed reviewed item, a confirmed finite account run,
+or a separately confirmed thread-wide Unsend. Execution stays inside the shared
+inspected drivers. The thread runner refuses to start without a future capability
+expiry and the exact current thread ID. It rechecks both before every page
+control, snapshots pre-existing menu/dialog candidates, and accepts exactly one
+newly surfaced control for the item it just opened.
 Package validation scans the complete ordered graph for unauthorized direct
 clicks, synthetic dispatch, recurring polling, remote UI assets, and more than
-the audited static shell-markup assignment. An active/just-consumed signed arm
+the audited static shell-markup assignment. An active or just-consumed capability
 forces collision-safe presentation so the full panel does not compete with an
 exact native control, menu, or confirmation dialog.
 
@@ -158,15 +161,17 @@ exact native control, menu, or confirmation dialog.
 `scripts/build-userscript.mjs` produces one installable `.user.js` file from the
 extension's exact-label module, shared Instagram inspector/action engine, and a
 userscript-specific shell. It has no remote `@require`, `@resource`, `@connect`,
-or network request path. The shell stores follower/following drafts, queue state,
+third-party connector, or cloud path. The shared checker engine can issue only
+its fixed same-origin Instagram relationship GET requests with browser-managed
+credentials. The shell stores follower/following drafts, queue state,
 pacing limits, and layout preferences in userscript-local storage. The metadata
 explicitly selects the userscript manager's isolated DOM sandbox.
 
 The injected toolbox exposes the follower scanner and comparison, no-click
 profile/message checks, paced Follow/Unfollow, and thread-wide DM Unsend. Live
-controls start disabled. A typed `ENABLE LIVE ACTIONS` phrase opens a
-non-persistent 15-minute window; a separate confirmation is still required for
-each run. The expiry is stored only on an already-confirmed account run so the
+execution starts off. Each already-reviewed account run requires one exact
+action, target-list, and count confirmation, then receives a non-persistent
+capability bound only to that finite run. The expiry is stored only on an already-confirmed account run so the
 run can cross its own profile navigations. Resumable account state is held in
 manager-provided tab storage (`GM_getTab`/`GM_saveTab`), never in the shared GM
 value record; without those APIs, account batches fail closed. DM runs are

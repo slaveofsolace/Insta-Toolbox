@@ -74,7 +74,7 @@ addition to color. Final tokens must pass WCAG AA at their actual text size.
 ### Launcher
 
 - First install defaults collapsed on every viewport.
-- 44 × 44 px neutral button with the AIO mark and an accessible `Open Insta AIO`
+- 44 × 44 px neutral button with the IT mark and an accessible `Open Insta Toolbox`
   name.
 - Safe-area inset plus 12–16 px viewport inset.
 - Optional signal pin only for exact ready intent, armed countdown, attention,

@@ -28,7 +28,7 @@ async function loadBackground({ profileResponses, performResponses, stored }) {
 
   globalThis.chrome = {
     runtime: {
-      getManifest: () => ({ version: '0.10.6' }),
+      getManifest: () => ({ version: '2.0.0' }),
       onMessage: { addListener(listener) { runtimeListener = listener; } },
     },
     storage: {
@@ -102,6 +102,7 @@ function baseStored() {
     pendingJobs: [],
     accountActionLedger: [],
     dmActionLedger: [],
+    threadUnsendLedger: [],
     pendingLiveIntent: null,
     liveArm: null,
     pendingDmIntent: null,
@@ -118,6 +119,87 @@ function baseStored() {
   };
 }
 
+function batchTargetDigest(kind, action, items) {
+  const source = JSON.stringify(items.map((item) => (
+    kind === 'account'
+      ? [String(item?.id || ''), String(item?.username || '').toLowerCase()]
+      : [String(item?.id || ''), String(item?.messageId || ''), String(item?.threadId || '')]
+  )));
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${kind}:${action || ''}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function confirmedAccountBatch(action, items) {
+  return {
+    kind: 'insta-aio-start-batch',
+    batchKind: 'account',
+    action,
+    items,
+    confirmed: true,
+    confirmation: {
+      action,
+      count: items.length,
+      targetDigest: batchTargetDigest('account', action, items),
+    },
+  };
+}
+
+test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicate plans', async () => {
+  const stored = baseStored();
+  stored.batchLimits = {
+    dailyActionLimit: 50,
+    dailyDmLimit: 3,
+    minDelayMs: 1_500,
+    maxDelayMs: 2_200,
+  };
+  const { cleanup, deliver } = await loadBackground({
+    profileResponses: {},
+    performResponses: {},
+    stored,
+  });
+  const threadSender = {
+    url: 'https://www.instagram.com/direct/t/thread-123/',
+    tab: { id: 7, url: 'https://www.instagram.com/direct/t/thread-123/' },
+  };
+  const plan = {
+    threadId: 'thread-123',
+    scope: 'oldest',
+    limit: 2,
+    eligibleCount: 8,
+    reviewedDigest: 'a1b2c3d4',
+    expiresAt: Date.now() + 60_000,
+  };
+  try {
+    const reserved = await deliver({ kind: 'insta-aio-reserve-thread-unsend', plan }, threadSender);
+    assert.equal(reserved.error, undefined);
+    assert.deepEqual(reserved.pacing, { minDelayMs: 1_500, maxDelayMs: 2_200 });
+    assert.equal(stored.threadUnsendLedger.length, 1);
+    assert.equal(stored.threadUnsendLedger[0].count, 2);
+    assert.equal(stored.threadUnsendLedger[0].status, 'reserved');
+
+    const duplicate = await deliver({ kind: 'insta-aio-reserve-thread-unsend', plan }, threadSender);
+    assert.equal(duplicate.error, 'thread-unsend-plan-already-reserved');
+
+    const secondPlan = await deliver({
+      kind: 'insta-aio-reserve-thread-unsend',
+      plan: { ...plan, reviewedDigest: 'd4c3b2a1' },
+    }, threadSender);
+    assert.equal(secondPlan.error, undefined);
+
+    const wrongThread = await deliver({
+      kind: 'insta-aio-reserve-thread-unsend',
+      plan: { ...plan, threadId: 'thread-999', reviewedDigest: '11111111', limit: 1 },
+    }, threadSender);
+    assert.equal(wrongThread.error, 'thread-unsend-plan-invalid');
+  } finally {
+    await cleanup();
+  }
+});
+
 async function waitForRun(deliver, predicate, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -128,7 +210,7 @@ async function waitForRun(deliver, predicate, timeoutMs = 15_000) {
   throw new Error('Batch did not reach the expected state in time.');
 }
 
-test('batch arming requires the exact phrase and the armed tab', async () => {
+test('batch start requires an exact finite confirmation from the active Instagram tab', async () => {
   const stored = baseStored();
   const { cleanup, deliver } = await loadBackground({
     profileResponses: {},
@@ -136,36 +218,29 @@ test('batch arming requires the exact phrase and the armed tab', async () => {
     stored,
   });
   try {
+    const items = [
+      { id: 'i-1', username: 'alpha' },
+      { id: 'i-2', username: 'beta' },
+      { id: 'i-3', username: 'gamma' },
+    ];
     const wrong = await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 3,
-      phrase: 'ARM BATCH UNFOLLOW 2',
+      ...confirmedAccountBatch('unfollow', items),
+      confirmation: {
+        action: 'unfollow',
+        count: 2,
+        targetDigest: batchTargetDigest('account', 'unfollow', items),
+      },
     }, sender);
-    assert.equal(wrong.error, 'batch-arm-phrase-mismatch');
+    assert.equal(wrong.error, 'batch-confirmation-mismatch');
     assert.equal(stored.batchArm, null);
 
-    const missingTab = await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 3,
-      phrase: 'ARM BATCH UNFOLLOW 3',
-    }, { url: 'https://www.instagram.com/', tab: {} });
+    const missingTab = await deliver(
+      confirmedAccountBatch('unfollow', items),
+      { url: 'https://www.instagram.com/', tab: {} },
+    );
     assert.equal(missingTab.error, 'instagram-tab-required');
 
-    const armed = await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 3,
-      phrase: 'ARM BATCH UNFOLLOW 3',
-    }, sender);
-    assert.equal(armed.error, undefined);
-    assert.equal(armed.arm.kind, 'account');
-    assert.equal(armed.arm.count, 3);
-    assert.equal(armed.arm.tabId, 7);
+    assert.equal(stored.batchRun, null);
   } finally {
     await cleanup();
   }
@@ -182,19 +257,8 @@ test('batch run navigates, verifies, and acts on each account exactly once', asy
     stored,
   });
   try {
-    await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 2,
-      phrase: 'ARM BATCH UNFOLLOW 2',
-    }, sender);
-
-    const started = await deliver({
-      kind: 'insta-aio-start-batch',
-      batchKind: 'account',
-      items: [{ id: 'i-1', username: 'alpha' }, { id: 'i-2', username: 'beta' }],
-    }, sender);
+    const items = [{ id: 'i-1', username: 'alpha' }, { id: 'i-2', username: 'beta' }];
+    const started = await deliver(confirmedAccountBatch('unfollow', items), sender);
     assert.equal(started.error, undefined);
     assert.equal(started.run.total, 2);
 
@@ -233,18 +297,8 @@ test('batch skips a target whose relationship no longer matches without stopping
     stored,
   });
   try {
-    await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 2,
-      phrase: 'ARM BATCH UNFOLLOW 2',
-    }, sender);
-    await deliver({
-      kind: 'insta-aio-start-batch',
-      batchKind: 'account',
-      items: [{ id: 'i-1', username: 'alpha' }, { id: 'i-2', username: 'beta' }],
-    }, sender);
+    const items = [{ id: 'i-1', username: 'alpha' }, { id: 'i-2', username: 'beta' }];
+    await deliver(confirmedAccountBatch('unfollow', items), sender);
 
     const run = await waitForRun(deliver, (value) => value?.status === 'completed');
     assert.equal(run.skipped, 1);
@@ -270,22 +324,12 @@ test('batch stops the whole run when Instagram signals a rate limit', async () =
     stored,
   });
   try {
-    await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 3,
-      phrase: 'ARM BATCH UNFOLLOW 3',
-    }, sender);
-    await deliver({
-      kind: 'insta-aio-start-batch',
-      batchKind: 'account',
-      items: [
-        { id: 'i-1', username: 'alpha' },
-        { id: 'i-2', username: 'beta' },
-        { id: 'i-3', username: 'gamma' },
-      ],
-    }, sender);
+    const items = [
+      { id: 'i-1', username: 'alpha' },
+      { id: 'i-2', username: 'beta' },
+      { id: 'i-3', username: 'gamma' },
+    ];
+    await deliver(confirmedAccountBatch('unfollow', items), sender);
 
     const run = await waitForRun(deliver, (value) => value?.status === 'stopped');
     assert.equal(run.stopReason, 'rate-limited');
@@ -318,18 +362,8 @@ test('a slow-loading profile is retried rather than silently skipped', async () 
     stored,
   });
   try {
-    await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 1,
-      phrase: 'ARM BATCH UNFOLLOW 1',
-    }, sender);
-    await deliver({
-      kind: 'insta-aio-start-batch',
-      batchKind: 'account',
-      items: [{ id: 'i-1', username: 'alpha' }],
-    }, sender);
+    const items = [{ id: 'i-1', username: 'alpha' }];
+    await deliver(confirmedAccountBatch('unfollow', items), sender);
 
     const run = await waitForRun(deliver, (value) => value?.status === 'completed');
     assert.equal(run.completed, 1, 'the target was acted on once it resolved');
@@ -341,7 +375,7 @@ test('a slow-loading profile is retried rather than silently skipped', async () 
   }
 });
 
-test('starting a batch without a valid arm is rejected', async () => {
+test('starting a batch without an exact confirmation is rejected', async () => {
   const stored = baseStored();
   const { cleanup, deliver } = await loadBackground({
     profileResponses: {},
@@ -352,15 +386,16 @@ test('starting a batch without a valid arm is rejected', async () => {
     const response = await deliver({
       kind: 'insta-aio-start-batch',
       batchKind: 'account',
+      action: 'unfollow',
       items: [{ id: 'i-1', username: 'alpha' }],
     }, sender);
-    assert.equal(response.error, 'batch-arm-required');
+    assert.equal(response.error, 'batch-confirmation-mismatch');
   } finally {
     await cleanup();
   }
 });
 
-test('batch pacing limits are clamped to the allowed ceilings', async () => {
+test('batch pacing is clamped without exposing quota controls', async () => {
   const stored = baseStored();
   const { cleanup, deliver } = await loadBackground({
     profileResponses: {},
@@ -377,8 +412,6 @@ test('batch pacing limits are clamped to the allowed ceilings', async () => {
         maxDelayMs: 5_000,
       },
     }, sender);
-    assert.equal(response.limits.dailyActionLimit, 400);
-    assert.equal(response.limits.dailyDmLimit, 300);
     assert.equal(response.limits.minDelayMs, 1_500);
     assert.equal(response.limits.maxDelayMs, 5_000);
   } finally {

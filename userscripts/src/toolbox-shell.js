@@ -18,8 +18,14 @@
   const HEIGHT_MIN = 320;
   const HEIGHT_MAX = 1_100;
   const INSET = 8;
-  const LIVE_AUTHORIZATION_MS = 15 * 60 * 1_000;
-  const LIVE_AUTHORIZATION_PHRASE = 'ENABLE LIVE ACTIONS';
+  const RUN_CAPABILITY_MS = 20 * 60 * 1_000;
+  const DM_PLAN_CAPABILITY_MS = 15 * 60 * 1_000;
+  const CAPTURE_ACCOUNT_SOURCES = new Set([
+    'authenticated-instagram-web',
+    'extension-scrolled-dom',
+    'extension-visible-dom',
+    'tampermonkey-visible-dom',
+  ]);
 
   if (document.getElementById(EXTENSION_ROOT_ID) || document.getElementById(ROOT_ID)) return;
 
@@ -38,6 +44,19 @@
   const safeText = (value, fallback = '') => (String(value ?? '').trim() || fallback).slice(0, 500);
   const nowIso = () => new Date().toISOString();
 
+  function accountCapabilityDigest(action, usernames) {
+    const source = JSON.stringify({
+      action,
+      usernames: (usernames || []).map(normalizeUsername).filter(Boolean),
+    });
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < source.length; index += 1) {
+      hash ^= source.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
+  }
+
   function visibleText(element) {
     if (!element || element.getAttribute?.('aria-hidden') === 'true') return '';
     const style = getComputedStyle(element);
@@ -47,14 +66,16 @@
 
   function normalizeAccounts(value) {
     const accounts = new Map();
-    for (const candidate of (Array.isArray(value) ? value : []).slice(0, 2_000)) {
+    for (const candidate of (Array.isArray(value) ? value : []).slice(0, 25_000)) {
       const username = normalizeUsername(candidate?.username || candidate?.profileUrl || candidate);
       if (!username) continue;
       accounts.set(username, {
         username,
         profileUrl: `https://www.instagram.com/${username}/`,
         displayName: safeText(candidate?.displayName),
-        source: 'tampermonkey-visible-dom',
+        source: CAPTURE_ACCOUNT_SOURCES.has(candidate?.source)
+          ? candidate.source
+          : 'tampermonkey-visible-dom',
       });
     }
     return [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username));
@@ -79,12 +100,15 @@
 
   function stateDefaults() {
     return {
-      schemaVersion: 2,
+      schemaVersion: 5,
       capture: {
+        subjectUsername: '',
         followers: [],
         following: [],
         capturedAt: { followers: null, following: null },
         complete: { followers: false, following: false },
+        verified: { followers: false, following: false },
+        source: { followers: '', following: '' },
       },
       queue: { queue: [], importedAt: null },
       accountCheck: null,
@@ -121,16 +145,24 @@
 
   function normalizeResumableAccountRun(value) {
     if (!value || value.kind !== 'account' || value.status !== 'running') return null;
-    const authorizationExpiresAt = Math.min(
-      Number(value.authorizationExpiresAt) || 0,
-      Date.now() + LIVE_AUTHORIZATION_MS,
+    const capabilityExpiresAt = Math.min(
+      Number(value.capabilityExpiresAt) || 0,
+      Date.now() + RUN_CAPABILITY_MS,
     );
     const queue = [...new Set((Array.isArray(value.queue) ? value.queue : [])
       .map(normalizeUsername)
       .filter(Boolean))].slice(0, 250);
-    if (!queue.length || authorizationExpiresAt <= Date.now()) return null;
+    if (!queue.length || capabilityExpiresAt <= Date.now()) return null;
     const action = value.action === 'follow' ? 'follow' : value.action === 'unfollow' ? 'unfollow' : '';
     if (!action) return null;
+    const approvedTargets = [...new Set((Array.isArray(value.approvedTargets) ? value.approvedTargets : [])
+      .map(normalizeUsername)
+      .filter(Boolean))].slice(0, 250);
+    const capabilityId = safeText(value.capabilityId);
+    if (!capabilityId
+      || !approvedTargets.length
+      || queue.some((username) => !approvedTargets.includes(username))
+      || safeText(value.capabilityDigest) !== accountCapabilityDigest(action, approvedTargets)) return null;
     const boundedCount = (candidate) => Math.max(0, Math.min(250, Math.round(Number(candidate) || 0)));
     return {
       status: 'running',
@@ -143,7 +175,10 @@
       failed: boundedCount(value.failed),
       current: safeText(value.current),
       stopReason: null,
-      authorizationExpiresAt,
+      approvedTargets,
+      capabilityDigest: accountCapabilityDigest(action, approvedTargets),
+      capabilityExpiresAt,
+      capabilityId,
       nextAt: Number(value.nextAt) > Date.now() ? Number(value.nextAt) : null,
       results: (Array.isArray(value.results) ? value.results : []).slice(0, 40).map((item) => ({
         label: safeText(item?.label),
@@ -177,9 +212,14 @@
     const defaults = stateDefaults();
     const legacyQueue = GM_getValue(LEGACY_QUEUE_KEY, null);
     const value = source && typeof source === 'object' ? source : defaults;
+    // Schema 4 is the first state whose capture completeness is reconciled
+    // against an exact list read. Schema 5 records whether that read used
+    // bounded authenticated pagination or the list-dialog fallback.
+    const requiresCountReconciledRescan = Number(value.schemaVersion) < 4;
     return {
-      schemaVersion: 2,
+      schemaVersion: 5,
       capture: {
+        subjectUsername: normalizeUsername(value.capture?.subjectUsername),
         followers: normalizeAccounts(value.capture?.followers),
         following: normalizeAccounts(value.capture?.following),
         capturedAt: {
@@ -187,8 +227,24 @@
           following: safeText(value.capture?.capturedAt?.following) || null,
         },
         complete: {
-          followers: value.capture?.complete?.followers === true,
-          following: value.capture?.complete?.following === true,
+          followers: !requiresCountReconciledRescan
+            && value.capture?.verified?.followers === true
+            && value.capture?.complete?.followers === true,
+          following: !requiresCountReconciledRescan
+            && value.capture?.verified?.following === true
+            && value.capture?.complete?.following === true,
+        },
+        verified: {
+          followers: !requiresCountReconciledRescan && value.capture?.verified?.followers === true,
+          following: !requiresCountReconciledRescan && value.capture?.verified?.following === true,
+        },
+        source: {
+          followers: ['authenticated-web', 'list-dialog'].includes(value.capture?.source?.followers)
+            ? value.capture.source.followers
+            : '',
+          following: ['authenticated-web', 'list-dialog'].includes(value.capture?.source?.following)
+            ? value.capture.source.following
+            : '',
         },
       },
       queue: normalizeQueue(value.queue?.queue?.length ? value.queue : legacyQueue),
@@ -265,21 +321,26 @@
     return state.queue.queue.find((item) => ACTIONABLE_STATUSES.has(item.status)) || null;
   }
 
+  function verifiedCapture(listType) {
+    return state.capture.verified?.[listType] === true ? state.capture[listType] : [];
+  }
+
   function compareCapture() {
-    const followerNames = new Set(state.capture.followers.map((account) => account.username));
-    const followingNames = new Set(state.capture.following.map((account) => account.username));
+    const followers = verifiedCapture('followers');
+    const following = verifiedCapture('following');
+    const followerNames = new Set(followers.map((account) => account.username));
+    const followingNames = new Set(following.map((account) => account.username));
     return {
-      mutuals: state.capture.following.filter((account) => followerNames.has(account.username)),
-      iDoNotFollowBack: state.capture.followers.filter((account) => !followingNames.has(account.username)),
-      notFollowingMeBack: state.capture.following.filter((account) => !followerNames.has(account.username)),
+      mutuals: following.filter((account) => followerNames.has(account.username)),
+      iDoNotFollowBack: followers.filter((account) => !followingNames.has(account.username)),
+      notFollowingMeBack: following.filter((account) => !followerNames.has(account.username)),
     };
   }
 
-  function captureVisibleAccounts() {
-    const roots = [
-      ...document.querySelectorAll('div[role="dialog"]'),
-      document.querySelector('main'),
-    ].filter(Boolean);
+  function captureVisibleAccounts(expectedListType = '') {
+    const listContext = openFollowerListContext();
+    if (!listContext || listContext.listType !== expectedListType) return [];
+    const roots = [listContext.dialog];
     const accounts = new Map();
     for (const root of roots) {
       for (const anchor of root.querySelectorAll('a[href^="/"]')) {
@@ -332,24 +393,27 @@
     const item = currentQueueItem();
     const observation = inspectProfile();
     const expectedRelationship = item?.action === 'follow' ? 'not-following' : 'following';
-    const exact = Boolean(
-      item
-      && observation.ok
-      && observation.username === item.account.username
-      && observation.relationship === expectedRelationship,
-    );
+    const exact = item
+      ? Boolean(
+        observation.ok
+        && observation.username === item.account.username
+        && observation.relationship === expectedRelationship
+      )
+      : observation.ok === true;
     state.accountCheck = {
       checkedAt: nowIso(),
       exact,
       noClick: true,
-      target: item?.account?.username || null,
+      target: item?.account?.username || observation.username || null,
       action: item?.action || null,
       observation,
-      result: !item
-        ? 'Import a manual queue first.'
-        : exact
+      result: item
+        ? exact
           ? `Resolved ${item.action} for @${item.account.username} without clicking.`
-          : observation.reason || `Open @${item.account.username} on the expected relationship state.`,
+          : observation.reason || `Open @${item.account.username} on the expected relationship state.`
+        : observation.ok
+          ? `Observed @${observation.username} as ${observation.relationship.replace('-', ' ')} without clicking.`
+          : observation.reason || 'Open an Instagram profile first.',
     };
     state.history.unshift({ kind: 'account-dry-run', ...state.accountCheck });
     state.history = state.history.slice(0, 20);
@@ -479,6 +543,17 @@
     setTimeout(() => URL.revokeObjectURL(url), 1_000);
   }
 
+  function downloadText(filename, contents) {
+    const url = URL.createObjectURL(new Blob([String(contents)], { type: 'text/plain;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }
+
   const sharedTokenCss = globalThis.InstaAioTokens?.css({ density: 'compact' }) || '';
   const host = document.createElement('div');
   host.id = ROOT_ID;
@@ -503,7 +578,7 @@
       .header { cursor: grab; }
       .header:active { cursor: grabbing; }
       .header button, .header select, .header summary, .header input { cursor: default; }
-      .header h1 { margin: 0; font-size: 17px; line-height: 1.15; }
+      .header h1 { margin: 0; overflow-wrap: break-word; word-break: normal; font-size: 17px; line-height: 1.15; }
       .header p { margin: 2px 0 0; color: var(--aio-text-muted, #667067); font-size: 11px; }
       .mode { display: inline-flex; margin-top: 4px; border: 1px solid var(--aio-warning, #8b6a20); border-radius: 999px; padding: 2px 7px; color: var(--aio-warning, #72520d); font-size: 10px; font-weight: 750; }
       .tabs { display: grid; grid-template-columns: repeat(3,minmax(44px,1fr)); border-bottom: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg-sunken, #eef1ec) var(--aio-alpha-strong), transparent); }
@@ -519,7 +594,9 @@
       .tool em { color: var(--aio-accent, #347844); font-size: 10px; font-style: normal; font-weight: 800; text-transform: uppercase; }
       .card { margin-bottom: 10px; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 10px; padding: 12px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) var(--aio-alpha-strong), transparent); }
       .card h2, .card h3 { margin: 0 0 6px; font-size: 15px; }
-      .card p { margin: 4px 0 0; color: var(--aio-text-muted, #687068); font-size: 12px; overflow-wrap: anywhere; }
+      .card p { margin: 4px 0 0; color: var(--aio-text-muted, #687068); font-size: 12px; overflow-wrap: break-word; word-break: normal; }
+      .card > strong, .card > span { display: block; }
+      .card > strong + span { margin-top: 4px; }
       .metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 10px 0; }
       .metric { border: 1px solid var(--aio-line, #d8ddd4); border-radius: 9px; padding: 10px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) var(--aio-alpha-strong), transparent); }
       .metric span, .metric strong { display: block; }
@@ -529,7 +606,6 @@
       .field label { color: var(--aio-text-muted, #687068); font-size: 12px; }
       .live-toggle { display: flex; align-items: flex-start; gap: 8px; color: var(--aio-text, #1b211c) !important; font-weight: 700; }
       .live-toggle input { width: 18px; height: 18px; flex: 0 0 auto; margin: 0; accent-color: var(--aio-accent, #347844); }
-      .live-status { margin: 0; color: var(--aio-text-muted, #687068); font-size: 11px; }
       select, input[type="range"] { width: 100%; }
       select { min-height: 44px; border: 1px solid var(--aio-line, #cfd5cc); border-radius: 8px; padding: 8px; background: var(--aio-bg, #fff); color: var(--aio-text, #1b211c); }
       select option { background: var(--aio-bg, #fff); color: var(--aio-text, #1b211c); }
@@ -540,7 +616,7 @@
       .file { position: relative; overflow: hidden; }
       .file input { position: absolute; inset: 0; opacity: 0; }
       .list { margin: 10px 0 0; padding: 0; border-top: 1px solid var(--aio-line, #d8ddd4); list-style: none; }
-      .list li { padding: 8px 0; border-bottom: 1px solid var(--aio-line, #d8ddd4); overflow-wrap: anywhere; font-size: 12px; }
+      .list li { padding: 8px 0; border-bottom: 1px solid var(--aio-line, #d8ddd4); overflow-wrap: break-word; word-break: normal; font-size: 12px; }
       .list small { display: block; margin-top: 2px; color: var(--aio-text-muted, #687068); }
       .notice { padding: 10px; border-left: 4px solid var(--aio-warning, #ad7823); background: var(--aio-bg-sunken, #fff4d6); color: var(--aio-text, #62490f); font-size: 12px; }
       details.settings { position: relative; }
@@ -548,9 +624,10 @@
       details.settings > summary::-webkit-details-marker { display:none; }
       .settings-panel { position: absolute; z-index: 5; top: 48px; right: 0; width: min(250px, calc(100vw - 32px)); max-height: var(--aio-settings-max-height); overflow: auto; padding: 12px; border: 1px solid var(--aio-line, #cfd5cc); border-radius: 10px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) 97%, transparent); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel, 0 16px 46px rgba(0,0,0,.2)); }
       .range-row { display:grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items:center; }
-      .footer { padding-right: 46px; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); color: var(--aio-text-muted, #687068); font-size: 11px; }
-      .resize { position: absolute; right: 0; bottom: 0; width: 44px; height: 44px; z-index: 5; border: 0; background: transparent; cursor: nwse-resize; touch-action: none; }
-      .resize::before { content:""; position:absolute; right:8px; bottom:8px; width:12px; height:12px; border-right:2px solid var(--aio-text-muted, #687068); border-bottom:2px solid var(--aio-text-muted, #687068); }
+      .footer { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 54px 8px 12px; border-top: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); color: var(--aio-text-muted, #687068); font-size: 11px; }
+      .resize { position: absolute; right: 0; bottom: 0; display: block; width: 44px; height: 44px; z-index: 5; border: 0; border-radius: 10px 0 12px 0; padding: 0; background: transparent; color: var(--aio-text-muted, #687068); cursor: nwse-resize; touch-action: none; }
+      .resize::before { content:""; position:absolute; right:9px; bottom:9px; width:12px; height:12px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; opacity:.9; }
+      .resize:hover { background: color-mix(in srgb, var(--aio-accent-soft, #e8f3ec) 72%, transparent); color: var(--aio-text, #1b211c); }
       button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, .file:focus-within { outline: 3px solid var(--aio-focus, #168cff); outline-offset: 2px; }
       @media (max-width: 600px) { .panel { top:auto; right:0; bottom:0; left:0; width:100%; height:min(78dvh,720px); border-radius:14px 14px 0 0; } .handle,.resize { display:none; } .header { grid-template-columns:minmax(0,1fr) auto; } }
       @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; } }
@@ -592,7 +669,7 @@
       .context[data-tone="blocked"] .context-dot { background: var(--aio-danger, #8c1d1d); }
       .context-copy { min-width: 0; }
       .context-copy strong { display: block; color: var(--aio-text, #1b211c) !important; font-size: 13px; }
-      .context-copy span { display: block; color: var(--aio-text-muted, #687068) !important; font-size: 12px; overflow-wrap: anywhere; }
+      .context-copy span { display: block; color: var(--aio-text-muted, #687068) !important; font-size: 12px; overflow-wrap: break-word; word-break: normal; }
       .context-cta { white-space: nowrap; }
       .intro { padding: 14px; border-bottom: 1px solid var(--aio-line, #d8ddd4); }
       .intro h2 { margin: 0 0 8px; font-size: 15px; }
@@ -600,7 +677,7 @@
       .intro-note { margin: 0 0 8px; color: var(--aio-text-muted, #687068); font-size: 12px; }
       .run-panel { padding: 10px 12px; border-top: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); }
       .run-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-      .run-head strong { font-size: 12px; overflow-wrap: anywhere; }
+      .run-head strong { font-size: 12px; overflow-wrap: break-word; word-break: normal; }
       .run-bar { overflow: hidden; height: 5px; margin: 8px 0 6px; border-radius: 999px; background: var(--aio-line, #d8ddd4); }
       .run-bar span { display: block; width: 0%; height: 100%; border-radius: 999px; background: var(--aio-accent, #1c6b3c); transition: width var(--aio-motion-base, 180ms) var(--aio-ease, ease); }
       .run-panel .list { max-height: 118px; overflow-y: auto; }
@@ -609,38 +686,28 @@
       .button.primary:hover { filter: brightness(1.08); }
       .button.big { width: 100%; padding: 10px 12px; font-size: var(--system-14-font-size, 14px); line-height: var(--system-14-line-height, 18px); border-radius: 8px; }
       .button:disabled { cursor: not-allowed; filter: none; opacity: .48; }
-      .mode[data-live="unlocked"] { border-color: var(--aio-success, #347844); color: var(--aio-success, #275d34); }
       @keyframes aio-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
       @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel { background:Canvas; } .panel,.card,.tool,.metric { border:2px solid CanvasText; } }
     </style>
-    <button class="launcher" type="button" data-action="open" aria-label="Open Insta AIO Instagram toolbox" aria-expanded="false">AIO</button>
-    <aside class="panel" aria-label="Insta AIO Tampermonkey Instagram toolbox" hidden>
+    <button class="launcher" type="button" data-action="open" aria-label="Open Insta Toolbox" aria-expanded="false">IT</button>
+    <aside class="panel" aria-label="Insta Toolbox" hidden>
       <header class="header">
         <button class="handle" type="button" data-role="move" aria-label="Move toolbox; use arrow keys for precise movement" title="Drag to move">✥</button>
-        <div><h1>Insta AIO Toolbox</h1><p>Tools injected directly on Instagram</p><span class="mode" data-role="mode-label" data-live="locked">Userscript mode · live actions locked</span></div>
+        <div><h1>Insta Toolbox</h1><p>Instagram tools</p><span class="mode" data-role="mode-label">Tampermonkey · local controls</span></div>
         <div style="display:flex">
           <details class="settings">
             <summary aria-label="Toolbox preferences">⚙</summary>
             <div class="settings-panel">
-              <strong>Live controls</strong>
-              <div class="field">
-                <label class="live-toggle" for="aio-live-actions"><input id="aio-live-actions" type="checkbox" data-role="live-actions"> Enable live actions for 15 minutes</label>
-                <p class="live-status" data-role="live-status">Locked by default. Scans and no-click checks still work.</p>
-              </div>
               <strong>Layout</strong>
               <div class="field"><label for="aio-opacity">Surface transparency</label><div class="range-row"><input id="aio-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
+              <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
               <button class="button quiet" type="button" data-action="reset-layout">Reset position and size</button>
-              <strong>Pacing</strong>
-              <div class="field"><label for="aio-limit-actions">Follow/unfollow per day</label><input id="aio-limit-actions" type="number" min="1" max="400" data-role="limit-actions"></div>
-              <div class="field"><label for="aio-limit-unsends">Unsends per day</label><input id="aio-limit-unsends" type="number" min="1" max="300" data-role="limit-unsends"></div>
-              <div class="field"><label for="aio-limit-min">Min delay (seconds)</label><input id="aio-limit-min" type="number" min="2" max="600" data-role="limit-min"></div>
-              <div class="field"><label for="aio-limit-max">Max delay (seconds)</label><input id="aio-limit-max" type="number" min="2" max="900" data-role="limit-max"></div>
-              <button class="button quiet" type="button" data-action="save-limits">Save pacing</button>
+              <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="aio-limit-min">Min delay (seconds)</label><input id="aio-limit-min" type="number" min="2" max="600" data-role="limit-min"></div><div class="field"><label for="aio-limit-max">Max delay (seconds)</label><input id="aio-limit-max" type="number" min="2" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
               <p class="lead">Drag the header handle or lower corner. Arrow keys work on both.</p>
             </div>
           </details>
-          <button class="icon" type="button" data-action="close" aria-label="Collapse Insta AIO toolbox">×</button>
+          <button class="icon" type="button" data-action="close" aria-label="Collapse Insta Toolbox">×</button>
         </div>
       </header>
       <div class="context" data-role="context" role="status" aria-live="polite">
@@ -649,49 +716,40 @@
         <button class="button quiet context-cta" type="button" data-action="context-cta" data-role="context-cta" hidden></button>
       </div>
       <section class="intro" data-role="intro" aria-labelledby="aio-intro-title" hidden>
-        <h2 id="aio-intro-title">Three tools, all local</h2>
+        <h2 id="aio-intro-title">Three Instagram tools</h2>
         <ol class="intro-list">
-          <li><strong>Follower checker</strong> — scan your Following and Followers, then compare. Reading only.</li>
-          <li><strong>Follow / Unfollow</strong> — work a list one account at a time, paced.</li>
-          <li><strong>DM Unsend</strong> — remove messages you sent in one conversation.</li>
+          <li><strong>Mutual Checker</strong> — compare Followers and Following.</li>
+          <li><strong>Follow / Unfollow</strong> — review and run exact targets.</li>
+          <li><strong>DM Unsend</strong> — remove messages you sent.</li>
         </ol>
-        <p class="intro-note">Everything stays in this browser. Nothing is uploaded, and there is no account to sign in to.</p>
-        <p class="intro-note"><strong>Checks are read-only.</strong> Anything that changes your account stays locked until you unlock it for one run, and stops on the first rate limit or security check.</p>
-        <div class="toolbar"><button class="button primary" type="button" data-action="intro-done">Start with the checker</button></div>
+        <p class="intro-note">Data stays in this browser.</p>
+        <p class="intro-note"><strong>Checks are read-only.</strong> Changes require one exact confirmation.</p>
+        <div class="toolbar"><button class="button primary" type="button" data-action="intro-done">Open Mutual Checker</button></div>
       </section>
-      <nav class="tabs" role="tablist" aria-label="Insta AIO userscript tools">
-        <button id="aio-tab-checker" class="tab" type="button" role="tab" data-view="checker" aria-controls="aio-panel-checker" aria-selected="true" tabindex="0">Checker</button>
-        <button id="aio-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="aio-panel-account" aria-selected="false" tabindex="-1">Follow</button>
-        <button id="aio-tab-messages" class="tab" type="button" role="tab" data-view="messages" aria-controls="aio-panel-messages" aria-selected="false" tabindex="-1">Unsend</button>
+      <nav class="tabs" role="tablist" aria-label="Insta Toolbox tools">
+        <button id="aio-tab-checker" class="tab" type="button" role="tab" data-view="checker" aria-controls="aio-panel-checker" aria-selected="true" tabindex="0">Mutual Checker</button>
+        <button id="aio-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="aio-panel-account" aria-selected="false" tabindex="-1">Follow / Unfollow</button>
+        <button id="aio-tab-messages" class="tab" type="button" role="tab" data-view="messages" aria-controls="aio-panel-messages" aria-selected="false" tabindex="-1">DM Unsend</button>
       </nav>
       <div class="scroll">
-        <section id="aio-panel-checker" class="view" role="tabpanel" aria-labelledby="aio-tab-checker" data-panel="checker" hidden><ol class="steps" data-role="checker-steps">
-            <li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button" type="button" data-action="scan-following">Scan Following</button></li>
-            <li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button" type="button" data-action="scan-followers">Scan Followers</button></li>
-            <li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li>
-          </ol>
+        <section id="aio-panel-checker" class="view" role="tabpanel" aria-labelledby="aio-tab-checker" data-panel="checker" hidden><section class="card" aria-labelledby="aio-checker-account-title"><h2 id="aio-checker-account-title">Check mutuals</h2><p>Read-only. Uses the Instagram session in this tab.</p><div class="field"><label for="aio-checker-username">Instagram username</label><input id="aio-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-role="checker-username"></div><div class="toolbar"><button class="button primary" type="button" data-action="check-account-relationships" data-role="checker-run">Check mutuals</button></div></section>
           <div class="scan-progress" data-role="scan-progress" hidden><div class="run-bar"><span data-role="scan-fill"></span></div><p class="lead" data-role="scan-detail"></p></div>
           <div class="field"><label for="aio-filter">Filter results</label><input id="aio-filter" type="search" placeholder="Search a username" data-role="result-filter"></div>
-          <details class="settings-inline"><summary>More</summary><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows only</button><button class="button quiet" type="button" data-action="download-list">Download a raw list</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="aio-list-type">Raw list to use</label><select id="aio-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details><div class="card" data-role="comparison"></div><ul class="list" data-role="capture-list"></ul></section>
-        <section id="aio-panel-account" class="view" role="tabpanel" aria-labelledby="aio-tab-account" data-panel="account" hidden><p class="lead"><strong>Follow / Unfollow review.</strong> Import the PWA manual queue, open one target, and verify the exact profile state without clicking.</p><div class="card" data-role="queue-current"></div>
-          <details class="settings-inline"><summary>Single account tools</summary><div class="toolbar"><button class="button quiet" type="button" data-action="open-profile">Open exact profile</button><button class="button quiet" type="button" data-action="account-dry-run">Run no-click check</button><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
-          <div class="field"><label for="aio-bot-source">Targets</label><select id="aio-bot-source" data-role="bot-source"><option value="not-following-me-back">Not following me back</option><option value="i-do-not-follow-back">I don't follow back</option><option value="scanned-followers">Last scanned Followers list</option><option value="scanned-following">Last scanned Following list</option><option value="queue">Imported queue</option></select></div>
-          <div class="field"><label for="aio-bot-action">Action</label><select id="aio-bot-action" data-role="bot-action"><option value="unfollow">Unfollow</option><option value="follow">Follow</option></select></div>
-          <div class="field"><label for="aio-bot-count">How many this run</label><input id="aio-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
-          <p class="lead" data-role="account-run-summary">Choose a source, action, and bounded amount, then review the exact targets.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review run</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
+          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Advanced: list fallback and export</summary><p class="lead">If the account check fails, open a Following or Followers dialog and scan that list. A fallback scan clears prior authenticated results.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="aio-list-type">Raw list</label><select id="aio-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
+        <section id="aio-panel-account" class="view" role="tabpanel" aria-labelledby="aio-tab-account" data-panel="account" hidden><p class="lead"><strong>Follow / Unfollow.</strong> Choose the action first, then review a finite compatible target list. Nothing clicks during review.</p><div class="card" data-role="queue-current"></div>
+          <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Inspect exact profile</button><button class="button quiet" type="button" data-action="open-profile">Open exact profile</button></div><details class="settings-inline"><summary>Advanced: queue state and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
+          <div class="field"><label for="aio-bot-action">What do you want to do?</label><select id="aio-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
+          <div class="field"><label for="aio-bot-source">Choose compatible targets</label><select id="aio-bot-source" data-role="bot-source"><option value="current-profile">Current exact profile</option><option value="i-do-not-follow-back">People who follow you that you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Compatible queue items</option></select></div>
+          <div class="field" data-role="bot-count-field"><label for="aio-bot-count">How many this run</label><input id="aio-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
+          <p class="lead" data-role="account-run-summary">Choose compatible targets, then review the exact accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
           <p class="notice">To grow from someone else's audience, open their profile, scan their Followers in the checker, then run with <strong>Last scanned Followers list</strong>. Accounts you already follow are skipped automatically. The run stops itself on any rate limit, security check, or block.</p></section>
-        <section id="aio-panel-messages" class="view" role="tabpanel" aria-labelledby="aio-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend review.</strong> Read visible evidence or import one reviewed DM job and resolve its exact sent-message identity without opening a menu.</p><div class="toolbar"><button class="button primary big" type="button" data-action="unsend-all" data-live-action data-role="unsend-primary">Unsend all DMs</button></div>
-          <div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check first, without removing anything</button></div>
+        <section id="aio-panel-messages" class="view" role="tabpanel" aria-labelledby="aio-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend.</strong> One button checks this conversation when needed, then asks once before removing anything.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
-          <details class="settings-inline"><summary>Other message tools</summary><div class="toolbar"><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">No-click exact check</button></div></details><div class="card" data-role="dm-result"></div><ul class="list" data-role="message-list"></ul>
-          <div class="field"><label for="aio-unsend-scope">Scope</label><select id="aio-unsend-scope" data-role="unsend-scope"><option value="all">Every sent message found</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div>
-          <div class="field"><label for="aio-unsend-count">How many</label><input id="aio-unsend-count" type="number" min="1" max="250" value="20" data-role="unsend-count"></div>
-          <div class="toolbar"><button class="button danger" type="button" data-action="run-unsend" data-live-action>Unsend selected</button></div>
-          <p class="notice">Only messages you sent are eligible. Each is re-checked by id, time, and content immediately before removal. Unsending cannot be undone.</p></section>
+          <details class="settings-inline"><summary>Advanced message options</summary><div data-role="unsend-plan"><div class="field"><label for="aio-unsend-scope">Scope</label><select id="aio-unsend-scope" data-role="unsend-scope"><option value="all">All eligible sent messages</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="field" data-role="unsend-count-field"><label for="aio-unsend-count">Number of messages</label><input id="aio-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation only</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">No-click exact check</button></div></details><div class="card" data-role="dm-result"></div><ul class="list" data-role="message-list"></ul><p class="notice">Only messages you sent are eligible. The exact thread, scope, finite count, digest, and expiry are revalidated before the first message menu opens.</p></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer" role="status" aria-live="polite"><span data-role="status">Ready. No Instagram control has been used.</span><strong>Local only</strong></footer>
-      <button class="resize" type="button" data-role="resize" aria-label="Resize toolbox; use arrow keys for precise sizing" title="Drag to resize"></button>
+      <button class="resize" type="button" data-role="resize" aria-label="Resize toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
     </aside>`;
 
   const query = (selector) => shadow.querySelector(selector);
@@ -746,9 +804,6 @@
   function renderShellState() {
     const panel = query('.panel');
     const launcher = query('.launcher');
-    const newRunUnlocked = newLiveRunAuthorized();
-    const activeRunAuthorized = runAuthorizationValid(state.run);
-    const liveAvailable = newRunUnlocked || activeRunAuthorized;
     panel.hidden = !preferences.open;
     launcher.hidden = preferences.open;
     launcher.setAttribute('aria-expanded', String(preferences.open));
@@ -761,33 +816,14 @@
 
     const modeLabel = query('[data-role="mode-label"]');
     if (modeLabel) {
-      modeLabel.dataset.live = liveAvailable ? 'unlocked' : 'locked';
-      modeLabel.textContent = externalLiveRunActive
-        ? `Userscript mode · thread Unsend authorized ${authorizationRemainingMinutes(liveActionsUnlockedUntil)}m`
-        : activeRunAuthorized
-        ? `Userscript mode · active run authorized ${authorizationRemainingMinutes(state.run.authorizationExpiresAt)}m`
-        : newRunUnlocked
-          ? `Userscript mode · live actions unlocked ${authorizationRemainingMinutes(liveActionsUnlockedUntil)}m`
-          : 'Userscript mode · live actions locked';
-    }
-
-    const liveToggle = query('[data-role="live-actions"]');
-    if (liveToggle) {
-      liveToggle.checked = newRunUnlocked;
-      liveToggle.disabled = state.run?.status === 'running' || externalLiveRunActive;
-    }
-    setText(
-      'live-status',
-      externalLiveRunActive
-        ? 'Thread-wide Unsend is active. Use Stop to revoke its remaining authorization.'
-        : activeRunAuthorized
-        ? 'A reviewed batch is active. Use Stop to revoke its remaining authorization.'
-        : newRunUnlocked
-          ? 'Unlocked temporarily. Every destructive run still needs a separate confirmation.'
-          : 'Locked by default. Scans and no-click checks still work.',
-    );
-    for (const control of queryAll('[data-live-action]')) {
-      control.disabled = !newRunUnlocked || state.run?.status === 'running' || externalLiveRunActive;
+      const dmActive = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
+      modeLabel.textContent = state.run?.status === 'running'
+        ? 'Userscript mode · finite account run active'
+        : dmActive
+          ? dmRunnerSnapshot.operation === 'check'
+            ? 'Userscript mode · checking this conversation'
+            : 'Userscript mode · finite Unsend run active'
+          : 'Userscript mode · local controls';
     }
   }
 
@@ -795,12 +831,13 @@
     const grid = query('[data-role="tool-grid"]');
     grid.replaceChildren();
     const comparison = compareCapture();
+    const verifiedFollowers = verifiedCapture('followers');
+    const verifiedFollowing = verifiedCapture('following');
     const item = currentQueueItem();
-    const liveBadge = liveAuthorized() ? 'live unlocked' : 'live locked';
     const tools = [
-      ['checker', 'Follower checker', `${state.capture.followers.length} followers · ${state.capture.following.length} following · ${comparison.notFollowingMeBack.length} not following back`, 'read only'],
-      ['account', 'Follow / Unfollow', item ? `${item.action} @${item.account.username} is next` : 'Import a reviewed manual queue', liveBadge],
-      ['messages', 'DM Unsend', state.dmTarget ? `Reviewed message ${state.dmTarget.messageId} loaded` : 'Visible evidence and exact-message review', liveBadge],
+      ['checker', 'Mutual Checker', `${verifiedFollowers.length} followers · ${verifiedFollowing.length} following · ${comparison.notFollowingMeBack.length} not following back`, 'read only'],
+      ['account', 'Follow / Unfollow', item ? `${item.action} @${item.account.username} is next` : 'Choose an action and compatible targets', 'review then confirm'],
+      ['messages', 'DM Unsend', dmThreadPreview ? `${dmThreadPreview.eligibleCount} eligible in this thread` : 'Checks this conversation when needed', 'scan then confirm'],
     ];
     for (const [view, title, detail, badge] of tools) {
       const button = document.createElement('button');
@@ -821,25 +858,47 @@
   }
 
   function renderChecker() {
-    setText('followers-count', state.capture.followers.length);
-    setText('following-count', state.capture.following.length);
+    const verifiedFollowers = verifiedCapture('followers');
+    const verifiedFollowing = verifiedCapture('following');
+    const comparisonReady = state.capture.verified?.followers === true
+      && state.capture.verified?.following === true;
+    const authenticatedCheck = state.capture.source?.followers === 'authenticated-web'
+      && state.capture.source?.following === 'authenticated-web';
+    const usernameInput = query('[data-role="checker-username"]');
+    if (usernameInput && document.activeElement !== usernameInput && !usernameInput.value) {
+      usernameInput.value = state.capture.subjectUsername
+        || engine?.detectAuthenticatedUsername?.()
+        || '';
+    }
+    const runButton = query('[data-role="checker-run"]');
+    if (runButton) {
+      runButton.textContent = relationshipController
+        ? 'Stop follower check'
+        : 'Check Followers + Following';
+      runButton.classList.toggle('danger', Boolean(relationshipController));
+      runButton.classList.toggle('primary', !relationshipController);
+    }
+    setText('followers-count', verifiedFollowers.length);
+    setText('following-count', verifiedFollowing.length);
     const comparison = compareCapture();
     const result = query('[data-role="comparison"]');
     result.replaceChildren();
     const title = document.createElement('h2');
-    title.textContent = state.capture.followers.length && state.capture.following.length
-      ? 'Rendered-row comparison'
-      : 'Capture both lists';
+    title.textContent = comparisonReady
+      ? authenticatedCheck ? `Account comparison${state.capture.subjectUsername ? ` · @${state.capture.subjectUsername}` : ''}` : 'List-dialog comparison'
+      : 'No comparison loaded';
     const detail = document.createElement('p');
-    detail.textContent = state.capture.followers.length && state.capture.following.length
-      ? `${comparison.mutuals.length} mutual · ${comparison.notFollowingMeBack.length} not following me back · ${comparison.iDoNotFollowBack.length} I don't follow back.`
-      : 'Open your Followers list and choose Scan full list, then do the same for Following.';
+    detail.textContent = comparisonReady
+      ? `${verifiedFollowers.length} followers · ${verifiedFollowing.length} following · ${comparison.mutuals.length} mutual · ${comparison.notFollowingMeBack.length} not following me back · ${comparison.iDoNotFollowBack.length} I don't follow back.`
+      : 'Confirm your username above, then load Followers and Following in one read-only check.';
     result.append(title, detail);
 
     // A scan that stopped early would otherwise be read as the whole list, and
     // every number below it would quietly be wrong.
     const partial = ['followers', 'following']
-      .filter((type) => state.capture[type].length && state.capture.complete?.[type] !== true);
+      .filter((type) => state.capture.verified?.[type] === true
+        && state.capture[type].length
+        && state.capture.complete?.[type] !== true);
     if (partial.length) {
       const warning = document.createElement('p');
       warning.className = 'notice';
@@ -847,22 +906,29 @@
       result.append(warning);
     }
 
-    if (state.capture.followers.length && state.capture.following.length) {
+    const unverified = ['followers', 'following']
+      .filter((type) => state.capture[type].length && state.capture.verified?.[type] !== true);
+    if (unverified.length) {
+      const warning = document.createElement('p');
+      warning.className = 'notice';
+      warning.textContent = `Saved ${unverified.join(' and ')} rows were captured before exact dialog verification. They remain available under Advanced for export, but cannot drive comparisons or runs until rescanned.`;
+      result.append(warning);
+    }
+
+    if (comparisonReady) {
       const actions = document.createElement('div');
       actions.className = 'toolbar';
       const button = document.createElement('button');
       button.className = 'button quiet';
       button.type = 'button';
-      button.textContent = 'Download comparison';
-      button.addEventListener('click', () => downloadJson(`insta-aio-follower-comparison-${Date.now()}.json`, {
-        schemaVersion: 1,
-        kind: 'insta-aio-comparison',
-        generatedAt: nowIso(),
-        complete: state.capture.complete || {},
-        mutuals: comparison.mutuals,
-        notFollowingMeBack: comparison.notFollowingMeBack,
-        iDoNotFollowBack: comparison.iDoNotFollowBack,
-      }));
+      button.textContent = 'Download comparison report';
+      button.addEventListener('click', () => {
+        const generatedAt = nowIso();
+        downloadText(
+          `insta-toolbox-mutual-comparison-${generatedAt.replace(/[:.]/g, '-')}.txt`,
+          engine.followerComparisonReport(state.capture, comparison, generatedAt),
+        );
+      });
       actions.append(button);
       result.append(actions);
     }
@@ -898,8 +964,12 @@
     const resultTitle = document.createElement('h3');
     resultTitle.textContent = state.accountCheck?.exact ? 'Exact no-click check passed' : 'No-click check';
     const resultDetail = document.createElement('p');
-    resultDetail.textContent = state.accountCheck?.result || 'Open the exact queued profile, then run the check.';
+    resultDetail.textContent = state.accountCheck?.result
+      || (item
+        ? 'Open the exact queued profile, then run the check.'
+        : 'Open an Instagram profile, then inspect it without clicking.');
     result.append(resultTitle, resultDetail);
+    syncAccountComposer();
     renderAccountRunPrimary();
   }
 
@@ -970,8 +1040,6 @@
       const field = query(`[data-role="${role}"]`);
       if (field && document.activeElement !== field) field.value = String(value);
     };
-    set('limit-actions', bounds.dailyActions);
-    set('limit-unsends', bounds.dailyUnsends);
     set('limit-min', Math.round(bounds.minDelayMs / 1000));
     set('limit-max', Math.round(bounds.maxDelayMs / 1000));
   }
@@ -1032,7 +1100,7 @@
   async function importQueue(file) {
     const parsed = await readJsonFile(file);
     if (parsed?.kind !== 'insta-aio-manual-queue' || !Array.isArray(parsed.queue)) {
-      throw new Error('Select an Insta AIO manual queue export.');
+      throw new Error('Select an Insta Toolbox queue export.');
     }
     state.queue = normalizeQueue({ queue: parsed.queue, importedAt: nowIso() });
     saveState();
@@ -1042,7 +1110,7 @@
   async function importDmJob(file) {
     const parsed = await readJsonFile(file);
     if (parsed?.kind !== 'insta-aio-reviewed-dm-job' || parsed.items?.length !== 1) {
-      throw new Error('Select one reviewed Insta AIO DM job containing exactly one message.');
+      throw new Error('Select one reviewed Insta Toolbox DM job with exactly one message.');
     }
     const item = parsed.items[0];
     if (
@@ -1074,130 +1142,61 @@
     status(`Marked @${item.account.username} ${statusValue} in userscript-local state.`);
   }
 
-  // --- Live actions -------------------------------------------------------
+  // --- Finite confirmed actions ------------------------------------------
   //
   // The engine bundled above is the same one the extension runs. It still mints
   // a one-use resolution token during inspection and refuses to act unless the
   // token matches the element it resolved, so a live run here gets exactly the
   // same exact-target checks the extension gets.
 
+  let batchAbort = false;
+  let accountRunDraft = null;
+  let relationshipController = null;
+  let dmThreadPreview = null;
+  let dmRunnerSnapshot = null;
+
   const engine = globalThis.InstaAioInstagramInspector;
+  const dmRunner = globalThis.InstaAioDmThreadUnsender;
+  if (dmRunner) {
+    dmRunnerSnapshot = dmRunner.snapshot();
+    dmRunner.subscribe((next) => {
+      dmRunnerSnapshot = next;
+      renderDmSummary();
+      renderShellState();
+      if (['preparing', 'running', 'waiting', 'stopping', 'completed', 'stopped', 'error'].includes(next.status)) {
+        status(next.message);
+      }
+    });
+  }
 
   const LIMIT_BOUNDS = {
-    dailyActions: [1, 400],
-    dailyUnsends: [1, 300],
     minDelayMs: [1_500, 600_000],
     maxDelayMs: [1_500, 900_000],
   };
   const REST_EVERY = 20;
   const REST_MS = 90_000;
 
-  let batchAbort = false;
-  let liveActionsUnlockedUntil = 0;
-  let liveAuthorizationTimer = null;
-  let externalLiveRunActive = false;
-  let accountRunDraft = null;
-
-  function authorizationRemainingMinutes(expiresAt) {
-    return Math.max(1, Math.ceil((Number(expiresAt) - Date.now()) / 60_000));
+  function runCapabilityValid(run = state.run) {
+    return Boolean(
+      run?.status === 'running'
+      && safeText(run.capabilityId)
+      && Number(run.capabilityExpiresAt) > Date.now()
+      && Array.isArray(run.approvedTargets)
+      && run.capabilityDigest === accountCapabilityDigest(run.action, run.approvedTargets)
+      && (run.queue || []).every((username) => run.approvedTargets.includes(username)),
+    );
   }
 
-  function newLiveRunAuthorized() {
-    return liveActionsUnlockedUntil > Date.now();
-  }
-
-  function runAuthorizationValid(run = state.run) {
-    return run?.status === 'running' && Number(run.authorizationExpiresAt) > Date.now();
-  }
-
-  function liveAuthorized() {
-    return newLiveRunAuthorized() || runAuthorizationValid();
-  }
-
-  function requireNewRunAuthorization() {
-    if (newLiveRunAuthorized() && !externalLiveRunActive) return true;
-    if (externalLiveRunActive) {
-      status('Thread-wide Unsend is already running. Stop it before starting another live action.');
-      renderAll();
-      return false;
-    }
-    status('Live actions are locked. Open preferences and enable the 15-minute live window first.');
-    renderAll();
-    return false;
-  }
-
-  function stopForExpiredAuthorization() {
+  function stopForExpiredCapability() {
     batchAbort = true;
-    const accountPatch = state.run?.kind === 'account' ? { queue: [] } : {};
     setRun({
-      ...accountPatch,
       status: 'stopped',
-      stopReason: 'live authorization expired',
+      stopReason: 'finite run capability expired',
       current: '',
       nextAt: null,
+      queue: [],
     });
-    status('Live authorization expired. The run stopped before another Instagram action.');
-  }
-
-  function scheduleLiveAuthorizationExpiry() {
-    if (liveAuthorizationTimer) clearTimeout(liveAuthorizationTimer);
-    if (!newLiveRunAuthorized()) return;
-    liveAuthorizationTimer = setTimeout(() => {
-      liveActionsUnlockedUntil = 0;
-      liveAuthorizationTimer = null;
-      if (externalLiveRunActive) {
-        globalThis.InstaAioDmThreadUnsender?.stop?.();
-        renderAll();
-        status('Live authorization expired. Thread-wide Unsend is stopping before another message.');
-        return;
-      }
-      if (state.run?.status === 'running' && !runAuthorizationValid()) {
-        stopForExpiredAuthorization();
-        return;
-      }
-      renderAll();
-      status('The 15-minute live window expired. Scans and no-click checks remain available.');
-    }, Math.max(0, liveActionsUnlockedUntil - Date.now()));
-  }
-
-  function setLiveActionsUnlocked(enabled) {
-    if (!enabled) {
-      liveActionsUnlockedUntil = 0;
-      if (liveAuthorizationTimer) clearTimeout(liveAuthorizationTimer);
-      liveAuthorizationTimer = null;
-      if (externalLiveRunActive) {
-        globalThis.InstaAioDmThreadUnsender?.stop?.();
-        renderAll();
-        status('Live actions locked. Thread-wide Unsend is stopping.');
-        return;
-      }
-      if (state.run?.status === 'running') {
-        stopForExpiredAuthorization();
-        return;
-      }
-      renderAll();
-      status('Live actions locked. Instagram was not changed.');
-      return;
-    }
-
-    // A typed phrase prevents an accidental checkbox or synthetic pointer event
-    // from granting destructive authority. This tab-only window is never saved
-    // as a general preference; only an already-confirmed account run carries its
-    // expiry across the profile navigations that the run itself causes.
-    const answer = globalThis.prompt(
-      `Type ${LIVE_AUTHORIZATION_PHRASE} to unlock Follow, Unfollow, and Unsend for 15 minutes.`,
-      '',
-    );
-    if (answer !== LIVE_AUTHORIZATION_PHRASE) {
-      liveActionsUnlockedUntil = 0;
-      renderAll();
-      status('Live actions stayed locked. The authorization phrase did not match.');
-      return;
-    }
-    liveActionsUnlockedUntil = Date.now() + LIVE_AUTHORIZATION_MS;
-    scheduleLiveAuthorizationExpiry();
-    renderAll();
-    status('Live actions unlocked for 15 minutes. Each run still needs confirmation.');
+    status('The finite run expired. It stopped before another Instagram action.');
   }
 
   function clampNumber(value, [minimum, maximum], fallback) {
@@ -1209,8 +1208,6 @@
   function limits() {
     const stored = state.limits || {};
     return {
-      dailyActions: clampNumber(stored.dailyActions, LIMIT_BOUNDS.dailyActions, 100),
-      dailyUnsends: clampNumber(stored.dailyUnsends, LIMIT_BOUNDS.dailyUnsends, 50),
       minDelayMs: clampNumber(stored.minDelayMs, LIMIT_BOUNDS.minDelayMs, 4_000),
       maxDelayMs: clampNumber(stored.maxDelayMs, LIMIT_BOUNDS.maxDelayMs, 11_000),
     };
@@ -1220,11 +1217,6 @@
     return new Date().toISOString().slice(0, 10);
   }
 
-  function usedToday(kind) {
-    const ledger = state.ledger || {};
-    return ledger.day === today() ? Number(ledger[kind] || 0) : 0;
-  }
-
   function recordAction(kind) {
     const ledger = state.ledger?.day === today()
       ? state.ledger
@@ -1232,6 +1224,32 @@
     ledger[kind] = Number(ledger[kind] || 0) + 1;
     state.ledger = ledger;
     saveState();
+  }
+
+  function reserveUnsendPlan(plan) {
+    const count = Number(plan?.limit);
+    const reviewedDigest = String(plan?.reviewedDigest || '');
+    if (
+      !Number.isInteger(count)
+      || count < 1
+      || !/^[0-9a-f]{8}$/.test(reviewedDigest)
+      || Number(plan?.expiresAt) <= Date.now()
+    ) return { ok: false, reason: 'The reviewed thread plan expired.' };
+    const current = state.ledger?.day === today()
+      ? state.ledger
+      : { day: today(), actions: 0, unsends: 0 };
+    if (current.lastUnsendPlanDigest === reviewedDigest) {
+      return { ok: false, reason: 'This reviewed Unsend plan was already reserved.' };
+    }
+    current.unsends = Number(current.unsends || 0) + count;
+    current.lastUnsendPlanDigest = reviewedDigest;
+    state.ledger = current;
+    saveState();
+    return {
+      ok: true,
+      minDelayMs: bounds.minDelayMs,
+      maxDelayMs: Math.max(bounds.minDelayMs, bounds.maxDelayMs),
+    };
   }
 
   function sleep(ms) {
@@ -1287,59 +1305,12 @@
     return { status: 'completed', reason: String(result.result), fatal: false };
   }
 
-  async function runOneUnsend(message) {
-    const observation = engine.inspectReviewedDmItem({
-      conversationId: message.conversationId,
-      contentDigest: message.contentDigest,
-      messageId: message.messageId,
-      sentByMe: true,
-      timestamp: message.timestamp,
-    });
-    const stop = sessionStop(observation);
-    if (stop) return { status: 'stopped', reason: stop, fatal: true };
-    if (
-      observation?.messageId !== String(message.messageId)
-      || Number(observation?.timestamp) !== Number(message.timestamp)
-      || observation?.contentDigest !== message.contentDigest
-      || observation?.sentByMe !== true
-      || observation?.exactIdentityAvailable !== true
-      || observation?.ownershipAvailable !== true
-      || observation?.ambiguous
-      || observation?.unexpectedUi
-      || !observation?.resolutionToken
-    ) {
-      return {
-        status: 'skipped',
-        reason: observation?.reason || 'could not re-identify this message',
-        fatal: false,
-      };
-    }
-    const result = await engine.performReviewedDmUnsend({
-      conversationId: String(message.conversationId),
-      contentDigest: message.contentDigest,
-      messageId: String(message.messageId),
-      resolutionToken: observation.resolutionToken,
-      sentByMe: true,
-      timestamp: Number(message.timestamp),
-    });
-    const resultStop = sessionStop(result);
-    if (resultStop) return { status: 'stopped', reason: resultStop, fatal: true };
-    if (result?.result !== 'unsent') {
-      return { status: 'failed', reason: result?.reason || 'not confirmed', fatal: false };
-    }
-    recordAction('unsends');
-    return { status: 'completed', reason: 'unsent', fatal: false };
-  }
-
   // An account run has to visit each target's profile, and navigating tears this
   // script down and reloads it. So an account run is persisted with its
   // remaining queue and picked up again on the next page load: one profile per
   // load. That is safe because every item is independently re-resolved on
   // arrival and still has to pass the exact-target checks before anything
   // happens — resuming never inherits trust from the previous page.
-  //
-  // DM runs stay in-memory: they act inside one already-open conversation and
-  // never navigate, so a reload means the thread they were driving is gone.
   function resumableAccountRun() {
     const run = state.run;
     if (!run || run.kind !== 'account' || run.status !== 'running') return null;
@@ -1349,8 +1320,8 @@
   async function continueAccountRun() {
     const run = resumableAccountRun();
     if (!run) return;
-    if (!runAuthorizationValid(run)) {
-      stopForExpiredAuthorization();
+    if (!runCapabilityValid(run)) {
+      stopForExpiredCapability();
       return;
     }
     const username = run.queue[0];
@@ -1406,7 +1377,6 @@
   }
 
   async function startAccountRun({ action, usernames }) {
-    if (!requireNewRunAuthorization()) return;
     if (!managerTabStorageAvailable) {
       status('This userscript manager does not provide isolated tab storage, so account batches stay disabled. Scans and no-click checks still work.');
       return;
@@ -1415,13 +1385,9 @@
       status('A run is already going. Stop it first.');
       return;
     }
-    const bounds = limits();
-    const allowance = Math.max(0, bounds.dailyActions - usedToday('actions'));
-    if (!allowance) {
-      status(`Daily limit reached (${bounds.dailyActions}). Raise it in preferences or continue tomorrow.`);
-      return;
-    }
-    const queue = usernames.slice(0, allowance);
+    const queue = [...usernames];
+    const capabilityId = globalThis.crypto?.randomUUID?.()
+      || `run-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     batchAbort = false;
     setRun({
       status: 'running',
@@ -1434,100 +1400,13 @@
       failed: 0,
       current: '',
       stopReason: null,
-      authorizationExpiresAt: liveActionsUnlockedUntil,
+      approvedTargets: [...queue],
+      capabilityDigest: accountCapabilityDigest(action, queue),
+      capabilityExpiresAt: Date.now() + RUN_CAPABILITY_MS,
+      capabilityId,
       results: [],
     });
     await continueAccountRun();
-  }
-
-  async function runBatch({ kind, action, items }) {
-    if (!requireNewRunAuthorization()) return;
-    if (state.run?.status === 'running') {
-      status('A run is already going. Stop it first.');
-      return;
-    }
-    const bounds = limits();
-    const cap = kind === 'dm' ? bounds.dailyUnsends : bounds.dailyActions;
-    const already = usedToday(kind === 'dm' ? 'unsends' : 'actions');
-    const allowance = Math.max(0, cap - already);
-    if (!allowance) {
-      status(`Daily limit reached (${cap}). Raise it in preferences or continue tomorrow.`);
-      return;
-    }
-    const queued = items.slice(0, allowance);
-    batchAbort = false;
-    setRun({
-      status: 'running',
-      kind,
-      action,
-      total: queued.length,
-      completed: 0,
-      skipped: 0,
-      failed: 0,
-      current: '',
-      stopReason: null,
-      authorizationExpiresAt: liveActionsUnlockedUntil,
-      results: [],
-    });
-
-    for (let index = 0; index < queued.length; index += 1) {
-      if (batchAbort) break;
-      if (!runAuthorizationValid()) {
-        stopForExpiredAuthorization();
-        return;
-      }
-      const item = queued[index];
-      const label = kind === 'dm' ? (item.preview || item.messageId) : `@${item.username}`;
-      setRun({ current: label });
-
-      let outcome;
-      try {
-        outcome = kind === 'dm'
-          ? await runOneUnsend(item)
-          : await runOneAccount(item.username, action);
-      } catch (error) {
-        outcome = { status: 'failed', reason: error.message, fatal: false };
-      }
-
-      const run = state.run || {};
-      const results = [{
-        label,
-        status: outcome.status,
-        reason: outcome.reason,
-      }, ...(run.results || [])].slice(0, 40);
-      const patch = { results };
-      if (outcome.status === 'completed') patch.completed = (run.completed || 0) + 1;
-      else if (outcome.status === 'skipped') patch.skipped = (run.skipped || 0) + 1;
-      else patch.failed = (run.failed || 0) + 1;
-      setRun(patch);
-
-      if (outcome.fatal) {
-        setRun({ status: 'stopped', stopReason: outcome.reason, current: '' });
-        status(`Stopped: ${outcome.reason}. Nothing further was attempted.`);
-        return;
-      }
-
-      if (index < queued.length - 1) {
-        let wait = bounds.minDelayMs
-          + Math.floor(Math.random() * (Math.max(bounds.maxDelayMs, bounds.minDelayMs) - bounds.minDelayMs + 1));
-        if ((index + 1) % REST_EVERY === 0) wait += REST_MS;
-        setRun({ nextAt: Date.now() + wait });
-        await sleep(wait);
-      }
-    }
-
-    const run = state.run || {};
-    setRun({
-      status: batchAbort ? 'aborted' : 'completed',
-      stopReason: batchAbort ? 'stopped by you' : null,
-      current: '',
-      nextAt: null,
-    });
-    status(
-      batchAbort
-        ? 'Run stopped. Nothing further was attempted.'
-        : `Run finished: ${run.completed || 0} done, ${run.skipped || 0} skipped, ${run.failed || 0} failed.`,
-    );
   }
 
   function confirmRun(message) {
@@ -1542,19 +1421,32 @@
   // session on every render, and naming exactly one useful next action, removes
   // the guesswork. This only describes state; it never unlocks anything.
 
+  function followerListTypeFromText(value) {
+    const label = String(value || '')
+      .normalize('NFKC')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLocaleLowerCase();
+    if (/^followers(?:\s|$)/.test(label)) return 'followers';
+    if (/^following(?:\s|$)/.test(label)) return 'following';
+    return '';
+  }
+
   function openFollowerListContext() {
     for (const dialog of document.querySelectorAll('[role="dialog"]')) {
       const heading = [...dialog.querySelectorAll('[role="heading"], h1, h2')]
         .map(visibleText)
         .find(Boolean);
       const firstLine = visibleText(dialog).split(/\r?\n/).map((line) => line.trim()).find(Boolean);
-      const label = [dialog.getAttribute('aria-label'), heading, firstLine]
-        .filter(Boolean)
-        .join(' ')
-        .normalize('NFKC')
-        .toLocaleLowerCase();
-      if (/(^|\s)followers(\s|$)/.test(label)) return { dialog, listType: 'followers', label: 'Followers' };
-      if (/(^|\s)following(\s|$)/.test(label)) return { dialog, listType: 'following', label: 'Following' };
+      const observedTypes = new Set(
+        [dialog.getAttribute('aria-label'), heading, firstLine]
+          .map(followerListTypeFromText)
+          .filter(Boolean),
+      );
+      if (observedTypes.size !== 1) continue;
+      const [observed] = observedTypes;
+      if (observed === 'followers') return { dialog, listType: 'followers', label: 'Followers' };
+      if (observed === 'following') return { dialog, listType: 'following', label: 'Following' };
     }
     return null;
   }
@@ -1603,8 +1495,8 @@
       return {
         tone: 'ready',
         title: `Profile: @${username}`,
-        detail: 'Open this account’s Followers or Following to scan them.',
-        view: 'checker',
+        detail: 'Inspect this exact profile, or open its Followers or Following to scan a list.',
+        view: 'account',
       };
     }
     return {
@@ -1647,6 +1539,7 @@
   function scanState(listType) {
     const count = state.capture[listType].length;
     if (!count) return 'todo';
+    if (state.capture.verified?.[listType] !== true) return 'partial';
     return state.capture.complete?.[listType] === true ? 'done' : 'partial';
   }
 
@@ -1655,10 +1548,12 @@
     for (const listType of ['following', 'followers']) {
       const step = query(`.step[data-step="${listType}"]`);
       const status = scanState(listType);
+      const verified = state.capture.verified?.[listType] === true;
       if (step) step.dataset.state = status;
       const count = state.capture[listType].length;
       setText(`step-${listType}`,
         status === 'todo' ? 'Not scanned yet'
+          : !verified ? `${count} stored — rescan required`
           : status === 'done' ? `${count} found — complete`
             : `${count} found — did not reach the end`);
       const button = query(`[data-action="scan-${listType}"]`);
@@ -1666,7 +1561,7 @@
       if (button) button.textContent = `${status === 'todo' ? 'Scan' : 'Rescan'} ${listLabel}`;
     }
     const compareStep = query('.step[data-step="compare"]');
-    const both = state.capture.following.length && state.capture.followers.length;
+    const both = verifiedCapture('following').length && verifiedCapture('followers').length;
     const complete = scanState('following') === 'done' && scanState('followers') === 'done';
     if (compareStep) compareStep.dataset.state = both ? (complete ? 'done' : 'partial') : 'todo';
     setText('step-compare', both
@@ -1674,7 +1569,7 @@
       : 'Scan both lists first');
   }
 
-  function showScanProgress(listType, found, complete) {
+  function showScanProgress(listType, found, complete, settled = false) {
     const panel = query('[data-role="scan-progress"]');
     if (!panel) return;
     panel.hidden = false;
@@ -1683,7 +1578,9 @@
     if (fill) fill.style.width = complete ? '100%' : `${Math.min(95, 5 + (found % 95))}%`;
     setText('scan-detail', complete
       ? `Scanned ${found} ${listType} — complete.`
-      : `Scanning ${listType}… ${found} found so far.`);
+      : settled
+        ? `Scanned ${found} ${listType} — incomplete.`
+        : `Scanning ${listType}… ${found} found so far.`);
   }
 
   async function scanInto(listType) {
@@ -1692,14 +1589,106 @@
     showScanProgress(listType, 0, false);
     await actions['scan-list']();
     const found = state.capture[listType].length;
-    showScanProgress(listType, found, state.capture.complete?.[listType] === true);
+    showScanProgress(listType, found, state.capture.complete?.[listType] === true, true);
     renderAll();
+  }
+
+  async function checkAccountRelationships() {
+    if (relationshipController) {
+      relationshipController.abort();
+      status('Stopping the follower check. Saved comparison data was not changed.');
+      return;
+    }
+    if (typeof engine?.fetchFollowerComparison !== 'function') {
+      status('Reload Instagram to activate Mutual Checker.');
+      return;
+    }
+    const input = query('[data-role="checker-username"]');
+    const username = engine.normalizeUsername(input?.value)
+      || engine.detectAuthenticatedUsername?.()
+      || '';
+    if (!username) {
+      status('Enter the Instagram username whose Followers and Following should be checked.');
+      input?.focus();
+      return;
+    }
+    if (input) input.value = username;
+    const controller = new AbortController();
+    relationshipController = controller;
+    renderAll();
+    const progressPanel = query('[data-role="scan-progress"]');
+    if (progressPanel) progressPanel.hidden = false;
+    setText('scan-detail', `Finding the exact @${username} account…`);
+    try {
+      const result = await engine.fetchFollowerComparison({
+        username,
+        signal: controller.signal,
+        onProgress(progress) {
+          if (relationshipController !== controller) return;
+          if (progress.phase === 'resolving') {
+            setText('scan-detail', `Finding the exact @${username} account…`);
+            return;
+          }
+          if (progress.phase === 'retrying') {
+            const label = progress.listType || 'account lookup';
+            setText(
+              'scan-detail',
+              `Retrying ${label}: attempt ${progress.attempt} of ${progress.maxAttempts} in ${(progress.retryDelayMs / 1_000).toFixed(1)}s. ${progress.found} accounts from ${progress.pages} completed pages are preserved.`,
+            );
+            return;
+          }
+          if (progress.phase === 'reconciling') {
+            const label = progress.listType === 'followers' ? 'Followers' : 'Following';
+            setText(
+              'scan-detail',
+              `Finishing ${label}: ${progress.found} of ${progress.expectedCount} found. Checking the final page once more.`,
+            );
+            showScanProgress(progress.listType, progress.found, false);
+            return;
+          }
+          if (progress.listType) showScanProgress(progress.listType, progress.found, false);
+        },
+      });
+      const previousCapture = state.capture;
+      const nextCapture = {
+        ...stateDefaults().capture,
+        subjectUsername: result.username,
+        followers: normalizeAccounts(result.followers),
+        following: normalizeAccounts(result.following),
+        capturedAt: { followers: result.capturedAt, following: result.capturedAt },
+        complete: { ...result.complete },
+        verified: { followers: true, following: true },
+        source: { followers: 'authenticated-web', following: 'authenticated-web' },
+      };
+      state.capture = nextCapture;
+      try {
+        saveState();
+      } catch (error) {
+        state.capture = previousCapture;
+        throw error;
+      }
+      const mismatch = result.reasons.followers === 'count-mismatch'
+        ? ` Instagram reports ${result.expectedCounts.followers} followers; ${result.followers.length} were returned.`
+        : result.reasons.following === 'count-mismatch'
+          ? ` Instagram reports ${result.expectedCounts.following} following; ${result.following.length} were returned.`
+          : ' A bounded read limit was reached.';
+      status(
+        `Checked @${result.username}: ${result.followers.length} followers and ${result.following.length} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
+      );
+    } catch (error) {
+      status(error?.code === 'stopped'
+        ? 'Follower check stopped. The previous saved comparison is unchanged.'
+        : `Follower check stopped: ${error?.message || 'Instagram did not return readable relationship data.'}`);
+    } finally {
+      if (relationshipController === controller) relationshipController = null;
+      renderAll();
+    }
   }
 
 
   // --- Sections 4 and 5: show the targets before anything runs ------------
 
-  function renderRunReview(items, { omitted = 0, removed = 0 } = {}) {
+  function renderRunReview(items, { omitted = 0, removed = 0, skippedReasons = [] } = {}) {
     const panel = query('[data-role="run-review"]');
     if (!panel) return;
     panel.hidden = !items.length;
@@ -1708,45 +1697,107 @@
     const list = query('[data-role="review-list"]');
     if (list) {
       list.replaceChildren();
-      for (const item of items.slice(0, 8)) {
+      for (const item of items) {
         const row = document.createElement('li');
         row.textContent = `@${item.username}`;
         list.append(row);
       }
-      if (items.length > 8) {
-        const more = document.createElement('li');
-        more.textContent = `+ ${items.length - 8} more`;
-        list.append(more);
+      for (const entry of skippedReasons) {
+        const skipped = document.createElement('li');
+        skipped.textContent = `${entry.count} skipped — ${entry.reason}`;
+        list.append(skipped);
       }
     }
     // Naming why targets were dropped is the difference between a trustworthy
     // count and a surprising one.
     setText(
       'review-skips',
-      `${removed} duplicate or already-followed target${removed === 1 ? '' : 's'} removed; ${omitted} left outside this bounded run. Every profile is rechecked before action.`,
+      `${removed} duplicate or already-correct target${removed === 1 ? '' : 's'} removed; ${omitted} valid target${omitted === 1 ? '' : 's'} remain outside this finite run; ${skippedReasons.reduce((total, entry) => total + entry.count, 0)} protected or incompatible target${skippedReasons.reduce((total, entry) => total + entry.count, 0) === 1 ? '' : 's'} skipped. Every profile is rechecked before action.`,
     );
+  }
+
+  function compatibleAccountSources(action) {
+    return action === 'follow'
+      ? [
+        ['current-profile', 'Current exact profile'],
+        ['i-do-not-follow-back', 'People who follow you that you do not follow'],
+        ['scanned-followers', 'Scanned Followers'],
+        ['queue', 'Compatible queue items'],
+      ]
+      : [
+        ['current-profile', 'Current exact profile'],
+        ['not-following-me-back', 'People not following you back'],
+        ['scanned-following', 'Scanned Following'],
+        ['queue', 'Compatible queue items'],
+      ];
+  }
+
+  function syncAccountComposer() {
+    const action = query('[data-role="bot-action"]')?.value === 'unfollow' ? 'unfollow' : 'follow';
+    const source = query('[data-role="bot-source"]');
+    if (!source) return;
+    const previous = source.value;
+    const options = compatibleAccountSources(action);
+    source.replaceChildren();
+    for (const [value, label] of options) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      source.append(option);
+    }
+    source.value = options.some(([value]) => value === previous) ? previous : options[0][0];
+    const currentProfile = source.value === 'current-profile';
+    const countField = query('[data-role="bot-count-field"]');
+    if (countField) countField.hidden = currentProfile;
+    const count = query('[data-role="bot-count"]');
+    if (currentProfile && count) count.value = '1';
   }
 
   function accountRunPlan() {
     const action = query('[data-role="bot-action"]')?.value === 'follow' ? 'follow' : 'unfollow';
-    const source = query('[data-role="bot-source"]')?.value || 'not-following-me-back';
-    const count = clampNumber(query('[data-role="bot-count"]')?.value, [1, 250], 20);
+    const source = query('[data-role="bot-source"]')?.value || 'current-profile';
+    const requestedCount = clampNumber(query('[data-role="bot-count"]')?.value, [1, 250], 20);
+    const count = source === 'current-profile' ? 1 : requestedCount;
     const comparison = compareCapture();
     const names = (list) => (list || []).map((entry) => entry.username || entry).filter(Boolean);
+    const skippedReasons = [];
     const pools = {
-      queue: () => (state.queue.queue || [])
-        .filter((entry) => ACTIONABLE_STATUSES.has(entry.status))
-        .map((entry) => entry.account?.username)
-        .filter(Boolean),
+      'current-profile': () => {
+        const username = engine.normalizeUsername?.(location.pathname) || '';
+        if (!username) return [];
+        const observation = engine.inspectProfile?.(username) || {};
+        const alreadyCorrect = action === 'follow'
+          ? ['following', 'requested'].includes(observation.relationship)
+          : observation.relationship === 'not-following';
+        if (alreadyCorrect) {
+          skippedReasons.push({ count: 1, reason: `@${username} already has the requested relationship.` });
+          return [];
+        }
+        return [username];
+      },
+      queue: () => {
+        const queue = state.queue.queue || [];
+        const protectedCount = queue.filter((entry) => entry.status === 'protected').length;
+        const incompatibleCount = queue.filter((entry) => (
+          ACTIONABLE_STATUSES.has(entry.status) && entry.action !== action
+        )).length;
+        if (protectedCount) skippedReasons.push({ count: protectedCount, reason: 'Protected queue items stay excluded.' });
+        if (incompatibleCount) skippedReasons.push({ count: incompatibleCount, reason: 'Queue items for the opposite action were excluded.' });
+        return queue
+          .filter((entry) => ACTIONABLE_STATUSES.has(entry.status) && entry.action === action)
+          .map((entry) => entry.account?.username)
+          .filter(Boolean);
+      },
       'i-do-not-follow-back': () => names(comparison.iDoNotFollowBack),
       'not-following-me-back': () => names(comparison.notFollowingMeBack),
-      'scanned-followers': () => names(state.capture.followers),
-      'scanned-following': () => names(state.capture.following),
+      'scanned-followers': () => names(verifiedCapture('followers')),
+      'scanned-following': () => names(verifiedCapture('following')),
     };
-    const pool = (pools[source] || pools['not-following-me-back'])();
+    const pool = (pools[source] || pools['current-profile'])();
     let eligible = pool;
-    if (action === 'follow' && state.capture.following.length) {
-      const already = new Set(names(state.capture.following));
+    const verifiedFollowing = verifiedCapture('following');
+    if (source !== 'current-profile' && action === 'follow' && verifiedFollowing.length) {
+      const already = new Set(names(verifiedFollowing));
       eligible = eligible.filter((username) => !already.has(username));
     }
     const unique = [...new Set(eligible)];
@@ -1756,6 +1807,8 @@
       items: Object.freeze(items),
       omitted: Math.max(0, unique.length - items.length),
       removed: Math.max(0, pool.length - unique.length),
+      requested: count,
+      skippedReasons: Object.freeze(skippedReasons),
       signature: JSON.stringify({ action, count, source, usernames: items.map((item) => item.username) }),
       source,
     });
@@ -1766,17 +1819,18 @@
     if (!button) return;
     if (accountRunDraft) {
       button.dataset.action = 'run-accounts';
-      button.dataset.liveAction = '';
-      button.textContent = `Start ${accountRunDraft.action} run`;
+      const label = accountRunDraft.action === 'follow' ? 'Follow' : 'Unfollow';
+      button.textContent = `Start ${label} on ${accountRunDraft.items.length} account${accountRunDraft.items.length === 1 ? '' : 's'}`;
       button.classList.add('danger');
       button.classList.remove('primary');
       const preview = accountRunDraft.items.slice(0, 3).map((item) => `@${item.username}`).join(', ');
       setText('account-run-summary', `Reviewed: ${preview}${accountRunDraft.items.length > 3 ? `, +${accountRunDraft.items.length - 3} more` : ''}. Every profile is rechecked before action.`);
     } else {
       button.dataset.action = 'review-accounts';
-      delete button.dataset.liveAction;
       button.disabled = false;
-      button.textContent = 'Review run';
+      const plan = accountRunPlan();
+      const label = plan.action === 'follow' ? 'Follow' : 'Unfollow';
+      button.textContent = `Review ${plan.requested} ${label} target${plan.requested === 1 ? '' : 's'}`;
       button.classList.add('primary');
       button.classList.remove('danger');
       setText('account-run-summary', 'Choose a source, action, and bounded amount, then review the exact targets.');
@@ -1785,6 +1839,7 @@
 
   function clearAccountRunDraft() {
     accountRunDraft = null;
+    syncAccountComposer();
     renderRunReview([]);
     renderAccountRunPrimary();
   }
@@ -1794,9 +1849,12 @@
     if (!plan.items.length) {
       clearAccountRunDraft();
       status(
-        plan.source.startsWith('scanned')
+        plan.skippedReasons[0]?.reason
+          || (plan.source === 'current-profile'
+          ? 'Open one Instagram profile first. No target was reviewed.'
+          : plan.source.startsWith('scanned')
           ? 'That list is empty. Open the list you want and scan it in the checker first.'
-          : 'No targets. Scan both lists in the checker first, or import a queue.',
+          : 'No targets. Scan both lists in the checker first, or import a queue.'),
       );
       return;
     }
@@ -1818,22 +1876,98 @@
   function renderDmSummary() {
     const summary = query('[data-role="dm-summary"]');
     const primary = query('[data-role="unsend-primary"]');
-    const found = (state.sentDms || []).length;
-    const checked = state.sentDmsChecked === true;
+    const found = Number(dmThreadPreview?.eligibleCount) || 0;
+    const checked = dmThreadPreview?.ready === true
+      && dmThreadPreview.threadId === currentDirectThreadId();
+    const active = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
     if (summary) {
       summary.hidden = !checked;
       setText('dm-summary-title', found
-        ? `${found} of your messages can be removed`
-        : 'No removable messages found');
+        ? `${found} sent message${found === 1 ? '' : 's'} found`
+        : 'No sent messages found');
       setText('dm-summary-detail', !found
-        ? 'Nothing here could be identified as yours, so nothing will be touched.'
-        : state.sentDmsComplete
-          ? 'The whole conversation was read.'
-          : 'The conversation did not fully load, so there may be more further back.');
+        ? 'No messages in this thread were identified as yours.'
+        : dmThreadPreview?.complete
+          ? 'Full conversation checked.'
+          : 'The check ended before the full conversation loaded.');
     }
     // Never hidden. Progressive disclosure applies to secondary controls, not
     // to the action the tool exists for.
-    if (primary) primary.hidden = false;
+    if (primary) {
+      primary.hidden = false;
+      primary.textContent = active ? 'Stop DM Unsend' : 'Unsend DMs';
+      primary.disabled = active
+        ? dmRunnerSnapshot?.canStop !== true
+        : !currentDirectThreadId();
+    }
+    const scope = query('[data-role="unsend-scope"]')?.value || 'all';
+    const countField = query('[data-role="unsend-count-field"]');
+    if (countField) countField.hidden = scope === 'all';
+  }
+
+  async function scanSentConversation() {
+    if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
+    status('Checking this conversation for messages you sent. Nothing will be removed.');
+    const outcome = await dmRunner.inspectAll();
+    dmThreadPreview = outcome?.ready && outcome.complete === true ? outcome : null;
+    renderAll();
+    status(outcome?.ready && outcome.complete === true
+      ? `${outcome.eligibleCount} sent message${outcome.eligibleCount === 1 ? '' : 's'} found.`
+      : outcome?.reason || 'Could not check this conversation.');
+    return outcome;
+  }
+
+  async function runDmUnsend() {
+    if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
+    const snapshot = dmRunner.snapshot();
+    if (snapshot.canStop || ['preparing', 'running', 'waiting', 'stopping'].includes(snapshot.status)) {
+      dmRunner.stop();
+      return;
+    }
+    let preview = dmThreadPreview?.threadId === currentDirectThreadId() ? dmThreadPreview : null;
+    if (!preview?.ready || preview.complete !== true) {
+      const scanned = await scanSentConversation();
+      if (!scanned?.ready || scanned.complete !== true) return;
+      preview = scanned;
+    }
+    if (preview.eligibleCount < 1) {
+      status('No sent messages found.');
+      return;
+    }
+    const scope = query('[data-role="unsend-scope"]')?.value || 'all';
+    const requested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
+    const limit = scope === 'all'
+      ? preview.eligibleCount
+      : Math.min(preview.eligibleCount, Math.max(1, requested));
+    const plan = dmRunner.createPlan({
+      threadId: preview.threadId,
+      scope,
+      limit,
+      eligibleCount: preview.eligibleCount,
+      expiresAt: Date.now() + DM_PLAN_CAPABILITY_MS,
+    });
+    if (!plan) throw new Error('The reviewed Unsend plan could not be created. Check the conversation again.');
+    const scopeLabel = scope === 'all'
+      ? `all ${limit} eligible sent message${limit === 1 ? '' : 's'}`
+      : `${scope} ${limit} sent message${limit === 1 ? '' : 's'}`;
+    if (!confirmRun(
+      `Permanently unsend ${scopeLabel} from thread ${plan.threadId}?\n\n`
+      + `The count is checked again before message menus open.`,
+    )) {
+      status('Canceled. Scan kept.');
+      return;
+    }
+    const reservation = reserveUnsendPlan(plan);
+    if (!reservation.ok) {
+      status(reservation.reason);
+      return;
+    }
+    dmThreadPreview = null;
+    await dmRunner.start({
+      plan,
+      minDelayMs: reservation.minDelayMs,
+      maxDelayMs: reservation.maxDelayMs,
+    });
   }
 
 
@@ -1870,6 +2004,7 @@
   }
 
   const actions = {
+    'check-account-relationships': () => checkAccountRelationships(),
     'scan-following': () => scanInto('following'),
     'scan-followers': () => scanInto('followers'),
     'intro-done': () => {
@@ -1890,6 +2025,10 @@
     open: () => savePreferences({ open: true }),
     close: () => savePreferences({ open: false }),
     'stop-run': () => {
+      if (dmRunner?.stop?.()) {
+        status('Stopping DM Unsend after the current step.');
+        return;
+      }
       batchAbort = true;
       // Clearing the queue is what actually stops a resumable account run; the
       // in-memory flag alone would not survive the next page load.
@@ -1901,179 +2040,138 @@
     'scan-list': async () => {
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
       status(`Scanning the open ${listType} list. Keep the dialog open.`);
-      const outcome = await engine.collectAccountList();
+      const outcome = await engine.collectAccountList({ listType });
       if (sessionStop(outcome)) {
         status(`Stopped: ${sessionStop(outcome)}.`);
         return;
       }
       const accounts = outcome?.accounts || [];
+      if (outcome?.listType !== listType) {
+        status(`No verified ${listType} dialog was open. Open that exact list and scan again.`);
+        return;
+      }
       if (!accounts.length) {
         status(`No rows were readable. Open your ${listType} list first.`);
         return;
       }
-      const merged = new Map(state.capture[listType].map((a) => [a.username, a]));
+      if (state.capture.source?.followers === 'authenticated-web'
+        || state.capture.source?.following === 'authenticated-web') {
+        state.capture = stateDefaults().capture;
+      }
+      const merged = new Map(verifiedCapture(listType).map((a) => [a.username, a]));
       for (const account of accounts) merged.set(account.username, account);
       state.capture[listType] = normalizeAccounts([...merged.values()]);
       state.capture.capturedAt[listType] = nowIso();
       state.capture.complete = { ...(state.capture.complete || {}), [listType]: outcome.complete === true };
+      state.capture.verified = { ...(state.capture.verified || {}), [listType]: true };
+      state.capture.source = { ...(state.capture.source || {}), [listType]: 'list-dialog' };
+      state.capture.subjectUsername = '';
       saveState();
       renderAll();
+      const mismatch = outcome?.reason === 'list-count-mismatch'
+        && Number.isSafeInteger(outcome.expectedCount);
       status(
-        `Scanned ${accounts.length} ${listType} rows.${outcome.complete ? '' : ' The list did not reach its end, so some may be missing.'}`,
+        `Scanned ${accounts.length} ${listType} rows.${outcome.complete
+          ? ''
+          : mismatch
+            ? ` Instagram reports ${outcome.expectedCount}, so this capture stays incomplete.`
+            : outcome?.reason === 'list-count-changed'
+              ? ' The profile count changed during the scan, so this capture stays incomplete.'
+              : ' The list did not reach its end, so some may be missing.'}`,
       );
     },
-    'scan-sent': async () => {
-      status('Scanning this conversation for messages you sent.');
-      const outcome = await engine.enumerateSentDms();
-      if (sessionStop(outcome)) {
-        status(`Stopped: ${sessionStop(outcome)}.`);
-        return;
-      }
-      const activeThreadId = currentDirectThreadId();
-      const scanMatchesThread = Boolean(
-        activeThreadId
-        && directThreadId(outcome?.conversationId) === activeThreadId,
-      );
-      state.sentDms = scanMatchesThread
-        ? sentMessagesForThread(outcome?.messages, activeThreadId)
-        : [];
-      state.sentDmsComplete = scanMatchesThread && outcome?.complete === true;
-      state.sentDmsChecked = true;
-      saveState();
-      renderAll();
-      status(
-        !activeThreadId
-          ? 'Open an Instagram conversation first.'
-          : !scanMatchesThread
-            ? 'The conversation changed during the scan. Scan this conversation again.'
-            : state.sentDms.length
-              ? `Found ${state.sentDms.length} of your sent messages.${outcome.complete ? '' : ' Older ones may still be unloaded.'}`
-              : 'No exactly identifiable sent messages were found in this thread.',
-      );
-    },
+    'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
       const current = accountRunPlan();
       if (!accountRunDraft || accountRunDraft.signature !== current.signature) {
         clearAccountRunDraft();
-        status('Targets changed. Review the run again before unlocking live actions.');
+        status('Targets changed. Review the run again before starting.');
         return;
       }
-      if (!requireNewRunAuthorization()) return;
+      const targetList = accountRunDraft.items.map((item) => `@${item.username}`).join('\n');
       if (!confirmRun(
         `${accountRunDraft.action === 'follow' ? 'Follow' : 'Unfollow'} ${accountRunDraft.items.length} reviewed account${accountRunDraft.items.length === 1 ? '' : 's'}?\n\n`
-        + 'This tab will move between profiles and the run continues across page loads. It changes your account.',
+        + `${targetList}\n\nThis tab will move between these exact profiles. Each account is revalidated before the action.`,
       )) return;
       const approved = accountRunDraft;
       clearAccountRunDraft();
       await startAccountRun({ action: approved.action, usernames: approved.items.map((item) => item.username) });
     },
-    // One button: find everything you sent in this thread, then remove it.
-    'unsend-all': async () => {
-      if (!requireNewRunAuthorization()) return;
-      if (state.run?.status === 'running') {
-        status('A run is already going. Stop it first.');
-        return;
-      }
-      status('Reading the whole conversation. This can take a while on a long thread.');
-      const outcome = await engine.enumerateSentDms({ limit: 5_000 });
-      const stop = sessionStop(outcome);
-      if (stop) {
-        status(`Stopped: ${stop}.`);
-        return;
-      }
-      const activeThreadId = currentDirectThreadId();
-      const scanMatchesThread = Boolean(
-        activeThreadId
-        && directThreadId(outcome?.conversationId) === activeThreadId,
-      );
-      const messages = scanMatchesThread
-        ? sentMessagesForThread(outcome?.messages, activeThreadId)
-        : [];
-      state.sentDms = messages;
-      state.sentDmsComplete = scanMatchesThread && outcome?.complete === true;
-      state.sentDmsChecked = true;
-      saveState();
-      renderAll();
-      if (!messages.length) {
-        status(
-          !activeThreadId || outcome?.reason === 'open-an-instagram-conversation'
-            ? 'Open a conversation first.'
-            : !scanMatchesThread
-              ? 'The conversation changed during the scan. Scan this conversation again.'
-              : 'No messages of yours could be identified exactly in this thread, so nothing was touched.',
-        );
-        return;
-      }
-      if (!confirmRun(
-        `Unsend all ${messages.length} message${messages.length === 1 ? '' : 's'} you sent in this conversation?\n\n`
-        + (outcome.complete ? '' : 'Note: the thread did not fully load, so there may be more.\n\n')
-        + 'This is permanent and cannot be undone.',
-      )) {
-        status('Cancelled. Nothing was unsent.');
-        return;
-      }
-      await runBatch({ kind: 'dm', items: messages });
-    },
-    'run-unsend': async () => {
-      if (!requireNewRunAuthorization()) return;
-      const activeThreadId = currentDirectThreadId();
-      if (!activeThreadId) {
-        status('Open an Instagram conversation first.');
-        return;
-      }
-      const found = sentMessagesForThread(state.sentDms, activeThreadId);
-      if (!found.length) {
-        status('Scan your sent messages in this conversation first.');
-        return;
-      }
-      const scope = query('[data-role="unsend-scope"]')?.value || 'all';
-      const count = clampNumber(query('[data-role="unsend-count"]')?.value, [1, 250], found.length);
-      let selected = found;
-      if (scope === 'newest') selected = found.slice(0, count);
-      if (scope === 'oldest') selected = found.slice(-count);
-      if (!confirmRun(
-        `Permanently unsend ${selected.length} message${selected.length === 1 ? '' : 's'}?\n\n`
-        + 'This cannot be undone.',
-      )) return;
-      await runBatch({ kind: 'dm', items: selected });
-    },
+    'run-unsend': () => runDmUnsend(),
     'save-limits': () => {
       state.limits = {
-        dailyActions: clampNumber(query('[data-role="limit-actions"]')?.value, LIMIT_BOUNDS.dailyActions, 100),
-        dailyUnsends: clampNumber(query('[data-role="limit-unsends"]')?.value, LIMIT_BOUNDS.dailyUnsends, 50),
+        ...(state.limits || {}),
         minDelayMs: clampNumber(Number(query('[data-role="limit-min"]')?.value) * 1000, LIMIT_BOUNDS.minDelayMs, 4_000),
         maxDelayMs: clampNumber(Number(query('[data-role="limit-max"]')?.value) * 1000, LIMIT_BOUNDS.maxDelayMs, 11_000),
       };
       saveState();
       status('Pacing saved.');
     },
+    'layout-compact': () => savePreferences({ width: 360, height: 520, open: true }),
+    'layout-tall': () => savePreferences({
+      width: 430,
+      height: Math.min(820, Math.max(HEIGHT_MIN, innerHeight - (INSET * 2))),
+      open: true,
+    }),
+    'layout-wide': () => savePreferences({ width: 560, height: 680, open: true }),
     'reset-layout': () => savePreferences({ ...preferencesDefaults(), open: true, view: preferences.view }),
     capture: () => {
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
-      const visible = captureVisibleAccounts();
-      const accounts = new Map(state.capture[listType].map((account) => [account.username, account]));
+      const visible = captureVisibleAccounts(listType);
+      if (!visible.length) {
+        status(`No verified ${listType} rows were readable. Open that exact list first.`);
+        return;
+      }
+      if (state.capture.source?.followers === 'authenticated-web'
+        || state.capture.source?.following === 'authenticated-web') {
+        state.capture = stateDefaults().capture;
+      }
+      const accounts = new Map(verifiedCapture(listType).map((account) => [account.username, account]));
       const before = accounts.size;
       for (const account of visible) accounts.set(account.username, account);
       state.capture[listType] = normalizeAccounts([...accounts.values()]);
       state.capture.capturedAt[listType] = nowIso();
+      state.capture.complete = { ...(state.capture.complete || {}), [listType]: false };
+      state.capture.verified = { ...(state.capture.verified || {}), [listType]: true };
+      state.capture.source = { ...(state.capture.source || {}), [listType]: 'list-dialog' };
+      state.capture.subjectUsername = '';
       saveState();
       status(`Captured ${visible.length} rendered ${listType} rows; ${state.capture[listType].length - before} were new.`);
     },
     'clear-capture': () => {
       state.capture = stateDefaults().capture;
       saveState();
-      status('Cleared both follower checker drafts. Instagram was not changed.');
+      status('Mutual Checker cleared.');
     },
     'download-list': () => {
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
+      const method = state.capture.source?.[listType] || '';
       downloadJson(`insta-aio-visible-${listType}-${Date.now()}.json`, {
         schemaVersion: 1,
         kind: 'insta-aio-visible-list',
         listType,
         capturedAt: state.capture.capturedAt[listType] || nowIso(),
+        subjectUsername: state.capture.subjectUsername || '',
+        verificationMethod: method,
+        verifiedDialog: state.capture.verified?.[listType] === true && method !== 'authenticated-web',
         [listType]: state.capture[listType],
-        note: 'Only rows rendered in Instagram were captured. Scroll manually and capture again to merge more rows.',
+        note: method === 'authenticated-web'
+          ? 'Read from bounded authenticated Instagram pagination. No follow, unfollow, message, or click action was performed.'
+          : 'Only rows rendered in Instagram were captured. Scroll manually and capture again to merge more rows.',
       });
+    },
+    'download-comparison-json': () => {
+      const comparisonReady = state.capture.verified?.followers === true
+        && state.capture.verified?.following === true;
+      if (!comparisonReady) {
+        status('Complete both follower lists before downloading a comparison.');
+        return;
+      }
+      const generatedAt = nowIso();
+      downloadJson(
+        `insta-toolbox-mutual-comparison-${generatedAt.replace(/[:.]/g, '-')}.json`,
+        engine.followerComparisonRecord(state.capture, compareCapture(), generatedAt),
+      );
     },
     'export-queue': () => downloadJson(`insta-aio-companion-state-${Date.now()}.json`, {
       schemaVersion: 2,
@@ -2138,8 +2236,8 @@
         renderChecker();
         return;
       }
-      if (event.target.matches('[data-role="live-actions"]')) {
-        setLiveActionsUnlocked(event.target.checked);
+      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"]')) {
+        renderDmSummary();
         return;
       }
       if (event.target.matches('[data-preference="opacity"]')) {
@@ -2270,6 +2368,7 @@
     const currentHref = location.href;
     if (currentHref !== lastLocationHref) {
       lastLocationHref = currentHref;
+      dmThreadPreview = null;
       state.messageEvidence = null;
       state.dmCheck = null;
       state.sentDms = [];
@@ -2289,22 +2388,6 @@
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
-
-  Object.defineProperty(globalThis, 'InstaAioUserscriptLiveAuthority', {
-    configurable: false,
-    enumerable: false,
-    value: Object.freeze({
-      canStart: () => newLiveRunAuthorized()
-        && state.run?.status !== 'running'
-        && !externalLiveRunActive,
-      expiresAt: () => (newLiveRunAuthorized() ? liveActionsUnlockedUntil : 0),
-      setExternalRunActive: (active) => {
-        externalLiveRunActive = active === true;
-        renderAll();
-      },
-    }),
-    writable: false,
-  });
 
   document.documentElement.append(host);
   saveState();

@@ -10,8 +10,8 @@ Integration means that a source was reviewed, its applicable data was mapped, so
 |---|---|---|---|---|
 | Instagram Helper | Revision `5853d856a18a395aab7c8b8c7e3633175e23ddaf` | Message-data migration | Valid, duplicate, malformed, and incomplete records | Message migration integrated |
 | SimpleInstaBot | Revision `5eed7e4ac7ac7db6922eb9e5ed6db36ad9f18fca` | Follow/unfollow history migration | Success, failure, no-action, duplicate, malformed, unsupported photo history | History migration integrated |
-| Follower checker | Revision `3876d9a67bc8255a79990a1616c20cae296d7194` | Read-only partial relationship report | Duplicate, invalid, and incomplete metadata | Partial-report migration integrated |
-| instagram-dm-unsender | Tag `v0.7.2`, revision `a8d7b4d9b76967f54cd9890fc3b1e0bb9c1b8d6a`, supplied SHA-256 `2DC5D357B6C3BBFE1F9E10E8D2F9252E7446C490FB3C16DF1B59719CB1D1FE2C` | Exact-candidate adapter and stateless migration report | Exact, missing, ambiguous, received, confirmation mismatch | Safe adapter behavior integrated; mass loop excluded |
+| Mutual Checker | Revision `3876d9a67bc8255a79990a1616c20cae296d7194` | Read-only partial relationship report | Duplicate, invalid, and incomplete metadata | Partial-report migration integrated |
+| instagram-dm-unsender | Tag `v0.7.2`, revision `a8d7b4d9b76967f54cd9890fc3b1e0bb9c1b8d6a`, supplied SHA-256 `2DC5D357B6C3BBFE1F9E10E8D2F9252E7446C490FB3C16DF1B59719CB1D1FE2C` | Exact-candidate adapter, stateless migration report, and independently bounded thread runner using the reviewed rendered-menu interaction model | Exact, missing, ambiguous, received, confirmation mismatch, no-click complete/incomplete history, plan tampering, daily reservation, pacing, stop, and portalled-menu fixtures | Exact adapter and bounded interaction model integrated; original unbounded executor excluded |
 
 ## Instagram Helper
 
@@ -23,7 +23,7 @@ The launcher and security changes are not used.
 
 ### Dependencies and session behavior
 
-The helper depends on the active Instagram page and reads browser-managed session values before issuing credentialed requests. It does not ask for a password, but it directly accesses session state. None of that state enters Insta AIO.
+The helper depends on the active Instagram page and reads browser-managed session values before issuing credentialed requests. It does not ask for a password, but it directly accesses session state. None of that state enters Insta Toolbox.
 
 ### Selectors and network behavior
 
@@ -74,13 +74,13 @@ The programmatic library entry is `Instauto(db, page, options)`. The desktop mai
 
 ### Dependencies and session behavior
 
-The source uses Puppeteer-based browser control, desktop state storage, persisted browser-session files, automated login options, and browser signature rotation. Insta AIO does not reuse these behaviors.
+The source uses Puppeteer-based browser control, desktop state storage, persisted browser-session files, automated login options, and browser signature rotation. Insta Toolbox does not reuse these behaviors.
 
 ### Selectors and network behavior
 
 The source contains text/ARIA selectors for relationship controls, DOM click paths, legacy GraphQL identifiers, embedded profile-data reading, and private relationship routes. They were useful only for identifying failure modes and are not treated as current Instagram truth.
 
-The source's `dryRun` mode omits final relationship-changing clicks but still navigates, performs network requests, and may click setup dialogs. It therefore does not satisfy Insta AIO's no-click contract.
+The source's `dryRun` mode omits final relationship-changing clicks but still navigates, performs network requests, and may click setup dialogs. It therefore does not satisfy Insta Toolbox's no-click contract.
 
 ### Data contract
 
@@ -122,7 +122,15 @@ The source is one dependency-free script designed for execution in an authentica
 
 ### Session and network behavior
 
-The script relies on the existing browser session, a fixed application header, private search and relationship routes, and pagination tokens. These behaviors were excluded.
+The script relies on the existing browser session, a fixed application header,
+private search and relationship GET routes, and pagination tokens. Version
+2.0.0's checker independently implements that narrow read flow after
+the operator supplied and requested it: exact username matching, a fixed
+Instagram-origin route allowlist, 50-row pages, bounded iteration, 800–1499 ms
+page pacing, a 20-second per-attempt watchdog, two bounded stalled-page retries,
+stop support, schema validation, and immediate session/challenge/
+block/rate-limit stops. It never reads or exports the session and exposes no
+relationship mutation route. The older exact-dialog reader remains a fallback.
 
 ### Output contract
 
@@ -138,6 +146,9 @@ The result has no mutual list, stable IDs, source account, capture timestamp, or
 ### Migration and license boundary
 
 No explicit source license was identified, so its implementation was not copied.
+The current reader is an independent implementation of the supplied input/output
+behavior and exact route contract, with new bounds, validation, provenance, and
+UI integration.
 
 `src/migrations/follower-checker.js` independently:
 
@@ -146,6 +157,10 @@ No explicit source license was identified, so its implementation was not copied.
 - Preserves the values as a partial report
 - Reports invalid records and missing metadata
 - Prevents the report from creating a snapshot or queue action
+
+Authenticated results enter the existing checker workspace only after both
+lists finish. Schema 5 adds the subject username and per-list provenance without
+changing the legacy migration report or `insta-aio-visible-list` export kind.
 
 ## instagram-dm-unsender 0.7.2
 
@@ -182,6 +197,20 @@ The source cannot map an exported conversation/message ID to one durable rendere
 
 Missing, duplicate, received, changed, or ambiguous candidates safe-stop. The mass loop is not included.
 
+The in-page thread-wide runner is a separate implementation that retains only
+the audited rendered-DOM interaction sequence. It does not reuse the source's
+unbounded start control or authorization model. A no-click history pass must
+prove completeness and a finite eligible count before the UI exposes `all`,
+`newest N`, or `oldest N`. The exact thread, scope, count, digest, and expiry are
+frozen into the reviewed plan; one exact thread/count confirmation follows. The
+runner revalidates the full count before opening a message menu,
+reserves the finite plan against replay, uses the saved
+bounded delay range, selects only one newly surfaced menu and confirmation
+control for its active sent row, verifies removal, and stops on expiry,
+challenge, block, rate limit, wrong thread, ambiguity, or repeated failure. The
+legacy generic userscript Unsend executor and the source's unbounded loop are
+not present.
+
 The extension implements a no-click DOM boundary for signed reviewed DM jobs.
 It borrows the source's conversation-container and sent-layout observations but
 requires a matching direct-thread ID, an allowlisted stable message-ID
@@ -189,15 +218,15 @@ attribute, exact timestamp, exact content digest, and one sent candidate. Dry
 run never invokes hover, menu, dialog, loop, or Unsend paths. Fixture coverage
 proves exact, missing, changed, received, wrong-thread, and ambiguous outcomes.
 
-Extension 0.10.4 also independently migrates the source-audited one-message UI
+Extension 2.0.0 preserves the independently migrated source-audited one-message UI
 sequence behind a stronger capability boundary. It retains the exact row's
 source-backed hover and action-control patterns plus exact localized Unsend
 labels. Those labels now live in one frozen UTF-8 module, normalize with NFKC,
 and include an executable `zurücknehmen` regression. The implementation excludes the source's mass loop, automatic retries, randomized
 batch delays, stale-overlay dismissal, generic first-dialog-button selection,
-and descendant-wide ownership guesses. One fresh twice-confirmed item creates a signed
-intent and short-lived tab arm. Independent ledgers reserve before the first
-page control, the arm and token are consumed once, the same row is revalidated
+and descendant-wide ownership guesses. One freshly confirmed exact item creates
+a signed intent and transient tab-scoped capability. Independent ledgers reserve
+before the first page control, the capability and token are consumed once, the same row is revalidated
 before every destructive stage, pre-existing or unbound surfaces reject
 execution, and same-thread removal requires retained-node disconnection plus
 stable identity coverage. Authenticated Instagram DOM and live-action acceptance
@@ -238,12 +267,12 @@ The reviewed sources do not supply a safe live executor that satisfies current
 contracts. The independent action and DM adapters implement transaction
 ordering, durable checkpoints, no-click dry runs, and safe stops.
 
-Extension 0.10.4 includes independently implemented controlled account and DM
+Extension 2.0.0 includes independently implemented controlled account and DM
 drivers;
 it does not copy the SimpleInstaBot executor. A fresh signed job of exactly one
 item creates a sanitized intent. The Instagram sidecar requires the matching
-profile, relationship, action/username phrase, and a 90-second one-use arm. The
-PWA revalidates that arm before reserving the ledger; the extension consumes it
+profile, relationship, and one exact action/target confirmation. The resulting
+transient capability is revalidated before the PWA ledger reservation; the extension consumes it
 before activating one exact Follow control or the exact Following plus
 Unfollow-confirmation controls. Token replay and ambiguous controls fail closed.
 

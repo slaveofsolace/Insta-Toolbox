@@ -37,7 +37,7 @@ try {
     const main = document.createElement('main');
     main.style.cssText = 'padding:24px;font-family:system-ui';
     const heading = document.createElement('h1');
-    heading.textContent = 'Insta AIO Tool failed to load';
+    heading.textContent = 'Insta Toolbox failed to load';
     const details = document.createElement('pre');
     details.textContent = String(error?.stack || error);
     main.append(heading, details);

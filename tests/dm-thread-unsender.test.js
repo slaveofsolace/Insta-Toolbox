@@ -47,8 +47,9 @@ test('thread runner carries the proven 0.7.2 interaction model', () => {
     'MAX_SCAN_PASSES = 3',
     'DEFAULT_MAX_FAILURES = 5',
     'Math.min(60_000',
-    '1_000',
-    '2_000',
+    '1_500',
+    '4_000',
+    '11_000',
     "'zurücknehmen'",
   ]) assert.match(labelsSource, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(labelsSource, /function revealActionButton\(row, signal\)/);
@@ -57,7 +58,9 @@ test('thread runner carries the proven 0.7.2 interaction model', () => {
   assert.match(labelsSource, /function dialogUnsendCandidates\(existing = new Set\(\)\)/);
   assert.match(labelsSource, /filter\(dialogControlHasUnsendLabel\)/);
   assert.match(labelsSource, /function loadAllHistory\(context, signal\)/);
-  assert.match(labelsSource, /function nextSentRow\(context, signal\)/);
+  assert.match(labelsSource, /function nextSentRow\(context, signal, order = 'oldest'\)/);
+  assert.match(labelsSource, /function createPlan\(value = \{\}\)/);
+  assert.match(labelsSource, /function inspectAll\(\)/);
   assert.doesNotMatch(labelsSource, /graphql|private[_ -]?api|cookie|password/i);
 });
 
@@ -128,6 +131,28 @@ test('column-reverse detection matches Instagram thread paging', () => {
   assert.equal(runner.__test.reversedLayout(normal), false);
   normal.scrollTop = -10;
   assert.equal(runner.__test.reversedLayout(normal), true);
+});
+
+test('virtualized sent rows cannot keep resetting history completeness', () => {
+  const runner = loadRunner();
+  let progress = { maxHeight: 3_041, maxRows: 4 };
+  progress = runner.__test.advanceHistoryProgress(progress, 3_041, 7);
+  assert.equal(progress.grew, true);
+  assert.equal(progress.maxRows, 7);
+
+  // Current Instagram can alternate between four and seven structurally
+  // provable sent rows while the same oldest-boundary DOM is stationary.
+  // Falling back to four and returning to seven is virtualization churn, not
+  // another history page.
+  progress = runner.__test.advanceHistoryProgress(progress, 3_041, 4);
+  assert.equal(progress.grew, false);
+  progress = runner.__test.advanceHistoryProgress(progress, 3_041, 7);
+  assert.equal(progress.grew, false);
+
+  progress = runner.__test.advanceHistoryProgress(progress, 3_400, 8);
+  assert.equal(progress.grew, true);
+  assert.equal(progress.maxHeight, 3_400);
+  assert.equal(progress.maxRows, 8);
 });
 
 test('the next comfortably visible message row is not repositioned before hover', async () => {
@@ -218,25 +243,80 @@ test('a clipped sent-message row is centered once before hover', async () => {
   assert.equal(scrollCalls, 1);
 });
 
-test('thread-wide Unsend refuses to start without a live authorization expiry', async () => {
+test('Unsend requires message-row change instead of treating a hidden hover control as success', () => {
+  const runner = loadRunner();
+  const view = { getComputedStyle: () => ({}) };
+  const leaf = (text) => ({
+    getAttribute: () => '',
+    getBoundingClientRect: () => ({ width: 100, height: 20 }),
+    ownerDocument: { defaultView: view },
+    querySelector: () => null,
+    textContent: text,
+  });
+  let text = 'Disposable message';
+  const row = {
+    isConnected: true,
+    querySelector: () => ({}),
+    querySelectorAll: () => [leaf(text)],
+  };
+  const before = runner.__test.removalEvidence(row);
+  assert.equal(runner.__test.removalProven(row, before), false);
+  text = 'You unsent a message';
+  assert.equal(runner.__test.removalProven(row, before), true);
+  row.isConnected = false;
+  assert.equal(runner.__test.removalProven(row, before), true);
+});
+
+test('thread-wide Unsend requires an untampered count-specific reviewed plan', async () => {
   const runner = loadRunner();
   const result = await runner.start();
   assert.equal(result.status, 'error');
-  assert.match(result.message, /Live authorization is required/);
+  assert.match(result.message, /count-specific reviewed plan is required/);
+
+  const all = runner.createPlan({
+    threadId: 'thread-123',
+    scope: 'all',
+    limit: 1,
+    eligibleCount: 7,
+    expiresAt: Date.now() + 60_000,
+  });
+  assert.equal(all.limit, 7);
+  assert.equal(all.scope, 'all');
+  assert.match(all.reviewedDigest, /^[0-9a-f]{8}$/);
+
+  const tampered = await runner.start({ plan: { ...all, eligibleCount: 6 } });
+  assert.equal(tampered.status, 'error');
+  assert.match(tampered.message, /count-specific reviewed plan is required/);
 });
 
 test('extension message view uses the shared runner and Instagram design tokens', () => {
   assert.match(messagesSource, /globalThis\.InstaAioDmThreadUnsender/);
-  assert.match(messagesSource, /MASS_UNSEND_ARM_PHRASE = 'UNSEND ALL DMS'/);
-  assert.match(messagesSource, /threadId: inspection\.threadId/);
-  assert.match(messagesSource, /expectedThreadId: massArm\.threadId/);
-  assert.match(messagesSource, /Unsend all DMs/);
+  assert.match(messagesSource, /DM_PLAN_TTL_MS = 15 \* 60 \* 1_000/);
+  assert.match(messagesSource, /threadId: preview\.threadId/);
+  assert.match(messagesSource, /eligibleCount: preview\.eligibleCount/);
+  assert.doesNotMatch(messagesSource, /phrase = `UNSEND|ARM UNSEND|ENABLE LIVE ACTIONS/);
+  assert.match(messagesSource, /data-ia-action="mass-unsend"/);
+  assert.match(messagesSource, /'Unsend DMs'/);
+  assert.match(messagesSource, /const scanned = await scanSent\(runtime\)/);
+  assert.match(messagesSource, /Permanently unsend \$\{scopeLabel\} from thread \$\{plan\.threadId\}/);
+  assert.match(messagesSource, /Canceled\. Scan kept\./);
   assert.match(messagesSource, /--ig-primary-background/);
   assert.match(messagesSource, /--ig-primary-button/);
   assert.match(messagesSource, /prefers-reduced-motion/);
   assert.match(messagesSource, /Exact message ID, timestamp, digest, conversation, and sent-by-me ownership must all match/);
   assert.match(labelsSource, /authorizationExpiresAt <= Date\.now\(\)/);
   assert.match(labelsSource, /context\.threadId !== expectedThreadId/);
+  assert.match(labelsSource, /currentEligibleCount !== plan\.eligibleCount/);
+  assert.match(labelsSource, /const currentContext = threadContext\(\)/);
+  assert.match(labelsSource, /Instagram refreshed the conversation before the next reviewed message could be found/);
+  assert.match(labelsSource, /complete: quietRounds >= 10/);
+  assert.match(labelsSource, /resolvedCount = history\.eligibleCount/);
+  assert.match(labelsSource, /MAX_HISTORY_CHECK_MS = 90_000/);
+  assert.match(labelsSource, /More than \$\{MAX_PLAN_MESSAGES\} eligible sent messages were found/);
+  assert.match(messagesSource, /preview\.complete === true/);
+  assert.match(messagesSource, /kind: 'insta-aio-reserve-thread-unsend'/);
+  assert.match(messagesSource, /reservation\.pacing\?\.minDelayMs/);
+  assert.match(labelsSource, /plan\.scope === 'newest'/);
   assert.match(labelsSource, /unsendCandidates\(document\)\.filter\(\(candidate\) => !existing\.has\(candidate\)\)/);
   assert.match(labelsSource, /Instagram showed more than one new Unsend option/);
   assert.doesNotMatch(messagesSource, /\bAI\b/i);
@@ -274,6 +354,8 @@ test('history is loaded to the top and the run then works down from there', () =
   // read as the end of the conversation.
   assert.match(body, /quietRounds < 10/);
   assert.match(body, /page < 600/);
+  assert.match(body, /Date\.now\(\) - startedAt < MAX_HISTORY_CHECK_MS/);
+  assert.match(body, /advanceHistoryProgress/);
   assert.match(body, /let topNudgeUsed = false/);
   assert.match(body, /!topNudgeUsed && quietRounds >= 2/);
 });

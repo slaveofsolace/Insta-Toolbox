@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  accountArmMatchesIntent,
   prepareControlledAccountIntent,
   pruneControlledAccountState,
   validateControlledAccountJob,
@@ -40,7 +39,8 @@ test('prepares only one fresh, unchanged reviewed account action', () => {
   const prepared = prepareControlledAccountIntent(job, pairing, state, 1_700_000_001_000);
 
   assert.equal(prepared.error, undefined);
-  assert.equal(prepared.armed, false);
+  assert.equal(prepared.ready, true);
+  assert.equal(Object.hasOwn(prepared, 'armed'), false);
   assert.deepEqual(prepared.intent, {
     action: 'follow',
     confirmedAt: job.confirmedAt,
@@ -66,7 +66,7 @@ test('prepares only one fresh, unchanged reviewed account action', () => {
   );
 });
 
-test('preserves a matching one-use arm and invalidates it when the signed intent changes', () => {
+test('clears legacy persisted authority even when the signed intent is unchanged', () => {
   const job = liveJob();
   const state = { pendingLiveIntent: null, liveArm: null };
   prepareControlledAccountIntent(job, pairing, state, 1_700_000_001_000);
@@ -81,8 +81,8 @@ test('preserves a matching one-use arm and invalidates it when the signed intent
   };
 
   const repeated = prepareControlledAccountIntent(job, pairing, state, 1_700_000_002_000);
-  assert.equal(repeated.armed, true);
-  assert.equal(accountArmMatchesIntent(state.liveArm, state.pendingLiveIntent), true);
+  assert.equal(repeated.ready, true);
+  assert.equal(state.liveArm, null);
 
   const differentJob = liveJob('other_target', 1_700_000_003_000);
   prepareControlledAccountIntent(differentJob, pairing, state, 1_700_000_004_000);

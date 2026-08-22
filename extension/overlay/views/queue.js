@@ -6,36 +6,6 @@
   if (!shared || modules.queueView) return;
   const botDrafts = new WeakMap();
 
-  function matchingArm(intent, arm) {
-    return Boolean(
-      intent
-      && arm
-      && arm.jobId === intent.jobId
-      && arm.itemId === intent.itemId
-      && arm.username === intent.username
-      && arm.action === intent.action
-      && shared.armRemainingMs(arm) > 0,
-    );
-  }
-
-  function liveContextMatches(runtime, intent) {
-    const profile = runtime.model.context?.profile || {};
-    const expectedRelationship = intent?.action === 'follow' ? 'not-following' : 'following';
-    return Boolean(
-      intent
-      && ['follow', 'unfollow'].includes(intent.action)
-      && runtime.model.context?.pageKind === 'profile'
-      && runtime.model.context.username === intent.username
-      && profile.relationship === expectedRelationship
-      && !profile.ambiguous
-      && !profile.unexpectedUi
-      && !runtime.model.context.sessionExpired
-      && !runtime.model.context.challenge
-      && !runtime.model.context.actionBlocked
-      && !runtime.model.context.rateLimited,
-    );
-  }
-
   function renderCurrent(runtime) {
     const {
       document, downloads, model, query,
@@ -137,83 +107,10 @@
     }
   }
 
-  function renderLiveGate(runtime) {
-    const { model, query, setText } = runtime;
-    const intent = model.bridge.pendingLiveIntent;
-    const arm = model.bridge.liveArm;
-    const notice = model.armNotice?.kind === 'account' ? model.armNotice : null;
-    const armButton = query('[data-ia-action="arm-account-live"]');
-    const cancelButton = query('[data-ia-action="cancel-account-live"]');
-    const badge = query('[data-ia-role="live-badge"]');
-    const disclosure = query('[data-ia-role="account-live-disclosure"]');
-    const countdown = query('[data-ia-role="live-countdown"]');
-    if (!armButton || !cancelButton || !badge || !disclosure || !countdown) return;
-    cancelButton.hidden = !intent;
-    disclosure.open = Boolean(intent || matchingArm(intent, arm) || notice);
-
-    if (!intent) {
-      const noticeCopy = notice?.state === 'expired'
-        ? ['Arm expired', `The arm for @${notice.target} expired. Create a fresh reviewed intent before any later attempt.`, 'expired']
-        : notice?.state === 'canceled'
-          ? ['Action canceled', `The pending action for @${notice.target} was canceled without using an Instagram control.`, 'canceled']
-          : notice?.state === 'executing'
-            ? ['Executing in PWA', `The arm for @${notice.target} was consumed. Wait for its signed result; do not retry.`, 'executing']
-            : ['Live actions locked', 'Confirm one live item in the paired PWA before an exact arm is even available.', 'locked'];
-      setText('live-title', noticeCopy[0]);
-      setText('live-detail', noticeCopy[1]);
-      badge.textContent = noticeCopy[2];
-      badge.dataset.tone = notice ? 'danger' : 'warning';
-      armButton.textContent = 'Arm exact action';
-      armButton.disabled = true;
-      countdown.hidden = true;
-      return;
-    }
-
-    setText('live-title', `${intent.action} @${intent.username}`);
-    if (notice?.state === 'expired') {
-      const ready = liveContextMatches(runtime, intent);
-      setText(
-        'live-detail',
-        ready
-          ? 'The prior arm expired. Type the exact phrase again to create a new 90-second arm; the old expiry is never extended.'
-          : `The prior arm expired. Reopen @${intent.username} and resolve its exact state before arming again.`,
-      );
-      countdown.hidden = true;
-      badge.textContent = 'expired';
-      badge.dataset.tone = 'danger';
-      armButton.textContent = `Arm fresh ${intent.action}`;
-      armButton.disabled = !ready;
-      return;
-    }
-    if (matchingArm(intent, arm)) {
-      setText('live-detail', 'One reviewed item is armed. Return to the PWA to revalidate and reserve it before execution.');
-      countdown.textContent = shared.countdownLabel(arm);
-      countdown.hidden = false;
-      badge.textContent = 'armed';
-      badge.dataset.tone = 'danger';
-      armButton.textContent = 'One action armed';
-      armButton.disabled = true;
-      return;
-    }
-
-    const ready = liveContextMatches(runtime, intent);
-    setText(
-      'live-detail',
-      ready
-        ? 'This profile and relationship exactly match the signed intent. Arming alone does not click.'
-        : `Open @${intent.username} and resolve its exact ${intent.action === 'follow' ? 'Follow' : 'Following'} state before arming.`,
-    );
-    countdown.hidden = true;
-    badge.textContent = ready ? 'ready' : 'open target';
-    badge.dataset.tone = ready ? 'warning' : 'danger';
-    armButton.textContent = `Arm one ${intent.action}`;
-    armButton.disabled = !ready;
-  }
-
   function render(runtime) {
     renderCurrent(runtime);
     renderRuns(runtime);
-    renderLiveGate(runtime);
+    syncBotComposer(runtime);
     renderBotDraft(runtime, botDrafts.get(runtime.model) || null);
   }
 
@@ -221,7 +118,7 @@
     if (file.size > 5_000_000) throw new Error('Queue imports are limited to five megabytes.');
     const parsed = JSON.parse(await file.text());
     if (parsed?.kind !== 'insta-aio-manual-queue' || !Array.isArray(parsed.queue)) {
-      throw new Error('Select an Insta AIO manual queue export.');
+      throw new Error('Select an Insta Toolbox queue export.');
     }
     const next = shared.normalizeManualQueue({
       queue: parsed.queue,
@@ -254,67 +151,100 @@
     );
   }
 
-  async function arm(runtime) {
-    const intent = runtime.model.bridge.pendingLiveIntent;
-    if (!intent) return;
-    await runtime.refreshContext({ announce: false });
-    if (!liveContextMatches(runtime, intent)) {
-      runtime.status(`Open @${intent.username} and resolve its exact ${intent.action} control before arming.`, 'error');
-      renderLiveGate(runtime);
-      return;
+  function compatibleSources(action) {
+    return action === 'follow'
+      ? [
+        ['current-profile', 'Current exact profile'],
+        ['i-do-not-follow-back', 'People who follow you that you do not follow'],
+        ['scanned-followers', 'Scanned Followers'],
+        ['queue', 'Compatible queue items'],
+      ]
+      : [
+        ['current-profile', 'Current exact profile'],
+        ['not-following-me-back', 'People not following you back'],
+        ['scanned-following', 'Scanned Following'],
+        ['queue', 'Compatible queue items'],
+      ];
+  }
+
+  function syncBotComposer(runtime) {
+    const { document, query } = runtime;
+    const action = query('[data-ia-role="bot-action"]')?.value === 'unfollow' ? 'unfollow' : 'follow';
+    const sourceControl = query('[data-ia-role="bot-source"]');
+    if (!sourceControl) return;
+    const previous = sourceControl.value;
+    const sources = compatibleSources(action);
+    sourceControl.replaceChildren();
+    for (const [value, label] of sources) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      sourceControl.append(option);
     }
-    const phrase = await runtime.requestArmPhrase({
-      description: `This arms one ${intent.action} for @${intent.username}. The paired PWA must still revalidate and reserve it.`,
-      phrase: `ARM ${String(intent.action || '').toUpperCase()} @${intent.username}`,
-    });
-    if (phrase == null) return;
-    const response = await runtime.sendBridge({
-      kind: 'insta-aio-arm-account-action',
-      action: intent.action,
-      itemId: intent.itemId,
-      jobId: intent.jobId,
-      phrase,
-      username: intent.username,
-    });
-    if (response.error) throw new Error(`Live arm rejected: ${response.error}.`);
-    runtime.applyBridgeState(response.state);
-    runtime.status(`Armed one ${intent.action} for @${intent.username} for 90 seconds. No action has run.`, 'good');
+    sourceControl.value = sources.some(([value]) => value === previous) ? previous : sources[0][0];
+    const currentProfile = sourceControl.value === 'current-profile';
+    const countField = query('[data-ia-role="bot-count-field"]');
+    if (countField) countField.hidden = currentProfile;
+    const count = query('[data-ia-role="bot-count"]');
+    if (currentProfile && count) count.value = '1';
   }
 
-  async function cancel(runtime) {
-    const intent = runtime.model.bridge.pendingLiveIntent;
-    const response = await runtime.sendBridge({ kind: 'insta-aio-cancel-account-action' });
-    if (response.error) throw new Error(`Could not cancel the live intent: ${response.error}.`);
-    runtime.applyBridgeState(response.state, { guardArmDrop: false });
-    runtime.setArmNotice({
-      kind: 'account',
-      state: 'canceled',
-      target: intent?.username || 'reviewed target',
-    });
-    runtime.status('Canceled the pending live intent. No Instagram action was performed.', 'good');
-  }
-
-  function botTargets(runtime, source) {
+  function botTargets(runtime, source, action) {
+    if (source === 'current-profile') {
+      const context = runtime.model.context || {};
+      const skipped = [];
+      if (context.pageKind !== 'profile' || !context.username) return { pool: [], skipped };
+      const relationship = context.profile?.relationship;
+      const alreadyCorrect = action === 'follow'
+        ? ['following', 'requested'].includes(relationship)
+        : relationship === 'not-following';
+      if (alreadyCorrect) {
+        skipped.push({ count: 1, reason: `@${context.username} already has the requested relationship.` });
+        return { pool: [], skipped };
+      }
+      return { pool: [context.username], skipped };
+    }
     if (source === 'queue') {
-      return (runtime.model.manualQueue?.queue || runtime.model.manualQueue?.items || [])
-        .filter((entry) => shared.ACTIONABLE_QUEUE_STATUSES.has(entry.status))
+      const queue = runtime.model.manualQueue?.queue || runtime.model.manualQueue?.items || [];
+      const protectedCount = queue.filter((entry) => entry.status === 'protected').length;
+      const incompatibleCount = queue.filter((entry) => (
+        shared.ACTIONABLE_QUEUE_STATUSES.has(entry.status) && entry.action !== action
+      )).length;
+      return {
+        pool: queue
+        .filter((entry) => shared.ACTIONABLE_QUEUE_STATUSES.has(entry.status) && entry.action === action)
         .map((entry) => entry.account?.username)
-        .filter(Boolean);
+        .filter(Boolean),
+        skipped: [
+          protectedCount ? { count: protectedCount, reason: 'Protected queue items stay excluded.' } : null,
+          incompatibleCount ? { count: incompatibleCount, reason: `Queue items for the opposite action were excluded.` } : null,
+        ].filter(Boolean),
+      };
     }
     const workspace = runtime.model.capture || shared.captureWorkspaceDefaults();
     const comparison = shared.compareCaptureWorkspace(workspace);
     const list = source === 'i-do-not-follow-back'
       ? comparison.iDoNotFollowBack
-      : comparison.notFollowingMeBack;
-    return list.map((account) => account.username || account).filter(Boolean);
+      : source === 'not-following-me-back'
+        ? comparison.notFollowingMeBack
+        : source === 'scanned-followers'
+          ? shared.verifiedCaptureAccounts(workspace, 'followers')
+          : shared.verifiedCaptureAccounts(workspace, 'following');
+    return {
+      pool: list.map((account) => account.username || account).filter(Boolean),
+      skipped: [],
+    };
   }
 
   function botPlan(runtime) {
     const { query } = runtime;
-    const source = query('[data-ia-role="bot-source"]')?.value || 'not-following-me-back';
+    const source = query('[data-ia-role="bot-source"]')?.value || 'current-profile';
     const action = query('[data-ia-role="bot-action"]')?.value === 'follow' ? 'follow' : 'unfollow';
-    const requested = Math.max(1, Math.min(250, Number(query('[data-ia-role="bot-count"]')?.value) || 20));
-    const pool = botTargets(runtime, source);
+    const requested = source === 'current-profile'
+      ? 1
+      : Math.max(1, Math.min(250, Number(query('[data-ia-role="bot-count"]')?.value) || 20));
+    const targetSet = botTargets(runtime, source, action);
+    const pool = targetSet.pool;
     const unique = [...new Set(pool)];
     const selected = unique.slice(0, requested);
     return Object.freeze({
@@ -323,6 +253,7 @@
       removed: Math.max(0, pool.length - unique.length),
       requested,
       selected: Object.freeze(selected),
+      skipped: Object.freeze(targetSet.skipped),
       signature: JSON.stringify({ action, requested, selected, source }),
       source,
     });
@@ -338,13 +269,19 @@
     if (reviewButton) reviewButton.hidden = Boolean(draft);
     if (startButton) {
       startButton.hidden = !draft;
-      if (draft) startButton.textContent = `Start ${draft.action} run`;
+      if (draft) {
+        const label = draft.action === 'follow' ? 'Follow' : 'Unfollow';
+        startButton.textContent = `Start ${label} on ${draft.selected.length} account${draft.selected.length === 1 ? '' : 's'}`;
+      }
     }
     if (badge) {
       badge.textContent = draft ? `${draft.selected.length} reviewed` : 'idle';
       badge.dataset.tone = draft ? 'warning' : 'neutral';
     }
     if (!draft) {
+      const plan = botPlan(runtime);
+      const label = plan.action === 'follow' ? 'Follow' : 'Unfollow';
+      if (reviewButton) reviewButton.textContent = `Review ${plan.requested} ${label} target${plan.requested === 1 ? '' : 's'}`;
       setText('bot-detail', 'Each target is opened, verified, and acted on one at a time with randomised pacing.');
       return;
     }
@@ -356,27 +293,28 @@
     setText('bot-review-title', `${draft.selected.length} target${draft.selected.length === 1 ? '' : 's'} ready to confirm`);
     setText(
       'bot-review-detail',
-      `${draft.removed} duplicate${draft.removed === 1 ? '' : 's'} removed; ${draft.omitted} left outside this bounded run. Every profile is rechecked before action.`,
+      `${draft.removed} duplicate${draft.removed === 1 ? '' : 's'} removed; ${draft.omitted} valid target${draft.omitted === 1 ? '' : 's'} remain outside this finite run; ${draft.skipped.reduce((total, entry) => total + entry.count, 0)} protected, incompatible, or already-correct target${draft.skipped.reduce((total, entry) => total + entry.count, 0) === 1 ? '' : 's'} skipped. Every profile is rechecked before action.`,
     );
     const list = query('[data-ia-role="bot-review-list"]');
     if (!list) return;
     list.replaceChildren();
-    for (const username of draft.selected.slice(0, 8)) {
+    for (const username of draft.selected) {
       const row = document.createElement('li');
       row.className = 'ia-list-item';
       row.textContent = `@${username}`;
       list.append(row);
     }
-    if (draft.selected.length > 8) {
+    for (const entry of draft.skipped) {
       const row = document.createElement('li');
       row.className = 'ia-list-item';
-      row.textContent = `+ ${draft.selected.length - 8} more`;
+      row.textContent = `${entry.count} skipped — ${entry.reason}`;
       list.append(row);
     }
   }
 
   function invalidateBotReview(runtime) {
     botDrafts.delete(runtime.model);
+    syncBotComposer(runtime);
     renderBotDraft(runtime, null);
   }
 
@@ -384,9 +322,12 @@
     const draft = botPlan(runtime);
     if (!draft.selected.length) {
       runtime.status(
-        draft.source === 'queue'
+        draft.skipped[0]?.reason
+          || (draft.source === 'current-profile'
+          ? 'Open one Instagram profile first. No target was reviewed.'
+          : draft.source === 'queue'
           ? 'The manual queue has no pending accounts.'
-          : 'Capture both Followers and Following in the checker first.',
+          : 'Capture both Followers and Following in the checker first.'),
         'error',
       );
       invalidateBotReview(runtime);
@@ -428,17 +369,13 @@
   }
 
   shared.install('queueView', {
-    arm,
     botReview,
     botStart,
     botTargets,
-    cancel,
     importQueue,
     invalidateBotReview,
-    liveContextMatches,
-    matchingArm,
     render,
-    renderLiveGate,
+    syncBotComposer,
     updateCurrent,
   });
 })();

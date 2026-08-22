@@ -122,7 +122,7 @@
     const tools = [
       {
         section: 'capture',
-        title: 'Follower checker',
+        title: 'Mutual Checker',
         detail: 'Capture Followers and Following separately, then compare the rendered rows locally.',
         state: 'read only',
       },
@@ -130,13 +130,13 @@
         section: 'queue',
         title: 'Follow / Unfollow',
         detail: 'Import a reviewed queue and inspect one exact profile without clicking first.',
-        state: model.bridge.pendingLiveIntent ? 'intent ready' : 'live locked',
+        state: model.bridge.pendingLiveIntent ? 'intent ready' : 'review then confirm',
       },
       {
         section: 'messages',
         title: 'DM Unsend',
         detail: 'Read visible evidence or resolve one exact reviewed sent message without opening its menu.',
-        state: model.bridge.pendingDmIntent ? 'intent ready' : 'live locked',
+        state: model.bridge.pendingDmIntent ? 'intent ready' : 'scan then confirm',
       },
     ];
     for (const tool of tools) {

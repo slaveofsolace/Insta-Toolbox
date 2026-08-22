@@ -53,11 +53,11 @@ const requiredStates = [
     semantics: [
       semantic('[data-ia-role="first-run"]', {
         hidden: false,
-        includes: ['Follower checker', 'Follow / Unfollow', 'DM Unsend', 'Live actions stay locked'],
+        includes: ['Mutual Checker', 'Follow / Unfollow', 'DM Unsend', 'confirm once'],
       }),
       semantic('[data-ia-action="first-run-start"]', {
         attributes: { type: 'button' },
-        equals: 'Open follower checker',
+        equals: 'Open Mutual Checker',
       }),
       semantic('[data-ia-action="first-run-dismiss"]', {
         attributes: { type: 'button' },
@@ -74,7 +74,7 @@ const requiredStates = [
     position: { x: 470, y: 72 },
     semantics: [
       semantic('[data-ia-role="now-content"] .ia-tool-grid', {
-        includes: ['Follower checker', 'Follow / Unfollow', 'DM Unsend', 'live locked'],
+        includes: ['Mutual Checker', 'Follow / Unfollow', 'DM Unsend'],
       }),
       semantic('[data-ia-role="move-handle"]', {
         attributes: { 'aria-label': 'Move sidecar; use arrow keys for precise movement', type: 'button' },
@@ -156,55 +156,68 @@ const requiredStates = [
     ],
     targetSelector: null,
   }),
-  scenario('queue-locked', {
-    mode: 'qa-queue-locked',
-    section: 'queue',
+  scenario('checker-authenticated-read', {
+    after: 'check-account-relationships',
+    mode: 'qa-checker-api',
+    section: 'capture',
     semantics: [
-      semantic('[data-ia-role="live-title"]', { equals: 'Live actions locked' }),
-      semantic('[data-ia-role="live-badge"]', { equals: 'locked', tone: 'warning' }),
-      semantic('[data-ia-role="live-detail"]', { includes: ['Confirm one live item in the paired PWA'] }),
-      semantic('[data-ia-action="arm-account-live"]', { disabled: true }),
+      semantic('[data-ia-role="checker-run"]', {
+        attributes: { type: 'button' },
+        equals: 'Check Followers + Following',
+      }),
+      semantic('[data-ia-role="capture-state-title"]', {
+        equals: 'Follower comparison complete for @demo_creator',
+      }),
+      semantic('[data-ia-role="followers-count"]', { numberEquals: 2 }),
+      semantic('[data-ia-role="following-count"]', { numberEquals: 2 }),
+      semantic('[data-ia-role="checker-result"]', {
+        includes: ['Authenticated account comparison', 'Mutuals', 'Not following me back'],
+      }),
+      semantic('[data-ia-role="checker-filtered-list"]', {
+        includes: ['@following_only', 'Following Only'],
+      }),
     ],
     targetSelector: null,
   }),
-  scenario('queue-exact-target-ready', {
-    mode: 'qa-account-ready',
+  scenario('queue-action-first', {
+    mode: 'qa-queue-locked',
     section: 'queue',
     semantics: [
-      semantic('[data-ia-role="live-title"]', { equals: 'unfollow @demo_creator' }),
-      semantic('[data-ia-role="live-badge"]', { equals: 'ready', tone: 'warning' }),
-      semantic('[data-ia-role="live-detail"]', {
-        includes: ['exactly match the signed intent', 'Arming alone does not click'],
-      }),
-      semantic('[data-ia-action="arm-account-live"]', { disabled: false }),
+      semantic('[data-ia-role="bot-action"]', { includes: ['Follow people', 'Unfollow people'] }),
+      semantic('[data-ia-role="bot-source"]', { includes: ['Current exact profile', 'People who follow you that you do not follow'] }),
+      semantic('[data-ia-action="bot-review"]', { includes: ['Review', 'Follow target'] }),
+      semantic('[data-ia-role="bot-start"]', { exists: false }),
+    ],
+    targetSelector: null,
+  }),
+  scenario('queue-exact-target-review', {
+    mode: 'qa-queue-locked',
+    section: 'queue',
+    semantics: [
+      semantic('[data-ia-role="bot-disclosure"]', { hidden: false, visible: true, includes: ['Run composer', 'Inspect exact profiles'] }),
+      semantic('[data-ia-role="bot-source"]', { includes: ['Current exact profile'] }),
+      semantic('[data-ia-role="bot-count-field"]', { hidden: true }),
+      semantic('[data-ia-action="bot-review"]', { disabled: false, includes: ['Review 1'] }),
     ],
   }),
-  scenario('queue-armed-countdown', {
+  scenario('queue-confirmation-collision', {
     mode: 'qa-account-armed',
     presentation: 'strip',
     section: 'queue',
     semantics: [
-      semantic('[data-ia-role="live-title"]', { equals: 'unfollow @demo_creator' }),
-      semantic('[data-ia-role="live-badge"]', { equals: 'armed', tone: 'danger' }),
-      semantic('[data-ia-role="live-countdown"]', { hidden: false, includes: ['s remaining'] }),
-      semantic('[data-ia-action="arm-account-live"]', { disabled: true }),
+      semantic('[data-ia-role="collision-target"]', { includes: ['@demo_creator'] }),
       semantic('[data-ia-role="collision-state"]', {
-        equals: 'One-use arm active · page controls remain untouched',
+        equals: 'Exact confirmation active · page controls remain untouched',
       }),
     ],
   }),
-  scenario('queue-arm-expired', {
-    after: 'wait-account-expired',
-    mode: 'qa-account-expiring',
+  scenario('queue-compatible-source-options', {
+    mode: 'qa-queue-locked',
     section: 'queue',
     semantics: [
-      semantic('[data-ia-role="live-title"]', { equals: 'unfollow @demo_creator' }),
-      semantic('[data-ia-role="live-badge"]', { equals: 'expired', tone: 'danger' }),
-      semantic('[data-ia-role="live-detail"]', {
-        includes: ['prior arm expired', 'old expiry is never extended'],
-      }),
-      semantic('[data-ia-role="live-countdown"]', { hidden: true }),
-      semantic('[data-ia-action="arm-account-live"]', { disabled: false }),
+      semantic('[data-ia-role="bot-action"]', { includes: ['Follow people', 'Unfollow people'] }),
+      semantic('[data-ia-role="bot-source"]', { includes: ['Scanned Followers', 'Compatible queue items'] }),
+      semantic('[data-ia-role="bot-disclosure"]', { includes: ['Run composer', 'Each target is opened', 'rate limit'] }),
     ],
   }),
   scenario('messages-evidence-only', {
@@ -215,48 +228,40 @@ const requiredStates = [
       semantic('[data-ia-role="message-count"]', { numberEquals: 3 }),
       semantic('[data-ia-role="message-state-title"]', { equals: 'Conversation ready' }),
       semantic('[data-ia-role="message-state-detail"]', {
-        includes: ['read visible evidence', 'Unsend all DMs'],
+        includes: ['Read visible evidence', 'eligible count'],
       }),
-      semantic('[data-ia-role="dm-live-badge"]', { equals: 'locked', tone: 'neutral' }),
+      semantic('[data-ia-action="mass-unsend"]', { disabled: false, equals: 'Unsend DMs' }),
     ],
     targetSelector: '.fixture-thread [role="row"]',
   }),
-  scenario('messages-exact-target-ready', {
-    mode: 'qa-messages-ready',
+  scenario('messages-permanent-primary', {
+    mode: 'messages-exact',
     section: 'messages',
     semantics: [
-      semantic('[data-ia-role="dm-live-title"]', { equals: 'Message sent-1' }),
-      semantic('[data-ia-role="dm-live-badge"]', { equals: 'ready', tone: 'warning' }),
-      semantic('[data-ia-role="dm-live-detail"]', {
-        includes: ['Exactly one rendered sent-message identity matches', 'Arming does not open its menu'],
-      }),
-      semantic('[data-ia-action="arm-dm-live"]', { disabled: false }),
+      semantic('[data-ia-action="mass-unsend"]', { disabled: false, equals: 'Unsend DMs' }),
+      semantic('[data-ia-role="unsend-scope"]', { includes: ['All eligible sent messages', 'Newest N', 'Oldest N'] }),
+      semantic('[data-ia-action="scan-sent-dms"]', { equals: 'Check conversation' }),
     ],
     targetSelector: '[data-message-id="sent-1"]',
   }),
-  scenario('messages-wrong-conversation', {
-    mode: 'qa-messages-wrong',
+  scenario('messages-thread-bound-primary', {
+    mode: 'messages-exact',
     section: 'messages',
     semantics: [
-      semantic('[data-ia-role="dm-live-title"]', { equals: 'Message sent-1' }),
-      semantic('[data-ia-role="dm-live-badge"]', { equals: 'open message', tone: 'danger' }),
-      semantic('[data-ia-role="dm-live-detail"]', { includes: ['Open the exact conversation'] }),
-      semantic('[data-ia-action="arm-dm-live"]', { disabled: true }),
+      semantic('[data-ia-role="message-state-title"]', { equals: 'Conversation ready' }),
+      semantic('[data-ia-action="mass-unsend"]', { disabled: false, equals: 'Unsend DMs' }),
+      semantic('[data-ia-role="unsend-detail"]', { includes: ['first checks this conversation'] }),
     ],
     targetSelector: '[data-message-id="sent-1"]',
   }),
-  scenario('messages-armed-countdown', {
+  scenario('messages-confirmation-collision', {
     mode: 'qa-messages-armed',
     presentation: 'strip',
     section: 'messages',
     semantics: [
-      semantic('[data-ia-role="dm-live-title"]', { equals: 'Message sent-1' }),
-      semantic('[data-ia-role="dm-live-badge"]', { equals: 'armed', tone: 'danger' }),
-      semantic('[data-ia-role="dm-live-countdown"]', { hidden: false, includes: ['s remaining'] }),
-      semantic('[data-ia-action="arm-dm-live"]', { disabled: true }),
       semantic('[data-ia-role="collision-target"]', { equals: 'message sent-1' }),
       semantic('[data-ia-role="collision-state"]', {
-        equals: 'One-use arm active · page controls remain untouched',
+        equals: 'Exact confirmation active · page controls remain untouched',
       }),
     ],
     targetSelector: '[data-message-id="sent-1"]',
@@ -300,7 +305,7 @@ const requiredStates = [
     presentation: 'strip',
     section: 'queue',
     semantics: [
-      semantic('[data-ia-role="live-badge"]', { equals: 'armed', tone: 'danger' }),
+      semantic('[data-ia-role="live-badge"]', { exists: false }),
       semantic('[data-ia-role="collision-target"]', { equals: '@demo_creator' }),
       semantic('[data-ia-role="collision-state"]', {
         equals: 'Instagram action surface visible · overlay controls suspended',
@@ -390,7 +395,7 @@ const matrixStates = [
       semantic('[data-ia-role="bot-badge"]', { equals: '1 reviewed', tone: 'warning' }),
       semantic('[data-ia-role="bot-review-title"]', { equals: '1 target ready to confirm' }),
       semantic('[data-ia-role="bot-review-detail"]', {
-        includes: ['0 duplicates removed', '0 left outside this bounded run', 'rechecked before action'],
+        includes: ['0 duplicates removed', '0 valid targets remain outside this finite run', 'rechecked before action'],
       }),
       semantic('[data-ia-role="bot-detail"]', { includes: ['Reviewed: @demo_creator', 'rechecked before action'] }),
       semantic('[data-ia-role="bot-review-list"]', { includes: ['@demo_creator'] }),

@@ -35,6 +35,15 @@
     "[aria-label*='opciones']",
     "[aria-label*='options']",
   ]);
+  const INSTAGRAM_WEB_ORIGIN = 'https://www.instagram.com';
+  const INSTAGRAM_WEB_APP_ID = '936619743392459';
+  const RELATIONSHIP_PAGE_SIZE = 50;
+  const RELATIONSHIP_MAX_PAGES = 1_000;
+  const RELATIONSHIP_MAX_ACCOUNTS = 25_000;
+  const RELATIONSHIP_MAX_DURATION_MS = 20 * 60 * 1_000;
+  const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
+  const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
+  const RELATIONSHIP_RETRY_BASE_MS = 1_000;
 
   function normalizeUsername(value) {
     const username = String(value || '')
@@ -47,6 +56,555 @@
     return /^[a-z0-9._]{1,30}$/i.test(username) && !RESERVED.has(username)
       ? username
       : '';
+  }
+
+  function detectAuthenticatedUsername() {
+    const candidates = new Set();
+    const anchors = [
+      ...document.querySelectorAll('a[href]'),
+    ];
+    for (const anchor of anchors) {
+      const labels = [
+        anchor.getAttribute?.('aria-label'),
+        ...[...anchor.querySelectorAll?.('[aria-label], img[alt]') || []]
+          .flatMap((element) => [element.getAttribute?.('aria-label'), element.getAttribute?.('alt')]),
+      ]
+        .map((value) => String(value || '').normalize('NFKC').toLowerCase())
+        .filter(Boolean);
+      if (!labels.some((label) => label === 'profile' || label.includes('profile picture'))) continue;
+      const username = normalizeUsername(anchor.getAttribute?.('href'));
+      if (username) candidates.add(username);
+    }
+    return candidates.size === 1 ? [...candidates][0] : '';
+  }
+
+  function relationshipError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  }
+
+  function assertRelationshipRunActive(signal, startedAt, now, maxDurationMs) {
+    if (signal?.aborted) throw relationshipError('stopped', 'Follower check stopped.');
+    if (now() - startedAt > maxDurationMs) {
+      throw relationshipError('time-limit', 'The follower check reached its 20-minute read limit.');
+    }
+    const session = inspectSession();
+    if (session.sessionExpired) throw relationshipError('session-expired', 'Instagram requires a fresh login.');
+    if (session.challenge) throw relationshipError('challenge', 'Instagram opened a security challenge.');
+    if (session.actionBlocked) throw relationshipError('action-blocked', 'Instagram restricted activity.');
+    if (session.rateLimited) throw relationshipError('rate-limited', 'Instagram asked this session to wait.');
+  }
+
+  function relationshipDelay(ms, signal, setTimer = setTimeout, clearTimer = clearTimeout) {
+    if (!ms) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(relationshipError('stopped', 'Follower check stopped.'));
+        return;
+      }
+      let timer = null;
+      const stop = () => {
+        if (timer !== null) clearTimer(timer);
+        signal?.removeEventListener?.('abort', stop);
+        reject(relationshipError('stopped', 'Follower check stopped.'));
+      };
+      timer = setTimer(() => {
+        signal?.removeEventListener?.('abort', stop);
+        resolve();
+      }, ms);
+      signal?.addEventListener?.('abort', stop, { once: true });
+    });
+  }
+
+  function relationshipRunDeadline(sourceSignal, maxDurationMs, setTimer, clearTimer) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const stop = () => controller.abort();
+    if (sourceSignal?.aborted) stop();
+    else sourceSignal?.addEventListener?.('abort', stop, { once: true });
+    const timer = setTimer(() => {
+      timedOut = true;
+      controller.abort();
+    }, maxDurationMs);
+    return Object.freeze({
+      cleanup() {
+        clearTimer(timer);
+        sourceSignal?.removeEventListener?.('abort', stop);
+      },
+      signal: controller.signal,
+      timedOut: () => timedOut,
+    });
+  }
+
+  function relationshipResponseStop(data) {
+    const message = String(data?.message || data?.error_type || '').toLowerCase();
+    if (message.includes('challenge') || message.includes('checkpoint')) return 'challenge';
+    if (message.includes('login') || message.includes('not logged')) return 'session-expired';
+    if (message.includes('wait a few minutes') || message.includes('rate limit')) return 'rate-limited';
+    if (message.includes('feedback_required') || message.includes('restrict certain activity')) return 'action-blocked';
+    return '';
+  }
+
+  function relationshipStepWithTimeout(task, {
+    clearTimer,
+    setTimer,
+    signal,
+    timeoutMs,
+  }) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(relationshipError('stopped', 'Follower check stopped.'));
+        return;
+      }
+      const controller = new AbortController();
+      let settled = false;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimer(timer);
+        signal?.removeEventListener?.('abort', stop);
+        callback(value);
+      };
+      const stop = () => {
+        controller.abort();
+        finish(reject, relationshipError('stopped', 'Follower check stopped.'));
+      };
+      const timer = setTimer(() => {
+        controller.abort();
+        finish(reject, relationshipError(
+          'request-timeout',
+          'Instagram did not finish this follower page within 20 seconds.',
+        ));
+      }, timeoutMs);
+      signal?.addEventListener?.('abort', stop, { once: true });
+      Promise.resolve()
+        .then(() => task(controller.signal))
+        .then((value) => finish(resolve, value))
+        .catch((error) => {
+          if (signal?.aborted) {
+            finish(reject, relationshipError('stopped', 'Follower check stopped.'));
+            return;
+          }
+          finish(reject, error);
+        });
+    });
+  }
+
+  async function fetchInstagramRelationshipJson(url, {
+    clearTimer,
+    fetchImpl,
+    found = 0,
+    listType = null,
+    onProgress,
+    pages = 0,
+    random,
+    requestAttempts,
+    requestTimeoutMs,
+    retryBaseMs,
+    setTimer,
+    signal,
+    sleepImpl,
+    username,
+  }) {
+    for (let attempt = 1; attempt <= requestAttempts; attempt += 1) {
+      try {
+        const response = await relationshipStepWithTimeout(
+          (attemptSignal) => fetchImpl(url.href, {
+            credentials: 'include',
+            headers: { 'X-IG-App-ID': INSTAGRAM_WEB_APP_ID },
+            method: 'GET',
+            signal: attemptSignal,
+          }),
+          {
+            clearTimer, setTimer, signal, timeoutMs: requestTimeoutMs,
+          },
+        );
+        let data = null;
+        try {
+          data = await relationshipStepWithTimeout(
+            () => response.json(),
+            {
+              clearTimer, setTimer, signal, timeoutMs: requestTimeoutMs,
+            },
+          );
+        } catch (error) {
+          if (error?.code === 'request-timeout' || error?.code === 'stopped') throw error;
+          throw relationshipError('invalid-response', 'Instagram returned an unreadable follower response.');
+        }
+        const responseStop = relationshipResponseStop(data);
+        if (response.status === 429 || responseStop === 'rate-limited') {
+          throw relationshipError('rate-limited', 'Instagram asked this session to wait before loading more accounts.');
+        }
+        if (response.status === 401 || responseStop === 'session-expired') {
+          throw relationshipError('session-expired', 'Instagram requires a fresh login.');
+        }
+        if (responseStop === 'challenge') {
+          throw relationshipError('challenge', 'Instagram opened a security challenge.');
+        }
+        if (responseStop === 'action-blocked') {
+          throw relationshipError('action-blocked', 'Instagram restricted activity.');
+        }
+        if (!response.ok || data?.status === 'fail') {
+          throw relationshipError('request-failed', `Instagram could not load this follower page (HTTP ${response.status || 'error'}).`);
+        }
+        return data;
+      } catch (error) {
+        let retryable = error?.code === 'request-timeout' || error?.code === 'network-error';
+        if (signal?.aborted || error?.code === 'stopped') {
+          throw relationshipError('stopped', 'Follower check stopped.');
+        }
+        if (!error?.code && error?.name === 'AbortError') {
+          retryable = true;
+        } else if (!error?.code) {
+          retryable = true;
+          error = relationshipError('network-error', 'Instagram follower data could not be reached from this tab.');
+        }
+        if (!retryable || attempt >= requestAttempts) {
+          if (retryable) {
+            throw relationshipError(
+              'request-timeout',
+              `Instagram did not finish this ${listType || 'account'} request after ${requestAttempts} attempts. The previous comparison is unchanged.`,
+            );
+          }
+          throw error;
+        }
+        const retryDelayMs = Math.min(
+          5_000,
+          (retryBaseMs * attempt) + Math.floor(Math.max(0, Math.min(0.999999, random())) * 250),
+        );
+        onProgress?.(Object.freeze({
+          attempt: attempt + 1,
+          failedAttempt: attempt,
+          found,
+          listType,
+          maxAttempts: requestAttempts,
+          pages,
+          phase: 'retrying',
+          retryDelayMs,
+          username,
+        }));
+        await sleepImpl(retryDelayMs, signal);
+      }
+    }
+    throw relationshipError('request-timeout', 'Instagram follower data did not finish.');
+  }
+
+  async function resolveRelationshipUserId(username, options) {
+    const url = new URL('/api/v1/web/search/topsearch/', INSTAGRAM_WEB_ORIGIN);
+    url.searchParams.set('context', 'blended');
+    url.searchParams.set('query', username);
+    url.searchParams.set('include_reel', 'false');
+    const data = await fetchInstagramRelationshipJson(url, options);
+    const exact = (Array.isArray(data?.users) ? data.users : [])
+      .map((entry) => entry?.user)
+      .find((user) => normalizeUsername(user?.username) === username);
+    const userId = String(exact?.pk || '').trim();
+    if (!/^\d+$/.test(userId)) {
+      throw relationshipError('username-not-found', `Instagram could not resolve @${username}.`);
+    }
+    const count = (...values) => {
+      for (const value of values) {
+        const number = Number(value);
+        if (Number.isSafeInteger(number) && number >= 0) return number;
+      }
+      return null;
+    };
+    const onExactProfile = normalizeUsername(location.pathname) === username;
+    return {
+      userId,
+      expectedCounts: {
+        followers: onExactProfile
+          ? exactProfileListCount('followers')
+          : count(exact.follower_count, exact.followers_count, exact.edge_followed_by?.count),
+        following: onExactProfile
+          ? exactProfileListCount('following')
+          : count(exact.following_count, exact.follows_count, exact.edge_follow?.count),
+      },
+    };
+  }
+
+  async function fetchRelationshipList(listType, userId, username, {
+    clearTimer,
+    fetchImpl,
+    maxAccounts,
+    maxDurationMs,
+    maxPages,
+    now,
+    onProgress,
+    random,
+    requestAttempts,
+    requestTimeoutMs,
+    retryBaseMs,
+    setTimer,
+    signal,
+    sleepImpl,
+    startedAt,
+    expectedCount = null,
+  }) {
+    const accounts = new Map();
+    const seenTokens = new Set();
+    let nextMaxId = '';
+    let pages = 0;
+    let reconciliationAttempts = 0;
+    while (pages < maxPages && accounts.size < maxAccounts) {
+      assertRelationshipRunActive(signal, startedAt, now, maxDurationMs);
+      const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
+      url.searchParams.set('count', String(RELATIONSHIP_PAGE_SIZE));
+      if (nextMaxId) url.searchParams.set('max_id', nextMaxId);
+      const data = await fetchInstagramRelationshipJson(url, {
+        clearTimer,
+        fetchImpl,
+        found: accounts.size,
+        listType,
+        onProgress,
+        pages,
+        random,
+        requestAttempts,
+        requestTimeoutMs,
+        retryBaseMs,
+        setTimer,
+        signal,
+        sleepImpl,
+        username,
+      });
+      if (!Array.isArray(data?.users)) {
+        throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} page.`);
+      }
+      pages += 1;
+      for (const user of data.users) {
+        const accountUsername = normalizeUsername(user?.username);
+        if (!accountUsername) continue;
+        accounts.set(accountUsername, {
+          username: accountUsername,
+          profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
+          displayName: String(user?.full_name || '').trim().slice(0, 160),
+          source: 'authenticated-instagram-web',
+        });
+        if (accounts.size >= maxAccounts) break;
+      }
+      onProgress?.(Object.freeze({
+        found: accounts.size,
+        listType,
+        pages,
+        phase: 'loading',
+        username,
+      }));
+      const candidateToken = data.next_max_id;
+      if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
+        if (Number.isSafeInteger(expectedCount)
+          && accounts.size < expectedCount
+          && reconciliationAttempts < 1) {
+          reconciliationAttempts += 1;
+          nextMaxId = '';
+          seenTokens.clear();
+          onProgress?.(Object.freeze({
+            attempt: reconciliationAttempts,
+            expectedCount,
+            found: accounts.size,
+            listType,
+            pages,
+            phase: 'reconciling',
+            username,
+          }));
+          await sleepImpl(800, signal);
+          continue;
+        }
+        const countReconciled = !Number.isSafeInteger(expectedCount) || accounts.size >= expectedCount;
+        return {
+          accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
+          complete: countReconciled,
+          expectedCount,
+          pages,
+          reason: countReconciled ? 'pagination-complete' : 'count-mismatch',
+        };
+      }
+      nextMaxId = String(candidateToken);
+      if (!nextMaxId || nextMaxId.length > 500 || seenTokens.has(nextMaxId)) {
+        throw relationshipError('invalid-pagination', `Instagram returned an unsafe ${listType} pagination token.`);
+      }
+      seenTokens.add(nextMaxId);
+      const delayMs = Math.floor(800 + (Math.max(0, Math.min(0.999999, random())) * 700));
+      await sleepImpl(delayMs, signal);
+    }
+    return {
+      accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
+      complete: false,
+      expectedCount,
+      pages,
+      reason: accounts.size >= maxAccounts ? 'account-limit' : 'page-limit',
+    };
+  }
+
+  async function fetchFollowerComparison({
+    clearTimer = clearTimeout,
+    fetchImpl = globalThis.fetch?.bind(globalThis),
+    maxAccounts = RELATIONSHIP_MAX_ACCOUNTS,
+    maxDurationMs = RELATIONSHIP_MAX_DURATION_MS,
+    maxPages = RELATIONSHIP_MAX_PAGES,
+    now = Date.now,
+    onProgress = null,
+    random = Math.random,
+    requestAttempts = RELATIONSHIP_REQUEST_ATTEMPTS,
+    requestTimeoutMs = RELATIONSHIP_REQUEST_TIMEOUT_MS,
+    retryBaseMs = RELATIONSHIP_RETRY_BASE_MS,
+    signal = null,
+    sleepImpl = relationshipDelay,
+    setTimer = setTimeout,
+    username: requestedUsername,
+  } = {}) {
+    const username = normalizeUsername(requestedUsername);
+    if (!username) throw relationshipError('invalid-username', 'Enter a valid Instagram username.');
+    const pageOrigin = String(location?.origin || '');
+    if (pageOrigin !== INSTAGRAM_WEB_ORIGIN) {
+      throw relationshipError('wrong-origin', 'Open instagram.com before running the follower check.');
+    }
+    if (typeof fetchImpl !== 'function') {
+      throw relationshipError('fetch-unavailable', 'This browser context cannot load Instagram follower data.');
+    }
+    const boundedPages = Math.max(1, Math.min(RELATIONSHIP_MAX_PAGES, Math.trunc(Number(maxPages) || 0)));
+    const boundedAccounts = Math.max(1, Math.min(RELATIONSHIP_MAX_ACCOUNTS, Math.trunc(Number(maxAccounts) || 0)));
+    const boundedDuration = Math.max(1_000, Math.min(RELATIONSHIP_MAX_DURATION_MS, Math.trunc(Number(maxDurationMs) || 0)));
+    const boundedAttempts = Math.max(1, Math.min(RELATIONSHIP_REQUEST_ATTEMPTS, Math.trunc(Number(requestAttempts) || 0)));
+    const boundedRequestTimeout = Math.max(1, Math.min(RELATIONSHIP_REQUEST_TIMEOUT_MS, Math.trunc(Number(requestTimeoutMs) || 0)));
+    const boundedRetryBase = Math.max(0, Math.min(5_000, Math.trunc(Number(retryBaseMs) || 0)));
+    const deadline = relationshipRunDeadline(signal, boundedDuration, setTimer, clearTimer);
+    const runSignal = deadline.signal;
+    try {
+      const startedAt = now();
+      assertRelationshipRunActive(runSignal, startedAt, now, boundedDuration);
+      onProgress?.(Object.freeze({ found: 0, listType: null, pages: 0, phase: 'resolving', username }));
+      const common = {
+        fetchImpl,
+        maxAccounts: boundedAccounts,
+        maxDurationMs: boundedDuration,
+        maxPages: boundedPages,
+        now,
+        onProgress,
+        random,
+        requestAttempts: boundedAttempts,
+        requestTimeoutMs: boundedRequestTimeout,
+        retryBaseMs: boundedRetryBase,
+        clearTimer,
+        setTimer,
+        signal: runSignal,
+        sleepImpl,
+        startedAt,
+      };
+      const resolution = await resolveRelationshipUserId(username, {
+        ...common,
+        found: 0,
+        listType: null,
+        pages: 0,
+        username,
+      });
+      const { userId, expectedCounts } = resolution;
+      const followers = await fetchRelationshipList('followers', userId, username, {
+        ...common,
+        expectedCount: expectedCounts.followers,
+      });
+      const following = await fetchRelationshipList('following', userId, username, {
+        ...common,
+        expectedCount: expectedCounts.following,
+      });
+      assertRelationshipRunActive(runSignal, startedAt, now, boundedDuration);
+      const capturedAt = new Date(now()).toISOString();
+      const result = Object.freeze({
+        capturedAt,
+        complete: Object.freeze({ followers: followers.complete, following: following.complete }),
+        expectedCounts: Object.freeze({ followers: followers.expectedCount, following: following.expectedCount }),
+        followers: Object.freeze(followers.accounts),
+        following: Object.freeze(following.accounts),
+        pages: Object.freeze({ followers: followers.pages, following: following.pages }),
+        reasons: Object.freeze({ followers: followers.reason, following: following.reason }),
+        source: 'authenticated-instagram-web',
+        userId,
+        username,
+      });
+      onProgress?.(Object.freeze({
+        found: result.followers.length + result.following.length,
+        listType: null,
+        pages: result.pages.followers + result.pages.following,
+        phase: 'complete',
+        username,
+      }));
+      return result;
+    } catch (error) {
+      if (deadline.timedOut() && error?.code === 'stopped') {
+        throw relationshipError('time-limit', 'The follower check reached its 20-minute read limit.');
+      }
+      throw error;
+    } finally {
+      deadline.cleanup();
+    }
+  }
+
+  function followerComparisonRecord(workspace, comparison, generatedAt = new Date().toISOString()) {
+    return {
+      schemaVersion: 1,
+      kind: 'insta-aio-comparison',
+      generatedAt,
+      subjectUsername: normalizeUsername(workspace?.subjectUsername),
+      source: workspace?.source && typeof workspace.source === 'object' ? workspace.source : {},
+      complete: workspace?.complete && typeof workspace.complete === 'object' ? workspace.complete : {},
+      verified: workspace?.verified && typeof workspace.verified === 'object' ? workspace.verified : {},
+      mutuals: Array.isArray(comparison?.mutuals) ? comparison.mutuals : [],
+      notFollowingMeBack: Array.isArray(comparison?.notFollowingMeBack)
+        ? comparison.notFollowingMeBack
+        : [],
+      iDoNotFollowBack: Array.isArray(comparison?.iDoNotFollowBack)
+        ? comparison.iDoNotFollowBack
+        : [],
+    };
+  }
+
+  function followerComparisonReport(workspace, comparison, generatedAt = new Date().toISOString()) {
+    const record = followerComparisonRecord(workspace, comparison, generatedAt);
+    const followersCount = Array.isArray(workspace?.followers) ? workspace.followers.length : 0;
+    const followingCount = Array.isArray(workspace?.following) ? workspace.following.length : 0;
+    const fullyVerified = record.verified.followers === true && record.verified.following === true;
+    const fullyComplete = fullyVerified
+      && record.complete.followers === true
+      && record.complete.following === true;
+    const source = record.source.followers === 'authenticated-web'
+      && record.source.following === 'authenticated-web'
+      ? 'Authenticated Instagram web pagination'
+      : record.source.followers === 'list-dialog' && record.source.following === 'list-dialog'
+        ? 'Instagram list-dialog capture'
+        : 'Mixed local captures';
+    const lines = [
+      'INSTA TOOLBOX MUTUAL CHECK',
+      '================================',
+      `Account: ${record.subjectUsername ? `@${record.subjectUsername}` : 'Not recorded'}`,
+      `Generated: ${record.generatedAt}`,
+      `Source: ${source}`,
+      `Completeness: ${fullyComplete ? 'Complete — both lists reached their verified end.' : 'Partial — one or both lists did not reach a verified end.'}`,
+      '',
+      'SUMMARY',
+      '-------',
+      `Followers: ${followersCount}`,
+      `Following: ${followingCount}`,
+      `Mutual followers: ${record.mutuals.length}`,
+      `Not following you back: ${record.notFollowingMeBack.length}`,
+      `You do not follow back: ${record.iDoNotFollowBack.length}`,
+    ];
+    const addSection = (title, accounts) => {
+      lines.push('', title, '-'.repeat(title.length));
+      if (!accounts.length) {
+        lines.push('None');
+        return;
+      }
+      accounts.forEach((account, index) => {
+        const username = normalizeUsername(account?.username);
+        const displayName = String(account?.displayName || '').trim();
+        lines.push(`${index + 1}. @${username}${displayName ? ` — ${displayName}` : ''}`);
+      });
+    };
+    addSection('NOT FOLLOWING YOU BACK', record.notFollowingMeBack);
+    addSection('YOU DO NOT FOLLOW BACK', record.iDoNotFollowBack);
+    addSection('MUTUAL FOLLOWERS', record.mutuals);
+    lines.push('', 'Generated locally by Insta Toolbox. No account action was performed.', '');
+    return lines.join('\r\n');
   }
 
   function visibleText(element) {
@@ -913,11 +1471,9 @@
     return { result: 'unfollowed', relationship: completion.relationship };
   }
 
-  function captureVisibleAccounts() {
-    const roots = [
-      ...document.querySelectorAll('[role="dialog"]'),
-      document.querySelector('main'),
-    ].filter(Boolean);
+  function captureVisibleAccounts(expectedListType = '') {
+    const listContext = accountListDialog(expectedListType);
+    const roots = listContext ? [listContext.dialog] : [];
     const accounts = new Map();
     for (const root of roots) {
       for (const anchor of root.querySelectorAll('a[href^="/"]')) {
@@ -948,12 +1504,66 @@
     return best?.element || null;
   }
 
-  function accountListRoot() {
-    const dialogs = visibleDialogs();
-    for (const dialog of dialogs) {
-      if (scrollableWithin(dialog)) return dialog;
+  function accountListTypeFromText(value) {
+    const label = String(value || '')
+      .normalize('NFKC')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    if (/^followers(?:\s|$)/.test(label)) return 'followers';
+    if (/^following(?:\s|$)/.test(label)) return 'following';
+    return '';
+  }
+
+  function accountListDialog(expectedListType = '') {
+    const expected = expectedListType === 'followers' || expectedListType === 'following'
+      ? expectedListType
+      : '';
+    for (const dialog of visibleDialogs()) {
+      const heading = [...dialog.querySelectorAll('[role="heading"], h1, h2')]
+        .map((element) => visibleText(element))
+        .find(Boolean);
+      const firstLine = visibleText(dialog)
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find(Boolean);
+      const observedTypes = new Set(
+        [dialog.getAttribute('aria-label'), heading, firstLine]
+          .map(accountListTypeFromText)
+          .filter(Boolean),
+      );
+      if (observedTypes.size !== 1) continue;
+      const [observed] = observedTypes;
+      if (observed && (!expected || observed === expected)) {
+        return { dialog, listType: observed };
+      }
     }
-    return dialogs[0] || document.querySelector('main');
+    return null;
+  }
+
+  function exactProfileListCount(listType) {
+    if (listType !== 'followers' && listType !== 'following') return null;
+    for (const link of document.querySelectorAll('a[role="link"], a[href="#"]')) {
+      const values = [
+        link.getAttribute('title'),
+        visibleText(link),
+      ];
+      for (const value of values) {
+        const label = String(value || '')
+          .normalize('NFKC')
+          .replace(/[\u00a0\u202f]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+        const match = label.match(/^([0-9][0-9., ]*)\s+(followers|following)$/);
+        if (!match || match[2] !== listType) continue;
+        const digits = match[1].replace(/\D/g, '');
+        if (!digits) continue;
+        const count = Number(digits);
+        if (Number.isSafeInteger(count)) return count;
+      }
+    }
+    return null;
   }
 
   function sleep(ms) {
@@ -962,16 +1572,20 @@
 
   // Scrolls the open followers/following dialog to enumerate the full list.
   // Read-only: it only scrolls an already-open list and reads rendered rows.
-  async function collectAccountList({ maxScrolls = 1_200, settleMs = 500 } = {}) {
+  async function collectAccountList({ maxScrolls = 1_200, settleMs = 500, listType = '' } = {}) {
     const session = inspectSession();
     if (session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited) {
       return { ...session, accounts: [], complete: false, reason: 'session-stop' };
     }
-    const root = accountListRoot();
+    const expectedListType = listType === 'followers' || listType === 'following' ? listType : '';
+    const listContext = accountListDialog(expectedListType);
+    const root = listContext?.dialog || null;
     const scroller = scrollableWithin(root);
     if (!root) {
       return { ...session, accounts: [], complete: false, reason: 'open-a-followers-or-following-list' };
     }
+    const observedListType = listContext?.listType || expectedListType;
+    const expectedCountAtStart = exactProfileListCount(observedListType);
 
     const accounts = new Map();
     const harvest = () => {
@@ -1035,13 +1649,31 @@
       }
     }
 
+    const expectedCountAtEnd = exactProfileListCount(observedListType);
+    const expectedCount = expectedCountAtEnd ?? expectedCountAtStart;
+    const countChanged = Number.isSafeInteger(expectedCountAtStart)
+      && Number.isSafeInteger(expectedCountAtEnd)
+      && expectedCountAtStart !== expectedCountAtEnd;
+    const countMismatch = Number.isSafeInteger(expectedCount)
+      && accounts.size !== expectedCount;
+    if (countChanged || countMismatch) complete = false;
+
     return {
       ...session,
       accounts: [...accounts.values()]
         .sort((left, right) => left.username.localeCompare(right.username)),
       complete,
+      listType: listContext?.listType || null,
+      expectedCount,
+      observedCount: accounts.size,
       capturedAt: new Date().toISOString(),
-      reason: complete ? 'list-complete' : 'list-truncated',
+      reason: countChanged
+        ? 'list-count-changed'
+        : countMismatch
+          ? 'list-count-mismatch'
+          : complete
+            ? 'list-complete'
+            : 'list-truncated',
     };
   }
 
@@ -1242,7 +1874,11 @@
   globalThis.InstaAioInstagramInspector = Object.freeze({
     captureVisibleAccounts,
     collectAccountList,
+    detectAuthenticatedUsername,
     enumerateSentDms,
+    fetchFollowerComparison,
+    followerComparisonRecord,
+    followerComparisonReport,
     inspectPageContext,
     inspectProfile,
     inspectReviewedDmItem,

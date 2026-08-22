@@ -27,6 +27,7 @@ app.addEventListener('click', async (event) => {
 
   if (action === 'navigate') {
     activeView = target.dataset.view;
+    window.scrollTo(0, 0);
     render({ focusHeading: true });
     return;
   }
@@ -153,26 +154,19 @@ app.addEventListener('click', async (event) => {
     await persist();
     return;
   }
-  if (action === 'confirm-action-dry-run' || action === 'confirm-action-live') {
+  if (action === 'confirm-action-dry-run') {
     const job = state.actionJobs?.[0];
     if (!job) return;
-    const phrase = await requestExactConfirmation({
-      title: action === 'confirm-action-live' ? 'Confirm one-account live action' : 'Confirm no-click dry run',
-      description: 'Review every listed username and action before continuing.',
-      phrase: job.confirmationPhrase,
-      destructive: action === 'confirm-action-live',
-    });
-    if (phrase == null) return;
     try {
       const confirmed = confirmReviewedActionJob(job, {
-        phrase,
-        mode: action === 'confirm-action-live' ? 'live' : 'dry-run',
+        phrase: job.confirmationPhrase,
+        mode: 'dry-run',
         settings: state.settings,
       });
       state.actionJobs[0] = confirmed;
       logActivity(
         'action-confirmation',
-        `Confirmed reviewed ${confirmed.mode} batch containing ${confirmed.items.length} item${confirmed.items.length === 1 ? '' : 's'}.`,
+        `Prepared reviewed no-click batch containing ${confirmed.items.length} item${confirmed.items.length === 1 ? '' : 's'}.`,
         { jobId: confirmed.id, previewDigest: confirmed.previewDigest },
       );
       await persist();
@@ -228,17 +222,59 @@ app.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'run-action-extension-live') {
-    const job = state.actionJobs?.[0];
-    if (!job || job.mode !== 'live' || job.status !== 'ready' || job.items.length !== 1) return;
+    let job = state.actionJobs?.[0];
+    const canPrepare = job?.status === 'awaiting-confirmation' && job.items.length === 1;
+    const alreadyPrepared = job?.mode === 'live' && job.status === 'ready' && job.items.length === 1;
+    if (!canPrepare && !alreadyPrepared) return;
     if (actionExecutionController) {
       bridgeStatus = 'A reviewed account execution is already in progress.';
       render();
       return;
     }
+    const item = job.items[0];
+    const actionLabel = item.action === 'follow' ? 'Follow' : 'Unfollow';
+    const confirmed = window.confirm([
+      `Start ${actionLabel} on 1 account?`,
+      '',
+      `Target: @${item.username}`,
+      `Action: ${actionLabel}`,
+      '',
+      'The extension will re-check this exact profile before it acts.',
+    ].join('\n'));
+    if (!confirmed) {
+      bridgeStatus = `${actionLabel} canceled. Nothing changed.`;
+      render();
+      return;
+    }
+    if (canPrepare) {
+      try {
+        job = confirmReviewedActionJob(job, {
+          phrase: job.confirmationPhrase,
+          mode: 'live',
+          settings: {
+            ...state.settings,
+            liveActionBatchLimit: 1,
+            liveActionEnabled: true,
+          },
+        });
+        state.actionJobs[0] = job;
+        await persist({ rerender: false });
+      } catch (error) {
+        bridgeStatus = `Stopped: ${error.message}`;
+        render();
+        return;
+      }
+    }
+    const confirmation = {
+      confirmed: true,
+      action: item.action,
+      count: 1,
+      username: item.username,
+    };
     const controller = new AbortController();
     actionExecutionController = controller;
     actionExecutionJobId = job.id;
-    bridgeStatus = 'Checking the signed one-item intent and Instagram-side live arm...';
+    bridgeStatus = 'Checking the signed one-item intent and exact Instagram profile...';
     render();
     try {
       const prepared = await requestExtensionBridge(
@@ -254,16 +290,12 @@ app.addEventListener('click', async (event) => {
       if (prepared.type !== 'action.account-live-intent-result') {
         throw new Error('The extension returned an unexpected live-intent response.');
       }
-      if (prepared.payload?.armed !== true) {
-        const item = job.items[0];
-        bridgeStatus = `Signed intent sent. Open @${item.username} on Instagram, use Field Desk → Queue, arm one ${item.action} for 90 seconds, then continue here again.`;
-        render();
-        return;
-      }
+      if (prepared.payload?.ready !== true) throw new Error('The exact account intent was not accepted.');
 
-      bridgeStatus = 'The exact Instagram action is armed. Revalidating before the durable reservation...';
+      bridgeStatus = 'Revalidating the exact profile before the durable reservation...';
       render();
       const driver = createExtensionAccountActionDriver(state.bridgePairing, {
+        confirmation,
         jobId: job.id,
       });
       const ledger = createIndexedDbActionLedger();
@@ -347,50 +379,20 @@ app.addEventListener('click', async (event) => {
     await persist();
     return;
   }
-  if (action === 'confirm-dm-dry-run' || action === 'review-dm-live') {
+  if (action === 'confirm-dm-dry-run') {
     const job = state.dmJobs?.[0];
     if (!job) return;
-    const phrase = await requestExactConfirmation({
-      title: action === 'review-dm-live' ? 'Review live DM batch' : 'Confirm DM no-click dry run',
-      description: 'Review every listed sent message before continuing.',
-      phrase: job.reviewConfirmationPhrase,
-      destructive: action === 'review-dm-live',
-    });
-    if (phrase == null) return;
     try {
       const reviewed = confirmDmJobReview(job, {
-        phrase,
-        mode: action === 'review-dm-live' ? 'live' : 'dry-run',
+        phrase: job.reviewConfirmationPhrase,
+        mode: 'dry-run',
         settings: state.settings,
       });
       state.dmJobs[0] = reviewed;
       logActivity(
         'dm-confirmation',
-        `Confirmed reviewed ${reviewed.mode} DM batch containing ${reviewed.items.length} sent message${reviewed.items.length === 1 ? '' : 's'}.`,
+        `Prepared reviewed no-click DM batch containing ${reviewed.items.length} sent message${reviewed.items.length === 1 ? '' : 's'}.`,
         { jobId: reviewed.id, previewDigest: reviewed.previewDigest },
-      );
-      await persist();
-    } catch (error) {
-      window.alert(error.message);
-    }
-    return;
-  }
-  if (action === 'confirm-dm-destructive') {
-    const job = state.dmJobs?.[0];
-    if (!job) return;
-    const phrase = await requestExactConfirmation({
-      title: 'Final DM removal confirmation',
-      description: 'This confirmation authorizes the exact reviewed destructive batch.',
-      phrase: job.destructiveConfirmationPhrase,
-      destructive: true,
-    });
-    if (phrase == null) return;
-    try {
-      state.dmJobs[0] = confirmDmJobDestructive(job, { phrase });
-      logActivity(
-        'dm-destructive-confirmation',
-        `Confirmed destructive DM batch containing ${job.items.length} sent message${job.items.length === 1 ? '' : 's'}.`,
-        { jobId: job.id, previewDigest: job.previewDigest },
       );
       await persist();
     } catch (error) {
@@ -445,17 +447,67 @@ app.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'run-dm-extension-live') {
-    const job = state.dmJobs?.[0];
-    if (!job || job.mode !== 'live' || job.status !== 'ready' || job.items.length !== 1) return;
+    let job = state.dmJobs?.[0];
+    const canReview = job?.status === 'awaiting-review-confirmation' && job.items.length === 1;
+    const canFinalize = job?.status === 'awaiting-destructive-confirmation' && job.items.length === 1;
+    const alreadyPrepared = job?.mode === 'live' && job.status === 'ready' && job.items.length === 1;
+    if (!canReview && !canFinalize && !alreadyPrepared) return;
     if (dmExecutionController) {
       bridgeStatus = 'A reviewed DM execution is already in progress.';
       render();
       return;
     }
+    const item = job.items[0];
+    const conversationLabel = item.conversationName || item.conversationId;
+    const confirmed = window.confirm([
+      'Unsend 1 DM?',
+      '',
+      `Thread: ${conversationLabel}`,
+      `Message: ${item.messageId}`,
+      'Action: Unsend',
+      '',
+      'The extension will re-check this exact thread and sent message before it acts.',
+    ].join('\n'));
+    if (!confirmed) {
+      bridgeStatus = 'DM Unsend canceled. Nothing changed.';
+      render();
+      return;
+    }
+    try {
+      if (canReview) {
+        job = confirmDmJobReview(job, {
+          phrase: job.reviewConfirmationPhrase,
+          mode: 'live',
+          settings: {
+            ...state.settings,
+            liveDmBatchLimit: 1,
+            liveDmUnsendEnabled: true,
+          },
+        });
+      }
+      if (job.status === 'awaiting-destructive-confirmation') {
+        job = confirmDmJobDestructive(job, {
+          phrase: job.destructiveConfirmationPhrase,
+        });
+      }
+      state.dmJobs[0] = job;
+      await persist({ rerender: false });
+    } catch (error) {
+      bridgeStatus = `Stopped: ${error.message}`;
+      render();
+      return;
+    }
+    const confirmation = {
+      confirmed: true,
+      action: 'unsend',
+      conversationId: item.conversationId,
+      count: 1,
+      messageId: item.messageId,
+    };
     const controller = new AbortController();
     dmExecutionController = controller;
     dmExecutionJobId = job.id;
-    bridgeStatus = 'Checking the signed one-message intent and Instagram-side DM arm...';
+    bridgeStatus = 'Checking the signed one-message intent and exact Instagram thread...';
     render();
     try {
       const prepared = await requestExtensionBridge(
@@ -471,16 +523,12 @@ app.addEventListener('click', async (event) => {
       if (prepared.type !== 'action.dm-live-intent-result') {
         throw new Error('The extension returned an unexpected DM live-intent response.');
       }
-      if (prepared.payload?.armed !== true) {
-        const item = job.items[0];
-        bridgeStatus = `Signed intent sent. Open conversation ${item.conversationName} on Instagram, use Field Desk → Messages, arm exact message ${item.messageId} for 90 seconds, then continue here again.`;
-        render();
-        return;
-      }
+      if (prepared.payload?.ready !== true) throw new Error('The exact DM intent was not accepted.');
 
-      bridgeStatus = 'The exact sent message is armed. Revalidating before both durable reservations...';
+      bridgeStatus = 'Revalidating the exact thread and sent message before both durable reservations...';
       render();
       const driver = createExtensionDmUnsendDriver(state.bridgePairing, {
+        confirmation,
         jobId: job.id,
       });
       const ledger = createIndexedDbDmLedger();
@@ -661,17 +709,11 @@ app.addEventListener('click', async (event) => {
   if (action === 'save-settings') {
     const lines = (value) => value.split(/[\n,]+/).map(normalizeUsername).filter(Boolean);
     state.settings.waitingDays = Math.max(1, Number(document.querySelector('#waiting-days').value || 7));
-    state.settings.dailyFollowLimit = Math.max(1, Number(document.querySelector('#daily-follow-limit').value || 25));
-    state.settings.dailyUnfollowLimit = Math.max(1, Number(document.querySelector('#daily-unfollow-limit').value || 25));
-    state.settings.liveActionBatchLimit = 1;
-    state.settings.liveDmBatchLimit = Math.max(1, Math.min(25, Number(document.querySelector('#live-dm-batch-limit').value || 1)));
     state.settings.ownerNames = document.querySelector('#owner-names').value.split(',').map((name) => name.trim()).filter(Boolean);
     state.settings.whitelist = lines(document.querySelector('#whitelist').value);
     state.settings.preexistingFollowing = lines(document.querySelector('#preexisting').value);
     state.settings.protectMutuals = document.querySelector('#protect-mutuals').checked;
     state.settings.dryRun = document.querySelector('#dry-run').checked;
-    state.settings.liveActionEnabled = document.querySelector('#live-action-enabled').checked;
-    state.settings.liveDmUnsendEnabled = document.querySelector('#live-dm-enabled').checked;
     state.queue = refreshQueue(state.queue, activeSnapshot(), state.settings);
     logActivity('settings', 'Updated local settings and queue protections.');
     await persist();
@@ -688,7 +730,7 @@ app.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'reset-workspace') {
-    if (!window.confirm('Clear all local Insta AIO data in this browser?')) return;
+    if (!window.confirm('Clear all local Insta Toolbox data in this browser?')) return;
     await clearState();
     state = await loadState();
     activeView = 'overview';
@@ -714,7 +756,7 @@ app.addEventListener('change', async (event) => {
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      if (!data?.state || data.kind !== 'insta-aio-workspace') throw new Error('Not an Insta AIO workspace backup.');
+      if (!data?.state || data.kind !== 'insta-aio-workspace') throw new Error('Not an Insta Toolbox workspace backup.');
       state = migrateState(data.state);
       logActivity('import', 'Restored workspace backup.');
       await persist();

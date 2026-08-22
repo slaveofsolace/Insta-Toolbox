@@ -8,32 +8,21 @@
   const runner = globalThis.InstaAioDmThreadUnsender;
   const subscriptions = new WeakMap();
   const styledShadows = new WeakSet();
-  const massUnsendArms = new WeakMap();
-  const MASS_UNSEND_ARM_TTL_MS = 15 * 60 * 1_000;
-  const MASS_UNSEND_ARM_PHRASE = 'UNSEND ALL DMS';
+  const DM_PLAN_TTL_MS = 15 * 60 * 1_000;
 
   function activeConversationId() {
     const match = String(location.pathname || '').match(/^\/direct\/t\/([^/?#]+)\/?$/i);
     return match?.[1] || '';
   }
 
-  function massUnsendArm(runtime) {
-    const arm = massUnsendArms.get(runtime.model);
-    if (Number(arm?.expiresAt) > Date.now() && String(arm?.threadId || '')) return arm;
-    massUnsendArms.delete(runtime.model);
-    return null;
-  }
-
-  function matchingArm(intent, arm) {
-    return Boolean(
-      intent
-      && arm
-      && arm.jobId === intent.jobId
-      && arm.itemId === intent.itemId
-      && arm.conversationId === intent.conversationId
-      && arm.messageId === intent.messageId
-      && shared.armRemainingMs(arm) > 0,
-    );
+  function currentPreview(runtime) {
+    const preview = runtime.model.dmThreadPreview;
+    return preview?.ready
+      && preview.complete === true
+      && preview.threadId === activeConversationId()
+      && Number(preview.eligibleCount) >= 0
+      ? preview
+      : null;
   }
 
   function inspectIntent(runtime, intent) {
@@ -135,9 +124,14 @@
         font-weight: 600 !important;
       }
       .ia-button:hover, .ia-link-button:hover, .ia-file-label:hover { filter: brightness(.97); }
-      .ia-button--danger, .ia-button--signal {
+      .ia-button--signal {
         border-color: var(--ia-signal) !important;
         background: var(--ia-signal) !important;
+        color: #fff !important;
+      }
+      .ia-button--danger {
+        border-color: var(--ia-danger) !important;
+        background: var(--ia-danger) !important;
         color: #fff !important;
       }
       .ia-badge { font-weight: 600 !important; }
@@ -164,18 +158,14 @@
     runtime.shadow.append(style);
 
     const brand = runtime.query('.ia-brand-mark');
-    if (brand) brand.textContent = 'AIO';
+    if (brand) brand.textContent = 'IT';
     const scan = runtime.query('[data-ia-action="scan-sent-dms"]');
     if (scan) scan.textContent = 'Check conversation';
     const disclosure = runtime.query('[data-ia-role="unsend-disclosure"]');
     if (disclosure) {
       disclosure.hidden = false;
       const summary = disclosure.querySelector('strong');
-      if (summary) summary.textContent = 'Unsend all DMs';
-      for (const role of ['unsend-scope', 'unsend-count']) {
-        const field = runtime.query(`[data-ia-role="${role}"]`)?.closest('.ia-field');
-        if (field) field.hidden = true;
-      }
+      if (summary) summary.textContent = 'Conversation plan';
       let progress = disclosure.querySelector('.ia-direct-unsend-progress');
       if (!progress) {
         progress = runtime.document.createElement('div');
@@ -189,75 +179,6 @@
         disclosure.querySelector('.ia-disclosure-body')?.append(progress);
       }
     }
-  }
-
-  function renderGate(runtime) {
-    const { model, query, setText } = runtime;
-    const intent = model.bridge.pendingDmIntent;
-    const arm = model.bridge.dmArm;
-    const notice = model.armNotice?.kind === 'dm' ? model.armNotice : null;
-    const armButton = query('[data-ia-action="arm-dm-live"]');
-    const cancelButton = query('[data-ia-action="cancel-dm-live"]');
-    const badge = query('[data-ia-role="dm-live-badge"]');
-    const disclosure = query('[data-ia-role="dm-live-disclosure"]');
-    const countdown = query('[data-ia-role="dm-live-countdown"]');
-    if (!armButton || !cancelButton || !badge || !disclosure || !countdown) return;
-    cancelButton.hidden = !intent;
-    disclosure.open = Boolean(intent || matchingArm(intent, arm) || notice);
-
-    if (!intent) {
-      const copy = notice?.state === 'expired'
-        ? ['Unsend arm expired', `The arm for message ${notice.target} expired. A fresh review is required.`, 'expired']
-        : notice?.state === 'canceled'
-          ? ['Unsend canceled', `The pending intent for message ${notice.target} was canceled.`, 'canceled']
-          : notice?.state === 'executing'
-            ? ['Executing in workspace', `The arm for message ${notice.target} was consumed. Wait for its signed result.`, 'executing']
-            : ['Exact-message review', 'Use this section only for a reviewed message imported from the workspace.', 'locked'];
-      setText('dm-live-title', copy[0]);
-      setText('dm-live-detail', copy[1]);
-      badge.textContent = copy[2];
-      badge.dataset.tone = notice ? 'danger' : 'neutral';
-      armButton.textContent = 'Arm exact message';
-      armButton.disabled = true;
-      countdown.hidden = true;
-      return;
-    }
-
-    setText('dm-live-title', `Message ${intent.messageId}`);
-    if (notice?.state === 'expired') {
-      const observation = inspectIntent(runtime, intent);
-      const ready = observationMatches(intent, observation);
-      setText('dm-live-detail', ready
-        ? 'The prior arm expired. Type the exact phrase again for a new 90-second arm; the old expiry is never extended.'
-        : `Reopen the exact conversation and keep message ${intent.messageId} rendered.`);
-      countdown.hidden = true;
-      badge.textContent = 'expired';
-      badge.dataset.tone = 'danger';
-      armButton.textContent = 'Arm fresh Unsend';
-      armButton.disabled = !ready;
-      return;
-    }
-    if (matchingArm(intent, arm)) {
-      setText('dm-live-detail', 'One exact sent message is armed. The workspace must revalidate before execution.');
-      countdown.textContent = shared.countdownLabel(arm);
-      countdown.hidden = false;
-      badge.textContent = 'armed';
-      badge.dataset.tone = 'danger';
-      armButton.textContent = 'One message armed';
-      armButton.disabled = true;
-      return;
-    }
-
-    const observation = inspectIntent(runtime, intent);
-    const ready = observationMatches(intent, observation);
-    setText('dm-live-detail', ready
-      ? 'Exactly one rendered sent-message identity matches. Arming does not open its menu.'
-      : `Open the exact conversation and keep sent message ${intent.messageId} rendered.`);
-    countdown.hidden = true;
-    badge.textContent = ready ? 'ready' : 'open message';
-    badge.dataset.tone = ready ? 'warning' : 'danger';
-    armButton.textContent = 'Arm one Unsend';
-    armButton.disabled = !ready;
   }
 
   function runnerState(runtime) {
@@ -275,39 +196,65 @@
     const button = runtime.query('[data-ia-action="mass-unsend"]');
     const progress = disclosure?.querySelector('.ia-direct-unsend-progress');
     const active = ['preparing', 'running', 'waiting', 'stopping'].includes(state.status);
-    const massArm = massUnsendArm(runtime);
+    const readOnlyCheck = state.operation === 'check';
+    const preview = currentPreview(runtime);
+    const checked = runtime.model.dmThreadPreview?.ready
+      && runtime.model.dmThreadPreview.threadId === activeConversationId()
+      ? runtime.model.dmThreadPreview
+      : null;
+    const plan = runtime.query('[data-ia-role="unsend-plan"]');
+    const eligible = runtime.query('[data-ia-role="unsend-eligible"]');
+    const scope = runtime.query('[data-ia-role="unsend-scope"]')?.value || 'all';
+    const countField = runtime.query('[data-ia-role="unsend-count"]')?.closest('.ia-field');
     if (disclosure) disclosure.hidden = false;
+    if (plan) plan.hidden = false;
+    if (countField) countField.hidden = scope === 'all';
+    if (eligible) eligible.textContent = preview
+      ? `${preview.eligibleCount} sent message${preview.eligibleCount === 1 ? '' : 's'} eligible`
+      : checked
+        ? `${checked.eligibleCount} found · completeness not proven`
+        : 'Check this conversation to resolve the eligible count';
     if (badge) {
       badge.textContent = active
-        ? `${state.processed} unsent`
+        ? readOnlyCheck ? 'checking' : `${state.processed} unsent`
         : state.status === 'completed'
           ? 'complete'
-          : massArm
-            ? 'armed 15m'
-            : 'live locked';
-      badge.dataset.tone = state.status === 'error' ? 'danger' : active ? 'warning' : state.status === 'completed' ? 'good' : 'neutral';
+          : preview
+            ? `${preview.eligibleCount} ready`
+            : checked
+              ? 'incomplete'
+            : 'ready to check';
+      badge.dataset.tone = state.status === 'error' || (checked && !preview)
+        ? 'danger'
+        : active ? 'warning' : state.status === 'completed' ? 'good' : 'neutral';
     }
     if (detail) {
       detail.textContent = active || ['completed', 'stopped', 'error'].includes(state.status)
         ? state.message
-        : massArm
-          ? 'Thread-wide Unsend is armed temporarily. Select it again to review the permanent action.'
-          : 'Locked by default. First unlock with the typed phrase; no menu opens and nothing is removed.';
+        : preview
+          ? `Read-only check complete for thread ${preview.threadId}. Unsend DMs will ask once for this exact thread and count.`
+          : checked
+            ? `${checked.reason} Destructive plans stay locked.`
+          : 'Unsend DMs first checks this conversation without opening a message menu or removing anything.';
     }
     if (button) {
       button.textContent = active
-        ? 'Stop unsending'
-        : massArm
-          ? 'Unsend all DMs'
-          : 'Unlock Unsend all DMs';
-      button.disabled = state.status === 'stopping';
+        ? readOnlyCheck ? 'Stop check' : 'Stop unsending'
+        : 'Unsend DMs';
+      button.disabled = active
+        ? !state.canStop
+        : !activeConversationId() || Boolean(checked?.complete && checked.eligibleCount < 1);
     }
     if (progress) {
       progress.hidden = !active && !['completed', 'stopped', 'error'].includes(state.status);
       const title = progress.querySelector('[data-ia-role="thread-unsend-progress-title"]');
       const copy = progress.querySelector('[data-ia-role="thread-unsend-progress-detail"]');
-      if (title) title.textContent = active ? 'Working in this conversation' : 'Last run';
-      if (copy) copy.textContent = `${state.processed} unsent${state.failed ? ` · ${state.failed} failed attempt${state.failed === 1 ? '' : 's'}` : ''}`;
+      if (title) title.textContent = active
+        ? readOnlyCheck ? 'Checking conversation' : 'Working in this conversation'
+        : readOnlyCheck ? 'Conversation check' : 'Last run';
+      if (copy) copy.textContent = readOnlyCheck
+        ? 'Read-only check · nothing changed'
+        : `${state.processed} unsent${state.failed ? ` · ${state.failed} failed attempt${state.failed === 1 ? '' : 's'}` : ''}`;
     }
     runtime.setText('message-identity-detail', 'The bulk thread runner identifies sent rows from Instagram’s rendered conversation layout. Exact message ID, timestamp, digest, conversation, and sent-by-me ownership must all match for an imported one-message job. Visible text alone cannot authorize removal.');
   }
@@ -348,7 +295,7 @@
     if (state) state.dataset.tone = conversationReady ? 'good' : 'neutral';
     setText('message-state-title', conversationReady ? 'Conversation ready' : 'Open a conversation');
     setText('message-state-detail', conversationReady
-      ? 'You can read visible evidence or start Unsend all DMs.'
+      ? 'Read visible evidence or check the full conversation. Unsend DMs resolves the eligible count before asking for confirmation.'
       : 'Choose a conversation before using message tools.');
 
     for (const fragment of fragments) {
@@ -387,7 +334,6 @@
       downloads.clear('messages', download);
     }
     renderDirect(runtime);
-    renderGate(runtime);
   }
 
   async function inspect(runtime) {
@@ -396,19 +342,21 @@
     const count = runtime.model.messages.fragments.length;
     runtime.status(count
       ? `Read ${count} visible text fragment${count === 1 ? '' : 's'} without opening a menu.`
-      : 'No visible message text was found. Nothing was changed.', count ? 'good' : 'neutral');
+      : 'No visible message text found.', count ? 'good' : 'neutral');
   }
 
   async function scanSent(runtime) {
     if (!runner) {
       runtime.status('Reload Instagram to load the current message runner.', 'error');
-      return;
+      return null;
     }
-    const result = runner.inspect();
+    const result = await runner.inspectAll();
+    runtime.model.dmThreadPreview = result.ready ? result : null;
     renderDirect(runtime);
-    runtime.status(result.ready
-      ? `${result.visibleSent} sent message${result.visibleSent === 1 ? '' : 's'} visible now. Unsend all will load the full conversation first.`
-      : result.reason, result.ready ? 'good' : 'error');
+    runtime.status(result.ready && result.complete
+      ? `${result.eligibleCount} sent message${result.eligibleCount === 1 ? '' : 's'} found.`
+      : result.reason, result.ready && result.complete ? 'good' : 'error');
+    return result;
   }
 
   async function massUnsend(runtime) {
@@ -418,108 +366,71 @@
       runner.stop();
       return;
     }
-    let massArm = massUnsendArm(runtime);
-    if (!massArm) {
-      const inspection = runner.inspect();
-      if (!inspection.ready || !inspection.threadId) throw new Error(inspection.reason || 'The conversation could not be identified.');
-      const phrase = await runtime.requestArmPhrase({
-        description: 'This unlocks thread-wide Unsend in this tab for 15 minutes. It does not open a message menu or remove anything.',
-        phrase: MASS_UNSEND_ARM_PHRASE,
-      });
-      if (phrase == null) return;
-      if (String(phrase).trim() !== MASS_UNSEND_ARM_PHRASE) {
-        runtime.status('Thread-wide Unsend stayed locked. The authorization phrase did not match.', 'error');
-        renderDirect(runtime);
+    let preview = currentPreview(runtime);
+    if (!preview || preview.eligibleCount < 1) {
+      const scanned = await scanSent(runtime);
+      preview = currentPreview(runtime);
+      if (!scanned?.ready || scanned.complete !== true || !preview) return;
+      if (preview.eligibleCount < 1) {
+        runtime.status('No sent messages found.', 'neutral');
         return;
       }
-      const current = runner.inspect();
-      if (!current.ready || current.threadId !== inspection.threadId) {
-        runtime.status('Thread-wide Unsend stayed locked because the conversation changed.', 'error');
-        renderDirect(runtime);
-        return;
-      }
-      massArm = Object.freeze({
-        expiresAt: Date.now() + MASS_UNSEND_ARM_TTL_MS,
-        threadId: inspection.threadId,
-      });
-      massUnsendArms.set(runtime.model, massArm);
-      renderDirect(runtime);
-      runtime.status('Thread-wide Unsend armed for 15 minutes. Nothing was removed. Select Unsend all DMs again to review execution.', 'good');
-      setTimeout(() => renderDirect(runtime), MASS_UNSEND_ARM_TTL_MS + 50);
-      return;
     }
     const inspection = runner.inspect();
     if (!inspection.ready) throw new Error(inspection.reason);
-    if (inspection.threadId !== massArm.threadId) {
-      massUnsendArms.delete(runtime.model);
+    if (inspection.threadId !== preview.threadId) {
+      runtime.model.dmThreadPreview = null;
       renderDirect(runtime);
-      runtime.status('Thread-wide Unsend stayed locked because the armed conversation changed.', 'error');
+      runtime.status('The conversation changed. Check it again before reviewing an Unsend plan.', 'error');
       return;
     }
+    const scope = runtime.query('[data-ia-role="unsend-scope"]')?.value || 'all';
+    const requested = Math.floor(Number(runtime.query('[data-ia-role="unsend-count"]')?.value) || 1);
+    const limit = scope === 'all'
+      ? preview.eligibleCount
+      : Math.min(preview.eligibleCount, Math.max(1, requested));
+    const plan = runner.createPlan({
+      threadId: preview.threadId,
+      scope,
+      limit,
+      eligibleCount: preview.eligibleCount,
+      expiresAt: Date.now() + DM_PLAN_TTL_MS,
+    });
+    if (!plan) throw new Error('The reviewed Unsend plan could not be created. Check the conversation again.');
+    const scopeLabel = scope === 'all'
+      ? `all ${limit} eligible sent message${limit === 1 ? '' : 's'}`
+      : `${scope} ${limit} sent message${limit === 1 ? '' : 's'}`;
     const confirmed = runtime.window.confirm(
-      'Unsend every message you sent in this conversation?\n\n'
-      + 'Older history will load once, then removal works forward from the oldest loaded sent message. This is permanent and cannot be undone.',
+      `Permanently unsend ${scopeLabel} from thread ${plan.threadId}?\n\n`
+      + 'The eligible count will be revalidated immediately before any message menu opens.',
     );
     if (!confirmed) {
-      runtime.status('Canceled. Nothing was changed.', 'neutral');
+      runtime.status('Canceled. Scan kept.', 'neutral');
       return;
     }
-    massUnsendArms.delete(runtime.model);
+    const reservation = await runtime.sendBridge({
+      kind: 'insta-aio-reserve-thread-unsend',
+      plan,
+    });
+    if (reservation?.error) {
+      runtime.status('Could not reserve this plan. Check the conversation again.', 'error');
+      return;
+    }
+    runtime.model.dmThreadPreview = null;
     renderDirect(runtime);
     await runner.start({
-      authorizationExpiresAt: massArm.expiresAt,
-      expectedThreadId: massArm.threadId,
-      minDelayMs: 1_000,
-      maxDelayMs: 2_000,
+      plan,
+      minDelayMs: reservation.pacing?.minDelayMs,
+      maxDelayMs: reservation.pacing?.maxDelayMs,
     });
-  }
-
-  async function arm(runtime) {
-    const intent = runtime.model.bridge.pendingDmIntent;
-    if (!intent) return;
-    const observation = inspectIntent(runtime, intent);
-    if (!observationMatches(intent, observation)) {
-      runtime.status(`Open the exact conversation and resolve sent message ${intent.messageId} before arming.`, 'error');
-      renderGate(runtime);
-      return;
-    }
-    const phrase = await runtime.requestArmPhrase({
-      description: `This arms only message ${intent.messageId}. The paired workspace must still revalidate both ledgers.`,
-      phrase: `ARM UNSEND ${intent.armCode}`,
-    });
-    if (phrase == null) return;
-    const response = await runtime.sendBridge({
-      kind: 'insta-aio-arm-dm-unsend',
-      conversationId: intent.conversationId,
-      itemId: intent.itemId,
-      jobId: intent.jobId,
-      messageId: intent.messageId,
-      phrase,
-    });
-    if (response.error) throw new Error(`DM arm rejected: ${response.error}.`);
-    runtime.applyBridgeState(response.state);
-    runtime.status(`Armed one Unsend for message ${intent.messageId} for 90 seconds. Nothing was removed.`, 'good');
-  }
-
-  async function cancel(runtime) {
-    const intent = runtime.model.bridge.pendingDmIntent;
-    const response = await runtime.sendBridge({ kind: 'insta-aio-cancel-dm-unsend' });
-    if (response.error) throw new Error(`Could not cancel the DM intent: ${response.error}.`);
-    runtime.applyBridgeState(response.state, { guardArmDrop: false });
-    runtime.setArmNotice({ kind: 'dm', state: 'canceled', target: intent?.messageId || 'reviewed message' });
-    runtime.status('Canceled the pending DM intent. No Instagram control was used.', 'good');
   }
 
   shared.install('messagesView', {
-    arm,
-    cancel,
     inspect,
     inspectIntent,
     massUnsend,
-    matchingArm,
     observationMatches,
     render,
-    renderGate,
     renderSentScan: renderDirect,
     scanSent,
   });

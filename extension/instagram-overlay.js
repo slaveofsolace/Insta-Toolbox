@@ -60,7 +60,6 @@
   let active = true;
   let bridgeLastContactAt = null;
   let collisionController = null;
-  let countdownTimer = null;
   let lastFocusedElement = null;
   let layoutController = null;
   let routeController = null;
@@ -112,13 +111,12 @@
   }
 
   function sanitizeDmIntent(value) {
-    const required = ['armCode', 'contentDigest', 'conversationId', 'itemId', 'jobId', 'messageId'];
+    const required = ['contentDigest', 'conversationId', 'itemId', 'jobId', 'messageId'];
     if (!value || required.some((key) => !shared.safeText(value[key]))) return null;
     if (!Number.isFinite(Number(value.timestamp))) return null;
     const expiresAt = shared.safeText(value.expiresAt);
     if (shared.armRemainingMs({ expiresAt }) <= 0) return null;
     return {
-      armCode: shared.safeText(value.armCode),
       confirmedAt: shared.safeText(value.confirmedAt),
       contentDigest: shared.safeText(value.contentDigest),
       conversationId: shared.safeText(value.conversationId),
@@ -128,25 +126,6 @@
       messageId: shared.safeText(value.messageId),
       timestamp: Number(value.timestamp),
     };
-  }
-
-  function sanitizeArm(value, kind) {
-    if (!value || shared.armRemainingMs(value) <= 0) return null;
-    const base = {
-      armedAt: shared.safeText(value.armedAt),
-      expiresAt: shared.safeText(value.expiresAt),
-      itemId: shared.safeText(value.itemId),
-      jobId: shared.safeText(value.jobId),
-    };
-    if (!base.expiresAt || !base.itemId || !base.jobId) return null;
-    if (kind === 'account') {
-      const username = inspector.normalizeUsername(value.username);
-      const action = ['follow', 'unfollow'].includes(value.action) ? value.action : null;
-      return username && action ? { ...base, action, username } : null;
-    }
-    const conversationId = shared.safeText(value.conversationId);
-    const messageId = shared.safeText(value.messageId);
-    return conversationId && messageId ? { ...base, conversationId, messageId } : null;
   }
 
   function sanitizeRuns(value) {
@@ -188,10 +167,11 @@
     return {
       controlledAccountActionsAvailable: value.controlledAccountActionsAvailable === true,
       controlledDmUnsendAvailable: value.controlledDmUnsendAvailable === true,
-      dmArm: sanitizeArm(value.dmArm, 'dm'),
+      dmArm: null,
+      exactConfirmationRequired: true,
       extensionVersion: shared.safeText(value.extensionVersion, extensionVersion),
-      liveArm: sanitizeArm(value.liveArm, 'account'),
-      liveExecutionEnabled: value.liveExecutionEnabled === true,
+      liveArm: null,
+      liveExecutionEnabled: false,
       pairings,
       pendingDmIntent: sanitizeDmIntent(value.pendingDmIntent),
       pendingLiveIntent: sanitizeAccountIntent(value.pendingLiveIntent),
@@ -336,10 +316,7 @@
   function renderSignals() {
     const signal = Boolean(
       model.bridge.pendingLiveIntent
-      || model.bridge.pendingDmIntent
-      || model.bridge.liveArm
-      || model.bridge.dmArm
-      || model.armNotice,
+      || model.bridge.pendingDmIntent,
     );
     for (const role of ['launcher-signal', 'queue-signal']) {
       const element = query(`[data-ia-role="${role}"]`);
@@ -372,60 +349,26 @@
     try {
       model.context = inspector.inspectPageContext();
       nowView.render(runtime);
-      queueView.renderLiveGate(runtime);
+      queueView.render(runtime);
       if (announce) status('Current Instagram context refreshed without activating a page control.', 'good');
       return true;
     } catch (error) {
       model.context = null;
       nowView.render(runtime);
-      queueView.renderLiveGate(runtime);
+      queueView.render(runtime);
       status(`Instagram context inspection stopped: ${error.message}`, 'error');
       return false;
     }
   }
 
-  function applyBridgeState(state, { guardArmDrop = true } = {}) {
-    const previous = model.bridge;
-    const next = sanitizeBridgeState(state);
-    const priorAccountArm = shared.armRemainingMs(previous.liveArm) > 0 ? previous.liveArm : null;
-    const priorDmArm = shared.armRemainingMs(previous.dmArm) > 0 ? previous.dmArm : null;
-    if (guardArmDrop && priorAccountArm && !next.liveArm && !next.pendingLiveIntent) {
-      model.executionGuard = {
-        accountIntent: previous.pendingLiveIntent,
-        expiresAt: new Date(Date.now() + 10_000).toISOString(),
-        kind: 'account',
-      };
-      model.armNotice = {
-        kind: 'account',
-        state: 'executing',
-        target: previous.pendingLiveIntent?.username || priorAccountArm.username,
-      };
-    } else if (guardArmDrop && priorDmArm && !next.dmArm && !next.pendingDmIntent) {
-      model.executionGuard = {
-        dmIntent: previous.pendingDmIntent,
-        expiresAt: new Date(Date.now() + 10_000).toISOString(),
-        kind: 'dm',
-      };
-      model.armNotice = {
-        kind: 'dm',
-        state: 'executing',
-        target: previous.pendingDmIntent?.messageId || priorDmArm.messageId,
-      };
-    } else if (!guardArmDrop || next.liveArm || next.dmArm) {
-      model.executionGuard = null;
-    }
-    if (next.liveArm || next.pendingLiveIntent) {
-      if (model.armNotice?.kind === 'account') model.armNotice = null;
-    }
-    if (next.dmArm || next.pendingDmIntent) {
-      if (model.armNotice?.kind === 'dm') model.armNotice = null;
-    }
-    model.bridge = next;
+  function applyBridgeState(state) {
+    model.bridge = sanitizeBridgeState(state);
+    model.armNotice = null;
+    model.executionGuard = null;
     bridgeLastContactAt = new Date().toISOString();
     model.bridgeLastContactAt = bridgeLastContactAt;
     runtime.bridgeLastContactAt = bridgeLastContactAt;
     renderAll();
-    scheduleCountdown();
     collisionController?.checkNow();
   }
 
@@ -438,68 +381,9 @@
     }
     model.bridge = shared.createModel(extensionVersion).bridge;
     renderAll();
-    scheduleCountdown();
     collisionController?.checkNow();
     status(`Extension bridge state unavailable: ${response.error || 'unknown error'}.`, 'error');
     return false;
-  }
-
-  function requestArmPhrase({ description, phrase }) {
-    const dialog = query('[data-ia-role="arm-dialog"]');
-    const input = query('[data-ia-role="arm-input"]');
-    if (!dialog || !input || dialog.open) return Promise.resolve(null);
-    setText('arm-description', description);
-    setText('arm-phrase', phrase);
-    input.value = '';
-    dialog.returnValue = 'cancel';
-    const focusBeforeDialog = shadow.activeElement;
-    return new Promise((resolve) => {
-      dialog.addEventListener('close', () => {
-        requestAnimationFrame(() => focusBeforeDialog?.focus?.());
-        resolve(dialog.returnValue === 'confirm' ? input.value : null);
-      }, { once: true });
-      dialog.showModal();
-      requestAnimationFrame(() => input.focus());
-    });
-  }
-
-  function setArmNotice(notice) {
-    model.armNotice = notice;
-    renderAll();
-  }
-
-  function scheduleCountdown() {
-    if (countdownTimer !== null) clearTimeout(countdownTimer);
-    countdownTimer = null;
-    if (!active) return;
-
-    const accountActive = shared.armRemainingMs(model.bridge.liveArm) > 0;
-    const dmActive = shared.armRemainingMs(model.bridge.dmArm) > 0;
-    const guardActive = shared.armRemainingMs(model.executionGuard) > 0;
-    if (!accountActive && model.bridge.liveArm) {
-      model.armNotice = {
-        kind: 'account',
-        state: 'expired',
-        target: model.bridge.liveArm.username,
-      };
-      model.bridge.liveArm = null;
-    }
-    if (!dmActive && model.bridge.dmArm) {
-      model.armNotice = {
-        kind: 'dm',
-        state: 'expired',
-        target: model.bridge.dmArm.messageId,
-      };
-      model.bridge.dmArm = null;
-    }
-    if (!guardActive && model.executionGuard) model.executionGuard = null;
-    queueView.renderLiveGate(runtime);
-    messagesView.renderGate(runtime);
-    renderSignals();
-    collisionController?.checkNow();
-    if (accountActive || dmActive || guardActive) {
-      countdownTimer = setTimeout(scheduleCountdown, 1_000);
-    }
   }
 
   function applyCollision(next) {
@@ -550,10 +434,8 @@
       'collision-state',
       next.kind === 'native-surface'
         ? 'Instagram action surface visible · overlay controls suspended'
-        : 'One-use arm active · page controls remain untouched',
+        : 'Exact confirmation active · page controls remain untouched',
     );
-    const cancel = query('[data-ia-action="cancel-current-live"]');
-    cancel.hidden = !(model.bridge.pendingLiveIntent || model.bridge.pendingDmIntent);
     requestAnimationFrame(() => {
       if (!active || !model.collision.active) return;
       const rectangle = strip.getBoundingClientRect();
@@ -600,9 +482,7 @@
     refreshContext,
     renderAll,
     renderSection,
-    requestArmPhrase,
     sendBridge,
-    setArmNotice,
     setText,
     shadow,
     status,
@@ -610,21 +490,25 @@
   };
 
   const actionHandlers = Object.freeze({
-    'arm-account-live': () => queueView.arm(runtime),
-    'arm-dm-live': () => messagesView.arm(runtime),
-    'cancel-account-live': () => queueView.cancel(runtime),
-    'cancel-current-live': () => (
-      model.bridge.pendingDmIntent ? messagesView.cancel(runtime) : queueView.cancel(runtime)
-    ),
-    'cancel-dm-live': () => messagesView.cancel(runtime),
     'batch-stop': () => batchController.abort(runtime),
     'bot-review': () => queueView.botReview(runtime),
     'bot-start': () => queueView.botStart(runtime),
     'capture-visible': () => captureView.captureVisible(runtime),
+    'check-account-relationships': () => captureView.checkAccount(runtime),
     close: () => setOpen(false),
     'first-run-dismiss': () => completeFirstRun(),
     'first-run-start': () => completeFirstRun('capture'),
     'inspect-messages': () => messagesView.inspect(runtime),
+    'layout-preset': (target) => {
+      const viewportHeight = Math.max(320, Number(window.innerHeight) || 720);
+      const presets = {
+        compact: { panelHeight: 520, panelWidth: 380, width: 'compact' },
+        tall: { panelHeight: Math.min(820, viewportHeight - 16), panelWidth: 460, width: 'standard' },
+        wide: { panelHeight: 680, panelWidth: 560, width: 'wide' },
+      };
+      const preset = presets[target.dataset.layoutPreset];
+      return preset ? savePreference(preset) : undefined;
+    },
     'mass-unsend': () => messagesView.massUnsend(runtime),
     'save-limits': () => batchController.saveLimits(runtime),
     'scan-full-list': (target) => captureView.scanFullList(runtime, target.dataset.listType),
@@ -672,6 +556,9 @@
     if (['bot-source', 'bot-action', 'bot-count'].includes(event.target.dataset?.iaRole)) {
       queueView.invalidateBotReview(runtime);
     }
+    if (['unsend-scope', 'unsend-count'].includes(event.target.dataset?.iaRole)) {
+      messagesView.renderSentScan(runtime);
+    }
     const preference = event.target.dataset?.iaPreference;
     if (preference) {
       const rawValue = preference === 'opacity'
@@ -712,6 +599,17 @@
     layoutController?.previewOpacity(opacity);
   }
 
+  function onShadowToggle(event) {
+    const details = event.target.closest?.('[data-ia-role="advanced-settings"]');
+    if (!details?.open) return;
+    const body = query('[data-ia-role="advanced-settings-body"]');
+    if (!body || body.childElementCount) return;
+    const template = query('[data-ia-template="advanced-settings"]');
+    if (!template) return;
+    body.append(template.content.cloneNode(true));
+    void batchController.hydrate(runtime);
+  }
+
   function onDocumentKeydown(event) {
     if (event.altKey && event.shiftKey && event.key.toLowerCase() === 'i') {
       event.preventDefault();
@@ -722,7 +620,6 @@
       event.key === 'Escape'
       && model.open
       && shadow.activeElement
-      && !query('[data-ia-role="arm-dialog"]')?.open
     ) setOpen(false);
   }
 
@@ -758,9 +655,7 @@
       'bridgePairings',
       'pendingJobs',
       'pendingLiveIntent',
-      'liveArm',
       'pendingDmIntent',
-      'dmArm',
       'accountActionLedger',
       'dmActionLedger',
     ].some((key) => changes[key])) void refreshBridge({ announce: false });
@@ -784,8 +679,6 @@
   function teardown() {
     if (!active) return;
     active = false;
-    if (countdownTimer !== null) clearTimeout(countdownTimer);
-    countdownTimer = null;
     collisionController?.teardown();
     layoutController?.teardown();
     routeController?.teardown();
@@ -795,6 +688,7 @@
     shadow.removeEventListener('keydown', onShadowKeydown);
     shadow.removeEventListener('change', onShadowChange);
     shadow.removeEventListener('input', onShadowInput);
+    shadow.removeEventListener('toggle', onShadowToggle, true);
     document.removeEventListener('keydown', onDocumentKeydown);
     window.removeEventListener('resize', onWindowResize);
     chromeApi.storage.onChanged.removeListener?.(onStorageChanged);
@@ -859,14 +753,10 @@
       actionLabels: globalThis.__instaAioActionLabels,
       document,
       getExecutionState: () => ({
-        accountArm: model.bridge.liveArm || (
-          model.executionGuard?.kind === 'account' ? model.executionGuard : null
-        ),
-        accountIntent: model.bridge.pendingLiveIntent || model.executionGuard?.accountIntent || null,
-        dmArm: model.bridge.dmArm || (
-          model.executionGuard?.kind === 'dm' ? model.executionGuard : null
-        ),
-        dmIntent: model.bridge.pendingDmIntent || model.executionGuard?.dmIntent || null,
+        accountArm: null,
+        accountIntent: model.bridge.pendingLiveIntent || null,
+        dmArm: null,
+        dmIntent: model.bridge.pendingDmIntent || null,
       }),
       getReviewedTarget: (state) => inspector.reviewedTargetElement(state),
       onChange: applyCollision,
@@ -888,7 +778,7 @@
       batchController.hydrate(runtime).catch(() => {}),
     ]);
     if (contextOk && bridgeOk) {
-      status('Inspection ready. Live actions remain locked until one signed exact-item intent is armed.', 'good');
+      status('Inspection ready. Every destructive run waits for its exact target confirmation.', 'good');
     }
   }
 
@@ -896,6 +786,7 @@
   shadow.addEventListener('keydown', onShadowKeydown);
   shadow.addEventListener('change', onShadowChange);
   shadow.addEventListener('input', onShadowInput);
+  shadow.addEventListener('toggle', onShadowToggle, true);
   document.addEventListener('keydown', onDocumentKeydown);
   chromeApi.storage.onChanged.addListener(onStorageChanged);
   document.documentElement.append(host);

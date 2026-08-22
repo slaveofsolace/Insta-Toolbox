@@ -320,12 +320,12 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
     };
   })()`, true);
   assert.deepEqual(metrics.nav.map(({ label }) => label), [
-    'Toolbox', 'Follower checker', 'Follow / Unfollow', 'DM Unsend', 'Workspace',
+    'Toolbox', 'Mutual Checker', 'Follow / Unfollow', 'DM Unsend', 'Workspace',
   ]);
   assert.equal(metrics.nav[0].selected, 'true');
-  assert.equal(metrics.panelLabel, 'Insta AIO Instagram sidecar');
+  assert.equal(metrics.panelLabel, 'Insta Toolbox');
   assert.equal(metrics.statusLive, 'polite');
-  assert.equal(metrics.closeLabel, 'Collapse Insta AIO sidecar');
+  assert.equal(metrics.closeLabel, 'Collapse Insta Toolbox');
   assert.match(metrics.moveLabel, /Move sidecar/);
   assert.match(metrics.resizeLabel, /Resize sidecar/);
   assert.equal(metrics.opacity, '88');
@@ -381,35 +381,29 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
   await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
     shadow.querySelector('[data-ia-section="messages"]').click();
-    shadow.querySelector('[data-ia-action="mass-unsend"]').click();
+    shadow.querySelector('[data-ia-action="scan-sent-dms"]').click();
   })()`, true);
-  await waitForPageValue(
-    webContents,
-    `document.querySelector('#insta-aio-sidecar-root')?.shadowRoot
-      ?.querySelector('[data-ia-role="arm-dialog"]')?.open === true`,
-    'thread-wide Unsend arm dialog',
-  );
-  await webContents.executeJavaScript(`(() => {
-    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
-    shadow.querySelector('[data-ia-role="arm-input"]').value = 'UNSEND ALL DMS';
-    shadow.querySelector('[data-ia-role="arm-dialog"]').close('confirm');
-  })()`, true);
-  const massArm = await waitForPageValue(
+  const dmPreview = await waitForPageValue(
     webContents,
     `(() => {
       const shadow = document.querySelector('#insta-aio-sidecar-root')?.shadowRoot;
+      const plan = shadow?.querySelector('[data-ia-role="unsend-plan"]');
       const badge = shadow?.querySelector('[data-ia-role="unsend-badge"]')?.textContent;
-      if (badge !== 'armed 15m') return null;
+      if (!plan || plan.hidden || !/\\d+ ready/.test(badge || '')) return null;
       return {
         badge,
         button: shadow.querySelector('[data-ia-action="mass-unsend"]')?.textContent,
+        disabled: shadow.querySelector('[data-ia-action="mass-unsend"]')?.disabled,
+        eligible: shadow.querySelector('[data-ia-role="unsend-eligible"]')?.textContent,
         clicks: globalThis.fixtureDmClickCount,
       };
     })()`,
-    'thread-wide Unsend no-click arm',
+    'thread-wide Unsend no-click preview',
   );
-  assert.equal(massArm.button, 'Unsend all DMs');
-  assert.equal(massArm.clicks, 0, 'arming thread-wide Unsend opens no Instagram control');
+  assert.equal(dmPreview.button, 'Unsend DMs');
+  assert.equal(dmPreview.disabled, false);
+  assert.match(dmPreview.eligible, /^\d+ sent messages? eligible$/);
+  assert.equal(dmPreview.clicks, 0, 'checking the conversation opens no Instagram control');
 
   app.setAccessibilitySupportEnabled(true);
   webContents.debugger.attach('1.3');
@@ -418,10 +412,10 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
     const tree = await webContents.debugger.sendCommand('Accessibility.getFullAXTree');
     const names = new Set((tree.nodes || []).map((node) => node.name?.value).filter(Boolean));
     for (const expected of [
-      'Insta AIO Instagram sidecar',
-      'Collapse Insta AIO sidecar',
+      'Insta Toolbox',
+      'Collapse Insta Toolbox',
       'Toolbox',
-      'Follower checker',
+      'Mutual Checker',
       'Follow / Unfollow',
       'DM Unsend',
       'Workspace',
@@ -433,7 +427,7 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
   } finally {
     if (webContents.debugger.isAttached()) webContents.debugger.detach();
   }
-  console.log('Accepted overlay keyboard focus, no-click thread Unsend arm, and Chromium accessibility-tree contract.');
+  console.log('Accepted overlay keyboard focus, no-click thread Unsend preview, and Chromium accessibility-tree contract.');
 }
 
 // Drives the thread-wide unsend against a stand-in that reproduces the two
@@ -453,16 +447,28 @@ async function acceptThreadUnsend(webContents, baseUrl) {
 
   const outcome = await webContents.executeJavaScript(`(async () => {
     const runner = globalThis.InstaAioDmThreadUnsender;
-    const inspection = runner.inspect();
+    const inspection = await runner.inspectAll();
+    const rejectedPlan = runner.createPlan({
+      threadId: 'different-thread',
+      scope: 'all',
+      limit: inspection.eligibleCount,
+      eligibleCount: inspection.eligibleCount,
+      expiresAt: Date.now() + 60_000,
+    });
     const rejected = await runner.start({
-      authorizationExpiresAt: Date.now() + 60_000,
-      expectedThreadId: 'different-thread',
+      plan: rejectedPlan,
       minDelayMs: 0,
       maxDelayMs: 0,
     });
+    const plan = runner.createPlan({
+      threadId: inspection.threadId,
+      scope: 'all',
+      limit: inspection.eligibleCount,
+      eligibleCount: inspection.eligibleCount,
+      expiresAt: Date.now() + 60_000,
+    });
     const result = await runner.start({
-      authorizationExpiresAt: Date.now() + 60_000,
-      expectedThreadId: inspection.threadId,
+      plan,
       minDelayMs: 0,
       maxDelayMs: 0,
     });
@@ -586,10 +592,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       opacityMin: shadow.querySelector('[data-preference="opacity"]')?.min,
       resize: shadow.querySelector('[data-role="resize"]')?.getAttribute('aria-label'),
       mode: shadow.querySelector('.mode')?.textContent,
-      liveToggle: {
-        checked: shadow.querySelector('[data-role="live-actions"]')?.checked,
-        disabled: shadow.querySelector('[data-role="live-actions"]')?.disabled,
-      },
+      hasGlobalUnlock: Boolean(shadow.querySelector('[data-role="live-actions"]')),
       liveControls: [
         'review-accounts', 'run-unsend', 'scan-following', 'scan-followers', 'scan-sent', 'stop-run',
       ].map((action) => Boolean(shadow.querySelector('[data-action="' + action + '"]'))),
@@ -601,8 +604,11 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
         disabled: shadow.querySelector('[data-action="review-accounts"]')?.disabled,
         live: shadow.querySelector('[data-action="review-accounts"]')?.hasAttribute('data-live-action'),
       },
-      destructiveDisabled: [...shadow.querySelectorAll('[data-live-action]')]
-        .map((control) => control.disabled),
+      unsendControl: {
+        disabled: shadow.querySelector('[data-action="run-unsend"]')?.disabled,
+        label: shadow.querySelector('[data-action="run-unsend"]')?.textContent.trim(),
+      },
+      ambientLiveControls: shadow.querySelectorAll('[data-live-action]').length,
       hasContextStrip: Boolean(shadow.querySelector('[data-role="context"]')),
       context: {
         title: shadow.querySelector('[data-role="context-title"]')?.textContent,
@@ -610,7 +616,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
         label: shadow.querySelector('[data-role="context-cta"]')?.textContent,
       },
       introHidden: shadow.querySelector('[data-role="intro"]')?.hidden,
-      unsendPrimaryVisible: shadow.querySelector('[data-role="unsend-primary"]')?.hidden === false,
+      unsendPlanHidden: shadow.querySelector('[data-role="unsend-plan"]')?.hidden === true,
       engineExecutors: [
         typeof globalThis.InstaAioInstagramInspector?.performReviewedProfileAction,
         typeof globalThis.InstaAioInstagramInspector?.performReviewedDmUnsend,
@@ -618,7 +624,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     };
   })()`, true);
   // Exactly the three tools, with no landing tab in front of them.
-  assert.deepEqual(initial.labels, ['Checker', 'Follow', 'Unsend']);
+  assert.deepEqual(initial.labels, ['Mutual Checker', 'Follow / Unfollow', 'DM Unsend']);
   assert.deepEqual(initial.tabs, [
     { controls: 'aio-panel-checker', selected: 'true', tabIndex: 0 },
     { controls: 'aio-panel-account', selected: 'false', tabIndex: -1 },
@@ -638,10 +644,11 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(initial.opacityMin, '55');
   assert.match(initial.move, /Move toolbox/);
   assert.match(initial.resize, /Resize toolbox/);
-  assert.match(initial.mode, /live actions locked/i);
-  assert.deepEqual(initial.liveToggle, { checked: false, disabled: false });
-  assert.deepEqual(initial.destructiveDisabled, [true, true]);
+  assert.match(initial.mode, /local controls/i);
+  assert.equal(initial.hasGlobalUnlock, false);
+  assert.equal(initial.ambientLiveControls, 0);
   assert.deepEqual(initial.reviewControl, { disabled: false, live: false });
+  assert.deepEqual(initial.unsendControl, { disabled: true, label: 'Unsend DMs' });
   assert.equal(initial.introHidden, false);
   assert.deepEqual(initial.context, {
     title: 'Following list open',
@@ -653,13 +660,12 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.deepEqual(initial.liveControls, [true, true, true, true, true, true]);
   assert.deepEqual(initial.checkerScanLabels, ['Scan Following', 'Scan Followers']);
   assert.equal(initial.hasContextStrip, true);
-  // The unsend action is always reachable. It performs its own read of the
-  // conversation and confirms before removing anything, so gating its
-  // visibility behind a separate step removed the one-click path for no gain.
-  assert.equal(initial.unsendPrimaryVisible, true);
+  // The action area stays visible so the workflow is discoverable. On this
+  // non-conversation fixture it is disabled by route, not by a global unlock.
+  assert.equal(initial.unsendPlanHidden, false);
   assert.deepEqual(initial.engineExecutors, ['function', 'function']);
 
-  const darkTheme = await webContents.executeJavaScript(`new Promise((resolve) => {
+  await webContents.executeJavaScript(`(() => {
     const root = document.documentElement;
     const values = {
       '--ig-primary-background': '0 0 0',
@@ -671,19 +677,39 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       '--ig-primary-button': '0 149 246',
     };
     for (const [name, value] of Object.entries(values)) root.style.setProperty(name, value);
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
-      const context = shadow.querySelector('[data-role="context"]');
-      const title = shadow.querySelector('[data-role="context-title"]');
-      const result = {
-        contextBackground: getComputedStyle(context).backgroundColor,
-        contextText: getComputedStyle(title).color,
-        panelText: getComputedStyle(shadow.querySelector('.panel')).color,
-      };
-      for (const name of Object.keys(values)) root.style.removeProperty(name);
-      resolve(result);
-    }));
-  })`, true);
+    return true;
+  })()`, true);
+  await waitForPageValue(webContents, `(() => {
+    const shadow = document.querySelector('#insta-aio-userscript-root')?.shadowRoot;
+    const context = shadow?.querySelector('[data-role="context"]');
+    const title = shadow?.querySelector('[data-role="context-title"]');
+    const panel = shadow?.querySelector('.panel');
+    return context && title && panel
+      && getComputedStyle(context).backgroundColor === 'rgb(18, 18, 18)'
+      && getComputedStyle(title).color === 'rgb(245, 245, 245)'
+      && getComputedStyle(panel).color === 'rgb(245, 245, 245)';
+  })()`, 'settled userscript dark-theme tokens');
+  const darkTheme = await webContents.executeJavaScript(`(() => {
+    const root = document.documentElement;
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    const context = shadow.querySelector('[data-role="context"]');
+    const title = shadow.querySelector('[data-role="context-title"]');
+    const result = {
+      contextBackground: getComputedStyle(context).backgroundColor,
+      contextText: getComputedStyle(title).color,
+      panelText: getComputedStyle(shadow.querySelector('.panel')).color,
+    };
+    for (const name of [
+      '--ig-primary-background',
+      '--ig-elevated-background',
+      '--ig-secondary-background',
+      '--ig-primary-text',
+      '--ig-secondary-text',
+      '--ig-separator',
+      '--ig-primary-button',
+    ]) root.style.removeProperty(name);
+    return result;
+  })()`, true);
   assert.deepEqual(darkTheme, {
     contextBackground: 'rgb(18, 18, 18)',
     contextText: 'rgb(245, 245, 245)',
@@ -730,38 +756,20 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   });
   await webContents.executeJavaScript(`globalThis.fixtureSetList('following')`, true);
 
-  const unlocked = await webContents.executeJavaScript(`(() => {
-    globalThis.prompt = () => 'ENABLE LIVE ACTIONS';
+  const finiteAuthority = await webContents.executeJavaScript(`(() => {
+    globalThis.prompt = () => { throw new Error('global phrase prompt must not be used'); };
     const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
-    const toggle = shadow.querySelector('[data-role="live-actions"]');
-    toggle.checked = true;
-    toggle.dispatchEvent(new Event('change', { bubbles: true }));
     return {
       mode: shadow.querySelector('.mode')?.textContent,
-      destructiveDisabled: [...shadow.querySelectorAll('[data-live-action]')]
-        .map((control) => control.disabled),
+      hasGlobalUnlock: Boolean(shadow.querySelector('[data-role="live-actions"]')),
+      ambientLiveControls: shadow.querySelectorAll('[data-live-action]').length,
       clicks: globalThis.fixtureProfileClickCount,
     };
   })()`, true);
-  assert.match(unlocked.mode, /live actions unlocked/i);
-  assert.deepEqual(unlocked.destructiveDisabled, [false, false]);
-  assert.equal(unlocked.clicks, 0, 'unlocking authority performs no Instagram action');
-
-  const relocked = await webContents.executeJavaScript(`(() => {
-    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
-    const toggle = shadow.querySelector('[data-role="live-actions"]');
-    toggle.checked = false;
-    toggle.dispatchEvent(new Event('change', { bubbles: true }));
-    return {
-      mode: shadow.querySelector('.mode')?.textContent,
-      destructiveDisabled: [...shadow.querySelectorAll('[data-live-action]')]
-        .map((control) => control.disabled),
-      clicks: globalThis.fixtureProfileClickCount,
-    };
-  })()`, true);
-  assert.match(relocked.mode, /live actions locked/i);
-  assert.deepEqual(relocked.destructiveDisabled, [true, true]);
-  assert.equal(relocked.clicks, 0, 'relocking authority performs no Instagram action');
+  assert.match(finiteAuthority.mode, /local controls/i);
+  assert.equal(finiteAuthority.hasGlobalUnlock, false);
+  assert.equal(finiteAuthority.ambientLiveControls, 0);
+  assert.equal(finiteAuthority.clicks, 0, 'rendering finite controls performs no Instagram action');
 
   await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
@@ -807,6 +815,24 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   })()`, true);
   assert.equal(account.clicks, 0);
   assert.match(account.result, /Exact no-click check passed/);
+
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    shadow.querySelector('[data-action="queue-complete"]').click();
+    shadow.querySelector('[data-action="account-dry-run"]').click();
+  })()`, true);
+  const currentProfile = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    return {
+      clicks: globalThis.fixtureProfileClickCount,
+      current: shadow.querySelector('[data-role="queue-current"]')?.textContent,
+      result: shadow.querySelector('[data-role="account-result"]')?.textContent,
+    };
+  })()`, true);
+  assert.equal(currentProfile.clicks, 0);
+  assert.match(currentProfile.current, /No queue item loaded/);
+  assert.match(currentProfile.result, /Exact no-click check passed/);
+  assert.match(currentProfile.result, /Observed @demo_creator as following without clicking/);
 
   await webContents.executeJavaScript(`(() => {
     globalThis.fixtureSetMessages();
@@ -881,7 +907,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(inboxEvidence.threadId, '');
   assert.equal(inboxEvidence.fragments.length, 0);
   assert.match(inboxEvidence.reason, /Open an Instagram conversation first/);
-  console.log('Accepted the movable Tampermonkey toolbox, default live lock, local follower comparison, and account/DM no-click checks.');
+  console.log('Accepted the movable Tampermonkey toolbox, finite-confirmation default, local follower comparison, and account/DM no-click checks.');
 }
 
 async function acceptPwaInstallability(webContents, baseUrl) {
@@ -923,10 +949,12 @@ async function acceptPwaInstallability(webContents, baseUrl) {
   );
   const defaults = await webContents.executeJavaScript(`({
     actionPermission: document.querySelector('#bridge-action-permission')?.checked,
-    liveAccount: document.querySelector('#live-action-enabled')?.checked,
-    liveDm: document.querySelector('#live-dm-enabled')?.checked,
+    globalLiveUnlocks: Boolean(
+      document.querySelector('#live-action-enabled')
+      || document.querySelector('#live-dm-enabled'),
+    ),
   })`, true);
-  assert.deepEqual(defaults, { actionPermission: false, liveAccount: false, liveDm: false });
+  assert.deepEqual(defaults, { actionPermission: false, globalLiveUnlocks: false });
   await webContents.executeJavaScript(
     `document.querySelector('[data-action="create-extension-pairing"]').click()`,
     true,
@@ -976,6 +1004,8 @@ async function run() {
   } catch (error) {
     exitCode = 1;
     console.error(error?.stack || error);
+    if (overlay.problems.length) console.error(`Overlay fixture problems:\n${overlay.problems.join('\n')}`);
+    if (pwa.problems.length) console.error(`PWA fixture problems:\n${pwa.problems.join('\n')}`);
   } finally {
     if (!overlay.window.isDestroyed()) overlay.window.destroy();
     if (!pwa.window.isDestroyed()) pwa.window.destroy();

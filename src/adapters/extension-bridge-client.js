@@ -108,6 +108,7 @@ function responsePayload(response, expectedType) {
 }
 
 export function createExtensionAccountActionDriver(pairing, {
+  confirmation = null,
   jobId,
   request = requestExtensionBridge,
   timeoutMs = 15_000,
@@ -142,7 +143,7 @@ export function createExtensionAccountActionDriver(pairing, {
     async inspectLiveAuthorization(item) {
       return exchange(
         'action.account-live-readiness',
-        { item },
+        { confirmation, item },
         'action.account-live-readiness-result',
       );
     },
@@ -158,6 +159,7 @@ export function createExtensionAccountActionDriver(pairing, {
 }
 
 export function createExtensionDmUnsendDriver(pairing, {
+  confirmation = null,
   jobId,
   request = requestExtensionBridge,
   timeoutMs = 15_000,
@@ -192,7 +194,7 @@ export function createExtensionDmUnsendDriver(pairing, {
     async inspectLiveAuthorization(item) {
       return exchange(
         'action.dm-live-readiness',
-        { item },
+        { confirmation, item },
         'action.dm-live-readiness-result',
       );
     },
