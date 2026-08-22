@@ -176,6 +176,31 @@ test('read-only conversation resolution precedes the count-specific Unsend plan'
   assert.match(shell, /check ended before the full conversation loaded/);
 });
 
+test('the userscript starts the confirmed Unsend plan and surfaces async failures', () => {
+  const reservationBody = shell.slice(
+    shell.indexOf('function reserveUnsendPlan(plan)'),
+    shell.indexOf('function sleep(ms)'),
+  );
+  assert.match(reservationBody, /const bounds = limits\(\);/);
+  assert.match(reservationBody, /minDelayMs: bounds\.minDelayMs/);
+  assert.match(reservationBody, /maxDelayMs: Math\.max\(bounds\.minDelayMs, bounds\.maxDelayMs\)/);
+
+  const clickBody = shell.slice(
+    shell.indexOf("shadow.addEventListener('click'"),
+    shell.indexOf("shadow.addEventListener('change'"),
+  );
+  assert.match(clickBody, /async \(event\) =>/);
+  assert.match(clickBody, /await actions\[target\.dataset\.action\]\?\.\(\);/);
+  assert.match(clickBody, /status\(`Stopped: \$\{error\.message\}`\)/);
+
+  const runBody = shell.slice(
+    shell.indexOf('async function runDmUnsend()'),
+    shell.indexOf('// --- Section 7:'),
+  );
+  assert.ok(runBody.indexOf('confirmRun(') < runBody.indexOf('reserveUnsendPlan(plan)'));
+  assert.ok(runBody.indexOf('reserveUnsendPlan(plan)') < runBody.indexOf('await dmRunner.start({'));
+});
+
 test('finite run confirmation replaces global unlock controls and phrases', () => {
   assert.doesNotMatch(shell, /ENABLE LIVE ACTIONS|LIVE_AUTHORIZATION_PHRASE/);
   assert.doesNotMatch(shell, /Type .*unlock Follow, Unfollow, and Unsend/);

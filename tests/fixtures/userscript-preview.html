@@ -23,6 +23,8 @@
   </main>
   <script>
     globalThis.fixtureProfileClickCount = 0;
+    globalThis.fixtureUnsentCount = 0;
+    globalThis.fixtureConfirmMessage = '';
     document.querySelector('#relationship').addEventListener('click', () => { globalThis.fixtureProfileClickCount += 1; });
     history.replaceState({}, '', '/demo_creator/');
     const dmText = 'Yes — reviewing it now.';
@@ -83,8 +85,40 @@
         <section data-pagelet="IGDMessagesList">
           <header><h1>studio_friend</h1></header>
           <div role="row" data-message-id="received-1" data-timestamp-ms="1700000000000" data-sent-by-me="false"><div dir="auto">Did you see the draft?</div></div>
-          <div role="row" data-message-id="sent-1" data-timestamp-ms="1700000000100" data-sent-by-me="true"><div data-insta-aio-message-content dir="auto">${dmText}</div></div>
-        </section>`;
+          <div id="fixture-sent-row" role="row" data-message-id="sent-1" data-timestamp-ms="1700000000100" data-sent-by-me="true"><div data-insta-aio-message-content dir="auto">${dmText}</div><div id="fixture-message-options" role="button">See more options for message from demo_creator</div></div>
+        </section>
+        <div id="fixture-menu" hidden></div>`;
+      const row = document.querySelector('#fixture-sent-row');
+      const menu = document.querySelector('#fixture-menu');
+      document.querySelector('#fixture-message-options').addEventListener('click', () => {
+        menu.hidden = false;
+        menu.replaceChildren();
+        const choice = document.createElement('div');
+        choice.setAttribute('role', 'button');
+        choice.textContent = 'Unsend';
+        choice.addEventListener('click', () => {
+          menu.hidden = true;
+          const dialog = document.createElement('div');
+          dialog.setAttribute('role', 'dialog');
+          const cancel = document.createElement('button');
+          cancel.textContent = 'Cancel';
+          const confirm = document.createElement('button');
+          confirm.textContent = 'Unsend';
+          confirm.addEventListener('click', () => {
+            dialog.remove();
+            row.replaceChildren();
+            const note = document.createElement('div');
+            note.setAttribute('dir', 'auto');
+            note.textContent = 'You unsent a message';
+            row.append(note);
+            row.removeAttribute('data-sent-by-me');
+            globalThis.fixtureUnsentCount += 1;
+          });
+          dialog.append(cancel, confirm);
+          document.body.append(dialog);
+        });
+        menu.append(choice);
+      });
     };
   </script>
   <script src="/userscripts/insta-aio-companion.user.js"></script>
