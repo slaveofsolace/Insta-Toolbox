@@ -107,7 +107,12 @@ function messageRow({
   });
 }
 
-function createHarness(rows, { pathname = '/direct/t/123/', secureCrypto = webcrypto } = {}) {
+function createHarness(rows, {
+  drawerRootCount = 0,
+  drawerThreadHrefs = [],
+  pathname = '/direct/t/123/',
+  secureCrypto = webcrypto,
+} = {}) {
   let runtimeListener = null;
   const scope = {
     querySelectorAll(selector) {
@@ -124,7 +129,13 @@ function createHarness(rows, { pathname = '/direct/t/123/', secureCrypto = webcr
       if (selector === '[data-pagelet="IGDMessagesList"]' || selector === 'main') return scope;
       return null;
     },
-    querySelectorAll() {
+    querySelectorAll(selector) {
+      if (selector === "[data-pagelet='IGDMessagesList']") {
+        return Array.from({ length: drawerRootCount }, () => scope);
+      }
+      if (selector === "a[href*='/direct/t/']") {
+        return drawerThreadHrefs.map((href) => new FakeElement({ attributes: { href } }));
+      }
       return [];
     },
   };
@@ -215,6 +226,34 @@ test('visible message evidence is bound to one exact direct thread', async () =>
   const nestedRejected = await nestedRoute.send({ kind: 'insta-aio-inspect-visible-messages' });
   assert.equal(nestedRejected.reason, 'open-an-instagram-conversation');
   assert.equal(nestedRejected.fragments.length, 0);
+});
+
+test('compact DM drawer resolves one visible thread and fails closed on ambiguity', async () => {
+  const drawer = createHarness([messageRow()], {
+    pathname: '/demo_creator/',
+    drawerRootCount: 1,
+    drawerThreadHrefs: ['/direct/t/456/'],
+  });
+  const captured = await drawer.send({ kind: 'insta-aio-inspect-visible-messages' });
+  assert.equal(captured.conversationId, '456');
+  assert.equal(captured.reason, 'visible-fragments-only');
+
+  const ambiguous = createHarness([messageRow()], {
+    pathname: '/demo_creator/',
+    drawerRootCount: 1,
+    drawerThreadHrefs: ['/direct/t/456/', '/direct/t/789/'],
+  });
+  const rejected = await ambiguous.send({ kind: 'insta-aio-inspect-visible-messages' });
+  assert.equal(rejected.conversationId, '');
+  assert.equal(rejected.reason, 'open-an-instagram-conversation');
+
+  const routeWins = createHarness([messageRow()], {
+    pathname: '/direct/t/123/',
+    drawerRootCount: 2,
+    drawerThreadHrefs: ['/direct/t/999/'],
+  });
+  const routed = await routeWins.send({ kind: 'insta-aio-inspect-visible-messages' });
+  assert.equal(routed.conversationId, '123');
 });
 
 test('missing stable identity and wrong conversations fail closed', async () => {

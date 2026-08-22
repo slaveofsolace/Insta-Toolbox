@@ -54,7 +54,8 @@ test('the checker is a sequence that reports completeness per list', () => {
   assert.match(generated, /data-step="followers"/);
   assert.match(generated, /data-step="compare"/);
   // A partial scan must say so on the step and on the comparison.
-  assert.match(shell, /did not reach the end/);
+  assert.match(shell, /accessible accounts found — partial/);
+  assert.match(shell, /some accounts may be missing/);
   assert.match(shell, /\(partial\)/);
   assert.match(shell, /Scanned \$\{found\} \$\{listType\} — incomplete\./);
   assert.match(shell, /outcome\?\.reason === 'list-count-mismatch'/);

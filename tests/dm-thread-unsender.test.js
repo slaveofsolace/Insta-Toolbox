@@ -13,7 +13,7 @@ const extensionManifest = JSON.parse(
   await readFile(new URL('../extension/manifest.json', import.meta.url), 'utf8'),
 );
 
-function loadRunner() {
+function loadRunner(overrides = {}) {
   const context = vm.createContext({
     __instaAioTestHooks: true,
     clearTimeout,
@@ -31,6 +31,7 @@ function loadRunner() {
     queueMicrotask,
     Set,
     setTimeout,
+    ...overrides,
   });
   vm.runInContext(labelsSource, context, { filename: 'action-labels.js' });
   return context.InstaAioDmThreadUnsender;
@@ -62,6 +63,80 @@ test('thread runner carries the proven 0.7.2 interaction model', () => {
   assert.match(labelsSource, /function createPlan\(value = \{\}\)/);
   assert.match(labelsSource, /function inspectAll\(\)/);
   assert.doesNotMatch(labelsSource, /graphql|private[_ -]?api|cookie|password/i);
+});
+
+test('message-options label accepts current text-only control and rejects Reply', () => {
+  const context = vm.createContext({ console });
+  vm.runInContext(labelsSource, context);
+  const labels = context.__instaAioActionLabels;
+  assert.equal(labels.isDmMessageOptionsLabel('See more options for message from demo.creator'), true);
+  assert.equal(labels.isDmMessageOptionsLabel('Reply'), false);
+});
+
+test('thread runner chooses the text-only message menu instead of Reply', () => {
+  const runner = loadRunner();
+  const ownerDocument = {
+    defaultView: {
+      getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+      innerHeight: 800,
+      innerWidth: 1_280,
+    },
+    documentElement: {},
+  };
+  const control = (text) => ({
+    closest() { return this; },
+    getAttribute: () => '',
+    getBoundingClientRect: () => ({ bottom: 60, height: 40, left: 10, right: 110, top: 20, width: 100 }),
+    isConnected: true,
+    matches: () => true,
+    ownerDocument,
+    parentElement: ownerDocument.documentElement,
+    textContent: text,
+  });
+  const reply = control('Reply');
+  const options = control('See more options for message from demo.creator');
+  const row = {
+    contains: (candidate) => candidate === reply || candidate === options,
+    querySelectorAll: (selector) => (selector === "[role='button']" ? [reply, options] : []),
+  };
+  assert.equal(runner.__test.actionButton(row), options);
+});
+
+test('thread runner resolves one compact-drawer thread and gives the exact route precedence', () => {
+  const view = {
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+    innerHeight: 800,
+    innerWidth: 1_280,
+  };
+  const documentElement = {};
+  const ownerDocument = { defaultView: view, documentElement };
+  const visible = (attributes = {}) => ({
+    getAttribute: (name) => attributes[name] || '',
+    getBoundingClientRect: () => ({ bottom: 60, height: 40, left: 10, right: 110, top: 20, width: 100 }),
+    isConnected: true,
+    ownerDocument,
+    parentElement: documentElement,
+  });
+  const root = visible();
+  const threadLink = visible({ href: '/direct/t/456/' });
+  const document = {
+    querySelectorAll(selector) {
+      if (selector === "[data-pagelet='IGDMessagesList']") return [root];
+      if (selector === "a[href*='/direct/t/']") return [threadLink];
+      return [];
+    },
+  };
+  const drawerRunner = loadRunner({ document, location: { pathname: '/demo.creator/' } });
+  assert.equal(drawerRunner.__test.currentThreadId(), '456');
+
+  const routedRunner = loadRunner({ document, location: { pathname: '/direct/t/123/' } });
+  assert.equal(routedRunner.__test.currentThreadId(), '123');
+
+  document.querySelectorAll = (selector) => (
+    selector === "[data-pagelet='IGDMessagesList']" ? [root] : [threadLink, visible({ href: '/direct/t/789/' })]
+  );
+  const ambiguousRunner = loadRunner({ document, location: { pathname: '/demo.creator/' } });
+  assert.equal(ambiguousRunner.__test.currentThreadId(), '');
 });
 
 test('sent-message ownership requires the message row or its descendants to align right', () => {

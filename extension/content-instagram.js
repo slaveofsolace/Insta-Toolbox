@@ -4,6 +4,7 @@
   if (
     !actionLabels
     || typeof actionLabels.isDmUnsendLabel !== 'function'
+    || typeof actionLabels.isDmMessageOptionsLabel !== 'function'
     || typeof actionLabels.normalizeActionLabel !== 'function'
     || typeof actionLabels.relationshipForLabel !== 'function'
   ) return;
@@ -34,6 +35,7 @@
     "[aria-label*='opzioni']",
     "[aria-label*='opciones']",
     "[aria-label*='options']",
+    "[role='button']",
   ]);
   const INSTAGRAM_WEB_ORIGIN = 'https://www.instagram.com';
   const INSTAGRAM_WEB_APP_ID = '936619743392459';
@@ -43,6 +45,7 @@
   const RELATIONSHIP_MAX_DURATION_MS = 20 * 60 * 1_000;
   const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
   const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
+  const RELATIONSHIP_AUTO_RECONCILE_MAX_ACCOUNTS = 500;
   const RELATIONSHIP_RETRY_BASE_MS = 1_000;
 
   function normalizeUsername(value) {
@@ -344,6 +347,7 @@
   }) {
     const accounts = new Map();
     const seenTokens = new Set();
+    const passAccounts = new Set();
     let nextMaxId = '';
     let pages = 0;
     let reconciliationAttempts = 0;
@@ -381,23 +385,31 @@
           displayName: String(user?.full_name || '').trim().slice(0, 160),
           source: 'authenticated-instagram-web',
         });
+        if (reconciliationAttempts > 0) passAccounts.add(accountUsername);
         if (accounts.size >= maxAccounts) break;
       }
       onProgress?.(Object.freeze({
         found: accounts.size,
         listType,
         pages,
-        phase: 'loading',
+        ...(reconciliationAttempts > 0 ? {
+          attempt: reconciliationAttempts,
+          expectedCount,
+          passFound: passAccounts.size,
+        } : {}),
+        phase: reconciliationAttempts > 0 ? 'reconciling' : 'loading',
         username,
       }));
       const candidateToken = data.next_max_id;
       if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
         if (Number.isSafeInteger(expectedCount)
           && accounts.size < expectedCount
+          && expectedCount <= RELATIONSHIP_AUTO_RECONCILE_MAX_ACCOUNTS
           && reconciliationAttempts < 1) {
           reconciliationAttempts += 1;
           nextMaxId = '';
           seenTokens.clear();
+          passAccounts.clear();
           onProgress?.(Object.freeze({
             attempt: reconciliationAttempts,
             expectedCount,
@@ -405,6 +417,7 @@
             listType,
             pages,
             phase: 'reconciling',
+            passFound: 0,
             username,
           }));
           await sleepImpl(800, signal);
@@ -578,15 +591,15 @@
       `Account: ${record.subjectUsername ? `@${record.subjectUsername}` : 'Not recorded'}`,
       `Generated: ${record.generatedAt}`,
       `Source: ${source}`,
-      `Completeness: ${fullyComplete ? 'Complete — both lists reached their verified end.' : 'Partial — one or both lists did not reach a verified end.'}`,
+      `Completeness: ${fullyComplete ? 'Complete — both lists reached their verified end.' : 'Partial — one or both saved lists may omit accounts.'}`,
       '',
       'SUMMARY',
       '-------',
-      `Followers: ${followersCount}`,
-      `Following: ${followingCount}`,
-      `Mutual followers: ${record.mutuals.length}`,
-      `Not following you back: ${record.notFollowingMeBack.length}`,
-      `You do not follow back: ${record.iDoNotFollowBack.length}`,
+      `Followers: ${followersCount.toLocaleString('en-US')}`,
+      `Following: ${followingCount.toLocaleString('en-US')}`,
+      `Mutual followers: ${record.mutuals.length.toLocaleString('en-US')}`,
+      `Not following you back: ${record.notFollowingMeBack.length.toLocaleString('en-US')}`,
+      `You do not follow back: ${record.iDoNotFollowBack.length.toLocaleString('en-US')}`,
     ];
     const addSection = (title, accounts) => {
       lines.push('', title, '-'.repeat(title.length));
@@ -654,8 +667,19 @@
 
   function currentDirectThreadId() {
     const pathname = String(location.pathname || '').replaceAll('\\', '/');
-    if (!/^\/direct\/t\/[^/?#]+\/?$/i.test(pathname)) return null;
-    return directThreadId(pathname);
+    if (/^\/direct\/t\/[^/?#]+\/?$/i.test(pathname)) return directThreadId(pathname);
+    const visible = (element) => {
+      if (!element) return false;
+      const style = getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+      const rectangle = element.getBoundingClientRect?.();
+      return !rectangle || (rectangle.width > 0 && rectangle.height > 0);
+    };
+    const roots = [...document.querySelectorAll("[data-pagelet='IGDMessagesList']")].filter(visible);
+    if (roots.length !== 1) return null;
+    const links = [...document.querySelectorAll("a[href*='/direct/t/']")].filter(visible);
+    if (links.length !== 1) return null;
+    return directThreadId(links[0].getAttribute?.('href'));
   }
 
   function normalizedDmTimestamp(value) {
@@ -1186,7 +1210,11 @@
     for (const control of row?.querySelectorAll?.('[role="button"][aria-haspopup="menu"]') || []) {
       matches.push(control);
     }
-    return [...new Set(matches)].filter((control) => visibleText(control));
+    return [...new Set(matches)].filter((control) => (
+      actionLabels.isDmMessageOptionsLabel(visibleText(control))
+      || [...control?.querySelectorAll?.('[aria-label]') || []]
+        .some((element) => actionLabels.isDmMessageOptionsLabel(visibleText(element)))
+    ));
   }
 
   function exactDmUnsendControls(scope) {

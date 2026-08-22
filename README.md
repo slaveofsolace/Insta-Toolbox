@@ -1,6 +1,6 @@
 # Insta Toolbox
 
-Three Instagram tools in one place, running entirely on your own machine:
+Mutual checks, account actions, and DM cleanup, directly on Instagram and stored on your own machine:
 
 - **Mutual Checker** — see who doesn't follow you back, who you don't follow back, and who's mutual.
 - **Follow / Unfollow** — work through a list of accounts one at a time, or let the batch runner pace it for you.
@@ -198,7 +198,7 @@ pnpm run build:extension
 
 Load `dist/extension` as an unpacked extension, or install the generated ZIP through the appropriate browser-managed workflow.
 
-Open Instagram after loading the extension. A compact **AIO** launcher appears
+Open Instagram after loading the extension. A compact **Toolbox** launcher appears
 on the right by default; the full overlay opens only when the operator requests
 it. On desktop, drag its header to move it, drag the lower-right handle to resize it, and
 use **Settings → Surface transparency** to choose 55–100% opacity. Reset restores
@@ -215,7 +215,7 @@ provides:
 
 Press **Alt + Shift + I** to toggle the sidecar.
 
-### All-in-one tools
+### Tools on Instagram
 
 The sidecar carries the three tools in one place, each on its own tab.
 
@@ -228,7 +228,7 @@ page control. The result browser switches among mutuals and both non-mutual
 groups and filters locally. If Instagram changes or rejects the read interface,
 the Advanced section retains the older exact-dialog scanner as a fallback.
 
-**Follow / Unfollow bot.** In the Follow / Unfollow tab, choose **Follow people**
+**Follow / Unfollow.** In the Follow / Unfollow tab, choose **Follow people**
 or **Unfollow people**, then pick one of the compatible current-profile, checker,
 scanned-list, or queue sources. Choose the explicit **Review N Follow targets**
 or **Review N Unfollow targets** action to freeze and inspect the exact targets,
