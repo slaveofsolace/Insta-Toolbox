@@ -12,7 +12,7 @@ import { app, BrowserWindow, nativeImage, session } from 'electron';
 import { overlayQaScenarios, viewports } from './overlay-qa-scenarios.mjs';
 
 const viewTitles = Object.freeze({
-  capture: 'Follower checker',
+  capture: 'Mutual Checker',
   messages: 'DM Unsend',
   now: 'Instagram tools',
   queue: 'Follow / Unfollow',
@@ -272,7 +272,7 @@ async function applyAfterState(webContents, scenario) {
       const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
       const username = shadow.querySelector('[data-ia-role="checker-username"]');
       const control = shadow.querySelector('[data-ia-action="check-account-relationships"]');
-      if (!username || !control) throw new Error('Authenticated follower checker controls are missing.');
+      if (!username || !control) throw new Error('Mutual Checker controls are missing.');
       username.value = 'demo_creator';
       username.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
       control.click();
@@ -330,7 +330,7 @@ async function applyAfterState(webContents, scenario) {
     await webContents.executeJavaScript(`(() => {
       const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
       const search = shadow.querySelector('[data-ia-role="checker-search"]');
-      if (!search) throw new Error('Follower checker search control is missing.');
+      if (!search) throw new Error('Mutual Checker search control is missing.');
       search.value = 'beta';
       search.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
       shadow.querySelector('[data-ia-role="checker-browser"]')?.scrollIntoView({ block: 'center' });
@@ -632,9 +632,9 @@ async function accessibilitySmoke(webContents, scenario) {
   );
   const names = new Set((tree.nodes || []).map((node) => node.name?.value).filter(Boolean));
   for (const expected of [
-    'Insta AIO Instagram sidecar',
+    'Insta Toolbox',
     'Toolbox',
-    'Follower checker',
+    'Mutual Checker',
     'Follow / Unfollow',
     'DM Unsend',
     'Workspace',
@@ -800,7 +800,7 @@ function fidelityLedger(results, performance) {
       current: `docs/evidence/overlay-ui-2026-08-02/after/${process.platform}`,
     },
     comparison: [
-      { area: 'shell', before: 'Default-open, visually dominant field desk', after: `Fresh collapsed launcher; standard open share ${(standard.metrics.panelAreaShare * 100).toFixed(2)}%`, status: 'MEASURED' },
+    { area: 'shell', before: 'Default-open, visually dominant overlay panel', after: `Fresh collapsed launcher; standard open share ${(standard.metrics.panelAreaShare * 100).toFixed(2)}%`, status: 'MEASURED' },
       { area: 'hierarchy', before: 'Multiple equal-weight cards and protocol copy', after: 'Current target, state, then one next safe step with progressive disclosure', status: 'MEASURED' },
       { area: 'theme', before: 'Forced light presentation', after: 'Explicit light/dark plus auto resolver', status: 'MEASURED' },
       { area: 'navigation', before: 'Text-heavy tabs', after: 'Five semantic 44px rail targets with keyboard roving tabindex', status: 'MEASURED' },

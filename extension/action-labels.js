@@ -585,9 +585,16 @@
     const dialogButton = result?.control;
     if (!dialogButton) return false;
 
+    const before = removalEvidence(row);
     const closed = waitForElement(
       document.body,
       () => (!dialogButton.isConnected || !isVisible(dialogButton) ? true : null),
+      signal,
+      5_000,
+    );
+    const removed = waitForElement(
+      document.body,
+      () => (removalProven(row, before) ? true : null),
       signal,
       5_000,
     );
@@ -598,12 +605,10 @@
     // every successful removal report as a failure.
     if ((await closed) !== true) return false;
 
-    // Instagram usually leaves the row in place and swaps its content for an
-    // "unsent" note rather than removing it, so requiring the row to disappear
-    // would mark successful removals as failures. Either outcome counts.
-    if (!row.isConnected) return true;
-    await delay(250, signal);
-    return !row.isConnected || !hasMessageContent(row) || actionButton(row) === null;
+    // Instagram may remove the row or replace it with an "unsent" placeholder.
+    // A hidden hover control is not proof: require the reviewed row or its
+    // message content to disappear or change.
+    return (await removed) === true;
   }
 
   async function unsendRow(row, signal, expectedThreadId, authorizationExpiresAt) {
@@ -808,6 +813,19 @@
     return (text || 'Sent message').slice(0, 90);
   }
 
+  function removalEvidence(row) {
+    if (!row?.isConnected) return 'row-removed';
+    if (!hasMessageContent(row)) return 'content-removed';
+    return preview(row);
+  }
+
+  function removalProven(row, before) {
+    const after = removalEvidence(row);
+    return after === 'row-removed'
+      || after === 'content-removed'
+      || (before && after && after !== before);
+  }
+
   async function inspectAll() {
     if (activeController && !activeController.signal.aborted) {
       return { ready: false, reason: 'Another message check or run is already active.' };
@@ -849,8 +867,8 @@
       publish({
         status: 'reviewed',
         message: complete
-          ? `${eligibleCount} sent message${eligibleCount === 1 ? '' : 's'} eligible in this conversation. Nothing was changed.`
-          : `${result.reason} Nothing was changed.`,
+          ? `${eligibleCount} sent message${eligibleCount === 1 ? '' : 's'} found.`
+          : result.reason,
         current: null,
         canStop: false,
         finishedAt: result.checkedAt,
@@ -858,7 +876,7 @@
       return result;
     } catch (error) {
       const reason = error?.name === 'AbortError' || controller.signal.aborted
-        ? 'Conversation check stopped. Nothing was changed.'
+        ? 'Conversation check stopped.'
         : error.message || 'The conversation could not be checked.';
       publish({
         status: error?.name === 'AbortError' || controller.signal.aborted ? 'stopped' : 'error',
@@ -947,12 +965,21 @@
         }
         const stop = sessionStop(expectedThreadId);
         if (stop) throw new Error(stop);
+        // Instagram can replace the virtualized message scroller while history
+        // is loading or after an Unsend. Reacquire it before every message so a
+        // detached container cannot turn a real plan into a false zero-item run.
+        const currentContext = threadContext();
+        if (!currentContext.ok || currentContext.threadId !== expectedThreadId) {
+          throw new Error(currentContext.reason || 'The reviewed conversation changed.');
+        }
         const row = await nextSentRow(
-          context,
+          currentContext,
           signal,
           plan.scope === 'newest' ? 'newest' : 'oldest',
         );
-        if (!row) break;
+        if (!row) {
+          throw new Error('Instagram refreshed the conversation before the next reviewed message could be found. Check the conversation again.');
+        }
         const label = preview(row);
         const elapsed = Date.now() - lastUnsendAt;
         const wait = lastUnsendAt
@@ -1091,6 +1118,8 @@
       hasMessageContent,
       isVisible,
       nextSentRow,
+      removalEvidence,
+      removalProven,
       reversedLayout,
       rowNeedsReposition,
       sentByCurrentUser,

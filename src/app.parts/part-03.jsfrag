@@ -33,7 +33,7 @@ function renderImports() {
     <section class="panel">
       <div class="panel-head"><div><h2>Supported imports</h2></div></div>
       <div class="notice">
-        Supported: an unmodified Instagram export ZIP, <span class="code">followers_*.json</span>, <span class="code">following.json</span>, Meta <span class="code">message_*.json</span> files, InstagramHelper message-data JSON, SimpleInstaBot <span class="code">*-followed.json</span>/<span class="code">*-unfollowed.json</span>, saved follower-checker result JSON, and Insta AIO exports. Extracted files and folders remain available as a fallback.
+        Supported: Instagram export ZIPs, <span class="code">followers_*.json</span>, <span class="code">following.json</span>, Meta <span class="code">message_*.json</span>, InstagramHelper JSON, SimpleInstaBot <span class="code">*-followed.json</span>/<span class="code">*-unfollowed.json</span>, Mutual Checker JSON, and Insta Toolbox exports.
       </div>
       <div class="toolbar" style="margin-top:14px">
         <button data-action="pick-state-file">Restore workspace backup</button>
@@ -153,8 +153,6 @@ function renderSettings() {
     <section class="panel">
       <div class="form-grid">
         <div class="field"><label for="waiting-days">Waiting period before unfollow review</label><input id="waiting-days" type="number" min="1" max="365" value="${escapeHtml(state.settings.waitingDays)}"></div>
-        <div class="field"><label for="daily-follow-limit">Daily follow planning limit</label><input id="daily-follow-limit" type="number" min="1" max="500" value="${escapeHtml(state.settings.dailyFollowLimit)}"></div>
-        <div class="field"><label for="daily-unfollow-limit">Daily unfollow planning limit</label><input id="daily-unfollow-limit" type="number" min="1" max="500" value="${escapeHtml(state.settings.dailyUnfollowLimit)}"></div>
         <div class="field"><label for="owner-names">Your sender/display names in message exports</label><input id="owner-names" value="${escapeHtml(state.settings.ownerNames.join(', '))}" placeholder="Your Instagram display name, username"></div>
         <div class="field full"><label for="whitelist">Whitelist usernames</label><textarea id="whitelist" placeholder="one username per line">${escapeHtml(state.settings.whitelist.join('\n'))}</textarea></div>
         <div class="field full"><label for="preexisting">Protected accounts followed before this tool</label><textarea id="preexisting" placeholder="one username per line">${escapeHtml(state.settings.preexistingFollowing.join('\n'))}</textarea></div>

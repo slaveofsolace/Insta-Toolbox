@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "main": "desktop/main.mjs",
-  "description": "Local-first Instagram relationship, queue, and message-data management suite.",
+  "description": "Local Instagram mutual checks, follow reviews, and DM tools.",
   "repository": {
     "type": "git",
     "url": "https://github.com/slaveofsolace/Insta-AIO-Tool.git"
@@ -48,7 +48,7 @@
   "packageManager": "pnpm@11.9.0",
   "build": {
     "appId": "io.github.slaveofsolace.insta-aio-tool",
-    "productName": "Insta AIO Tool",
+    "productName": "Insta Toolbox",
     "asar": true,
     "files": [
       "desktop/**/*",

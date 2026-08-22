@@ -95,7 +95,7 @@ test('sidecar exposes every tool family and accessibility controls', () => {
   assert.match(overlay, /data-ia-role="move-handle"/);
   assert.match(overlay, /data-ia-role="resize-handle"/);
   assert.match(overlay, /data-ia-preference="opacity"/);
-  assert.match(overlay, /Follower checker/);
+  assert.match(overlay, /Mutual Checker/);
   assert.match(overlay, /Follow \/ Unfollow/);
   assert.match(overlay, /DM Unsend/);
   assert.match(overlay, /openShadow: globalThis\.__instaAioOverlayTestOpenShadow === true/);
@@ -121,7 +121,7 @@ test('sidecar guides list capture, reviews account targets, and keeps one DM pri
   const dmPrimary = overlay.match(/<button[^>]*data-ia-action="mass-unsend"[^>]*>/);
   assert.ok(dmPrimary, 'the permanent Unsend DMs button must be in the static shell');
   assert.doesNotMatch(dmPrimary[0], /\sdisabled(?:\s|>|=)/);
-  assert.match(overlay, /Advanced: list-dialog fallback and export/);
+  assert.match(overlay, /Advanced: list fallback and export/);
   assert.match(overlay, /aria-labelledby="ia-bot-composer-title"/);
   assert.match(overlay, /<summary>Advanced message options<\/summary>/);
 });
@@ -240,7 +240,7 @@ test('runtime fixture exercises the actual production scripts', () => {
 });
 
 test('popup identifies itself as setup while directing work to the Instagram sidecar', () => {
-  assert.match(popupHtml, /The working UI lives on Instagram/);
+  assert.match(popupHtml, /The toolbox lives on Instagram/);
   assert.match(popupHtml, /Pair exact workspace origin/);
   assert.match(popupCss, /#d8ff45/);
   assert.doesNotMatch(popupCss, /Inter,/);

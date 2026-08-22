@@ -595,6 +595,8 @@
       .card { margin-bottom: 10px; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 10px; padding: 12px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) var(--aio-alpha-strong), transparent); }
       .card h2, .card h3 { margin: 0 0 6px; font-size: 15px; }
       .card p { margin: 4px 0 0; color: var(--aio-text-muted, #687068); font-size: 12px; overflow-wrap: break-word; word-break: normal; }
+      .card > strong, .card > span { display: block; }
+      .card > strong + span { margin-top: 4px; }
       .metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 10px 0; }
       .metric { border: 1px solid var(--aio-line, #d8ddd4); border-radius: 9px; padding: 10px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) var(--aio-alpha-strong), transparent); }
       .metric span, .metric strong { display: block; }
@@ -688,11 +690,11 @@
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
       @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel { background:Canvas; } .panel,.card,.tool,.metric { border:2px solid CanvasText; } }
     </style>
-    <button class="launcher" type="button" data-action="open" aria-label="Open Insta AIO Instagram toolbox" aria-expanded="false">AIO</button>
-    <aside class="panel" aria-label="Insta AIO Tampermonkey Instagram toolbox" hidden>
+    <button class="launcher" type="button" data-action="open" aria-label="Open Insta Toolbox" aria-expanded="false">IT</button>
+    <aside class="panel" aria-label="Insta Toolbox" hidden>
       <header class="header">
         <button class="handle" type="button" data-role="move" aria-label="Move toolbox; use arrow keys for precise movement" title="Drag to move">✥</button>
-        <div><h1>Insta AIO Toolbox</h1><p>Tools injected directly on Instagram</p><span class="mode" data-role="mode-label">Userscript mode · local controls</span></div>
+        <div><h1>Insta Toolbox</h1><p>Instagram tools</p><span class="mode" data-role="mode-label">Tampermonkey · local controls</span></div>
         <div style="display:flex">
           <details class="settings">
             <summary aria-label="Toolbox preferences">⚙</summary>
@@ -701,11 +703,11 @@
               <div class="field"><label for="aio-opacity">Surface transparency</label><div class="range-row"><input id="aio-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
               <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
               <button class="button quiet" type="button" data-action="reset-layout">Reset position and size</button>
-              <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing and limits</strong><div class="field"><label for="aio-limit-actions">Follow/unfollow per day</label><input id="aio-limit-actions" type="number" min="1" max="400" data-role="limit-actions"></div><div class="field"><label for="aio-limit-unsends">Unsends per day</label><input id="aio-limit-unsends" type="number" min="1" max="300" data-role="limit-unsends"></div><div class="field"><label for="aio-limit-min">Min delay (seconds)</label><input id="aio-limit-min" type="number" min="2" max="600" data-role="limit-min"></div><div class="field"><label for="aio-limit-max">Max delay (seconds)</label><input id="aio-limit-max" type="number" min="2" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
+              <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="aio-limit-min">Min delay (seconds)</label><input id="aio-limit-min" type="number" min="2" max="600" data-role="limit-min"></div><div class="field"><label for="aio-limit-max">Max delay (seconds)</label><input id="aio-limit-max" type="number" min="2" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
               <p class="lead">Drag the header handle or lower corner. Arrow keys work on both.</p>
             </div>
           </details>
-          <button class="icon" type="button" data-action="close" aria-label="Collapse Insta AIO toolbox">×</button>
+          <button class="icon" type="button" data-action="close" aria-label="Collapse Insta Toolbox">×</button>
         </div>
       </header>
       <div class="context" data-role="context" role="status" aria-live="polite">
@@ -714,26 +716,26 @@
         <button class="button quiet context-cta" type="button" data-action="context-cta" data-role="context-cta" hidden></button>
       </div>
       <section class="intro" data-role="intro" aria-labelledby="aio-intro-title" hidden>
-        <h2 id="aio-intro-title">Three tools, all local</h2>
+        <h2 id="aio-intro-title">Three Instagram tools</h2>
         <ol class="intro-list">
-          <li><strong>Follower checker</strong> — scan your Following and Followers, then compare. Reading only.</li>
-          <li><strong>Follow / Unfollow</strong> — work a list one account at a time, paced.</li>
-          <li><strong>DM Unsend</strong> — remove messages you sent in one conversation.</li>
+          <li><strong>Mutual Checker</strong> — compare Followers and Following.</li>
+          <li><strong>Follow / Unfollow</strong> — review and run exact targets.</li>
+          <li><strong>DM Unsend</strong> — remove messages you sent.</li>
         </ol>
-        <p class="intro-note">Everything stays in this browser. Nothing is uploaded, and there is no account to sign in to.</p>
-        <p class="intro-note"><strong>Checks are read-only.</strong> A change starts only after one exact action, target, and count confirmation, and stops on the first rate limit or security check.</p>
-        <div class="toolbar"><button class="button primary" type="button" data-action="intro-done">Start with the checker</button></div>
+        <p class="intro-note">Data stays in this browser.</p>
+        <p class="intro-note"><strong>Checks are read-only.</strong> Changes require one exact confirmation.</p>
+        <div class="toolbar"><button class="button primary" type="button" data-action="intro-done">Open Mutual Checker</button></div>
       </section>
-      <nav class="tabs" role="tablist" aria-label="Insta AIO userscript tools">
-        <button id="aio-tab-checker" class="tab" type="button" role="tab" data-view="checker" aria-controls="aio-panel-checker" aria-selected="true" tabindex="0">Follower checker</button>
+      <nav class="tabs" role="tablist" aria-label="Insta Toolbox tools">
+        <button id="aio-tab-checker" class="tab" type="button" role="tab" data-view="checker" aria-controls="aio-panel-checker" aria-selected="true" tabindex="0">Mutual Checker</button>
         <button id="aio-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="aio-panel-account" aria-selected="false" tabindex="-1">Follow / Unfollow</button>
         <button id="aio-tab-messages" class="tab" type="button" role="tab" data-view="messages" aria-controls="aio-panel-messages" aria-selected="false" tabindex="-1">DM Unsend</button>
       </nav>
       <div class="scroll">
-        <section id="aio-panel-checker" class="view" role="tabpanel" aria-labelledby="aio-tab-checker" data-panel="checker" hidden><section class="card" aria-labelledby="aio-checker-account-title"><h2 id="aio-checker-account-title">Check an account</h2><p>Uses the Instagram session already open in this tab. This is read only.</p><div class="field"><label for="aio-checker-username">Instagram username</label><input id="aio-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-role="checker-username"></div><div class="toolbar"><button class="button primary" type="button" data-action="check-account-relationships" data-role="checker-run">Check Followers + Following</button></div><p class="lead">Loads paginated relationship data from Instagram, compares it on this device, and never follows, unfollows, sends, unsends, or opens account controls.</p></section>
+        <section id="aio-panel-checker" class="view" role="tabpanel" aria-labelledby="aio-tab-checker" data-panel="checker" hidden><section class="card" aria-labelledby="aio-checker-account-title"><h2 id="aio-checker-account-title">Check mutuals</h2><p>Read-only. Uses the Instagram session in this tab.</p><div class="field"><label for="aio-checker-username">Instagram username</label><input id="aio-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-role="checker-username"></div><div class="toolbar"><button class="button primary" type="button" data-action="check-account-relationships" data-role="checker-run">Check mutuals</button></div></section>
           <div class="scan-progress" data-role="scan-progress" hidden><div class="run-bar"><span data-role="scan-fill"></span></div><p class="lead" data-role="scan-detail"></p></div>
           <div class="field"><label for="aio-filter">Filter results</label><input id="aio-filter" type="search" placeholder="Search a username" data-role="result-filter"></div>
-          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Advanced: list-dialog fallback and export</summary><p class="lead">If Instagram rejects the account check, open your own Following or Followers dialog and use the matching fallback scan. Starting a fallback scan clears authenticated results first so accounts from different profiles cannot mix.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan open Following dialog</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan open Followers dialog</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows only</button><button class="button quiet" type="button" data-action="download-list">Download a raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download machine-readable JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="aio-list-type">Raw list to use</label><select id="aio-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
+          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Advanced: list fallback and export</summary><p class="lead">If the account check fails, open a Following or Followers dialog and scan that list. A fallback scan clears prior authenticated results.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="aio-list-type">Raw list</label><select id="aio-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
         <section id="aio-panel-account" class="view" role="tabpanel" aria-labelledby="aio-tab-account" data-panel="account" hidden><p class="lead"><strong>Follow / Unfollow.</strong> Choose the action first, then review a finite compatible target list. Nothing clicks during review.</p><div class="card" data-role="queue-current"></div>
           <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Inspect exact profile</button><button class="button quiet" type="button" data-action="open-profile">Open exact profile</button></div><details class="settings-inline"><summary>Advanced: queue state and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
           <div class="field"><label for="aio-bot-action">What do you want to do?</label><select id="aio-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
@@ -833,7 +835,7 @@
     const verifiedFollowing = verifiedCapture('following');
     const item = currentQueueItem();
     const tools = [
-      ['checker', 'Follower checker', `${verifiedFollowers.length} followers · ${verifiedFollowing.length} following · ${comparison.notFollowingMeBack.length} not following back`, 'read only'],
+      ['checker', 'Mutual Checker', `${verifiedFollowers.length} followers · ${verifiedFollowing.length} following · ${comparison.notFollowingMeBack.length} not following back`, 'read only'],
       ['account', 'Follow / Unfollow', item ? `${item.action} @${item.account.username} is next` : 'Choose an action and compatible targets', 'review then confirm'],
       ['messages', 'DM Unsend', dmThreadPreview ? `${dmThreadPreview.eligibleCount} eligible in this thread` : 'Checks this conversation when needed', 'scan then confirm'],
     ];
@@ -923,7 +925,7 @@
       button.addEventListener('click', () => {
         const generatedAt = nowIso();
         downloadText(
-          `insta-aio-follower-comparison-${generatedAt.replace(/[:.]/g, '-')}.txt`,
+          `insta-toolbox-mutual-comparison-${generatedAt.replace(/[:.]/g, '-')}.txt`,
           engine.followerComparisonReport(state.capture, comparison, generatedAt),
         );
       });
@@ -1038,8 +1040,6 @@
       const field = query(`[data-role="${role}"]`);
       if (field && document.activeElement !== field) field.value = String(value);
     };
-    set('limit-actions', bounds.dailyActions);
-    set('limit-unsends', bounds.dailyUnsends);
     set('limit-min', Math.round(bounds.minDelayMs / 1000));
     set('limit-max', Math.round(bounds.maxDelayMs / 1000));
   }
@@ -1100,7 +1100,7 @@
   async function importQueue(file) {
     const parsed = await readJsonFile(file);
     if (parsed?.kind !== 'insta-aio-manual-queue' || !Array.isArray(parsed.queue)) {
-      throw new Error('Select an Insta AIO manual queue export.');
+      throw new Error('Select an Insta Toolbox queue export.');
     }
     state.queue = normalizeQueue({ queue: parsed.queue, importedAt: nowIso() });
     saveState();
@@ -1110,7 +1110,7 @@
   async function importDmJob(file) {
     const parsed = await readJsonFile(file);
     if (parsed?.kind !== 'insta-aio-reviewed-dm-job' || parsed.items?.length !== 1) {
-      throw new Error('Select one reviewed Insta AIO DM job containing exactly one message.');
+      throw new Error('Select one reviewed Insta Toolbox DM job with exactly one message.');
     }
     const item = parsed.items[0];
     if (
@@ -1170,8 +1170,6 @@
   }
 
   const LIMIT_BOUNDS = {
-    dailyActions: [1, 400],
-    dailyUnsends: [1, 300],
     minDelayMs: [1_500, 600_000],
     maxDelayMs: [1_500, 900_000],
   };
@@ -1210,8 +1208,6 @@
   function limits() {
     const stored = state.limits || {};
     return {
-      dailyActions: clampNumber(stored.dailyActions, LIMIT_BOUNDS.dailyActions, 100),
-      dailyUnsends: clampNumber(stored.dailyUnsends, LIMIT_BOUNDS.dailyUnsends, 50),
       minDelayMs: clampNumber(stored.minDelayMs, LIMIT_BOUNDS.minDelayMs, 4_000),
       maxDelayMs: clampNumber(stored.maxDelayMs, LIMIT_BOUNDS.maxDelayMs, 11_000),
     };
@@ -1219,11 +1215,6 @@
 
   function today() {
     return new Date().toISOString().slice(0, 10);
-  }
-
-  function usedToday(kind) {
-    const ledger = state.ledger || {};
-    return ledger.day === today() ? Number(ledger[kind] || 0) : 0;
   }
 
   function recordAction(kind) {
@@ -1238,7 +1229,6 @@
   function reserveUnsendPlan(plan) {
     const count = Number(plan?.limit);
     const reviewedDigest = String(plan?.reviewedDigest || '');
-    const bounds = limits();
     if (
       !Number.isInteger(count)
       || count < 1
@@ -1250,13 +1240,6 @@
       : { day: today(), actions: 0, unsends: 0 };
     if (current.lastUnsendPlanDigest === reviewedDigest) {
       return { ok: false, reason: 'This reviewed Unsend plan was already reserved.' };
-    }
-    const remaining = Math.max(0, bounds.dailyUnsends - Number(current.unsends || 0));
-    if (count > remaining) {
-      return {
-        ok: false,
-        reason: `Only ${remaining} of ${bounds.dailyUnsends} daily Unsends remain.`,
-      };
     }
     current.unsends = Number(current.unsends || 0) + count;
     current.lastUnsendPlanDigest = reviewedDigest;
@@ -1400,16 +1383,6 @@
     }
     if (state.run?.status === 'running') {
       status('A run is already going. Stop it first.');
-      return;
-    }
-    const bounds = limits();
-    const allowance = Math.max(0, bounds.dailyActions - usedToday('actions'));
-    if (!allowance) {
-      status(`Daily limit reached (${bounds.dailyActions}). Raise it in preferences or continue tomorrow.`);
-      return;
-    }
-    if (usernames.length > allowance) {
-      status(`Only ${allowance} of ${bounds.dailyActions} daily account actions remain. Review a smaller exact run.`);
       return;
     }
     const queue = [...usernames];
@@ -1627,7 +1600,7 @@
       return;
     }
     if (typeof engine?.fetchFollowerComparison !== 'function') {
-      status('Reload Instagram to activate the current follower checker engine.');
+      status('Reload Instagram to activate Mutual Checker.');
       return;
     }
     const input = query('[data-role="checker-username"]');
@@ -1664,6 +1637,15 @@
             );
             return;
           }
+          if (progress.phase === 'reconciling') {
+            const label = progress.listType === 'followers' ? 'Followers' : 'Following';
+            setText(
+              'scan-detail',
+              `Finishing ${label}: ${progress.found} of ${progress.expectedCount} found. Checking the final page once more.`,
+            );
+            showScanProgress(progress.listType, progress.found, false);
+            return;
+          }
           if (progress.listType) showScanProgress(progress.listType, progress.found, false);
         },
       });
@@ -1685,8 +1667,13 @@
         state.capture = previousCapture;
         throw error;
       }
+      const mismatch = result.reasons.followers === 'count-mismatch'
+        ? ` Instagram reports ${result.expectedCounts.followers} followers; ${result.followers.length} were returned.`
+        : result.reasons.following === 'count-mismatch'
+          ? ` Instagram reports ${result.expectedCounts.following} following; ${result.following.length} were returned.`
+          : ' A bounded read limit was reached.';
       status(
-        `Checked @${result.username}: ${result.followers.length} followers and ${result.following.length} following.${result.complete.followers && result.complete.following ? '' : ' A bounded read limit was reached, so the comparison is marked partial.'}`,
+        `Checked @${result.username}: ${result.followers.length} followers and ${result.following.length} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
       );
     } catch (error) {
       status(error?.code === 'stopped'
@@ -1896,13 +1883,13 @@
     if (summary) {
       summary.hidden = !checked;
       setText('dm-summary-title', found
-        ? `${found} of your messages can be removed`
-        : 'No removable messages found');
+        ? `${found} sent message${found === 1 ? '' : 's'} found`
+        : 'No sent messages found');
       setText('dm-summary-detail', !found
-        ? 'Nothing here could be identified as yours, so nothing will be touched.'
+        ? 'No messages in this thread were identified as yours.'
         : dmThreadPreview?.complete
-          ? 'The whole conversation was read.'
-          : 'The conversation did not fully load, so there may be more further back.');
+          ? 'Full conversation checked.'
+          : 'The check ended before the full conversation loaded.');
     }
     // Never hidden. Progressive disclosure applies to secondary controls, not
     // to the action the tool exists for.
@@ -1925,8 +1912,8 @@
     dmThreadPreview = outcome?.ready && outcome.complete === true ? outcome : null;
     renderAll();
     status(outcome?.ready && outcome.complete === true
-      ? `${outcome.eligibleCount} sent message${outcome.eligibleCount === 1 ? '' : 's'} eligible in thread ${outcome.threadId}. Nothing was changed.`
-      : outcome?.reason || 'The conversation could not be checked. Nothing was changed.');
+      ? `${outcome.eligibleCount} sent message${outcome.eligibleCount === 1 ? '' : 's'} found.`
+      : outcome?.reason || 'Could not check this conversation.');
     return outcome;
   }
 
@@ -1944,7 +1931,7 @@
       preview = scanned;
     }
     if (preview.eligibleCount < 1) {
-      status(`No sent messages are eligible in thread ${preview.threadId}. Nothing was changed.`);
+      status('No sent messages found.');
       return;
     }
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
@@ -1965,14 +1952,14 @@
       : `${scope} ${limit} sent message${limit === 1 ? '' : 's'}`;
     if (!confirmRun(
       `Permanently unsend ${scopeLabel} from thread ${plan.threadId}?\n\n`
-      + `The eligible count will be revalidated before any message menu opens.`,
+      + `The count is checked again before message menus open.`,
     )) {
-      status('Canceled. The conversation check is still available and nothing was changed.');
+      status('Canceled. Scan kept.');
       return;
     }
     const reservation = reserveUnsendPlan(plan);
     if (!reservation.ok) {
-      status(`${reservation.reason} Nothing was changed.`);
+      status(reservation.reason);
       return;
     }
     dmThreadPreview = null;
@@ -2113,8 +2100,7 @@
     'run-unsend': () => runDmUnsend(),
     'save-limits': () => {
       state.limits = {
-        dailyActions: clampNumber(query('[data-role="limit-actions"]')?.value, LIMIT_BOUNDS.dailyActions, 100),
-        dailyUnsends: clampNumber(query('[data-role="limit-unsends"]')?.value, LIMIT_BOUNDS.dailyUnsends, 50),
+        ...(state.limits || {}),
         minDelayMs: clampNumber(Number(query('[data-role="limit-min"]')?.value) * 1000, LIMIT_BOUNDS.minDelayMs, 4_000),
         maxDelayMs: clampNumber(Number(query('[data-role="limit-max"]')?.value) * 1000, LIMIT_BOUNDS.maxDelayMs, 11_000),
       };
@@ -2155,7 +2141,7 @@
     'clear-capture': () => {
       state.capture = stateDefaults().capture;
       saveState();
-      status('Cleared both follower checker drafts. Instagram was not changed.');
+      status('Mutual Checker cleared.');
     },
     'download-list': () => {
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
@@ -2183,7 +2169,7 @@
       }
       const generatedAt = nowIso();
       downloadJson(
-        `insta-aio-follower-comparison-${generatedAt.replace(/[:.]/g, '-')}.json`,
+        `insta-toolbox-mutual-comparison-${generatedAt.replace(/[:.]/g, '-')}.json`,
         engine.followerComparisonRecord(state.capture, compareCapture(), generatedAt),
       );
     },

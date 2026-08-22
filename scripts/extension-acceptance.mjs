@@ -320,12 +320,12 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
     };
   })()`, true);
   assert.deepEqual(metrics.nav.map(({ label }) => label), [
-    'Toolbox', 'Follower checker', 'Follow / Unfollow', 'DM Unsend', 'Workspace',
+    'Toolbox', 'Mutual Checker', 'Follow / Unfollow', 'DM Unsend', 'Workspace',
   ]);
   assert.equal(metrics.nav[0].selected, 'true');
-  assert.equal(metrics.panelLabel, 'Insta AIO Instagram sidecar');
+  assert.equal(metrics.panelLabel, 'Insta Toolbox');
   assert.equal(metrics.statusLive, 'polite');
-  assert.equal(metrics.closeLabel, 'Collapse Insta AIO sidecar');
+  assert.equal(metrics.closeLabel, 'Collapse Insta Toolbox');
   assert.match(metrics.moveLabel, /Move sidecar/);
   assert.match(metrics.resizeLabel, /Resize sidecar/);
   assert.equal(metrics.opacity, '88');
@@ -412,10 +412,10 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
     const tree = await webContents.debugger.sendCommand('Accessibility.getFullAXTree');
     const names = new Set((tree.nodes || []).map((node) => node.name?.value).filter(Boolean));
     for (const expected of [
-      'Insta AIO Instagram sidecar',
-      'Collapse Insta AIO sidecar',
+      'Insta Toolbox',
+      'Collapse Insta Toolbox',
       'Toolbox',
-      'Follower checker',
+      'Mutual Checker',
       'Follow / Unfollow',
       'DM Unsend',
       'Workspace',
@@ -624,7 +624,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     };
   })()`, true);
   // Exactly the three tools, with no landing tab in front of them.
-  assert.deepEqual(initial.labels, ['Follower checker', 'Follow / Unfollow', 'DM Unsend']);
+  assert.deepEqual(initial.labels, ['Mutual Checker', 'Follow / Unfollow', 'DM Unsend']);
   assert.deepEqual(initial.tabs, [
     { controls: 'aio-panel-checker', selected: 'true', tabIndex: 0 },
     { controls: 'aio-panel-account', selected: 'false', tabIndex: -1 },

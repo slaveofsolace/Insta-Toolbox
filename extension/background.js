@@ -226,6 +226,7 @@ async function reserveThreadUnsendPlan(request, sender, now = Date.now()) {
   const plan = validateThreadUnsendReservation(request, sender, now);
   if (plan.error) return plan;
   const state = await loadBridgeState();
+  const limits = normalizeBatchLimits(state.batchLimits);
   const day = accountActionDay(now);
   const counted = new Set(['reserved', 'succeeded', 'uncertain']);
   const duplicate = state.threadUnsendLedger.find((entry) => (
@@ -235,18 +236,6 @@ async function reserveThreadUnsendPlan(request, sender, now = Date.now()) {
     && counted.has(entry.status)
   ));
   if (duplicate) return { error: 'thread-unsend-plan-already-reserved' };
-  const used = state.threadUnsendLedger
-    .filter((entry) => entry.day === day && counted.has(entry.status))
-    .reduce((total, entry) => total + Math.max(0, Number(entry.count) || 0), 0);
-  const limits = normalizeBatchLimits(state.batchLimits);
-  if (used + plan.count > limits.dailyDmLimit) {
-    return {
-      error: 'thread-unsend-daily-limit',
-      limit: limits.dailyDmLimit,
-      remaining: Math.max(0, limits.dailyDmLimit - used),
-      used,
-    };
-  }
   const reservation = {
     id: `thread-unsend-${now}-${plan.reviewedDigest}`,
     day,
@@ -421,19 +410,6 @@ function extensionReservationConflict(state, jobId, intent, now = Date.now()) {
   ));
   if (duplicateTarget) return { reason: 'extension-duplicate-account-action', existing: duplicateTarget };
 
-  const used = ledger.filter((entry) => (
-    entry.day === day
-    && entry.action === intent.action
-    && counted.has(entry.status)
-  )).length;
-  const dailyActionLimit = normalizeBatchLimits(state.batchLimits).dailyActionLimit;
-  if (used >= dailyActionLimit) {
-    return {
-      reason: 'extension-daily-limit',
-      limit: dailyActionLimit,
-      used,
-    };
-  }
   return null;
 }
 
@@ -485,12 +461,6 @@ function extensionDmReservationConflict(state, jobId, intent, now = Date.now()) 
   ));
   if (duplicateMessage) return { reason: 'extension-duplicate-dm-message', existing: duplicateMessage };
 
-  const day = accountActionDay(now);
-  const used = ledger.filter((entry) => entry.day === day && counted.has(entry.status)).length;
-  const dailyDmLimit = normalizeBatchLimits(state.batchLimits).dailyDmLimit;
-  if (used >= dailyDmLimit) {
-    return { reason: 'extension-daily-dm-limit', limit: dailyDmLimit, used };
-  }
   return null;
 }
 

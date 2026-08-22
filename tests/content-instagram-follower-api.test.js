@@ -129,6 +129,72 @@ test('authenticated follower check requires an exact username search result', as
   );
 });
 
+test('Mutual Checker retries a premature final Followers page once and unions the missing account', async () => {
+  const inspector = createInspector();
+  const baseFollowers = Array.from({ length: 100 }, (_, index) => ({ username: `follower.${index}` }));
+  let followerCalls = 0;
+  const progress = [];
+  const result = await inspector.fetchFollowerComparison({
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname.includes('topsearch')) {
+        return response({
+          users: [{ user: {
+            pk: '77', username: 'target_name', follower_count: 101, following_count: 1,
+          } }],
+        });
+      }
+      if (url.pathname.includes('/followers/')) {
+        followerCalls += 1;
+        return response({
+          users: followerCalls === 1
+            ? baseFollowers
+            : [...baseFollowers.slice(1), { username: 'follower.100' }],
+        });
+      }
+      return response({ users: [{ username: 'following.one' }] });
+    },
+    onProgress: (entry) => progress.push(entry),
+    sleepImpl: async () => {},
+    username: 'target_name',
+  });
+
+  assert.equal(followerCalls, 2);
+  assert.equal(result.followers.length, 101);
+  assert.equal(result.complete.followers, true);
+  assert.ok(progress.some((entry) => entry.phase === 'reconciling'
+    && entry.found === 100
+    && entry.expectedCount === 101));
+});
+
+test('Mutual Checker finishes partial instead of hanging when Instagram keeps one account hidden', async () => {
+  const inspector = createInspector();
+  const followers = Array.from({ length: 100 }, (_, index) => ({ username: `follower.${index}` }));
+  let followerCalls = 0;
+  const result = await inspector.fetchFollowerComparison({
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname.includes('topsearch')) {
+        return response({ users: [{ user: {
+          pk: '77', username: 'target_name', follower_count: 101, following_count: 1,
+        } }] });
+      }
+      if (url.pathname.includes('/followers/')) {
+        followerCalls += 1;
+        return response({ users: followers });
+      }
+      return response({ users: [{ username: 'following.one' }] });
+    },
+    sleepImpl: async () => {},
+    username: 'target_name',
+  });
+
+  assert.equal(followerCalls, 2);
+  assert.equal(result.followers.length, 100);
+  assert.equal(result.complete.followers, false);
+  assert.equal(result.reasons.followers, 'count-mismatch');
+});
+
 test('authenticated follower check stops on rate limits before requesting another list', async () => {
   const inspector = createInspector();
   let calls = 0;
@@ -325,7 +391,7 @@ test('follower comparison export provides a readable UTF-8 report and preserves 
   };
   const generatedAt = '2026-08-22T12:34:56.000Z';
   const report = inspector.followerComparisonReport(workspace, comparison, generatedAt);
-  assert.match(report, /^INSTA AIO FOLLOWER COMPARISON\r\n/m);
+  assert.match(report, /^INSTA TOOLBOX MUTUAL CHECK\r\n/m);
   assert.match(report, /Account: @demo\.creator/);
   assert.match(report, /Generated: 2026-08-22T12:34:56\.000Z/);
   assert.match(report, /Completeness: Complete/);

@@ -33,8 +33,8 @@
   });
   const SECTIONS = Object.freeze(['now', 'capture', 'queue', 'messages', 'workspace']);
   const SECTION_COPY = Object.freeze({
-    now: Object.freeze(['Instagram tools', 'The follower checker, account review, and DM Unsend entry points.']),
-    capture: Object.freeze(['Follower checker', 'Capture Followers and Following, then compare the rendered rows locally.']),
+    now: Object.freeze(['Instagram tools', 'Mutual Checker, account review, and DM Unsend.']),
+    capture: Object.freeze(['Mutual Checker', 'Compare Followers and Following locally.']),
     queue: Object.freeze(['Follow / Unfollow', 'Review one exact account with a true no-click check first.']),
     messages: Object.freeze(['DM Unsend', 'Inspect visible evidence or resolve one exact reviewed sent message.']),
     workspace: Object.freeze(['Workspace', 'Pairing, permissions, and the durable PWA ledger.']),

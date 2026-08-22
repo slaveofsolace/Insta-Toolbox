@@ -114,7 +114,7 @@ export function inspectSimpleInstaBotLikedPhotos(
   if (data.length) {
     report.warnings.push(
       `${sourceName}: ${data.length} liked-photo `
-      + `${data.length === 1 ? 'record is' : 'records are'} outside the Insta AIO data contract.`,
+      + `${data.length === 1 ? 'record is' : 'records are'} outside the Insta Toolbox data contract.`,
     );
   }
   validateMigrationReport(report);

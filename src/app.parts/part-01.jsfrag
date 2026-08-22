@@ -306,8 +306,8 @@ function renderShell(content) {
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">IA</div>
-          <div class="brand-copy"><strong>Insta AIO Tool</strong><span>Local-first workspace</span></div>
+          <div class="brand-mark">IT</div>
+          <div class="brand-copy"><strong>Insta Toolbox</strong><span>Local workspace</span></div>
         </div>
         <nav class="nav" aria-label="Primary navigation">
           ${views.map(([id, label]) => `
@@ -343,7 +343,7 @@ function renderOverview() {
     <section class="tool-overview" aria-label="Three-tool workspace">
       <article class="tool-lane">
         <div class="tool-lane-index">01</div>
-        <div class="tool-lane-copy"><p class="eyebrow">Read and compare</p><h2>Follower checker</h2><p>Import Followers and Following, compare complete snapshots, and keep raw captures out of the main result view.</p><div class="tool-lane-facts"><span><strong>${snapshot?.followers.length || 0}</strong> followers</span><span><strong>${snapshot?.following.length || 0}</strong> following</span><span><strong>${relationships.notFollowingBack.length}</strong> not following back</span></div></div>
+        <div class="tool-lane-copy"><p class="eyebrow">Read and compare</p><h2>Mutual Checker</h2><p>Compare Followers and Following. Raw captures stay under Advanced.</p><div class="tool-lane-facts"><span><strong>${snapshot?.followers.length || 0}</strong> followers</span><span><strong>${snapshot?.following.length || 0}</strong> following</span><span><strong>${relationships.notFollowingBack.length}</strong> not following back</span></div></div>
         <div class="tool-lane-action"><span>${snapshot ? `Snapshot ${formatDate(snapshot.capturedAt, false)}` : 'Import data to begin'}</span><button data-action="navigate" data-view="relationships">Open checker</button></div>
       </article>
       <article class="tool-lane">

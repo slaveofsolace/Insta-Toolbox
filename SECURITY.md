@@ -18,7 +18,7 @@ Include:
 
 ## Security boundaries
 
-Insta AIO Tool:
+Insta Toolbox:
 
 - Processes imports locally
 - Does not request an Instagram password
@@ -65,7 +65,7 @@ The project does not support:
 
 Reports requesting or depending on those behaviors will not be implemented.
 
-The follower checker is the narrow exception for authenticated web reads. It
+Mutual Checker is the narrow exception for authenticated web reads. It
 uses a fixed allowlist of the exact search, Followers, and Following GET routes
 reviewed from the supplied legacy checker, a fixed application header, bounded
 pagination, and browser-managed credentials. It does not read or export cookies,

@@ -24,7 +24,7 @@ tokens, or private Instagram screenshots in the repository.
 ## 1. Install and prove the safe default
 
 1. Follow [Installation](./INSTALLATION.md) and update the companion.
-2. In Tampermonkey, confirm **Insta AIO Instagram Toolbox 2.0.0** or later. If
+2. In Tampermonkey, confirm **Insta Toolbox 2.0.0** or later. If
    Chrome is used, open Tampermonkey's extension details and enable
    **Allow User Scripts**.
 3. Reload `https://www.instagram.com/`, then press **Alt + Shift + I**.
@@ -50,7 +50,7 @@ No menu, confirmation, Follow, Unfollow, or Unsend control may be activated.
 2. Open the intended account profile. Confirm the profile context names the
    visible profile and offers only a no-click inspection until a reviewed run
    exists.
-3. Open **Follower checker**. Confirm the username is correct, or enter it, then
+3. Open **Mutual Checker**. Confirm the username is correct, or enter it, then
    choose **Check Followers + Following**.
 4. Confirm progress moves through exact-account resolution, Followers pages,
    and Following pages without opening a relationship control or dialog. Record

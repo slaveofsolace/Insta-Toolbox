@@ -7,7 +7,7 @@
 | Instagram Helper | `allMessagesItemsArray` | Normalized messages and migration report | No |
 | SimpleInstaBot | Followed/unfollowed history | Historical queue records and migration report | No |
 | SimpleInstaBot | Photo history | Unsupported disposition | No |
-| Follower checker | Two non-mutual arrays | Read-only relationship report | No |
+| Mutual Checker | Two non-mutual arrays | Read-only relationship report | No |
 | instagram-dm-unsender | Stateless userscript configuration | Migration report only | No |
 
 The dispatcher in `src/adapters/legacy-components.js` identifies supported data without evaluating supplied source code.
@@ -77,7 +77,7 @@ historical and non-actionable.
 - Photo-history records become explicit unsupported dispositions.
 - Every migrated queue item has `migrationOnly: true`.
 
-### Follower checker
+### Mutual Checker
 
 - Both result arrays are normalized and deduplicated.
 - Invalid usernames are reported.

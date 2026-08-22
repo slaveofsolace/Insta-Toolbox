@@ -233,7 +233,7 @@ test('floating layout clamps drag position, resize bounds, and opacity preferenc
   assert.deepEqual(JSON.parse(JSON.stringify(normalized.position)), { x: 0, y: 10_000 });
 });
 
-test('follower checker migrates the legacy draft and compares both rendered lists locally', () => {
+test('Mutual Checker migrates the legacy draft and compares both rendered lists locally', () => {
   const { shared } = loadModules();
   const normalizeUsername = (value) => String(value || '')
     .replace(/^@/, '')

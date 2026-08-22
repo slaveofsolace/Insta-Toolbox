@@ -14,13 +14,6 @@ function attemptId(claim) {
   return `${claim.jobId}:${claim.itemId}:${claim.action}:${normalizeUsername(claim.username)}`;
 }
 
-function boundedDailyLimit(value) {
-  if (value == null || value === '') return 25;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 1;
-  return Math.max(1, Math.min(500, Math.floor(parsed)));
-}
-
 export function reserveActionAttempt(candidateState, claim, settings = {}, now = Date.now()) {
   const state = clone(candidateState || {});
   state.actionLedger = Array.isArray(state.actionLedger) ? state.actionLedger : [];
@@ -56,23 +49,7 @@ export function reserveActionAttempt(candidateState, claim, settings = {}, now =
       },
     };
   }
-  const limit = boundedDailyLimit(action === 'follow'
-    ? settings.dailyFollowLimit
-    : settings.dailyUnfollowLimit);
   const today = dayKey(now);
-  const used = state.actionLedger.filter((entry) => (
-    entry.mode === 'live'
-    && entry.action === action
-    && entry.day === today
-    && ['reserved', 'succeeded', 'uncertain'].includes(entry.status)
-  )).length;
-  if (used >= limit) {
-    return {
-      state,
-      result: { ok: false, reason: 'daily-limit', limit, used },
-    };
-  }
-
   const record = {
     id,
     jobId: claim.jobId,

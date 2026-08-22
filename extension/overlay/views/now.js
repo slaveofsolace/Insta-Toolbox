@@ -122,7 +122,7 @@
     const tools = [
       {
         section: 'capture',
-        title: 'Follower checker',
+        title: 'Mutual Checker',
         detail: 'Capture Followers and Following separately, then compare the rendered rows locally.',
         state: 'read only',
       },

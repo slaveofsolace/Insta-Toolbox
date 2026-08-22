@@ -1,6 +1,6 @@
 {
-  "name": "Insta AIO Tool",
-  "short_name": "Insta AIO",
+  "name": "Insta Toolbox",
+  "short_name": "Toolbox",
   "description": "Local-first Instagram relationship, queue, and message-data manager.",
   "start_url": "./",
   "display": "standalone",

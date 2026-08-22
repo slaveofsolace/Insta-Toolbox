@@ -243,6 +243,30 @@ test('a clipped sent-message row is centered once before hover', async () => {
   assert.equal(scrollCalls, 1);
 });
 
+test('Unsend requires message-row change instead of treating a hidden hover control as success', () => {
+  const runner = loadRunner();
+  const view = { getComputedStyle: () => ({}) };
+  const leaf = (text) => ({
+    getAttribute: () => '',
+    getBoundingClientRect: () => ({ width: 100, height: 20 }),
+    ownerDocument: { defaultView: view },
+    querySelector: () => null,
+    textContent: text,
+  });
+  let text = 'Disposable message';
+  const row = {
+    isConnected: true,
+    querySelector: () => ({}),
+    querySelectorAll: () => [leaf(text)],
+  };
+  const before = runner.__test.removalEvidence(row);
+  assert.equal(runner.__test.removalProven(row, before), false);
+  text = 'You unsent a message';
+  assert.equal(runner.__test.removalProven(row, before), true);
+  row.isConnected = false;
+  assert.equal(runner.__test.removalProven(row, before), true);
+});
+
 test('thread-wide Unsend requires an untampered count-specific reviewed plan', async () => {
   const runner = loadRunner();
   const result = await runner.start();
@@ -275,7 +299,7 @@ test('extension message view uses the shared runner and Instagram design tokens'
   assert.match(messagesSource, /'Unsend DMs'/);
   assert.match(messagesSource, /const scanned = await scanSent\(runtime\)/);
   assert.match(messagesSource, /Permanently unsend \$\{scopeLabel\} from thread \$\{plan\.threadId\}/);
-  assert.match(messagesSource, /Canceled\. The conversation check is still available and nothing was changed/);
+  assert.match(messagesSource, /Canceled\. Scan kept\./);
   assert.match(messagesSource, /--ig-primary-background/);
   assert.match(messagesSource, /--ig-primary-button/);
   assert.match(messagesSource, /prefers-reduced-motion/);
@@ -283,6 +307,8 @@ test('extension message view uses the shared runner and Instagram design tokens'
   assert.match(labelsSource, /authorizationExpiresAt <= Date\.now\(\)/);
   assert.match(labelsSource, /context\.threadId !== expectedThreadId/);
   assert.match(labelsSource, /currentEligibleCount !== plan\.eligibleCount/);
+  assert.match(labelsSource, /const currentContext = threadContext\(\)/);
+  assert.match(labelsSource, /Instagram refreshed the conversation before the next reviewed message could be found/);
   assert.match(labelsSource, /complete: quietRounds >= 10/);
   assert.match(labelsSource, /resolvedCount = history\.eligibleCount/);
   assert.match(labelsSource, /MAX_HISTORY_CHECK_MS = 90_000/);

@@ -22,7 +22,7 @@ confirmation when it starts.
 1. Install [Tampermonkey](https://www.tampermonkey.net/) for your browser.
 2. Open the install link:
 
-   **[Install Insta AIO Toolbox](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js)**
+   **[Install Insta Toolbox](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js)**
 
    Tampermonkey recognises the `.user.js` address and opens its install screen.
 3. Select **Install**.
@@ -37,7 +37,7 @@ batch controls deliberately stay disabled unless those tab APIs are available.
 
 ### Using it
 
-**Follower checker** — confirm the username and choose **Check Followers +
+**Mutual Checker** — confirm the username and choose **Check Followers +
 Following**. The checker reads both paginated lists through the signed-in
 Instagram tab and compares them locally. It never opens a page control. If
 Instagram rejects that read, use the exact-dialog scanner under **Advanced:
@@ -56,8 +56,8 @@ Its first click performs the no-click history check when needed, then asks once
 for the exact thread and eligible count. All eligible sent messages is the
 default; `newest N` and `oldest N` are under Advanced. The runner processes only
 rows proven sent by the current account and uses the source-audited menu and
-confirmation sequence. The finite plan is reserved against the daily Unsend
-allowance and uses the saved delay range. Incomplete or capped checks cannot
+confirmation sequence. The finite plan receives a one-use capability and uses
+the saved delay range. Incomplete or capped checks cannot
 create a live plan. Cancel preserves the check and changes nothing. This cannot
 be undone.
 
@@ -156,7 +156,7 @@ use a fitted bottom sheet instead of an off-screen floating panel.
 
 No pairing is needed for these. Open the panel on Instagram and use:
 
-**Follower checker.** Confirm the username and choose **Check Followers +
+**Mutual Checker.** Confirm the username and choose **Check Followers +
 Following**. The checker resolves the exact account and reads both paginated
 lists from Instagram without opening or clicking any relationship control. A
 successful run replaces both prior lists atomically. A stopped or failed run
@@ -175,9 +175,9 @@ and acted on individually.
 loads history without opening a message menu. After it proves a complete finite
 count, it defaults to all eligible sent messages and asks once for the exact
 thread and count. Choose `newest N` or `oldest N` under Advanced when needed.
-The 15-minute finite plan is checked before each message, reserved against the
-daily Unsend allowance, and paced with the saved delay range. Incomplete or
-capped checks do not create a plan.
+The 15-minute finite plan is checked before each message, protected against
+replay, and paced with the saved delay range. Incomplete or capped checks do not
+create a plan.
 **Unsending cannot be undone.**
 
 ### Batch runs, pacing, and stopping
@@ -186,9 +186,7 @@ Batch runs use one exact finite action/target/count confirmation. Every item
 still gets its own full check before anything happens.
 
 - Delays between items are randomised, with a longer pause every 20 items.
-- Daily limits and delays are under **Settings → Batch pacing**. They are capped
-  at 400 account actions per day, 300 unsends per day, and a 1.5 second minimum
-  gap.
+- Delays are under **Settings → Batch pacing**, with a 1.5-second minimum gap.
 - The run stops on its own at the first rate limit, security checkpoint, block,
   expired session, or screen it does not recognise.
 - An account whose relationship changed since the scan is skipped, not forced.
@@ -228,12 +226,11 @@ This workflow changes the selected Instagram relationship. Use it only for one
 account the operator has explicitly reviewed:
 
 1. Pair the extension with **action** permission.
-2. Keep the live batch limit at one.
-3. Select exactly one queue record, create its reviewed preview, and complete the no-click dry run first.
-4. Create a fresh preview if needed and choose controlled live mode.
-5. Open the exact target profile and verify the username, action, and relationship in **Field Desk → Queue**.
-6. Select **Continue controlled live action** and accept the ordinary confirmation naming that exact profile and action. The signed intent, transient capability, and durable reservation are consumed as one bounded operation.
-7. Review the job checkpoint, queue result, activity entry, and action-ledger record before doing anything else.
+2. Select exactly one queue record, create its reviewed preview, and complete the no-click dry run first.
+3. Create a fresh preview if needed and choose controlled live mode.
+4. Open the exact target profile and verify the username, action, and relationship in **Insta Toolbox → Queue**.
+5. Select **Continue controlled live action** and accept the ordinary confirmation naming that exact profile and action. The signed intent, transient capability, and durable reservation are consumed as one bounded operation.
+6. Review the job checkpoint, queue result, activity entry, and action-ledger record before doing anything else.
 
 The transient capability is scoped to one job item, username, action, Instagram
 tab, and short expiry. It is consumed before the page-control request, including
@@ -249,7 +246,7 @@ has reviewed that specific message and accepts that Unsend is destructive:
 2. The extension path accepts exactly one message even if exported core jobs use another reviewed limit.
 3. Select one sent message, create its reviewed preview, and complete the no-click dry run first.
 4. Create a fresh preview if needed and choose controlled live mode.
-5. Open the exact conversation and keep the exact sent message rendered. In **Field Desk → Messages**, verify the message identity.
+5. Open the exact conversation and keep the exact sent message rendered. In **Insta Toolbox → Messages**, verify the message identity.
 6. Select **Continue controlled live Unsend** and accept the ordinary confirmation naming the exact thread and message. The signed intent, transient capability, and durable reservations are consumed as one bounded operation.
 7. Stop immediately if the PWA reports any ambiguity or uncertain outcome. Review the DM job checkpoint plus both ledger records before any later attempt.
 

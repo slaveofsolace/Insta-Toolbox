@@ -2,7 +2,7 @@
 
 ## System shape
 
-Insta AIO Tool is a local-first PWA with three optional delivery surfaces:
+Insta Toolbox is a local-first PWA with three optional delivery surfaces:
 
 1. A self-contained Tampermonkey toolbox with follower comparison, no-click review, and explicitly unlocked paced actions
 2. A Manifest V3 extension with a movable Instagram overlay, local toolbox runs, signed inspection requests, and controlled one-item PWA boundaries
@@ -93,7 +93,7 @@ Pairing uses:
 
 Every request includes a timestamp, request ID, nonce, type, payload, and HMAC-SHA-256 signature. Verification enforces origin, permission, maximum age, replay protection, payload size, and session-material rejection.
 
-The extension background worker serializes bridge requests and persists its replay cache. `action-labels.js` loads first and exposes one frozen normalization/allowlist surface for the reviewed relationship and localized Unsend labels. The Instagram inspector then exposes read-only page inspection. Ordered classic modules under `extension/overlay/` own preferences, routing, theme, bridge transport, downloads, accessibility, collision measurement, the static shell, and five bounded views; `instagram-overlay.js` owns their lifecycle and persistence. The isolated **Field Desk** renders in a closed shadow root after every dependency is available. The deterministic browser fixture explicitly opts into an open root for QA only.
+The extension background worker serializes bridge requests and persists its replay cache. `action-labels.js` loads first and exposes one frozen normalization/allowlist surface for the reviewed relationship and localized Unsend labels. The Instagram inspector then exposes read-only page inspection. Ordered classic modules under `extension/overlay/` own preferences, routing, theme, bridge transport, downloads, accessibility, collision measurement, the static shell, and five bounded views; `instagram-overlay.js` owns their lifecycle and persistence. The isolated **Insta Toolbox** renders in a closed shadow root after every dependency is available. The deterministic browser fixture explicitly opts into an open root for QA only.
 
 The sidecar owns only browser-local field state:
 
@@ -144,15 +144,15 @@ non-producing secure random source returns `secure-random-unavailable`, stores
 no token, and therefore cannot reach either controlled page driver.
 
 The overlay view modules do not implement Instagram selectors or page-control
-events. They can request an exact signed one-item arm, a phrase-gated local
-account batch, or a separately phrase-gated thread-wide Unsend. Execution stays
-inside the shared inspected drivers. The thread runner refuses to start without
-a future authorization expiry and the exact current thread ID. It rechecks both
-before every page control, snapshots pre-existing menu/dialog candidates, and
-accepts exactly one newly surfaced control for the item it just opened.
+events. They can request a signed reviewed item, a confirmed finite account run,
+or a separately confirmed thread-wide Unsend. Execution stays inside the shared
+inspected drivers. The thread runner refuses to start without a future capability
+expiry and the exact current thread ID. It rechecks both before every page
+control, snapshots pre-existing menu/dialog candidates, and accepts exactly one
+newly surfaced control for the item it just opened.
 Package validation scans the complete ordered graph for unauthorized direct
 clicks, synthetic dispatch, recurring polling, remote UI assets, and more than
-the audited static shell-markup assignment. An active/just-consumed signed arm
+the audited static shell-markup assignment. An active or just-consumed capability
 forces collision-safe presentation so the full panel does not compete with an
 exact native control, menu, or confirmation dialog.
 

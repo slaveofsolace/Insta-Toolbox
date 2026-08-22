@@ -118,23 +118,18 @@ test('a run stops itself on any Instagram interruption and can be aborted', () =
   assert.match(source, /data-action="stop-run"/);
 });
 
-test('account runs use daily pacing while DM plans remain finite and paced', () => {
-  assert.match(shell, /dailyActions: \[1, 400\]/);
-  assert.match(shell, /dailyUnsends: \[1, 300\]/);
+test('account and DM runs remain finite and paced without arbitrary daily quotas', () => {
+  assert.doesNotMatch(shell, /data-role="limit-daily/);
+  assert.doesNotMatch(shell, /remaining account actions|remaining Unsends|Daily limit reached/);
   assert.match(shell, /minDelayMs: \[1_500, 600_000\]/);
   assert.match(shell, /REST_EVERY = 20/);
   assert.match(shell, /Math\.random\(\)/);
-  assert.match(shell, /const allowance = Math\.max\(0, bounds\.dailyActions - usedToday\('actions'\)\)/);
   assert.match(source, /const maxMessages = plan\.limit/);
   assert.match(source, /randomDelay\(options\.minDelayMs, options\.maxDelayMs\)/);
   assert.match(source, /Permanently unsend \$\{scopeLabel\}/);
   assert.match(shell, /function reserveUnsendPlan\(plan\)/);
-  assert.match(shell, /bounds\.dailyUnsends - Number\(current\.unsends \|\| 0\)/);
   assert.match(shell, /const reservation = reserveUnsendPlan\(plan\)/);
-  // The allowance is spent against today's ledger, so a resumed run cannot
-  // reset its own budget by reloading.
-  assert.match(shell, /function usedToday\(kind\)/);
-  assert.match(shell, /ledger\.day === today\(\)/);
+  assert.doesNotMatch(shell, /ledger\.day === today\(\)/);
   assert.match(shell, /function recordAction\(kind\)/);
 });
 
@@ -170,7 +165,7 @@ test('DM evidence and saved Unsend candidates stay bound to the active conversat
   assert.match(shell, /dmThreadPreview\?\.threadId === currentDirectThreadId\(\)/);
   assert.match(shell, /dmThreadPreview = outcome\?\.ready && outcome\.complete === true \? outcome : null/);
   assert.match(shell, /dmThreadPreview = outcome\?\.ready && outcome\.complete === true \? outcome : null/);
-  assert.match(shell, /eligible in thread \$\{outcome\.threadId\}/);
+  assert.match(shell, /sent messages found/);
   assert.match(source, /if \(!expectedThreadId \|\| context\.threadId !== expectedThreadId\)/);
   assert.match(source, /currentEligibleCount !== plan\.eligibleCount/);
   assert.match(shell, /if \(currentHref !== lastLocationHref\)/);
@@ -182,7 +177,7 @@ test('DM evidence and saved Unsend candidates stay bound to the active conversat
   assert.match(shell, /state\.sentDmsChecked = false;/);
 });
 
-test('the follower checker remembers whether a scan actually finished', () => {
+test('the Mutual Checker remembers whether a scan actually finished', () => {
   // A partial scan that forgets it was partial would silently under-report.
   assert.match(shell, /const requiresCountReconciledRescan = Number\(value\.schemaVersion\) < 4/);
   assert.match(shell, /complete: \{ followers: false, following: false \}/);
@@ -219,8 +214,8 @@ test('the userscript tablist exposes one selected tab and explicit panel relatio
 });
 
 test('the movable panel and local follower comparison are preserved', () => {
-  assert.match(source, /Insta AIO Instagram Toolbox/);
-  assert.match(source, /Follower checker/);
+  assert.match(source, /Insta Toolbox/);
+  assert.match(source, /Mutual Checker/);
   assert.match(source, /Follow \/ Unfollow/);
   assert.match(source, /DM Unsend/);
   assert.match(source, /data-role="move"/);

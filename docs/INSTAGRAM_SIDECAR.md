@@ -2,7 +2,7 @@
 
 ## Product role
 
-The **Insta AIO Field Desk** restores the original in-page operating model:
+The **Insta Toolbox overlay** restores the original in-page operating model:
 Instagram is the place where the operator sees the current account, list, or
 conversation, while the separate PWA remains the durable workspace for imports,
 comparisons, protections, reviewed jobs, ledgers, and backups.
@@ -122,8 +122,8 @@ remain under Advanced. One permanent-action confirmation names the exact thread
 and count. The source-audited runner
 revalidates completeness and count before the first menu, accepts only rows
 proven sent by the current account, follows the rendered menu/dialog sequence,
-reserves the finite plan against the daily Unsend allowance, uses the saved
-delay range, and checks expiry before every next message. Incomplete or capped
+reserves a one-use capability for the finite plan, uses the saved delay range,
+and checks expiry before every next message. Incomplete or capped
 checks, expiry, Stop, session loss, challenge, block, rate limit, or repeated
 failure end or prevent the run.
 

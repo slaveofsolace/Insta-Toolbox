@@ -1,12 +1,12 @@
-# Insta AIO Tool
+# Insta Toolbox
 
 Three Instagram tools in one place, running entirely on your own machine:
 
-- **Follower checker** — see who doesn't follow you back, who you don't follow back, and who's mutual.
+- **Mutual Checker** — see who doesn't follow you back, who you don't follow back, and who's mutual.
 - **Follow / Unfollow** — work through a list of accounts one at a time, or let the batch runner pace it for you.
 - **DM Unsend** — find the messages *you* sent in a conversation and remove them, one or many.
 
-There is no Insta AIO account or hosted data service. Imported exports and saved
+There is no Insta Toolbox account or hosted data service. Imported exports and saved
 results stay in local browser storage until you export them. The in-page follower
 checker makes read-only, same-origin requests to Instagram using the session
 already open in that tab; it never reads, stores, or exports the session value.
@@ -29,7 +29,7 @@ same safe-stop rules.
 Install [Tampermonkey](https://www.tampermonkey.net/), then open this link and
 select **Install**:
 
-**[Install Insta AIO Toolbox](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js)**
+**[Install Insta Toolbox](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js)**
 
 Then allow the userscript to run in Chrome:
 
@@ -88,7 +88,7 @@ inspection returns `secure-random-unavailable` and no capability is stored.
 
 The project does not implement proxy rotation, fingerprint spoofing, challenge bypass, CAPTCHA solving, arbitrary endpoint discovery, mutation-capable endpoint clients, or unreviewed destructive actions.
 
-Insta AIO Tool is an independent project and is not affiliated with or endorsed
+Insta Toolbox is an independent project and is not affiliated with or endorsed
 by Instagram or Meta. Operators are responsible for protecting imported data
 and complying with the rules that apply to their accounts and environment.
 
@@ -132,7 +132,7 @@ Extracted JSON files and folders remain supported as a fallback. Recognized data
 - Instagram Helper `allMessagesItemsArray` data
 - SimpleInstaBot followed/unfollowed history
 - Saved follower-checker result objects
-- Insta AIO workspace and snapshot exports
+- Insta Toolbox workspace and snapshot exports
 
 Encrypted archives, unsafe paths, unsupported ZIP variants, integrity errors, and configured size-limit violations are rejected before data is committed.
 
@@ -162,7 +162,7 @@ pre-existing dialog, an unbound Unfollow dialog, session expiry, challenges,
 rate limits, action blocks, changed protection state, stale confirmation, or a
 missing/expired finite capability. The PWA ledger and the extension's bounded
 mirror reserve before the isolated driver call and prevent duplicate or
-over-limit execution.
+out-of-plan execution.
 
 Extension 2.0.0 preserves the stricter signed live paths for one reviewed PWA
 item while removing typed arm phrases. The PWA sends a signed intent; the
@@ -219,7 +219,7 @@ Press **Alt + Shift + I** to toggle the sidecar.
 
 The sidecar carries the three tools in one place, each on its own tab.
 
-**Follower checker.** Confirm the username and choose **Check Followers +
+**Mutual Checker.** Confirm the username and choose **Check Followers +
 Following**. The shared extension/userscript engine resolves that exact account,
 loads both paginated lists through Instagram's authenticated web interface, and
 replaces the prior comparison only after both reads finish. It sends no request
@@ -243,8 +243,8 @@ must prove a complete finite count before showing one permanent-action
 confirmation naming the exact thread and count. The default scope is all
 eligible sent messages; `newest N` and `oldest N` are under Advanced. Incomplete
 or capped checks do not create a destructive plan. The finite plan is reserved
-against the daily Unsend allowance before the first page control and uses the
-saved delay range; only rows proven sent by the current account are eligible.
+before the first page control and uses the saved delay range; only rows proven
+sent by the current account are eligible.
 Cancel preserves the read-only count and changes nothing. Unsending is permanent.
 
 ### Batch pacing and safety
@@ -255,15 +255,14 @@ is bound to the confirmed target list, consumed by that run, and cannot be
 replayed or widened.
 
 - Randomised delays between items, plus a longer rest every 20 items
-- Configurable daily caps and delays under **Settings → Batch pacing**, clamped
-  to hard ceilings (400 account actions/day, 300 unsends/day, 1.5 s minimum delay)
+- Configurable delays under **Settings → Batch pacing**, with a 1.5-second
+  minimum and a longer rest every 20 items
 - The whole run stops on the first rate limit, checkpoint, block, session
   expiry, or unexpected screen
 - A target whose relationship no longer matches is skipped, not forced
 - **Stop** aborts before the next item
 
-Automated following and bulk activity run against Instagram's terms and can get
-an account actioned. Pacing is yours to set; the ceilings only bound the worst case.
+Automated following and bulk activity can trigger Instagram restrictions.
 
 See
 [Instagram sidecar](./docs/INSTAGRAM_SIDECAR.md)
@@ -289,7 +288,7 @@ Install `userscripts/insta-aio-companion.user.js` in Tampermonkey.
 
 The generated script injects a movable, lower-right-resizable, translucent
 three-tab toolbox directly on `instagram.com`. It includes the authenticated,
-paginated follower checker plus a list-dialog fallback and local comparison, queue and checker target sources for paced Follow
+paginated Mutual Checker plus a list-dialog fallback and local comparison, queue and checker target sources for paced Follow
 or Unfollow runs, and the source-audited thread-wide DM Unsend runner. It uses the
 same exact-target Instagram engine as the extension and remains self-contained:
 no remote `@require`, third-party network connector, credential access, or cloud
@@ -398,4 +397,4 @@ any user-selected live Instagram action remain manual release checks.
 
 ## License
 
-Insta AIO Tool is available under the [MIT License](./LICENSE). Reviewed third-party sources and their license boundaries are documented in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+Insta Toolbox is available under the [MIT License](./LICENSE). Reviewed third-party sources and their license boundaries are documented in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

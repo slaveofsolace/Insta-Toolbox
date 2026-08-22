@@ -62,7 +62,7 @@ test('isolated Chromium acceptance executes production account and DM DOM chains
 
 test('browser acceptance covers accessibility, installability, and read-only pairing defaults', () => {
   assert.match(acceptance, /Accessibility\.getFullAXTree/);
-  assert.match(acceptance, /Insta AIO Instagram sidecar/);
+  assert.match(acceptance, /Insta Toolbox/);
   assert.match(acceptance, /sidecar collapse and focus restoration/);
   assert.match(acceptance, /navigator\.serviceWorker\.ready/);
   assert.match(acceptance, /manifest\.display/);
@@ -164,7 +164,7 @@ test('macOS CI builds and exercises the packaged lifecycle without release crede
   assert.match(desktop, /mkdtempSync\(path\.join\(configuredParent, 'insta-aio-desktop-smoke-'\)\)/);
   assert.doesNotMatch(desktop, /insta-aio-desktop-smoke-\$\{process\.pid\}/);
   assert.match(desktop, /if \(!DESKTOP_SMOKE_TEST && process\.platform !== 'darwin'\) app\.quit\(\)/);
-  assert.match(desktop, /Insta AIO desktop smoke test passed/);
+  assert.match(desktop, /Insta Toolbox desktop smoke test passed/);
   assert.doesNotMatch(desktop, /executeJavaScript/);
   assert.match(macVerifier, /process\.platform !== 'darwin'/);
   assert.match(macVerifier, /hdiutil/);

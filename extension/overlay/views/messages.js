@@ -158,7 +158,7 @@
     runtime.shadow.append(style);
 
     const brand = runtime.query('.ia-brand-mark');
-    if (brand) brand.textContent = 'AIO';
+    if (brand) brand.textContent = 'IT';
     const scan = runtime.query('[data-ia-action="scan-sent-dms"]');
     if (scan) scan.textContent = 'Check conversation';
     const disclosure = runtime.query('[data-ia-role="unsend-disclosure"]');
@@ -342,7 +342,7 @@
     const count = runtime.model.messages.fragments.length;
     runtime.status(count
       ? `Read ${count} visible text fragment${count === 1 ? '' : 's'} without opening a menu.`
-      : 'No visible message text was found. Nothing was changed.', count ? 'good' : 'neutral');
+      : 'No visible message text found.', count ? 'good' : 'neutral');
   }
 
   async function scanSent(runtime) {
@@ -354,7 +354,7 @@
     runtime.model.dmThreadPreview = result.ready ? result : null;
     renderDirect(runtime);
     runtime.status(result.ready && result.complete
-      ? `${result.eligibleCount} sent message${result.eligibleCount === 1 ? '' : 's'} eligible in this conversation. Nothing was changed.`
+      ? `${result.eligibleCount} sent message${result.eligibleCount === 1 ? '' : 's'} found.`
       : result.reason, result.ready && result.complete ? 'good' : 'error');
     return result;
   }
@@ -372,7 +372,7 @@
       preview = currentPreview(runtime);
       if (!scanned?.ready || scanned.complete !== true || !preview) return;
       if (preview.eligibleCount < 1) {
-        runtime.status(`No sent messages are eligible in thread ${preview.threadId}. Nothing was changed.`, 'neutral');
+        runtime.status('No sent messages found.', 'neutral');
         return;
       }
     }
@@ -405,7 +405,7 @@
       + 'The eligible count will be revalidated immediately before any message menu opens.',
     );
     if (!confirmed) {
-      runtime.status('Canceled. The conversation check is still available and nothing was changed.', 'neutral');
+      runtime.status('Canceled. Scan kept.', 'neutral');
       return;
     }
     const reservation = await runtime.sendBridge({
@@ -413,10 +413,7 @@
       plan,
     });
     if (reservation?.error) {
-      const detail = reservation.error === 'thread-unsend-daily-limit'
-        ? `Only ${reservation.remaining || 0} of ${reservation.limit || 0} daily Unsends remain.`
-        : 'The reviewed plan could not be reserved. Check the conversation again.';
-      runtime.status(`${detail} Nothing was changed.`, 'error');
+      runtime.status('Could not reserve this plan. Check the conversation again.', 'error');
       return;
     }
     runtime.model.dmThreadPreview = null;

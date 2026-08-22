@@ -8,13 +8,13 @@ const generated = await readFile(new URL('../userscripts/insta-aio-companion.use
 
 test('first use explains the tools, local storage, and the read-only boundary', () => {
   assert.match(generated, /data-role="intro"/);
-  assert.match(generated, /Follower checker/);
+  assert.match(generated, /Mutual Checker/);
   assert.match(generated, /Follow \/ Unfollow/);
   assert.match(generated, /DM Unsend/);
-  assert.match(generated, /Everything stays in this browser/);
+  assert.match(generated, /Data stays in this browser/);
   // The distinction a first-time user most needs: checks read, actions change.
   assert.match(generated, /Checks are read-only/);
-  assert.match(generated, /A change starts only after one exact action, target, and count confirmation/);
+  assert.match(generated, /Changes require one exact confirmation/);
   // It is dismissible and remembered, not shown on every load.
   assert.match(shell, /'intro-done':/);
   assert.match(shell, /introDone: value\.introDone === true/);
@@ -164,15 +164,15 @@ test('read-only conversation resolution precedes the count-specific Unsend plan'
   assert.match(shell, /await dmRunner\.start\(\{/);
   assert.match(labels, /function createPlan\(value = \{\}\)/);
   assert.doesNotMatch(labels, /phrase = `UNSEND|ENABLE LIVE ACTIONS/);
-  assert.match(shell, /The eligible count will be revalidated before any message menu opens/);
+  assert.match(shell, /The count is checked again before message menus open/);
   assert.match(labels, /complete: quietRounds >= 10/);
   assert.match(labels, /if \(!history\.complete \|\| resolvedCount > MAX_PLAN_MESSAGES\)/);
   assert.doesNotMatch(shell, /'unsend-all':/);
   assert.match(shell, /'run-unsend': \(\) => runDmUnsend\(\)/);
   // An empty result says nothing was touched rather than implying success.
-  assert.match(shell, /so nothing will be touched/);
+  assert.match(shell, /No sent messages found/);
   // A partial read is never reported as full coverage.
-  assert.match(shell, /there may be more further back/);
+  assert.match(shell, /check ended before the full conversation loaded/);
 });
 
 test('finite run confirmation replaces global unlock controls and phrases', () => {

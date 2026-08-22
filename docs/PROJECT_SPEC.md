@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Insta AIO Tool provides a private, local workspace for understanding Instagram relationship exports, planning account reviews, migrating supported legacy data, and preparing exact message-removal reviews.
+Insta Toolbox provides a private, local workspace for Instagram relationship exports, account reviews, supported legacy data, and exact message-removal reviews.
 
 The product favors verifiable local data processing over unattended page automation.
 
@@ -20,7 +20,7 @@ The product favors verifiable local data processing over unattended page automat
 - Instagram Helper message data with `allMessagesItemsArray`
 - SimpleInstaBot followed and unfollowed history
 - Saved follower-checker output containing both non-mutual arrays
-- Insta AIO workspace, snapshot, queue, and plan exports
+- Insta Toolbox workspace, snapshot, queue, and plan exports
 
 Every import must preserve its source path or file name and produce explicit warnings or migration dispositions. Unsupported records must not disappear silently.
 
@@ -64,10 +64,10 @@ A reviewed job shall:
 - Support durable checkpoints and resume
 - Revalidate profile-header ownership, relationship state, and protections immediately before execution
 - Reserve live attempts transactionally in both the PWA and extension background
-- Enforce finite daily limits and duplicate prevention after state restore and at reservation time
+- Enforce finite per-run bounds and duplicate prevention after state restore and at reservation time
 - Reject live confirmations older than ten minutes
 - Require extension live execution to contain exactly one item
-- Revalidate a tab-scoped one-use arm before ledger reservation
+- Revalidate a tab-scoped one-use capability before ledger reservation
 - Stop on uncertain identity, controls outside the verified profile header, any pre-existing dialog, an unbound confirmation, session expiry, challenge, rate limit, or action block
 - Record before/after evidence and results
 
@@ -129,23 +129,19 @@ The bridge shall:
 - Reject session and authorization material
 - Preserve JSON exchange as a fallback
 
-The shipped extension shall keep live execution locked by default. A live
-account action may be exposed only for one fresh signed reviewed item after an
-exact Instagram-side action/username phrase creates a short-lived, tab-scoped,
-one-use arm. The arm must be revalidated before the PWA ledger reservation. The
-background must persist its independent reservation and consume the arm before
-the page-control request. Dry-run routes shall never reach the page-control
-activator. A live DM route shall remain separate from dry run and accept exactly
-one twice-confirmed sent message only when exact rendered conversation,
-message, timestamp, content digest, and ownership identity are available. It
-shall require a fresh signed intent, tab-scoped 90-second arm, independent PWA
-and extension reservations, one-use resolution token, new structurally bound
-interactive menu/dialog controls, and revalidation before every destructive
-stage. Layout ownership evidence must belong to the exact identity ancestor
-chain. Success requires the same thread, disconnected retained target nodes,
-exact absence, and independent stable identity coverage. Any missing, changed,
-duplicate, stale, replayed, pre-existing, unbound, or noninteractive surface
-shall safe-stop.
+The shipped extension shall keep live execution inactive by default. A live
+account run may start only after an ordinary confirmation names the exact action,
+targets, and finite count. That confirmation creates a short-lived, tab-scoped,
+one-use capability. The capability must be revalidated before reservation and
+consumed before the page-control request. Dry-run routes shall never reach the
+page-control activator. A live DM route shall remain separate from dry run and
+may process only the finite sent-message plan proven by a complete scan of the
+exact rendered conversation. The thread ID, scope, count, message ownership,
+review digest, and expiry must remain bound throughout the run. Each destructive
+stage requires a newly surfaced structurally bound menu or dialog and fresh
+revalidation. Success requires the same thread and verified removal. Any
+missing, changed, duplicate, stale, replayed, pre-existing, unbound, or
+noninteractive surface shall safe-stop.
 
 The Instagram sidecar shall:
 
@@ -156,7 +152,7 @@ The Instagram sidecar shall:
 - Expose current-page inspection and sanitized no-click run history
 - Treat visible DM text as evidence only until exact message identity and ownership are available
 - Remain keyboard reachable, responsive, and reduced-motion aware
-- Keep live execution visibly locked unless the exact one-item arm is active
+- Keep mutation controls inactive until the exact finite run is confirmed
 
 ## Desktop requirements
 
@@ -191,7 +187,7 @@ The desktop shell shall:
 - No proxy rotation or fingerprint spoofing
 - No challenge or CAPTCHA bypass
 - No arbitrary endpoint discovery or mutation-capable private endpoint client;
-  the follower checker may use only its audited, fixed, read-only Instagram route allowlist
+  Mutual Checker may use only its audited, fixed, read-only Instagram route allowlist
 - No unreviewed destructive actions
 
 ## Release gates

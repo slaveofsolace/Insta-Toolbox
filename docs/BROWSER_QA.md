@@ -60,7 +60,7 @@ the authenticated Instagram session.
 6. Initial hidden-window screenshots could retain an earlier rendered view. The
    harness now uses offscreen rendering and settles animation/compositor frames
    after every navigation before capture.
-7. An authenticated read-only userscript check found that the follower checker
+7. An authenticated read-only userscript check found that Mutual Checker
    could accept profile-level suggestion rows when no Followers or Following
    dialog was open, then incorrectly label the capture complete. Current source
    requires the exact requested list dialog, quarantines earlier captures, and

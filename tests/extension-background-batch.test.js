@@ -148,7 +148,7 @@ function confirmedAccountBatch(action, items) {
   };
 }
 
-test('thread-wide Unsend reserves its finite plan against the daily DM limit', async () => {
+test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicate plans', async () => {
   const stored = baseStored();
   stored.batchLimits = {
     dailyActionLimit: 50,
@@ -184,12 +184,11 @@ test('thread-wide Unsend reserves its finite plan against the daily DM limit', a
     const duplicate = await deliver({ kind: 'insta-aio-reserve-thread-unsend', plan }, threadSender);
     assert.equal(duplicate.error, 'thread-unsend-plan-already-reserved');
 
-    const overLimit = await deliver({
+    const secondPlan = await deliver({
       kind: 'insta-aio-reserve-thread-unsend',
       plan: { ...plan, reviewedDigest: 'd4c3b2a1' },
     }, threadSender);
-    assert.equal(overLimit.error, 'thread-unsend-daily-limit');
-    assert.equal(overLimit.remaining, 1);
+    assert.equal(secondPlan.error, undefined);
 
     const wrongThread = await deliver({
       kind: 'insta-aio-reserve-thread-unsend',
@@ -396,7 +395,7 @@ test('starting a batch without an exact confirmation is rejected', async () => {
   }
 });
 
-test('batch pacing limits are clamped to the allowed ceilings', async () => {
+test('batch pacing is clamped without exposing quota controls', async () => {
   const stored = baseStored();
   const { cleanup, deliver } = await loadBackground({
     profileResponses: {},
@@ -413,8 +412,6 @@ test('batch pacing limits are clamped to the allowed ceilings', async () => {
         maxDelayMs: 5_000,
       },
     }, sender);
-    assert.equal(response.limits.dailyActionLimit, 400);
-    assert.equal(response.limits.dailyDmLimit, 300);
     assert.equal(response.limits.minDelayMs, 1_500);
     assert.equal(response.limits.maxDelayMs, 5_000);
   } finally {

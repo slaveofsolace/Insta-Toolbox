@@ -110,11 +110,11 @@
       const generatedAt = new Date().toISOString();
       const filenameSuffix = generatedAt.replace(/[:.]/g, '-');
       downloads.update('comparison-report', reportDownload, {
-        filename: `insta-aio-follower-comparison-${filenameSuffix}.txt`,
+        filename: `insta-toolbox-mutual-comparison-${filenameSuffix}.txt`,
         text: inspector.followerComparisonReport(workspace, comparison, generatedAt),
       });
       downloads.update('comparison-json', jsonDownload, {
-        filename: `insta-aio-follower-comparison-${filenameSuffix}.json`,
+        filename: `insta-toolbox-mutual-comparison-${filenameSuffix}.json`,
         payload: inspector.followerComparisonRecord(workspace, comparison, generatedAt),
       });
     } else {
@@ -198,7 +198,7 @@
       } else {
         const detail = document.createElement('p');
         detail.className = 'ia-note';
-        detail.textContent = 'Enter your username above. Insta AIO runs the paginated Instagram read on this page and compares normalized usernames locally.';
+        detail.textContent = 'Enter a username to compare Followers and Following.';
         checker.append(detail);
       }
     }
@@ -356,7 +356,7 @@
     status(`Scanning the open ${listType} list. Leave the dialog open and this tab in front.`, 'warning');
     const outcome = await inspector.collectAccountList({ listType });
     if (outcome?.sessionExpired || outcome?.challenge || outcome?.actionBlocked || outcome?.rateLimited) {
-      status('Instagram interrupted the scan (session, checkpoint, or rate limit). Nothing was changed.', 'error');
+      status('Instagram interrupted the scan. Previous results kept.', 'error');
       return;
     }
     const accounts = outcome?.accounts || [];
@@ -423,6 +423,16 @@
             );
             return;
           }
+          if (progress.phase === 'reconciling') {
+            const label = progress.listType === 'followers' ? 'Followers' : 'Following';
+            setState(
+              runtime,
+              `Finishing ${label} for @${username}`,
+              `${progress.found} of ${progress.expectedCount} found. Checking the final page once more.`,
+              'warning',
+            );
+            return;
+          }
           if (progress.listType) {
             const label = progress.listType === 'followers' ? 'Followers' : 'Following';
             setState(
@@ -452,8 +462,13 @@
       await runtime.persistCapture(nextCapture);
       model.capture = nextCapture;
       model.captureMeta = null;
+      const mismatch = result.reasons.followers === 'count-mismatch'
+        ? ` Instagram reports ${result.expectedCounts.followers} followers; ${result.followers.length} were returned.`
+        : result.reasons.following === 'count-mismatch'
+          ? ` Instagram reports ${result.expectedCounts.following} following; ${result.following.length} were returned.`
+          : ' A bounded read limit was reached.';
       status(
-        `Checked @${result.username}: ${result.followers.length} followers and ${result.following.length} following.${result.complete.followers && result.complete.following ? '' : ' A bounded read limit was reached, so the comparison is marked partial.'}`,
+        `Checked @${result.username}: ${result.followers.length} followers and ${result.following.length} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
         result.complete.followers && result.complete.following ? 'good' : 'warning',
       );
     } catch (error) {
@@ -476,7 +491,7 @@
     runtime.model.captureMeta = null;
     await runtime.persistCapture(null);
     render(runtime);
-    runtime.status('Follower checker drafts cleared. Instagram data was not changed.', 'neutral');
+    runtime.status('Mutual Checker cleared.', 'neutral');
   }
 
   shared.install('captureView', {

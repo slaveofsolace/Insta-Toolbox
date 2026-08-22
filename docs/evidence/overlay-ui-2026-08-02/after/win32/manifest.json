@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-08-22T17:48:28.676Z",
+  "capturedAt": "2026-08-22T19:27:12.980Z",
   "platform": "win32",
   "builtExtensionVersion": "2.0.0",
   "screenshots": [
     {
       "id": "first-run-walkthrough",
-      "sha256": "48c1dcba1cfcb1bcda2f716c1d73ded85fbc9c785fcfbf432c2dddcd01ccf635",
+      "sha256": "288615844acaa4f0e04112f1e1831330c5250f0d8c1e48f599aa585c1dc22514",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -34,10 +34,10 @@
           {
             "hidden": false,
             "includes": [
-              "Follower checker",
+              "Mutual Checker",
               "Follow / Unfollow",
               "DM Unsend",
-              "confirm it once"
+              "confirm once"
             ],
             "selector": "[data-ia-role=\"first-run\"]"
           },
@@ -45,7 +45,7 @@
             "attributes": {
               "type": "button"
             },
-            "equals": "Open follower checker",
+            "equals": "Open Mutual Checker",
             "selector": "[data-ia-action=\"first-run-start\"]"
           },
           {
@@ -74,8 +74,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 172.15625,
-            "height": 117.15625,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -85,11 +85,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 135.078125,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 91.078125,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -97,8 +97,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 161.15625,
-                "height": 96.15625,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -153,7 +153,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Start with a read-only checkInsta AIO adds three tools to Instagram without sending account data elsewhere.Follower checkerScan Followers and Following, then compare usernames on this device.Follow / UnfollowBuild and review an exact finite target list, then confirm it once.DM UnsendCheck one conversation, then confirm the exact thread and eligible count once.Open follower checkerNot now",
+              "text": "Start with a read-only checkInsta Toolbox adds three tools to Instagram.Mutual CheckerCompare Followers and Following.Follow / UnfollowReview exact targets, then confirm once.DM UnsendCheck a conversation, then confirm its exact count.Open Mutual CheckerNot now",
               "tone": null,
               "visible": true
             },
@@ -170,7 +170,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": 14.498978405673947,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Open follower checker",
+              "text": "Open Mutual Checker",
               "tone": null,
               "visible": true
             },
@@ -204,7 +204,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -234,13 +234,13 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
               "height": 44,
-              "label": "Open follower checker",
-              "width": 168.796875
+              "label": "Open Mutual Checker",
+              "width": 164.21875
             },
             {
               "height": 44,
@@ -260,7 +260,7 @@
     },
     {
       "id": "toolbox-floating-translucent",
-      "sha256": "d8b954cb3027f20ab2f022a9eceac7d34cbf37020f72b2352b1692c24e7be795",
+      "sha256": "c882bf1eca69ac388c1c717d3876e3c6d2fc367283d355912bbf484f39475782",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -290,10 +290,9 @@
         "semantics": [
           {
             "includes": [
-              "Follower checker",
+              "Mutual Checker",
               "Follow / Unfollow",
-              "DM Unsend",
-              "review then confirm"
+              "DM Unsend"
             ],
             "selector": "[data-ia-role=\"now-content\"] .ia-tool-grid"
           },
@@ -338,8 +337,8 @@
             "width": 314
           },
           "header": {
-            "bottom": 229.140625,
-            "height": 156.140625,
+            "bottom": 211.75,
+            "height": 138.75,
             "left": 595,
             "right": 909,
             "top": 73,
@@ -349,11 +348,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 172.5625,
+                "bottom": 163.875,
                 "height": 44,
                 "left": 809,
                 "right": 899,
-                "top": 128.5625,
+                "top": 119.875,
                 "width": 90
               },
               "scroll": 90
@@ -361,8 +360,8 @@
             "copy": {
               "client": 118,
               "rect": {
-                "bottom": 218.140625,
-                "height": 135.140625,
+                "bottom": 200.75,
+                "height": 117.75,
                 "left": 683.0625,
                 "right": 801,
                 "top": 83,
@@ -415,7 +414,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Follower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
+              "text": "Mutual CheckerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             },
@@ -492,7 +491,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -522,7 +521,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -538,7 +537,7 @@
     },
     {
       "id": "profile-not-following-no-match",
-      "sha256": "ee7e499d8acb6ee89ae0c9c9fae8be251e07904f4dd4eefb05ce2b2158d2c48f",
+      "sha256": "f8120beb9b3766508b2331e340268f882e895f61e5f4eaaa4c0713dd45902527",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -591,8 +590,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 172.15625,
-            "height": 117.15625,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -602,11 +601,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 135.078125,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 91.078125,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -614,8 +613,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 161.15625,
-                "height": 96.15625,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -668,7 +667,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewnot-followingRouteprofileQueueNext: @someone_elseNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
+              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewnot-followingRouteprofileQueueNext: @someone_elseNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsMutual CheckerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
@@ -692,7 +691,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -722,7 +721,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -738,7 +737,7 @@
     },
     {
       "id": "profile-following-queue-match",
-      "sha256": "e78d93b20e135f054cb705018dad674e19186ba3b3b980a2d714680fe405ee57",
+      "sha256": "c59e962f8de6f5ac60b10267f3ed9c759fde39ff59b5b403e48ddf7b4af2ec93",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -791,8 +790,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 172.15625,
-            "height": 117.15625,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -802,11 +801,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 135.078125,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 91.078125,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -814,8 +813,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 161.15625,
-                "height": 96.15625,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -868,7 +867,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewfollowingRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
+              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewfollowingRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsMutual CheckerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
@@ -892,7 +891,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -922,7 +921,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -938,7 +937,7 @@
     },
     {
       "id": "profile-ambiguous-safe-stop",
-      "sha256": "80b3cdf991a51a26c017bc963c5ca90731892e9294c58c5be385bd99688cb761",
+      "sha256": "06d5820b9be834e2b2e575e94ccfca4b61a510dd0b27191c2883aa15a4551ad2",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -990,8 +989,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 172.15625,
-            "height": 117.15625,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -1001,11 +1000,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 135.078125,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 91.078125,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -1013,8 +1012,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 161.15625,
-                "height": 96.15625,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -1067,7 +1066,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewAmbiguous — safe stopRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
+              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewAmbiguous — safe stopRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsMutual CheckerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
@@ -1091,7 +1090,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -1121,7 +1120,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -1137,7 +1136,7 @@
     },
     {
       "id": "followers-first-capture",
-      "sha256": "f368e642e473d9e10047f545ac0dc96568492c77c5f229f3dc2bd344afb359cf",
+      "sha256": "a9c64f1ea5538b985cba309d737cdba4449263d413a100ed0e82bfc99d1792f1",
       "scenario": {
         "after": "capture-visible",
         "captureListType": "followers",
@@ -1195,16 +1194,16 @@
           "documentWidth": 1425,
           "dock": "right",
           "footer": {
-            "bottom": 883,
+            "bottom": 802.71875,
             "height": 51.78125,
             "left": 1076,
             "right": 1410,
-            "top": 831.21875,
+            "top": 750.9375,
             "width": 334
           },
           "header": {
-            "bottom": 193.75,
-            "height": 138.75,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -1214,11 +1213,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 145.875,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 101.875,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -1226,8 +1225,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 182.75,
-                "height": 117.75,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -1247,18 +1246,18 @@
           "opacity": "88%",
           "overflowing": [],
           "panel": {
-            "bottom": 882,
-            "height": 828,
+            "bottom": 803.71875,
+            "height": 749.71875,
             "left": 951,
             "right": 1411,
             "top": 54,
             "width": 460
           },
-          "panelAreaShare": 0.29388888888888887,
+          "panelAreaShare": 0.26610387731481483,
           "panelHorizontalOverflow": 0,
           "presentation": {
-            "bottom": 882,
-            "height": 828,
+            "bottom": 803.71875,
+            "height": 749.71875,
             "left": 951,
             "right": 1411,
             "top": 54,
@@ -1349,7 +1348,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -1379,13 +1378,13 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
               "height": 44,
               "label": "",
-              "width": 257
+              "width": 272
             },
             {
               "height": 44,
@@ -1410,7 +1409,7 @@
             {
               "height": 44,
               "label": "FollowingFollowers",
-              "width": 287
+              "width": 302
             },
             {
               "height": 44,
@@ -1424,8 +1423,8 @@
             },
             {
               "height": 44,
-              "label": "Download machine-readable JSON",
-              "width": 247.359375
+              "label": "Download JSON",
+              "width": 129.109375
             },
             {
               "height": 44,
@@ -1433,14 +1432,14 @@
               "width": 110.609375
             }
           ],
-          "viewTitle": "Follower checker",
+          "viewTitle": "Mutual Checker",
           "width": "standard"
         }
       }
     },
     {
       "id": "following-repeated-capture",
-      "sha256": "9260b58301f6ca54185730361c4588c3a231d707530848f07b4d4969d2885c0f",
+      "sha256": "4e2fa8a5fd9600f91a159a75bee8d5a8658e160fd47a293ec420da7626adef76",
       "scenario": {
         "after": "capture-visible",
         "captureListType": "following",
@@ -1498,16 +1497,16 @@
           "documentWidth": 1425,
           "dock": "right",
           "footer": {
-            "bottom": 883,
+            "bottom": 802.71875,
             "height": 51.78125,
             "left": 1076,
             "right": 1410,
-            "top": 831.21875,
+            "top": 750.9375,
             "width": 334
           },
           "header": {
-            "bottom": 193.75,
-            "height": 138.75,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -1517,11 +1516,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 145.875,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 101.875,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -1529,8 +1528,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 182.75,
-                "height": 117.75,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -1550,18 +1549,18 @@
           "opacity": "88%",
           "overflowing": [],
           "panel": {
-            "bottom": 882,
-            "height": 828,
+            "bottom": 803.71875,
+            "height": 749.71875,
             "left": 951,
             "right": 1411,
             "top": 54,
             "width": 460
           },
-          "panelAreaShare": 0.29388888888888887,
+          "panelAreaShare": 0.26610387731481483,
           "panelHorizontalOverflow": 0,
           "presentation": {
-            "bottom": 882,
-            "height": 828,
+            "bottom": 803.71875,
+            "height": 749.71875,
             "left": 951,
             "right": 1411,
             "top": 54,
@@ -1652,7 +1651,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -1682,13 +1681,13 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
               "height": 44,
               "label": "",
-              "width": 257
+              "width": 272
             },
             {
               "height": 44,
@@ -1713,7 +1712,7 @@
             {
               "height": 44,
               "label": "FollowingFollowers",
-              "width": 287
+              "width": 302
             },
             {
               "height": 44,
@@ -1727,8 +1726,8 @@
             },
             {
               "height": 44,
-              "label": "Download machine-readable JSON",
-              "width": 247.359375
+              "label": "Download JSON",
+              "width": 129.109375
             },
             {
               "height": 44,
@@ -1736,14 +1735,14 @@
               "width": 110.609375
             }
           ],
-          "viewTitle": "Follower checker",
+          "viewTitle": "Mutual Checker",
           "width": "standard"
         }
       }
     },
     {
       "id": "checker-filtered-results",
-      "sha256": "b347802b64338dfc4c41ad9510ddf38194296f97c1472b4358f35b3f2353b842",
+      "sha256": "528314255d5c2fef21e5fbcb2fa7dbf2caf3292be9160593225a2c36946fa9b8",
       "scenario": {
         "after": "filter-checker-results",
         "captureListType": null,
@@ -1810,8 +1809,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 191.75,
-            "height": 138.75,
+            "bottom": 152.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 53,
@@ -1821,11 +1820,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 143.875,
+                "bottom": 124.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 99.875,
+                "top": 80.375,
                 "width": 90
               },
               "scroll": 90
@@ -1833,8 +1832,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 180.75,
-                "height": 117.75,
+                "bottom": 141.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 63,
@@ -1902,7 +1901,7 @@
               "attributes": {
                 "class": "ia-checker-browser",
                 "data-ia-role": "checker-browser",
-                "aria-label": "Follower comparison accounts"
+                "aria-label": "Mutual Checker results"
               },
               "disabled": null,
               "exists": true,
@@ -1911,7 +1910,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Show accountsNot following me backI do not follow backMutual followersFind a username1matching not following me back@beta_accountBeta Account",
+              "text": "Show accountsNot following me backI do not follow backMutualsFind a username1matching not following me back@beta_accountBeta Account",
               "tone": null,
               "visible": true
             },
@@ -1959,7 +1958,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -1989,7 +1988,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -2009,7 +2008,7 @@
             },
             {
               "height": 44,
-              "label": "Not following me backI do not follow backMutual followers",
+              "label": "Not following me backI do not follow backMutuals",
               "width": 139.5
             },
             {
@@ -2044,8 +2043,8 @@
             },
             {
               "height": 44,
-              "label": "Download machine-readable JSON",
-              "width": 247.359375
+              "label": "Download JSON",
+              "width": 129.109375
             },
             {
               "height": 44,
@@ -2053,14 +2052,14 @@
               "width": 110.609375
             }
           ],
-          "viewTitle": "Follower checker",
+          "viewTitle": "Mutual Checker",
           "width": "standard"
         }
       }
     },
     {
       "id": "checker-authenticated-read",
-      "sha256": "24ce0c623a0fc14047d241a18435c8de2d289ac2a44f196c05c399f1959d6a56",
+      "sha256": "53a5182c7a14e631818f368a5b9a8166f1b78037b4a7adc1aec14dea4d586c5d",
       "scenario": {
         "after": "check-account-relationships",
         "captureListType": null,
@@ -2131,15 +2130,15 @@
           "dock": "right",
           "footer": {
             "bottom": 883,
-            "height": 51.78125,
+            "height": 69.171875,
             "left": 1076,
             "right": 1410,
-            "top": 831.21875,
+            "top": 813.828125,
             "width": 334
           },
           "header": {
-            "bottom": 193.75,
-            "height": 138.75,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -2149,11 +2148,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 145.875,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 101.875,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -2161,8 +2160,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 182.75,
-                "height": 117.75,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -2307,7 +2306,7 @@
               "visible": true
             }
           },
-          "status": "Ready. Checked @demo_creator: 2 followers and 2 following.Local only",
+          "status": "Stopped. Follower check stopped: Cannot read properties of undefined (reading 'followers')Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -2319,7 +2318,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -2349,7 +2348,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -2369,7 +2368,7 @@
             },
             {
               "height": 44,
-              "label": "Not following me backI do not follow backMutual followers",
+              "label": "Not following me backI do not follow backMutuals",
               "width": 139.5
             },
             {
@@ -2404,8 +2403,8 @@
             },
             {
               "height": 44,
-              "label": "Download machine-readable JSON",
-              "width": 247.359375
+              "label": "Download JSON",
+              "width": 129.109375
             },
             {
               "height": 44,
@@ -2413,14 +2412,14 @@
               "width": 110.609375
             }
           ],
-          "viewTitle": "Follower checker",
+          "viewTitle": "Mutual Checker",
           "width": "standard"
         }
       }
     },
     {
       "id": "queue-action-first",
-      "sha256": "b13096a4ccc7613a7218a19f10d6a72bc8075a890ad2f89bc04558ae546e9ffe",
+      "sha256": "78205bdd4e27a932198d5294f080a9bf64b9ae000a9dda8f99e770da32161ee4",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -2632,7 +2631,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -2662,7 +2661,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -2708,7 +2707,7 @@
     },
     {
       "id": "queue-exact-target-review",
-      "sha256": "d6d298ac015d80eff81a6fc95c6eef996d22caff74fe0884781e3c2c03d79f7e",
+      "sha256": "78205bdd4e27a932198d5294f080a9bf64b9ae000a9dda8f99e770da32161ee4",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -2932,7 +2931,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -2962,7 +2961,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -3008,7 +3007,7 @@
     },
     {
       "id": "queue-confirmation-collision",
-      "sha256": "88b321d20e5af0f458233c375d58627688a013c1935507117ee2136d64f0f834",
+      "sha256": "84ddfc0bfffa429b98e01878ce7bcf1b068735b2abcc246a67e48a96f8401b84",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -3150,7 +3149,7 @@
     },
     {
       "id": "queue-compatible-source-options",
-      "sha256": "d587edbb5dab6b198b0527f2d10c6064f19a7c6bab7569ff1c4856e530f5a03b",
+      "sha256": "78205bdd4e27a932198d5294f080a9bf64b9ae000a9dda8f99e770da32161ee4",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -3353,7 +3352,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -3383,7 +3382,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -3429,7 +3428,7 @@
     },
     {
       "id": "messages-evidence-only",
-      "sha256": "48735830968192e9d842fcb3760ce69d066ec74260de95ad3bf81f3b9f8f68c5",
+      "sha256": "a2a416f5e97eb27325cafc48cf67c283b9ad8e1049cd053d4aefb99c3bddde6c",
       "scenario": {
         "after": "inspect-messages",
         "captureListType": null,
@@ -3641,7 +3640,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -3671,7 +3670,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -3707,7 +3706,7 @@
     },
     {
       "id": "messages-permanent-primary",
-      "sha256": "556cff9a73e14d5a0cdc7cec70fc6ae6b6a55cc1b700c437ef928932e3a90801",
+      "sha256": "81e4013700c600ad7a0744f1d0bf59efca1e96b91590e1c22c883d7855ee8041",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -3760,11 +3759,11 @@
           "documentWidth": 1440,
           "dock": "left",
           "footer": {
-            "bottom": 837.859375,
+            "bottom": 820.46875,
             "height": 69.171875,
             "left": 139,
             "right": 473,
-            "top": 768.6875,
+            "top": 751.296875,
             "width": 334
           },
           "header": {
@@ -3812,18 +3811,18 @@
           "opacity": "88%",
           "overflowing": [],
           "panel": {
-            "bottom": 838.859375,
-            "height": 784.859375,
+            "bottom": 821.46875,
+            "height": 767.46875,
             "left": 14,
             "right": 474,
             "top": 54,
             "width": 460
           },
-          "panelAreaShare": 0.2785766300154321,
+          "panelAreaShare": 0.27240403163580246,
           "panelHorizontalOverflow": 0,
           "presentation": {
-            "bottom": 838.859375,
-            "height": 784.859375,
+            "bottom": 821.46875,
+            "height": 767.46875,
             "left": 14,
             "right": 474,
             "top": 54,
@@ -3905,7 +3904,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -3935,7 +3934,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -3971,7 +3970,7 @@
     },
     {
       "id": "messages-thread-bound-primary",
-      "sha256": "556cff9a73e14d5a0cdc7cec70fc6ae6b6a55cc1b700c437ef928932e3a90801",
+      "sha256": "81e4013700c600ad7a0744f1d0bf59efca1e96b91590e1c22c883d7855ee8041",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -4022,11 +4021,11 @@
           "documentWidth": 1440,
           "dock": "left",
           "footer": {
-            "bottom": 837.859375,
+            "bottom": 820.46875,
             "height": 69.171875,
             "left": 139,
             "right": 473,
-            "top": 768.6875,
+            "top": 751.296875,
             "width": 334
           },
           "header": {
@@ -4074,18 +4073,18 @@
           "opacity": "88%",
           "overflowing": [],
           "panel": {
-            "bottom": 838.859375,
-            "height": 784.859375,
+            "bottom": 821.46875,
+            "height": 767.46875,
             "left": 14,
             "right": 474,
             "top": 54,
             "width": 460
           },
-          "panelAreaShare": 0.2785766300154321,
+          "panelAreaShare": 0.27240403163580246,
           "panelHorizontalOverflow": 0,
           "presentation": {
-            "bottom": 838.859375,
-            "height": 784.859375,
+            "bottom": 821.46875,
+            "height": 767.46875,
             "left": 14,
             "right": 474,
             "top": 54,
@@ -4164,7 +4163,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -4194,7 +4193,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -4370,7 +4369,7 @@
     },
     {
       "id": "workspace-unpaired",
-      "sha256": "a120570ce0eb6ce591ce0b98976c0ac5dfc9d947218850840d5f7bd52dbf7264",
+      "sha256": "35e0cb521cfdf4ab6f3c6983cbad7b549f876043e553bb01697d6c7d98eac3e0",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -4574,7 +4573,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -4604,7 +4603,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -4620,7 +4619,7 @@
     },
     {
       "id": "workspace-read-only",
-      "sha256": "6ca0ab86d3a35654134340b1f08d64cc6bc38bb4bea0f0d8e71258aa1c74784d",
+      "sha256": "ab17fa8da50a3c0ef33305edbbe458fe5f6cf0123b39a88522c70aa214f3f369",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -4804,7 +4803,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -4834,7 +4833,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -4850,7 +4849,7 @@
     },
     {
       "id": "workspace-action-permission",
-      "sha256": "d916d8a012b3158dc0398c2376e2e00eaf892efbdd4e699e0895ac6bd4f473ab",
+      "sha256": "53dd224fbcb8b73f2c4a45454d3b8dc653d031f73f79557dd0200be77de0c9cf",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5034,7 +5033,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -5064,7 +5063,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -5080,7 +5079,7 @@
     },
     {
       "id": "native-dialog-coexistence",
-      "sha256": "995900d5c25e50181ca6b2dd35d5062681d090366f434e9c9cc40afd99081b84",
+      "sha256": "9b91f85883d4a19865ee0c3748a9a5596764457b8e9a13aff1a53ff244cd3868",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5237,7 +5236,7 @@
     },
     {
       "id": "session-expired",
-      "sha256": "51ccb702c0d97c5ab16130bed2ffe0bd636c4bcbb453fdcaf843d792daa81051",
+      "sha256": "1789c610430ba9d2d8fc8c6412a80ef54aa55cf4962782e126c6912ac6fc1157",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5288,8 +5287,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 172.15625,
-            "height": 117.15625,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -5299,11 +5298,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 135.078125,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 91.078125,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -5311,8 +5310,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 161.15625,
-                "height": 96.15625,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -5365,7 +5364,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Login requiredSign in manually before inspecting again.IGNo exact target on this routeInstagram contextloginRouteloginQueueNext: @demo_creatorNext safe stepRefresh page contextInspection remains available; account and message actions stay unavailable.Refresh page contextObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
+              "text": "Login requiredSign in manually before inspecting again.IGNo exact target on this routeInstagram contextloginRouteloginQueueNext: @demo_creatorNext safe stepRefresh page contextInspection remains available; account and message actions stay unavailable.Refresh page contextObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsMutual CheckerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
@@ -5382,7 +5381,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -5412,7 +5411,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -5428,7 +5427,7 @@
     },
     {
       "id": "session-challenge",
-      "sha256": "47561947d8fd1491c1b892245c625fb46f32db2738616e93d7ae506d242ae4a4",
+      "sha256": "dbe968cae8e1afafbefb862f9cc417bce96d059f665c6d4d2292625a87eae7b0",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5479,8 +5478,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 172.15625,
-            "height": 117.15625,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -5490,11 +5489,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 135.078125,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 91.078125,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -5502,8 +5501,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 161.15625,
-                "height": 96.15625,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -5556,7 +5555,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Challenge detectedResolve Instagram’s challenge manually before continuing.IGNo exact target on this routeInstagram contextfeedRoutefeedQueueNext: @demo_creatorNext safe stepRefresh page contextInspection remains available; account and message actions stay unavailable.Refresh page contextObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
+              "text": "Challenge detectedResolve Instagram’s challenge manually before continuing.IGNo exact target on this routeInstagram contextfeedRoutefeedQueueNext: @demo_creatorNext safe stepRefresh page contextInspection remains available; account and message actions stay unavailable.Refresh page contextObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsMutual CheckerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
@@ -5573,7 +5572,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -5603,7 +5602,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -5619,7 +5618,7 @@
     },
     {
       "id": "session-rate-limited",
-      "sha256": "1447878d15fb97bf06c8bfa7b55274a2fd8749410b7c0084c61fe1b0a9788a57",
+      "sha256": "c778da24239019786372c9d134213ceb0469d830eb6cc1d74b4db4ddd7c857a9",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5670,8 +5669,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 172.15625,
-            "height": 117.15625,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -5681,11 +5680,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 135.078125,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 91.078125,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -5693,8 +5692,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 161.15625,
-                "height": 96.15625,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -5747,7 +5746,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Rate limit detectedWait before doing more work in this session.@@demo_creatorProfile reviewNot resolvedRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
+              "text": "Rate limit detectedWait before doing more work in this session.@@demo_creatorProfile reviewNot resolvedRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsMutual CheckerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
@@ -5764,7 +5763,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -5794,7 +5793,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -5810,7 +5809,7 @@
     },
     {
       "id": "profile-dark-desktop",
-      "sha256": "94c0198ef109270915fcfcfb2142abf5e9a9a018804840d9f402989ef1f46f90",
+      "sha256": "2c743b530ac092fd6e923fa2a72d18a5ce7d5324c7b67e46ee0e426b32aeee04",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5853,8 +5852,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 172.15625,
-            "height": 117.15625,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 1076,
             "right": 1410,
             "top": 55,
@@ -5864,11 +5863,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 135.078125,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 1310,
                 "right": 1400,
-                "top": 91.078125,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -5876,8 +5875,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 161.15625,
-                "height": 96.15625,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 1164.0625,
                 "right": 1302,
                 "top": 65,
@@ -5938,7 +5937,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -5968,7 +5967,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -5984,7 +5983,7 @@
     },
     {
       "id": "queue-dark-desktop",
-      "sha256": "0d0f30e832810ff65ec9de24e77c2a824627d2ab9acf815c553d632fe7559ec3",
+      "sha256": "7346623cccdc95bf949aa15c764e6ce19f546910900bccba6813e0803f3a2980",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6112,7 +6111,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -6142,7 +6141,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -6188,7 +6187,7 @@
     },
     {
       "id": "profile-short-laptop",
-      "sha256": "cbc3a24384a938b30dd1c3a4fcb1439aad54786a44ee98cd0151f2bd65181863",
+      "sha256": "79dcc7c66cd6380912fbd8f12bde168d90b41110d6e216ef936dc1ff143f7486",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6231,8 +6230,8 @@
             "width": 334
           },
           "header": {
-            "bottom": 172.15625,
-            "height": 117.15625,
+            "bottom": 154.765625,
+            "height": 99.765625,
             "left": 139,
             "right": 473,
             "top": 55,
@@ -6242,11 +6241,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 135.078125,
+                "bottom": 126.375,
                 "height": 44,
                 "left": 373,
                 "right": 463,
-                "top": 91.078125,
+                "top": 82.375,
                 "width": 90
               },
               "scroll": 90
@@ -6254,8 +6253,8 @@
             "copy": {
               "client": 138,
               "rect": {
-                "bottom": 161.15625,
-                "height": 96.15625,
+                "bottom": 143.765625,
+                "height": 78.765625,
                 "left": 227.0625,
                 "right": 365,
                 "top": 65,
@@ -6316,7 +6315,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -6346,7 +6345,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -6362,7 +6361,7 @@
     },
     {
       "id": "queue-short-laptop-dark",
-      "sha256": "45801d72ec94301a237820ddf053559c728448170f356fba4b8baaa823aee784",
+      "sha256": "2437df0cf236e1b926ca1bee3e0d91d4d2552afec2c362d6d9d0b23f10483c72",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6490,7 +6489,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -6520,7 +6519,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -6566,7 +6565,7 @@
     },
     {
       "id": "profile-narrow-tablet",
-      "sha256": "feb7bb06609d4811b74855803d71aab029c72da6cdcdb829d69a725d60336f73",
+      "sha256": "b16f9c7125e349f5148f779d7df42ce2bbbb39f6ca1fc95ffa0360b93688a28a",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6694,7 +6693,7 @@
             },
             {
               "height": 52,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 160.40625
             },
             {
@@ -6719,7 +6718,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -6735,7 +6734,7 @@
     },
     {
       "id": "messages-narrow-tablet-dark",
-      "sha256": "bf649c4f93d538666ed14dce4fdc8bb98a34f45a792025139c482c743a9b7021",
+      "sha256": "f8457dcabf16972726e2915c9e039b0e5e8da3b9859eeca4af3a1497dc82e432",
       "scenario": {
         "after": "inspect-messages",
         "captureListType": null,
@@ -6863,7 +6862,7 @@
             },
             {
               "height": 52,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 160.40625
             },
             {
@@ -6888,7 +6887,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -6924,7 +6923,7 @@
     },
     {
       "id": "profile-mobile-portrait",
-      "sha256": "49a11ad448b7814d1c83ca9464e7b94746748f835e64af5ebd52598da65b14ba",
+      "sha256": "cb4a837e5f62c98053deb58ede7a2e4378481c0cf417c50adaee9dad2719df1a",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6967,8 +6966,8 @@
             "width": 388
           },
           "header": {
-            "bottom": 286.453125,
-            "height": 99.765625,
+            "bottom": 269.0625,
+            "height": 82.375,
             "left": 1,
             "right": 389,
             "top": 186.6875,
@@ -6978,11 +6977,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 258.0625,
+                "bottom": 249.375,
                 "height": 44,
                 "left": 289,
                 "right": 379,
-                "top": 214.0625,
+                "top": 205.375,
                 "width": 90
               },
               "scroll": 90
@@ -6990,8 +6989,8 @@
             "copy": {
               "client": 270,
               "rect": {
-                "bottom": 275.453125,
-                "height": 78.765625,
+                "bottom": 258.0625,
+                "height": 61.375,
                 "left": 11,
                 "right": 281,
                 "top": 196.6875,
@@ -7052,7 +7051,7 @@
             },
             {
               "height": 55,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 74.40625
             },
             {
@@ -7077,7 +7076,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -7093,7 +7092,7 @@
     },
     {
       "id": "queue-mobile-portrait-dark",
-      "sha256": "9e229510255ca2213bf8394b38d07540f048ae71acb9d59da44d7c57cb511648",
+      "sha256": "b881d35d5ad5ba3a8c6955bc702e1a7e8cf163d44de4676bdc054ffbba1b2657",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7221,7 +7220,7 @@
             },
             {
               "height": 55,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 74.40625
             },
             {
@@ -7246,7 +7245,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -7292,7 +7291,7 @@
     },
     {
       "id": "profile-mobile-landscape",
-      "sha256": "9e230b11d1882a9ccad7b6ce4b085c2626cb77078231ceb6eb8aa147d822c75c",
+      "sha256": "51ea1daecd7cc0a3d01a5399ca1a574602fadd705d967495d9a035cb9eee99f1",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7420,7 +7419,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 103
             },
             {
@@ -7445,7 +7444,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -7461,7 +7460,7 @@
     },
     {
       "id": "queue-mobile-landscape-dark",
-      "sha256": "a077a8e0f9c78fde79d9f2c8b1ee585bc88d99bc95e575cc9565470fcd92387b",
+      "sha256": "b6b46b40ec684e5c5f3199c5a4238d82731e076ce41842b1fb31cf0f9ed656fa",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7589,7 +7588,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 103
             },
             {
@@ -7614,7 +7613,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -7660,7 +7659,7 @@
     },
     {
       "id": "profile-zoom-200-light",
-      "sha256": "ded4303b54435b61dfd46bcddb2e7d51caeb877e2982a4d693037727197dbd0c",
+      "sha256": "aa1d66e16d5643d58b64463adacfb9b9afd180a641ca6bc04e9657936a0329af",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7788,7 +7787,7 @@
             },
             {
               "height": 52,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 138.8984375
             },
             {
@@ -7813,7 +7812,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -7829,7 +7828,7 @@
     },
     {
       "id": "profile-zoom-200-dark",
-      "sha256": "1e170dbc972bbadbd9910351770d654eb6b76970d38762c9fd6d0a6a842eed5c",
+      "sha256": "d7cb129916fed4c0d993b4549f913dc962ad288a8038988be8870e24c0c6c86e",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7957,7 +7956,7 @@
             },
             {
               "height": 52,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 138.8984375
             },
             {
@@ -7982,7 +7981,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -7998,7 +7997,7 @@
     },
     {
       "id": "queue-zoom-200-light",
-      "sha256": "daeb227f42e64e1db59ae350167bff3e769b165b2bca94d9d0247b324fcc3f25",
+      "sha256": "a31d773ee1bc98d2de6b355f0e834f150f2f3862cd00aab18da138b857f686ce",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -8126,7 +8125,7 @@
             },
             {
               "height": 52,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 138.8984375
             },
             {
@@ -8151,7 +8150,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -8197,7 +8196,7 @@
     },
     {
       "id": "queue-zoom-200-dark",
-      "sha256": "ff2dc1debe5e89475d6467a227b0681fe1c424c8ed78ad7ffec16724682f38e8",
+      "sha256": "f3633adf36e9df2fb729d0e79b92faa4d695d13278a026987017d4d488905405",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -8352,7 +8351,7 @@
             },
             {
               "height": 52,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 138.8984375
             },
             {
@@ -8377,7 +8376,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -8423,7 +8422,7 @@
     },
     {
       "id": "profile-forced-colors",
-      "sha256": "abd117ec08a76a20b7bf54c5d54ef5c24620f907536a119c1cb12f382bfb7625",
+      "sha256": "863244b9853a8ff8d41fa5cc920325cb53f55b6c4a1b47b3c72ab567b1c2ff7f",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -8466,8 +8465,8 @@
             "width": 332
           },
           "header": {
-            "bottom": 173.15625,
-            "height": 117.15625,
+            "bottom": 155.765625,
+            "height": 99.765625,
             "left": 1077,
             "right": 1409,
             "top": 56,
@@ -8477,11 +8476,11 @@
             "actions": {
               "client": 90,
               "rect": {
-                "bottom": 136.078125,
+                "bottom": 127.375,
                 "height": 44,
                 "left": 1309,
                 "right": 1399,
-                "top": 92.078125,
+                "top": 83.375,
                 "width": 90
               },
               "scroll": 90
@@ -8489,8 +8488,8 @@
             "copy": {
               "client": 136,
               "rect": {
-                "bottom": 162.15625,
-                "height": 96.15625,
+                "bottom": 144.765625,
+                "height": 78.765625,
                 "left": 1165.0625,
                 "right": 1301,
                 "top": 66,
@@ -8551,7 +8550,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -8581,7 +8580,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -8597,7 +8596,7 @@
     },
     {
       "id": "queue-forced-colors",
-      "sha256": "53e2713fa216fef4ec6f5b756d110a483407edc9d51e9243c79d7e52299b5712",
+      "sha256": "5bc741c1e600075115ea3d2749495eb4ef894a643140194f51ce6f204ae831ee",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -8725,7 +8724,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -8755,7 +8754,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -8801,7 +8800,7 @@
     },
     {
       "id": "collapsed-desktop",
-      "sha256": "718f1ed38aad937fb60af5022f211ff5cf70617ec452f6cd1ede92501d378112",
+      "sha256": "2ad31e15899f0a93c9cd6aec412e7bd1c70becee70017be5accdabeb86b41de3",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -8896,7 +8895,7 @@
           "touchTargets": [
             {
               "height": 44,
-              "label": "Open Insta AIO sidecar",
+              "label": "Open Insta Toolbox",
               "width": 44
             }
           ],
@@ -8907,7 +8906,7 @@
     },
     {
       "id": "collapsed-mobile",
-      "sha256": "5f3d5e393393a4ae1d9c5d870de82fcc1c8cf4a6ff1d5f758d0e303788785780",
+      "sha256": "4ffdff761e0b8f6559089a55bc45dab0dae060571ccdbbcdd51e19066e6f89a6",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -9002,7 +9001,7 @@
           "touchTargets": [
             {
               "height": 44,
-              "label": "Open Insta AIO sidecar",
+              "label": "Open Insta Toolbox",
               "width": 44
             }
           ],
@@ -9013,7 +9012,7 @@
     },
     {
       "id": "queue-run-review",
-      "sha256": "e5524f13b624ef11174f3dd76b2586383c0a1e9a8508b9105d9377f3694c5177",
+      "sha256": "9d1d8429df0bea8f02dbf4279e576c0f8e2b5df3cf43c60eef2f0bc984ddab73",
       "scenario": {
         "after": "bot-review",
         "captureListType": null,
@@ -9289,7 +9288,7 @@
             },
             {
               "height": 44,
-              "label": "Follower checker",
+              "label": "Mutual Checker",
               "width": 111
             },
             {
@@ -9319,7 +9318,7 @@
             },
             {
               "height": 44,
-              "label": "Collapse Insta AIO sidecar",
+              "label": "Collapse Insta Toolbox",
               "width": 44
             },
             {
@@ -9370,13 +9369,13 @@
     }
   ],
   "performance": {
-    "collapsedTaskMs": 4.423,
-    "openTaskMs": 3.082,
+    "collapsedTaskMs": 3.245,
+    "openTaskMs": 2.8659999999999988,
     "queue": {
-      "durationMs": 23.100000001490116,
+      "durationMs": 26,
       "renderedItems": 1,
-      "totalOverlayNodes": 362
+      "totalOverlayNodes": 361
     },
-    "routeTransitionMs": 90.69999999552965
+    "routeTransitionMs": 96.39999999850988
   }
 }

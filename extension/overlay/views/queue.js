@@ -118,7 +118,7 @@
     if (file.size > 5_000_000) throw new Error('Queue imports are limited to five megabytes.');
     const parsed = JSON.parse(await file.text());
     if (parsed?.kind !== 'insta-aio-manual-queue' || !Array.isArray(parsed.queue)) {
-      throw new Error('Select an Insta AIO manual queue export.');
+      throw new Error('Select an Insta Toolbox queue export.');
     }
     const next = shared.normalizeManualQueue({
       queue: parsed.queue,

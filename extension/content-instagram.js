@@ -303,7 +303,25 @@
     if (!/^\d+$/.test(userId)) {
       throw relationshipError('username-not-found', `Instagram could not resolve @${username}.`);
     }
-    return userId;
+    const count = (...values) => {
+      for (const value of values) {
+        const number = Number(value);
+        if (Number.isSafeInteger(number) && number >= 0) return number;
+      }
+      return null;
+    };
+    const onExactProfile = normalizeUsername(location.pathname) === username;
+    return {
+      userId,
+      expectedCounts: {
+        followers: onExactProfile
+          ? exactProfileListCount('followers')
+          : count(exact.follower_count, exact.followers_count, exact.edge_followed_by?.count),
+        following: onExactProfile
+          ? exactProfileListCount('following')
+          : count(exact.following_count, exact.follows_count, exact.edge_follow?.count),
+      },
+    };
   }
 
   async function fetchRelationshipList(listType, userId, username, {
@@ -322,11 +340,13 @@
     signal,
     sleepImpl,
     startedAt,
+    expectedCount = null,
   }) {
     const accounts = new Map();
     const seenTokens = new Set();
     let nextMaxId = '';
     let pages = 0;
+    let reconciliationAttempts = 0;
     while (pages < maxPages && accounts.size < maxAccounts) {
       assertRelationshipRunActive(signal, startedAt, now, maxDurationMs);
       const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
@@ -372,11 +392,31 @@
       }));
       const candidateToken = data.next_max_id;
       if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
+        if (Number.isSafeInteger(expectedCount)
+          && accounts.size < expectedCount
+          && reconciliationAttempts < 1) {
+          reconciliationAttempts += 1;
+          nextMaxId = '';
+          seenTokens.clear();
+          onProgress?.(Object.freeze({
+            attempt: reconciliationAttempts,
+            expectedCount,
+            found: accounts.size,
+            listType,
+            pages,
+            phase: 'reconciling',
+            username,
+          }));
+          await sleepImpl(800, signal);
+          continue;
+        }
+        const countReconciled = !Number.isSafeInteger(expectedCount) || accounts.size >= expectedCount;
         return {
           accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
-          complete: true,
+          complete: countReconciled,
+          expectedCount,
           pages,
-          reason: 'pagination-complete',
+          reason: countReconciled ? 'pagination-complete' : 'count-mismatch',
         };
       }
       nextMaxId = String(candidateToken);
@@ -390,6 +430,7 @@
     return {
       accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
       complete: false,
+      expectedCount,
       pages,
       reason: accounts.size >= maxAccounts ? 'account-limit' : 'page-limit',
     };
@@ -450,20 +491,28 @@
         sleepImpl,
         startedAt,
       };
-      const userId = await resolveRelationshipUserId(username, {
+      const resolution = await resolveRelationshipUserId(username, {
         ...common,
         found: 0,
         listType: null,
         pages: 0,
         username,
       });
-      const followers = await fetchRelationshipList('followers', userId, username, common);
-      const following = await fetchRelationshipList('following', userId, username, common);
+      const { userId, expectedCounts } = resolution;
+      const followers = await fetchRelationshipList('followers', userId, username, {
+        ...common,
+        expectedCount: expectedCounts.followers,
+      });
+      const following = await fetchRelationshipList('following', userId, username, {
+        ...common,
+        expectedCount: expectedCounts.following,
+      });
       assertRelationshipRunActive(runSignal, startedAt, now, boundedDuration);
       const capturedAt = new Date(now()).toISOString();
       const result = Object.freeze({
         capturedAt,
         complete: Object.freeze({ followers: followers.complete, following: following.complete }),
+        expectedCounts: Object.freeze({ followers: followers.expectedCount, following: following.expectedCount }),
         followers: Object.freeze(followers.accounts),
         following: Object.freeze(following.accounts),
         pages: Object.freeze({ followers: followers.pages, following: following.pages }),
@@ -524,7 +573,7 @@
         ? 'Instagram list-dialog capture'
         : 'Mixed local captures';
     const lines = [
-      'INSTA AIO FOLLOWER COMPARISON',
+      'INSTA TOOLBOX MUTUAL CHECK',
       '================================',
       `Account: ${record.subjectUsername ? `@${record.subjectUsername}` : 'Not recorded'}`,
       `Generated: ${record.generatedAt}`,
@@ -554,7 +603,7 @@
     addSection('NOT FOLLOWING YOU BACK', record.notFollowingMeBack);
     addSection('YOU DO NOT FOLLOW BACK', record.iDoNotFollowBack);
     addSection('MUTUAL FOLLOWERS', record.mutuals);
-    lines.push('', 'Generated locally by Insta AIO. No account action was performed.', '');
+    lines.push('', 'Generated locally by Insta Toolbox. No account action was performed.', '');
     return lines.join('\r\n');
   }
 

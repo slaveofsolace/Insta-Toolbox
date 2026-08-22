@@ -72,6 +72,6 @@ if (invokedPath && invokedPath.toLowerCase() === modulePath.toLowerCase()) {
   const port = Math.max(1, Math.min(65535, Number(process.env.PORT || 4173)));
   const server = createAppServer();
   server.listen(port, '127.0.0.1', () => {
-    console.log(`Insta AIO Tool is available at http://127.0.0.1:${port}`);
+    console.log(`Insta Toolbox is available at http://127.0.0.1:${port}`);
   });
 }

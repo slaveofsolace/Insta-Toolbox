@@ -7,7 +7,7 @@
   "root": {
     "kind": "DECISION",
     "node_id": "root_release",
-    "statement": "Finish and push the owned Insta AIO 2.0.0 hot-fix branch without crossing authenticated Instagram mutation or human-acceptance boundaries.",
+    "statement": "Finish and push the owned Insta Toolbox 2.0.0 hot-fix branch without crossing authenticated Instagram mutation or human-acceptance boundaries.",
     "source_state": "The isolated final-pass worktree contains an uncommitted 2.0.0 implementation and partially migrated tests.",
     "target_state": "The owned branch is clean, pushed, and supported by current automated evidence with remaining human gates stated as nonclaims.",
     "conditions": [
@@ -98,7 +98,7 @@
       {
         "id": "inv_live_off",
         "statement": "Live actions remain inactive on load and require an exact finite action-specific confirmation.",
-        "owner": "Insta AIO runtime",
+        "owner": "Insta Toolbox runtime",
         "status": "PRESERVED",
         "hard_gate": true,
         "evidence_ids": ["ev_automated_matrix", "ev_runtime_matrix", "ev_security_review"]
@@ -106,7 +106,7 @@
       {
         "id": "inv_contracts",
         "statement": "Existing storage, capture, queue, message, migration, pairing, and ledger contracts remain compatible.",
-        "owner": "Insta AIO maintainers",
+        "owner": "Insta Toolbox maintainers",
         "status": "PRESERVED",
         "hard_gate": true,
         "evidence_ids": ["ev_automated_matrix", "ev_security_review"]

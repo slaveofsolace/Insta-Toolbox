@@ -212,8 +212,6 @@
   async function saveLimits(runtime) {
     const { query } = runtime;
     const limits = {
-      dailyActionLimit: Number(query('[data-ia-role="limit-actions"]')?.value),
-      dailyDmLimit: Number(query('[data-ia-role="limit-dms"]')?.value),
       minDelayMs: Number(query('[data-ia-role="limit-min-delay"]')?.value) * 1000,
       maxDelayMs: Number(query('[data-ia-role="limit-max-delay"]')?.value) * 1000,
     };
@@ -230,8 +228,6 @@
       const field = query(`[data-ia-role="${role}"]`);
       if (field) field.value = String(value);
     };
-    set('limit-actions', limits.dailyActionLimit);
-    set('limit-dms', limits.dailyDmLimit);
     set('limit-min-delay', Math.round(limits.minDelayMs / 1000));
     set('limit-max-delay', Math.round(limits.maxDelayMs / 1000));
   }

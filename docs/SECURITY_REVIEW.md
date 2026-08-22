@@ -34,8 +34,8 @@ the toolbox's API globals. DM runs are dropped on reload. The shared thread-wide
 Unsend runner independently requires a complete no-click history check and a
 finite plan bound to the exact thread, scope, eligible count, digest, and future
 expiry. It revalidates completeness and count before the first menu and checks
-expiry before every page control. The finite plan is reserved against the
-persistent daily Unsend allowance and uses the saved bounded delay range. It
+expiry before every page control. The finite plan receives a one-use capability
+and uses the saved bounded delay range. It
 snapshots existing menu and dialog
 candidates and accepts exactly one newly surfaced control. The extension's
 thread tool requires one ordinary count-specific permanent-action confirmation.
@@ -110,7 +110,8 @@ currently open exact thread before it can show a destructive confirmation.
 Client-side Instagram route changes trigger a state rerender; they never inherit
 the prior thread's visible evidence or Unsend candidates.
 
-Restored daily limits are finite and bounded. Capability replay, stale
+There is no daily action quota. Restored legacy limit fields are normalized for
+migration compatibility but are not enforced. Capability replay, stale
 confirmation, changed controls, wrong profiles or messages, duplicate attempts,
 and ambiguous UI fail closed for both controlled paths.
 
@@ -140,8 +141,9 @@ The 2026-08-01 controlled-action review found and remediated four low-severity
 issues before release: profile controls were not structurally bound to the
 reviewed header, an existing Unfollow dialog could be mistaken for a newly
 opened target dialog, the extension lacked its own durable reservation, and
-malformed restored daily limits could fail open. Regression tests exercise each
-fixed boundary. The 2026-08-02 exact-message DM local-patch review reproduced
+malformed restored safety fields could fail open. Regression tests exercise each
+fixed boundary. Legacy daily-limit fields now remain only for migration
+compatibility and are not enforced. The 2026-08-02 exact-message DM local-patch review reproduced
 three bounded live-path defects and one packaging-gate hardening gap. All four
 were remediated during the scan, every changed source file received a full-file
 receipt, and no reportable finding survives in the current patch. The complete

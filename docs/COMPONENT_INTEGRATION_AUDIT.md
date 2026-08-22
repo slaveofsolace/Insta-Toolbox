@@ -10,7 +10,7 @@ Integration means that a source was reviewed, its applicable data was mapped, so
 |---|---|---|---|---|
 | Instagram Helper | Revision `5853d856a18a395aab7c8b8c7e3633175e23ddaf` | Message-data migration | Valid, duplicate, malformed, and incomplete records | Message migration integrated |
 | SimpleInstaBot | Revision `5eed7e4ac7ac7db6922eb9e5ed6db36ad9f18fca` | Follow/unfollow history migration | Success, failure, no-action, duplicate, malformed, unsupported photo history | History migration integrated |
-| Follower checker | Revision `3876d9a67bc8255a79990a1616c20cae296d7194` | Read-only partial relationship report | Duplicate, invalid, and incomplete metadata | Partial-report migration integrated |
+| Mutual Checker | Revision `3876d9a67bc8255a79990a1616c20cae296d7194` | Read-only partial relationship report | Duplicate, invalid, and incomplete metadata | Partial-report migration integrated |
 | instagram-dm-unsender | Tag `v0.7.2`, revision `a8d7b4d9b76967f54cd9890fc3b1e0bb9c1b8d6a`, supplied SHA-256 `2DC5D357B6C3BBFE1F9E10E8D2F9252E7446C490FB3C16DF1B59719CB1D1FE2C` | Exact-candidate adapter, stateless migration report, and independently bounded thread runner using the reviewed rendered-menu interaction model | Exact, missing, ambiguous, received, confirmation mismatch, no-click complete/incomplete history, plan tampering, daily reservation, pacing, stop, and portalled-menu fixtures | Exact adapter and bounded interaction model integrated; original unbounded executor excluded |
 
 ## Instagram Helper
@@ -23,7 +23,7 @@ The launcher and security changes are not used.
 
 ### Dependencies and session behavior
 
-The helper depends on the active Instagram page and reads browser-managed session values before issuing credentialed requests. It does not ask for a password, but it directly accesses session state. None of that state enters Insta AIO.
+The helper depends on the active Instagram page and reads browser-managed session values before issuing credentialed requests. It does not ask for a password, but it directly accesses session state. None of that state enters Insta Toolbox.
 
 ### Selectors and network behavior
 
@@ -74,13 +74,13 @@ The programmatic library entry is `Instauto(db, page, options)`. The desktop mai
 
 ### Dependencies and session behavior
 
-The source uses Puppeteer-based browser control, desktop state storage, persisted browser-session files, automated login options, and browser signature rotation. Insta AIO does not reuse these behaviors.
+The source uses Puppeteer-based browser control, desktop state storage, persisted browser-session files, automated login options, and browser signature rotation. Insta Toolbox does not reuse these behaviors.
 
 ### Selectors and network behavior
 
 The source contains text/ARIA selectors for relationship controls, DOM click paths, legacy GraphQL identifiers, embedded profile-data reading, and private relationship routes. They were useful only for identifying failure modes and are not treated as current Instagram truth.
 
-The source's `dryRun` mode omits final relationship-changing clicks but still navigates, performs network requests, and may click setup dialogs. It therefore does not satisfy Insta AIO's no-click contract.
+The source's `dryRun` mode omits final relationship-changing clicks but still navigates, performs network requests, and may click setup dialogs. It therefore does not satisfy Insta Toolbox's no-click contract.
 
 ### Data contract
 
@@ -204,7 +204,7 @@ prove completeness and a finite eligible count before the UI exposes `all`,
 `newest N`, or `oldest N`. The exact thread, scope, count, digest, and expiry are
 frozen into the reviewed plan; one exact thread/count confirmation follows. The
 runner revalidates the full count before opening a message menu,
-reserves the finite plan against a persistent daily allowance, uses the saved
+reserves the finite plan against replay, uses the saved
 bounded delay range, selects only one newly surfaced menu and confirmation
 control for its active sent row, verifies removal, and stops on expiry,
 challenge, block, rate limit, wrong thread, ambiguity, or repeated failure. The

@@ -709,8 +709,6 @@ app.addEventListener('click', async (event) => {
   if (action === 'save-settings') {
     const lines = (value) => value.split(/[\n,]+/).map(normalizeUsername).filter(Boolean);
     state.settings.waitingDays = Math.max(1, Number(document.querySelector('#waiting-days').value || 7));
-    state.settings.dailyFollowLimit = Math.max(1, Number(document.querySelector('#daily-follow-limit').value || 25));
-    state.settings.dailyUnfollowLimit = Math.max(1, Number(document.querySelector('#daily-unfollow-limit').value || 25));
     state.settings.ownerNames = document.querySelector('#owner-names').value.split(',').map((name) => name.trim()).filter(Boolean);
     state.settings.whitelist = lines(document.querySelector('#whitelist').value);
     state.settings.preexistingFollowing = lines(document.querySelector('#preexisting').value);
@@ -732,7 +730,7 @@ app.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'reset-workspace') {
-    if (!window.confirm('Clear all local Insta AIO data in this browser?')) return;
+    if (!window.confirm('Clear all local Insta Toolbox data in this browser?')) return;
     await clearState();
     state = await loadState();
     activeView = 'overview';
@@ -758,7 +756,7 @@ app.addEventListener('change', async (event) => {
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      if (!data?.state || data.kind !== 'insta-aio-workspace') throw new Error('Not an Insta AIO workspace backup.');
+      if (!data?.state || data.kind !== 'insta-aio-workspace') throw new Error('Not an Insta Toolbox workspace backup.');
       state = migrateState(data.state);
       logActivity('import', 'Restored workspace backup.');
       await persist();

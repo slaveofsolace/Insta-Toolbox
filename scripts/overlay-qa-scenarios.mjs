@@ -53,11 +53,11 @@ const requiredStates = [
     semantics: [
       semantic('[data-ia-role="first-run"]', {
         hidden: false,
-        includes: ['Follower checker', 'Follow / Unfollow', 'DM Unsend', 'confirm it once'],
+        includes: ['Mutual Checker', 'Follow / Unfollow', 'DM Unsend', 'confirm once'],
       }),
       semantic('[data-ia-action="first-run-start"]', {
         attributes: { type: 'button' },
-        equals: 'Open follower checker',
+        equals: 'Open Mutual Checker',
       }),
       semantic('[data-ia-action="first-run-dismiss"]', {
         attributes: { type: 'button' },
@@ -74,7 +74,7 @@ const requiredStates = [
     position: { x: 470, y: 72 },
     semantics: [
       semantic('[data-ia-role="now-content"] .ia-tool-grid', {
-        includes: ['Follower checker', 'Follow / Unfollow', 'DM Unsend', 'review then confirm'],
+        includes: ['Mutual Checker', 'Follow / Unfollow', 'DM Unsend'],
       }),
       semantic('[data-ia-role="move-handle"]', {
         attributes: { 'aria-label': 'Move sidecar; use arrow keys for precise movement', type: 'button' },

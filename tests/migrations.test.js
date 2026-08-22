@@ -61,7 +61,7 @@ test('reports unsupported SimpleInstaBot liked-photo records', async () => {
   assert.equal(result.report.inputCount, 1);
   assert.equal(result.report.importedCount, 0);
   assert.equal(result.report.skippedCount, 1);
-  assert.match(result.report.warnings[0], /outside the Insta AIO data contract/);
+  assert.match(result.report.warnings[0], /outside the Insta Toolbox data contract/);
 });
 
 test('preserves follower-checker output as a non-actionable partial report', async () => {
