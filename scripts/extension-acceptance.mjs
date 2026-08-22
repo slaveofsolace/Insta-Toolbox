@@ -867,6 +867,35 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(messages.stored.exact, true);
 
   await webContents.executeJavaScript(`(() => {
+    globalThis.confirm = (message) => {
+      globalThis.fixtureConfirmMessage = message;
+      return true;
+    };
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    shadow.querySelector('[data-view="messages"]').click();
+    shadow.querySelector('[data-action="run-unsend"]').click();
+  })()`, true);
+  const confirmedUnsend = await waitForPageValue(
+    webContents,
+    `(() => {
+      const snapshot = globalThis.InstaAioDmThreadUnsender?.snapshot?.();
+      if (snapshot?.status !== 'completed' || globalThis.fixtureUnsentCount !== 1) return null;
+      const shadow = document.querySelector('#insta-aio-userscript-root')?.shadowRoot;
+      return {
+        confirmMessage: globalThis.fixtureConfirmMessage,
+        processed: snapshot.processed,
+        failed: snapshot.failed,
+        status: shadow?.querySelector('[data-role="status"]')?.textContent,
+      };
+    })()`,
+    'userscript confirmed thread Unsend',
+  );
+  assert.match(confirmedUnsend.confirmMessage, /Permanently unsend all 1 eligible sent message from thread 123/);
+  assert.equal(confirmedUnsend.processed, 1);
+  assert.equal(confirmedUnsend.failed, 0);
+  assert.equal(confirmedUnsend.status, 'Done. 1 message unsent.');
+
+  await webContents.executeJavaScript(`(() => {
     history.replaceState({}, '', '/direct/inbox/');
     const routeMarker = document.createElement('span');
     routeMarker.hidden = true;
@@ -907,7 +936,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(inboxEvidence.threadId, '');
   assert.equal(inboxEvidence.fragments.length, 0);
   assert.match(inboxEvidence.reason, /Open an Instagram conversation first/);
-  console.log('Accepted the movable Tampermonkey toolbox, finite-confirmation default, local follower comparison, and account/DM no-click checks.');
+  console.log('Accepted the movable Tampermonkey toolbox, finite-confirmation default, local follower comparison, account/DM no-click checks, and confirmed fixture Unsend.');
 }
 
 async function acceptPwaInstallability(webContents, baseUrl) {

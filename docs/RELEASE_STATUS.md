@@ -1,6 +1,6 @@
 # Release status
 
-Current version: **2.0.0**
+Current version: **2.0.1**
 
 ## Available tools
 
@@ -95,16 +95,28 @@ The final local Windows matrix count and artifact hashes are refreshed for each
 release candidate after the generated userscript and extension have been rebuilt.
 The Windows 2.0.0 installer remains intentionally unsigned.
 
-### Current 2.0.0 candidate evidence (2026-08-22)
+### Current 2.0.1 userscript hotfix evidence (2026-08-22)
 
-- `pnpm test`: **251/251** passing, including dependency verification,
+- Full test matrix: **259/259** passing, including dependency verification,
   repository hygiene, extension reproducibility, userscript parity, migrations,
   finite capabilities, no-click paths, retry watchdogs, and safe stops.
-- Controlled extension build subset: **25/25** passing before packaging.
+- Controlled extension build subset: **26/26** passing before packaging.
 - Extension/userscript fixture acceptance: production Follow, Unfollow, and
   one-message Unsend DOM chains; keyboard/accessibility-tree checks; five
-  toolbox viewports; thread-bound Unsend; PWA installability; and default
-  read-only pairing all accepted in isolated Chromium.
+  toolbox viewports; a six-message thread-bound Unsend; the userscript's full
+  scan, confirmation, reservation, runner-start, and one-message Unsend path;
+  PWA installability; and default read-only pairing all accepted in isolated
+  Chromium.
+- Fixes the 2.0.0 userscript exception that occurred immediately after the
+  exact-thread Unsend confirmation and makes asynchronous action failures
+  visible in the toolbox status area.
+- `userscripts/insta-aio-companion.user.js` SHA-256:
+  `f137388d831ac4b068bb6c040d545a0d882e501726b747ffe73101e4f30ba5e6`
+- `dist/insta-aio-companion-2.0.1.zip` SHA-256:
+  `97b1bda9f8a607155a8acbf20aeb6025600ea0c466215c7a495cf64a300dab6d`
+
+### Prior 2.0.0 release evidence
+
 - Google Chrome pairing acceptance: PWA installability and the real unpacked
   extension paired successfully with action permission off and no global live
   unlock controls.
@@ -116,7 +128,7 @@ The Windows 2.0.0 installer remains intentionally unsigned.
 - A prior 2.0.0 candidate passed all four GitHub Actions lanes. The release PR
   must repeat core, Chrome, Windows, and macOS checks on its exact final head.
 
-Release-candidate SHA-256 values:
+Prior 2.0.0 release artifact SHA-256 values:
 
 - `userscripts/insta-aio-companion.user.js` —
   `8f28d0a2f639685702c65e8d00b528803c2b4a59630aea236bb9c967a8d03acd`

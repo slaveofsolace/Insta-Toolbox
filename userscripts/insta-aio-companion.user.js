@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-AIO-Tool
-// @version      2.0.0
+// @version      2.0.1
 // @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
 // @homepageURL  https://github.com/slaveofsolace/Insta-AIO-Tool
 // @supportURL   https://github.com/slaveofsolace/Insta-AIO-Tool/issues
@@ -4582,6 +4582,7 @@
     current.lastUnsendPlanDigest = reviewedDigest;
     state.ledger = current;
     saveState();
+    const bounds = limits();
     return {
       ok: true,
       minDelayMs: bounds.minDelayMs,
@@ -5541,7 +5542,7 @@
     },
   };
 
-  shadow.addEventListener('click', (event) => {
+  shadow.addEventListener('click', async (event) => {
     const goView = event.target.closest?.('[data-go-view]');
     if (goView) {
       savePreferences({ view: goView.dataset.goView, open: true });
@@ -5555,7 +5556,7 @@
     const target = event.target.closest?.('[data-action]');
     if (!target) return;
     try {
-      actions[target.dataset.action]?.();
+      await actions[target.dataset.action]?.();
       renderAll();
     } catch (error) {
       status(`Stopped: ${error.message}`);
