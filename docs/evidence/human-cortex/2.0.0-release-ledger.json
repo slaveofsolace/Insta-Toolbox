@@ -3,7 +3,7 @@
   "ledger_id": "insta_aio_200_release",
   "created_at": "2026-08-22T17:14:47.888Z",
   "depth": "DEEP",
-  "iteration": 2,
+  "iteration": 3,
   "root": {
     "kind": "DECISION",
     "node_id": "root_release",
@@ -192,9 +192,9 @@
   "claims": [
     {
       "id": "claim_objective",
-      "label": "OBSERVED",
-      "statement": "The requested outcome is a finished, tested, committed, and pushed 2.0.0 hot-fix branch.",
-      "evidence_ids": ["ev_user_authority"],
+      "label": "MEASURED",
+      "statement": "The 2.0.0 hot-fix candidate is tested, committed, and pushed to the owned remote branch.",
+      "evidence_ids": ["ev_user_authority", "ev_git_endpoint"],
       "contradiction_claim_ids": [],
       "confidence": {"level":"HIGH","basis":"The user explicitly requested finish and push after approving the 2.0.0 plan."}
     },
@@ -288,6 +288,16 @@
       "captured_at": "2026-08-22T18:17:35.388Z",
       "integrity": "9/9 PWA and 43/43 overlay states passed unchanged thresholds after intended Settings and overlay deltas were reviewed.",
       "supports_claim_ids": ["claim_mechanism"],
+      "contradicts_claim_ids": []
+    },
+    {
+      "id": "ev_git_endpoint",
+      "kind": "MEASUREMENT",
+      "access": "INSPECTED_CURRENT",
+      "locator": "origin/sol/final-pass-0.11.0 and local isolated worktree after the release-candidate push.",
+      "captured_at": "2026-08-22T18:21:39.270Z",
+      "integrity": "Local and remote branch both resolved to 5f5367104588616e8c5ffdedbf83ee4375fb0698 immediately after push; pre-ledger worktree was clean.",
+      "supports_claim_ids": ["claim_objective", "claim_boundary"],
       "contradicts_claim_ids": []
     },
     {
@@ -440,7 +450,7 @@
     {
       "id":"action_finish",
       "description":"Complete the 2.0.0 implementation, tests, generated outputs, evidence, and documentation in the isolated worktree.",
-      "status":"AUTHORIZED",
+      "status":"VERIFIED",
       "authorization_status":"AUTHORIZED",
       "authority_basis":"The user explicitly approved the plan and requested finish and push.",
       "destructive":false,
@@ -448,14 +458,14 @@
       "external_state_change":false,
       "irreversible":false,
       "monitoring":"Run focused checks after each bounded change and preserve exact logs.",
-      "rollback":{"kind":"TRUE_ROLLBACK","procedure":"Revert only the owned coherent branch commit if later rejected.","preconditions":["Identify the exact owned commit."],"verification":"Git diff and tests return to the prior known state.","evidence_ids":[],"irreversible_residue":"None in the isolated worktree."},
+      "rollback":{"kind":"TRUE_ROLLBACK","procedure":"Revert only the owned coherent branch commit if later rejected.","preconditions":["Identify the exact owned commit."],"verification":"Git diff and tests return to the prior known state.","evidence_ids":["ev_git_endpoint"],"irreversible_residue":"None in the isolated worktree."},
       "recovery":{"procedure":"Resume from the last clean or documented dirty checkpoint without altering the protected checkout.","owner":"Codex","evidence_ids":["ev_git_baseline"]},
       "mitigation_consequence_node_ids":["mitigation_no_mutation"]
     },
     {
       "id":"action_push",
       "description":"Commit coherent owned work and push the existing final-pass branch after all automatable gates pass.",
-      "status":"AUTHORIZED",
+      "status":"VERIFIED",
       "authorization_status":"AUTHORIZED",
       "authority_basis":"The user's latest request explicitly says finish up and push it.",
       "destructive":false,
@@ -463,20 +473,20 @@
       "external_state_change":true,
       "irreversible":false,
       "monitoring":"Verify remote branch HEAD and PR after push.",
-      "rollback":{"kind":"COMPENSATING_ACTION","procedure":"Push a reviewed revert commit if an owned branch defect is found.","preconditions":["Retain exact pushed commit identity."],"verification":"Remote branch contains the revert and CI is re-run.","evidence_ids":[],"irreversible_residue":"Git history records both commits."},
+      "rollback":{"kind":"COMPENSATING_ACTION","procedure":"Push a reviewed revert commit if an owned branch defect is found.","preconditions":["Retain exact pushed commit identity."],"verification":"Remote branch contains the revert and CI is re-run.","evidence_ids":["ev_git_endpoint"],"irreversible_residue":"Git history records both commits."},
       "recovery":{"procedure":"Stop before merge or release and update the PR with factual nonclaims.","owner":"Repository owner","evidence_ids":[]},
       "mitigation_consequence_node_ids":["mitigation_no_mutation"]
     }
   ],
   "verification": {
     "mechanism":{"status":"PASS","signal":"The 2.0.0 mechanisms pass 248 tests, production fixtures, userscript parity, Chrome pairing, and Windows packaging.","evidence_ids":["ev_automated_matrix","ev_runtime_matrix","ev_artifacts"],"rationale":"Fresh current generated outputs were exercised."},
-    "endpoint":{"status":"UNKNOWN","signal":"The branch is not yet clean, committed, and pushed.","evidence_ids":[],"rationale":"Push verification is the actual endpoint for this request."},
+    "endpoint":{"status":"PASS","signal":"The owned branch was committed and the exact commit was observed on origin after push.","evidence_ids":["ev_git_endpoint"],"rationale":"Local and remote branch identities matched at the requested endpoint."},
     "guardrails":{"status":"PASS","signal":"The security inventory, migration tests, default-off checks, and every exact mutation boundary pass without a surviving candidate.","evidence_ids":["ev_automated_matrix","ev_security_review"],"rationale":"The review covered all changed security-sensitive sources plus PWA fragments."},
     "recovery":{"status":"PASS","signal":"The work is isolated and the protected checkout is clean.","evidence_ids":["ev_git_baseline"],"rationale":"Owned branch changes can be reverted without touching the protected checkout."}
   },
   "closure": {
-    "status":"OPEN",
-    "summary":"Implementation and every automatable Windows release gate are complete; the owned branch push is the remaining endpoint before bounded handoff to human acceptance.",
+    "status":"BOUNDED",
+    "summary":"The tested 2.0.0 candidate is committed and pushed on the owned branch. Merge, public release, native macOS acceptance, NVDA, and authenticated Instagram acceptance remain human or external gates.",
     "residual_risks":["Current Instagram DOM compatibility may differ from fixtures.","NVDA and subjective UI acceptance remain unproven."],
     "human_acceptance_required":true,
     "accepted_by":"",
