@@ -665,7 +665,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(initial.unsendPlanHidden, false);
   assert.deepEqual(initial.engineExecutors, ['function', 'function']);
 
-  const darkTheme = await webContents.executeJavaScript(`new Promise((resolve) => {
+  await webContents.executeJavaScript(`(() => {
     const root = document.documentElement;
     const values = {
       '--ig-primary-background': '0 0 0',
@@ -677,19 +677,39 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       '--ig-primary-button': '0 149 246',
     };
     for (const [name, value] of Object.entries(values)) root.style.setProperty(name, value);
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
-      const context = shadow.querySelector('[data-role="context"]');
-      const title = shadow.querySelector('[data-role="context-title"]');
-      const result = {
-        contextBackground: getComputedStyle(context).backgroundColor,
-        contextText: getComputedStyle(title).color,
-        panelText: getComputedStyle(shadow.querySelector('.panel')).color,
-      };
-      for (const name of Object.keys(values)) root.style.removeProperty(name);
-      resolve(result);
-    }));
-  })`, true);
+    return true;
+  })()`, true);
+  await waitForPageValue(webContents, `(() => {
+    const shadow = document.querySelector('#insta-aio-userscript-root')?.shadowRoot;
+    const context = shadow?.querySelector('[data-role="context"]');
+    const title = shadow?.querySelector('[data-role="context-title"]');
+    const panel = shadow?.querySelector('.panel');
+    return context && title && panel
+      && getComputedStyle(context).backgroundColor === 'rgb(18, 18, 18)'
+      && getComputedStyle(title).color === 'rgb(245, 245, 245)'
+      && getComputedStyle(panel).color === 'rgb(245, 245, 245)';
+  })()`, 'settled userscript dark-theme tokens');
+  const darkTheme = await webContents.executeJavaScript(`(() => {
+    const root = document.documentElement;
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    const context = shadow.querySelector('[data-role="context"]');
+    const title = shadow.querySelector('[data-role="context-title"]');
+    const result = {
+      contextBackground: getComputedStyle(context).backgroundColor,
+      contextText: getComputedStyle(title).color,
+      panelText: getComputedStyle(shadow.querySelector('.panel')).color,
+    };
+    for (const name of [
+      '--ig-primary-background',
+      '--ig-elevated-background',
+      '--ig-secondary-background',
+      '--ig-primary-text',
+      '--ig-secondary-text',
+      '--ig-separator',
+      '--ig-primary-button',
+    ]) root.style.removeProperty(name);
+    return result;
+  })()`, true);
   assert.deepEqual(darkTheme, {
     contextBackground: 'rgb(18, 18, 18)',
     contextText: 'rgb(245, 245, 245)',

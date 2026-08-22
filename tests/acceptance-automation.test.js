@@ -76,7 +76,7 @@ test('browser acceptance covers accessibility, installability, and read-only pai
   assert.match(acceptance, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
   assert.match(acceptance, /details\.open = true;[\s\S]*?requestAnimationFrame/);
   assert.match(acceptance, /configuredMaxHeight/);
-  assert.match(acceptance, /--ig-primary-text'[\s\S]*?requestAnimationFrame/);
+  assert.match(acceptance, /--ig-primary-text'[\s\S]*?waitForPageValue[\s\S]*?settled userscript dark-theme tokens/);
 });
 
 test('Chrome acceptance loads and pairs the real extension through the restricted DevTools pipe', () => {
