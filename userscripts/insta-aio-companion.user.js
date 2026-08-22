@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta AIO Instagram Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-AIO-Tool
-// @version      0.11.0
+// @version      2.0.0
 // @description  Follower checker, follow/unfollow review, and DM tools in a movable Instagram-style panel.
 // @homepageURL  https://github.com/slaveofsolace/Insta-AIO-Tool
 // @supportURL   https://github.com/slaveofsolace/Insta-AIO-Tool/issues
@@ -446,7 +446,7 @@
     if (observation.rateLimited) return 'Instagram asked you to slow down';
     const threadId = currentThreadId();
     if (!threadId) return 'The conversation is no longer open';
-    if (expectedThreadId && threadId !== expectedThreadId) return 'The armed conversation changed';
+    if (expectedThreadId && threadId !== expectedThreadId) return 'The reviewed conversation changed';
     return null;
   }
 
@@ -1280,315 +1280,6 @@
 })();
 
 (() => {
-  'use strict';
-
-  // The generated userscript uses the existing toolbox shell. This small layer
-  // swaps its DM controls to the shared thread runner and applies Instagram's
-  // own design tokens without duplicating the toolbox implementation.
-  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
-  const ROOT_ID = 'insta-aio-userscript-root';
-  let installed = false;
-
-  function applyUserscriptEnhancement(host) {
-    if (installed || !host?.shadowRoot || !globalThis.InstaAioDmThreadUnsender) return;
-    installed = true;
-    const shadow = host.shadowRoot;
-    const runner = globalThis.InstaAioDmThreadUnsender;
-    const liveAuthority = globalThis.InstaAioUserscriptLiveAuthority;
-    let reviewedPreview = null;
-    let emptyPreview = false;
-    const query = (selector) => shadow.querySelector(selector);
-    const setText = (role, value) => {
-      const element = query(`[data-role="${role}"]`);
-      if (element) element.textContent = String(value ?? '');
-    };
-
-    const style = document.createElement('style');
-    style.id = 'insta-aio-instagram-design-v2';
-    style.textContent = `
-      :host {
-        color-scheme: light dark;
-        font-family: var(--aio-font, var(--font-family-system, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif));
-      }
-      .panel {
-        border-color: var(--aio-line) !important;
-        border-radius: 16px !important;
-        background: color-mix(in srgb, var(--aio-bg) var(--aio-alpha), transparent) !important;
-        color: var(--aio-text) !important;
-        box-shadow: 0 12px 38px rgba(0,0,0,.18) !important;
-        font-family: inherit !important;
-        animation: aio-instagram-enter 160ms cubic-bezier(.2,.8,.2,1);
-      }
-      .header, .footer, .tabs, .run-panel {
-        border-color: var(--aio-line) !important;
-        background: color-mix(in srgb, var(--aio-bg) var(--aio-alpha-strong), transparent) !important;
-      }
-      .header p, .lead, .card p, .metric span, .field label, .footer, .list small, .tool span {
-        color: var(--aio-text-muted) !important;
-      }
-      .tab { color: var(--aio-text-muted) !important; transition: color 140ms ease, background 140ms ease; }
-      .tab[aria-selected="true"] {
-        border-bottom-color: var(--aio-text) !important;
-        background: transparent !important;
-        color: var(--aio-text) !important;
-      }
-      .card, .tool, .metric, select, input {
-        border-color: var(--aio-line) !important;
-        background: color-mix(in srgb, var(--aio-bg-raised) var(--aio-alpha-strong), transparent) !important;
-        color: var(--aio-text) !important;
-      }
-      .tool, .card, .metric { border-radius: 12px !important; }
-      .tool { transition: transform 140ms ease, background 140ms ease; }
-      .tool:hover { transform: translateY(-1px); background: var(--aio-bg-sunken) !important; }
-      .button, .file {
-        min-height: 44px !important;
-        border-color: var(--aio-line) !important;
-        border-radius: 8px !important;
-        background: var(--aio-bg-sunken) !important;
-        color: var(--aio-text) !important;
-        font-size: var(--system-14-font-size, 14px) !important;
-        font-weight: 600 !important;
-        transition: filter 140ms ease, transform 140ms ease, opacity 140ms ease !important;
-      }
-      .button:hover, .file:hover { filter: brightness(.97); }
-      .button.primary {
-        border-color: var(--aio-accent) !important;
-        background: var(--aio-accent) !important;
-        color: var(--aio-on-accent) !important;
-      }
-      .button.danger {
-        border-color: var(--aio-danger, #c9362b) !important;
-        background: var(--aio-danger, #c9362b) !important;
-        color: #fff !important;
-      }
-      .launcher {
-        border-color: var(--aio-line) !important;
-        border-radius: 50% !important;
-        background: var(--aio-bg) !important;
-        color: var(--aio-text) !important;
-        box-shadow: 0 6px 20px rgba(0,0,0,.16) !important;
-        transition: transform 140ms ease, box-shadow 140ms ease !important;
-      }
-      .launcher:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,.2) !important; }
-      .mode { border-color: var(--aio-line) !important; color: var(--aio-text-muted) !important; }
-      .notice { border-left: 0 !important; border: 1px solid var(--aio-line) !important; border-radius: 10px; background: var(--aio-bg-sunken) !important; color: var(--aio-text) !important; }
-      .run-bar { background: var(--aio-line) !important; }
-      .run-bar span { background: var(--aio-accent) !important; }
-      @keyframes aio-instagram-enter { from { opacity: 0; transform: translateY(6px) scale(.99); } to { opacity: 1; transform: none; } }
-      @media (prefers-color-scheme: dark) {
-        :host { color-scheme: dark; }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .panel, .tool, .button, .file, .launcher { animation: none !important; transition: none !important; }
-      }
-    `;
-    shadow.append(style);
-
-    const headerTitle = query('.header h1');
-    if (headerTitle) headerTitle.textContent = 'Instagram Toolbox';
-    const headerSubtitle = query('.header p');
-    if (headerSubtitle) headerSubtitle.textContent = 'Follower, account, and message tools';
-    const nowLead = query('[data-panel="now"] .lead');
-    if (nowLead) nowLead.textContent = 'Choose a tool. Your lists and progress stay in this browser.';
-    const messageLead = query('[data-panel="messages"] .lead');
-    if (messageLead) messageLead.innerHTML = '<strong>DM Unsend.</strong> Resolve this conversation and its eligible sent-message count before reviewing any permanent action.';
-
-    const scanButton = query('[data-action="scan-sent"]');
-    if (scanButton) scanButton.textContent = 'Check conversation';
-    const executeButton = query('[data-action="run-unsend"]');
-    const planPanel = query('[data-role="unsend-plan"]');
-    if (planPanel) planPanel.hidden = false;
-    const countField = query('[data-role="unsend-count"]')?.closest('.field');
-    const renderScope = () => {
-      if (countField) countField.hidden = (query('[data-role="unsend-scope"]')?.value || 'all') === 'all';
-    };
-    renderScope();
-    const messageNotice = query('[data-panel="messages"] .notice');
-    if (messageNotice) {
-      messageNotice.textContent = 'Only messages sent by this account are processed. You can stop at any time. Unsending is permanent.';
-    }
-
-    function renderRun(next) {
-      const running = ['preparing', 'running', 'waiting', 'stopping'].includes(next.status);
-      const readOnlyCheck = next.operation === 'check';
-      const panel = query('[data-role="run-panel"]');
-      if (panel) panel.hidden = !running && !['completed', 'error', 'stopped'].includes(next.status);
-      setText('run-title', running
-        ? readOnlyCheck ? 'Checking conversation' : 'DM Unsend in progress'
-        : readOnlyCheck ? 'Conversation check' : 'DM Unsend');
-      setText('run-detail', next.message);
-      const fill = query('[data-role="run-fill"]');
-      if (fill) fill.style.width = running ? `${Math.min(94, 12 + (next.processed * 4))}%` : '100%';
-      const results = query('[data-role="run-results"]');
-      if (results) {
-        results.replaceChildren();
-        const item = document.createElement('li');
-        item.textContent = readOnlyCheck
-          ? 'Read-only check · nothing changed'
-          : `${next.processed} unsent${next.failed ? ` · ${next.failed} failed attempt${next.failed === 1 ? '' : 's'}` : ''}`;
-        results.append(item);
-      }
-      const stopButton = query('[data-role="stop-run"]');
-      if (stopButton) {
-        stopButton.hidden = !running;
-        stopButton.disabled = !next.canStop;
-      }
-      if (executeButton) {
-        executeButton.textContent = running
-          ? readOnlyCheck ? 'Checking conversation…' : 'Stop unsending'
-          : reviewedPreview
-            ? 'Unsend messages'
-            : emptyPreview
-              ? 'No sent messages eligible'
-              : 'Check conversation first';
-        executeButton.disabled = readOnlyCheck || next.status === 'stopping'
-          || (!running && (!reviewedPreview || reviewedPreview.eligibleCount < 1));
-      }
-      setText('status', next.message);
-    }
-
-    runner.subscribe((next) => {
-      const running = ['preparing', 'running', 'waiting', 'stopping'].includes(next.status);
-      liveAuthority?.setExternalRunActive?.(running, next.operation);
-      renderRun(next);
-    });
-
-    shadow.addEventListener('click', async (event) => {
-      const target = event.target.closest?.('[data-action]');
-      if (!target) return;
-      const action = target.dataset.action;
-      if (!['scan-sent', 'run-unsend', 'stop-run'].includes(action)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-
-      if (action === 'stop-run' || (action === 'run-unsend' && runner.snapshot().canStop)) {
-        runner.stop();
-        return;
-      }
-      if (action === 'scan-sent') {
-        reviewedPreview = null;
-        emptyPreview = false;
-        if (planPanel) planPanel.hidden = false;
-        if (executeButton) {
-          executeButton.textContent = 'Checking conversation…';
-          executeButton.disabled = true;
-        }
-        const result = await runner.inspectAll();
-        if (!result.ready) {
-          if (executeButton) executeButton.textContent = 'Check conversation first';
-          setText('status', result.reason);
-          return;
-        }
-        reviewedPreview = result.complete && result.eligibleCount > 0 ? result : null;
-        emptyPreview = result.complete && result.eligibleCount < 1;
-        if (planPanel) planPanel.hidden = false;
-        if (executeButton) executeButton.textContent = reviewedPreview
-          ? 'Unsend messages'
-          : emptyPreview
-            ? 'No sent messages eligible'
-            : 'Check conversation first';
-        if (executeButton) executeButton.disabled = !result.complete || result.eligibleCount < 1;
-        const summary = query('[data-role="dm-summary"]');
-        if (summary) summary.hidden = false;
-        setText('dm-summary-title', `Thread ${result.threadId}`);
-        setText('dm-summary-detail', result.complete
-          ? `${result.eligibleCount} sent message${result.eligibleCount === 1 ? '' : 's'} eligible · read-only check complete`
-          : `${result.eligibleCount} found · completeness not proven · destructive plan locked`);
-        setText('status', result.complete
-          ? `${result.eligibleCount} sent message${result.eligibleCount === 1 ? '' : 's'} eligible. Nothing was changed.`
-          : `${result.reason} Nothing was changed.`);
-        return;
-      }
-      if (!liveAuthority?.canStart?.() && !liveAuthority?.enable?.()) {
-        setText('status', 'Another live action is already active. Stop it before starting Unsend.');
-        return;
-      }
-      const inspection = runner.inspect();
-      if (!reviewedPreview || !inspection.ready || inspection.threadId !== reviewedPreview.threadId) {
-        reviewedPreview = null;
-        emptyPreview = false;
-        if (planPanel) planPanel.hidden = false;
-        if (executeButton) {
-          executeButton.textContent = 'Check conversation first';
-          executeButton.disabled = true;
-        }
-        setText('status', inspection.reason || 'The conversation changed. Check it again before reviewing an Unsend plan.');
-        return;
-      }
-      const scope = query('[data-role="unsend-scope"]')?.value || 'all';
-      const requested = Math.max(1, Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1));
-      const limit = scope === 'all'
-        ? reviewedPreview.eligibleCount
-        : Math.min(reviewedPreview.eligibleCount, requested);
-      const plan = runner.createPlan({
-        threadId: reviewedPreview.threadId,
-        scope,
-        limit,
-        eligibleCount: reviewedPreview.eligibleCount,
-        expiresAt: liveAuthority.expiresAt(),
-      });
-      if (!plan) {
-        setText('status', 'The live window or conversation review expired. Check the conversation again.');
-        return;
-      }
-      const scopeLabel = scope === 'all'
-        ? 'all eligible sent messages'
-        : `${scope} ${limit} sent message${limit === 1 ? '' : 's'}`;
-      const phrase = `UNSEND ${limit} ${plan.reviewedDigest}`;
-      // eslint-disable-next-line no-alert
-      const entered = globalThis.prompt(
-        `Type this count-specific phrase to continue for thread ${plan.threadId}:\n\n${phrase}`,
-        '',
-      );
-      if (entered == null) {
-        setText('status', 'Cancelled. Nothing was changed.');
-        return;
-      }
-      if (String(entered).trim() !== phrase) {
-        setText('status', 'Unsend stayed locked because the count-specific phrase did not match.');
-        return;
-      }
-      // eslint-disable-next-line no-alert
-      const confirmed = globalThis.confirm(
-        `Permanently unsend ${scopeLabel} from thread ${plan.threadId}?\n\n`
-        + `Reviewed digest: ${plan.reviewedDigest}. The eligible count is revalidated before any message menu opens.`,
-      );
-      if (!confirmed) {
-        setText('status', 'Cancelled. Nothing was changed.');
-        return;
-      }
-      const reservation = liveAuthority.reserveUnsendPlan?.(plan);
-      if (!reservation?.ok) {
-        setText('status', `${reservation?.reason || 'The reviewed plan could not be reserved.'} Nothing was changed.`);
-        return;
-      }
-      reviewedPreview = null;
-      emptyPreview = false;
-      if (planPanel) planPanel.hidden = false;
-      await runner.start({
-        plan,
-        minDelayMs: reservation.minDelayMs,
-        maxDelayMs: reservation.maxDelayMs,
-      });
-    }, true);
-
-    shadow.addEventListener('change', (event) => {
-      if (event.target.matches?.('[data-role="unsend-scope"]')) renderScope();
-    });
-  }
-
-  function findRoot() {
-    const host = document.getElementById(ROOT_ID);
-    if (host) applyUserscriptEnhancement(host);
-  }
-
-  const observer = new MutationObserver(findRoot);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  queueMicrotask(findRoot);
-})();
-
-(() => {
   if (globalThis.__instaAioInspectorInstalled) return;
   const actionLabels = globalThis.__instaAioActionLabels;
   if (
@@ -1631,6 +1322,9 @@
   const RELATIONSHIP_MAX_PAGES = 1_000;
   const RELATIONSHIP_MAX_ACCOUNTS = 25_000;
   const RELATIONSHIP_MAX_DURATION_MS = 20 * 60 * 1_000;
+  const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
+  const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
+  const RELATIONSHIP_RETRY_BASE_MS = 1_000;
 
   function normalizeUsername(value) {
     const username = String(value || '')
@@ -1733,47 +1427,148 @@
     return '';
   }
 
-  async function fetchInstagramRelationshipJson(url, {
-    fetchImpl,
+  function relationshipStepWithTimeout(task, {
+    clearTimer,
+    setTimer,
     signal,
+    timeoutMs,
   }) {
-    let response;
-    try {
-      response = await fetchImpl(url.href, {
-        credentials: 'include',
-        headers: { 'X-IG-App-ID': INSTAGRAM_WEB_APP_ID },
-        method: 'GET',
-        signal,
-      });
-    } catch (error) {
-      if (signal?.aborted || error?.name === 'AbortError') {
-        throw relationshipError('stopped', 'Follower check stopped.');
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(relationshipError('stopped', 'Follower check stopped.'));
+        return;
       }
-      throw relationshipError('network-error', 'Instagram follower data could not be reached from this tab.');
+      const controller = new AbortController();
+      let settled = false;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimer(timer);
+        signal?.removeEventListener?.('abort', stop);
+        callback(value);
+      };
+      const stop = () => {
+        controller.abort();
+        finish(reject, relationshipError('stopped', 'Follower check stopped.'));
+      };
+      const timer = setTimer(() => {
+        controller.abort();
+        finish(reject, relationshipError(
+          'request-timeout',
+          'Instagram did not finish this follower page within 20 seconds.',
+        ));
+      }, timeoutMs);
+      signal?.addEventListener?.('abort', stop, { once: true });
+      Promise.resolve()
+        .then(() => task(controller.signal))
+        .then((value) => finish(resolve, value))
+        .catch((error) => {
+          if (signal?.aborted) {
+            finish(reject, relationshipError('stopped', 'Follower check stopped.'));
+            return;
+          }
+          finish(reject, error);
+        });
+    });
+  }
+
+  async function fetchInstagramRelationshipJson(url, {
+    clearTimer,
+    fetchImpl,
+    found = 0,
+    listType = null,
+    onProgress,
+    pages = 0,
+    random,
+    requestAttempts,
+    requestTimeoutMs,
+    retryBaseMs,
+    setTimer,
+    signal,
+    sleepImpl,
+    username,
+  }) {
+    for (let attempt = 1; attempt <= requestAttempts; attempt += 1) {
+      try {
+        const response = await relationshipStepWithTimeout(
+          (attemptSignal) => fetchImpl(url.href, {
+            credentials: 'include',
+            headers: { 'X-IG-App-ID': INSTAGRAM_WEB_APP_ID },
+            method: 'GET',
+            signal: attemptSignal,
+          }),
+          {
+            clearTimer, setTimer, signal, timeoutMs: requestTimeoutMs,
+          },
+        );
+        let data = null;
+        try {
+          data = await relationshipStepWithTimeout(
+            () => response.json(),
+            {
+              clearTimer, setTimer, signal, timeoutMs: requestTimeoutMs,
+            },
+          );
+        } catch (error) {
+          if (error?.code === 'request-timeout' || error?.code === 'stopped') throw error;
+          throw relationshipError('invalid-response', 'Instagram returned an unreadable follower response.');
+        }
+        const responseStop = relationshipResponseStop(data);
+        if (response.status === 429 || responseStop === 'rate-limited') {
+          throw relationshipError('rate-limited', 'Instagram asked this session to wait before loading more accounts.');
+        }
+        if (response.status === 401 || responseStop === 'session-expired') {
+          throw relationshipError('session-expired', 'Instagram requires a fresh login.');
+        }
+        if (responseStop === 'challenge') {
+          throw relationshipError('challenge', 'Instagram opened a security challenge.');
+        }
+        if (responseStop === 'action-blocked') {
+          throw relationshipError('action-blocked', 'Instagram restricted activity.');
+        }
+        if (!response.ok || data?.status === 'fail') {
+          throw relationshipError('request-failed', `Instagram could not load this follower page (HTTP ${response.status || 'error'}).`);
+        }
+        return data;
+      } catch (error) {
+        let retryable = error?.code === 'request-timeout' || error?.code === 'network-error';
+        if (signal?.aborted || error?.code === 'stopped') {
+          throw relationshipError('stopped', 'Follower check stopped.');
+        }
+        if (!error?.code && error?.name === 'AbortError') {
+          retryable = true;
+        } else if (!error?.code) {
+          retryable = true;
+          error = relationshipError('network-error', 'Instagram follower data could not be reached from this tab.');
+        }
+        if (!retryable || attempt >= requestAttempts) {
+          if (retryable) {
+            throw relationshipError(
+              'request-timeout',
+              `Instagram did not finish this ${listType || 'account'} request after ${requestAttempts} attempts. The previous comparison is unchanged.`,
+            );
+          }
+          throw error;
+        }
+        const retryDelayMs = Math.min(
+          5_000,
+          (retryBaseMs * attempt) + Math.floor(Math.max(0, Math.min(0.999999, random())) * 250),
+        );
+        onProgress?.(Object.freeze({
+          attempt: attempt + 1,
+          failedAttempt: attempt,
+          found,
+          listType,
+          maxAttempts: requestAttempts,
+          pages,
+          phase: 'retrying',
+          retryDelayMs,
+          username,
+        }));
+        await sleepImpl(retryDelayMs, signal);
+      }
     }
-    let data = null;
-    try {
-      data = await response.json();
-    } catch {
-      throw relationshipError('invalid-response', 'Instagram returned an unreadable follower response.');
-    }
-    const responseStop = relationshipResponseStop(data);
-    if (response.status === 429 || responseStop === 'rate-limited') {
-      throw relationshipError('rate-limited', 'Instagram asked this session to wait before loading more accounts.');
-    }
-    if (response.status === 401 || responseStop === 'session-expired') {
-      throw relationshipError('session-expired', 'Instagram requires a fresh login.');
-    }
-    if (responseStop === 'challenge') {
-      throw relationshipError('challenge', 'Instagram opened a security challenge.');
-    }
-    if (responseStop === 'action-blocked') {
-      throw relationshipError('action-blocked', 'Instagram restricted activity.');
-    }
-    if (!response.ok || data?.status === 'fail') {
-      throw relationshipError('request-failed', `Instagram could not load this follower page (HTTP ${response.status || 'error'}).`);
-    }
-    return data;
+    throw relationshipError('request-timeout', 'Instagram follower data did not finish.');
   }
 
   async function resolveRelationshipUserId(username, options) {
@@ -1793,6 +1588,7 @@
   }
 
   async function fetchRelationshipList(listType, userId, username, {
+    clearTimer,
     fetchImpl,
     maxAccounts,
     maxDurationMs,
@@ -1800,6 +1596,10 @@
     now,
     onProgress,
     random,
+    requestAttempts,
+    requestTimeoutMs,
+    retryBaseMs,
+    setTimer,
     signal,
     sleepImpl,
     startedAt,
@@ -1813,7 +1613,22 @@
       const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
       url.searchParams.set('count', String(RELATIONSHIP_PAGE_SIZE));
       if (nextMaxId) url.searchParams.set('max_id', nextMaxId);
-      const data = await fetchInstagramRelationshipJson(url, { fetchImpl, signal });
+      const data = await fetchInstagramRelationshipJson(url, {
+        clearTimer,
+        fetchImpl,
+        found: accounts.size,
+        listType,
+        onProgress,
+        pages,
+        random,
+        requestAttempts,
+        requestTimeoutMs,
+        retryBaseMs,
+        setTimer,
+        signal,
+        sleepImpl,
+        username,
+      });
       if (!Array.isArray(data?.users)) {
         throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} page.`);
       }
@@ -1870,6 +1685,9 @@
     now = Date.now,
     onProgress = null,
     random = Math.random,
+    requestAttempts = RELATIONSHIP_REQUEST_ATTEMPTS,
+    requestTimeoutMs = RELATIONSHIP_REQUEST_TIMEOUT_MS,
+    retryBaseMs = RELATIONSHIP_RETRY_BASE_MS,
     signal = null,
     sleepImpl = relationshipDelay,
     setTimer = setTimeout,
@@ -1887,6 +1705,9 @@
     const boundedPages = Math.max(1, Math.min(RELATIONSHIP_MAX_PAGES, Math.trunc(Number(maxPages) || 0)));
     const boundedAccounts = Math.max(1, Math.min(RELATIONSHIP_MAX_ACCOUNTS, Math.trunc(Number(maxAccounts) || 0)));
     const boundedDuration = Math.max(1_000, Math.min(RELATIONSHIP_MAX_DURATION_MS, Math.trunc(Number(maxDurationMs) || 0)));
+    const boundedAttempts = Math.max(1, Math.min(RELATIONSHIP_REQUEST_ATTEMPTS, Math.trunc(Number(requestAttempts) || 0)));
+    const boundedRequestTimeout = Math.max(1, Math.min(RELATIONSHIP_REQUEST_TIMEOUT_MS, Math.trunc(Number(requestTimeoutMs) || 0)));
+    const boundedRetryBase = Math.max(0, Math.min(5_000, Math.trunc(Number(retryBaseMs) || 0)));
     const deadline = relationshipRunDeadline(signal, boundedDuration, setTimer, clearTimer);
     const runSignal = deadline.signal;
     try {
@@ -1901,11 +1722,22 @@
         now,
         onProgress,
         random,
+        requestAttempts: boundedAttempts,
+        requestTimeoutMs: boundedRequestTimeout,
+        retryBaseMs: boundedRetryBase,
+        clearTimer,
+        setTimer,
         signal: runSignal,
         sleepImpl,
         startedAt,
       };
-      const userId = await resolveRelationshipUserId(username, { fetchImpl, signal: runSignal });
+      const userId = await resolveRelationshipUserId(username, {
+        ...common,
+        found: 0,
+        listType: null,
+        pages: 0,
+        username,
+      });
       const followers = await fetchRelationshipList('followers', userId, username, common);
       const following = await fetchRelationshipList('following', userId, username, common);
       assertRelationshipRunActive(runSignal, startedAt, now, boundedDuration);
@@ -1937,6 +1769,74 @@
     } finally {
       deadline.cleanup();
     }
+  }
+
+  function followerComparisonRecord(workspace, comparison, generatedAt = new Date().toISOString()) {
+    return {
+      schemaVersion: 1,
+      kind: 'insta-aio-comparison',
+      generatedAt,
+      subjectUsername: normalizeUsername(workspace?.subjectUsername),
+      source: workspace?.source && typeof workspace.source === 'object' ? workspace.source : {},
+      complete: workspace?.complete && typeof workspace.complete === 'object' ? workspace.complete : {},
+      verified: workspace?.verified && typeof workspace.verified === 'object' ? workspace.verified : {},
+      mutuals: Array.isArray(comparison?.mutuals) ? comparison.mutuals : [],
+      notFollowingMeBack: Array.isArray(comparison?.notFollowingMeBack)
+        ? comparison.notFollowingMeBack
+        : [],
+      iDoNotFollowBack: Array.isArray(comparison?.iDoNotFollowBack)
+        ? comparison.iDoNotFollowBack
+        : [],
+    };
+  }
+
+  function followerComparisonReport(workspace, comparison, generatedAt = new Date().toISOString()) {
+    const record = followerComparisonRecord(workspace, comparison, generatedAt);
+    const followersCount = Array.isArray(workspace?.followers) ? workspace.followers.length : 0;
+    const followingCount = Array.isArray(workspace?.following) ? workspace.following.length : 0;
+    const fullyVerified = record.verified.followers === true && record.verified.following === true;
+    const fullyComplete = fullyVerified
+      && record.complete.followers === true
+      && record.complete.following === true;
+    const source = record.source.followers === 'authenticated-web'
+      && record.source.following === 'authenticated-web'
+      ? 'Authenticated Instagram web pagination'
+      : record.source.followers === 'list-dialog' && record.source.following === 'list-dialog'
+        ? 'Instagram list-dialog capture'
+        : 'Mixed local captures';
+    const lines = [
+      'INSTA AIO FOLLOWER COMPARISON',
+      '================================',
+      `Account: ${record.subjectUsername ? `@${record.subjectUsername}` : 'Not recorded'}`,
+      `Generated: ${record.generatedAt}`,
+      `Source: ${source}`,
+      `Completeness: ${fullyComplete ? 'Complete — both lists reached their verified end.' : 'Partial — one or both lists did not reach a verified end.'}`,
+      '',
+      'SUMMARY',
+      '-------',
+      `Followers: ${followersCount}`,
+      `Following: ${followingCount}`,
+      `Mutual followers: ${record.mutuals.length}`,
+      `Not following you back: ${record.notFollowingMeBack.length}`,
+      `You do not follow back: ${record.iDoNotFollowBack.length}`,
+    ];
+    const addSection = (title, accounts) => {
+      lines.push('', title, '-'.repeat(title.length));
+      if (!accounts.length) {
+        lines.push('None');
+        return;
+      }
+      accounts.forEach((account, index) => {
+        const username = normalizeUsername(account?.username);
+        const displayName = String(account?.displayName || '').trim();
+        lines.push(`${index + 1}. @${username}${displayName ? ` — ${displayName}` : ''}`);
+      });
+    };
+    addSection('NOT FOLLOWING YOU BACK', record.notFollowingMeBack);
+    addSection('YOU DO NOT FOLLOW BACK', record.iDoNotFollowBack);
+    addSection('MUTUAL FOLLOWERS', record.mutuals);
+    lines.push('', 'Generated locally by Insta AIO. No account action was performed.', '');
+    return lines.join('\r\n');
   }
 
   function visibleText(element) {
@@ -3209,6 +3109,8 @@
     detectAuthenticatedUsername,
     enumerateSentDms,
     fetchFollowerComparison,
+    followerComparisonRecord,
+    followerComparisonReport,
     inspectPageContext,
     inspectProfile,
     inspectReviewedDmItem,
@@ -3299,7 +3201,8 @@
   const HEIGHT_MIN = 320;
   const HEIGHT_MAX = 1_100;
   const INSET = 8;
-  const LIVE_AUTHORIZATION_MS = 15 * 60 * 1_000;
+  const RUN_CAPABILITY_MS = 20 * 60 * 1_000;
+  const DM_PLAN_CAPABILITY_MS = 15 * 60 * 1_000;
   const CAPTURE_ACCOUNT_SOURCES = new Set([
     'authenticated-instagram-web',
     'extension-scrolled-dom',
@@ -3323,6 +3226,19 @@
   const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, Number(value) || 0));
   const safeText = (value, fallback = '') => (String(value ?? '').trim() || fallback).slice(0, 500);
   const nowIso = () => new Date().toISOString();
+
+  function accountCapabilityDigest(action, usernames) {
+    const source = JSON.stringify({
+      action,
+      usernames: (usernames || []).map(normalizeUsername).filter(Boolean),
+    });
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < source.length; index += 1) {
+      hash ^= source.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
+  }
 
   function visibleText(element) {
     if (!element || element.getAttribute?.('aria-hidden') === 'true') return '';
@@ -3412,16 +3328,24 @@
 
   function normalizeResumableAccountRun(value) {
     if (!value || value.kind !== 'account' || value.status !== 'running') return null;
-    const authorizationExpiresAt = Math.min(
-      Number(value.authorizationExpiresAt) || 0,
-      Date.now() + LIVE_AUTHORIZATION_MS,
+    const capabilityExpiresAt = Math.min(
+      Number(value.capabilityExpiresAt) || 0,
+      Date.now() + RUN_CAPABILITY_MS,
     );
     const queue = [...new Set((Array.isArray(value.queue) ? value.queue : [])
       .map(normalizeUsername)
       .filter(Boolean))].slice(0, 250);
-    if (!queue.length || authorizationExpiresAt <= Date.now()) return null;
+    if (!queue.length || capabilityExpiresAt <= Date.now()) return null;
     const action = value.action === 'follow' ? 'follow' : value.action === 'unfollow' ? 'unfollow' : '';
     if (!action) return null;
+    const approvedTargets = [...new Set((Array.isArray(value.approvedTargets) ? value.approvedTargets : [])
+      .map(normalizeUsername)
+      .filter(Boolean))].slice(0, 250);
+    const capabilityId = safeText(value.capabilityId);
+    if (!capabilityId
+      || !approvedTargets.length
+      || queue.some((username) => !approvedTargets.includes(username))
+      || safeText(value.capabilityDigest) !== accountCapabilityDigest(action, approvedTargets)) return null;
     const boundedCount = (candidate) => Math.max(0, Math.min(250, Math.round(Number(candidate) || 0)));
     return {
       status: 'running',
@@ -3434,7 +3358,10 @@
       failed: boundedCount(value.failed),
       current: safeText(value.current),
       stopReason: null,
-      authorizationExpiresAt,
+      approvedTargets,
+      capabilityDigest: accountCapabilityDigest(action, approvedTargets),
+      capabilityExpiresAt,
+      capabilityId,
       nextAt: Number(value.nextAt) > Date.now() ? Number(value.nextAt) : null,
       results: (Array.isArray(value.results) ? value.results : []).slice(0, 40).map((item) => ({
         label: safeText(item?.label),
@@ -3799,6 +3726,17 @@
     setTimeout(() => URL.revokeObjectURL(url), 1_000);
   }
 
+  function downloadText(filename, contents) {
+    const url = URL.createObjectURL(new Blob([String(contents)], { type: 'text/plain;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }
+
   const sharedTokenCss = globalThis.InstaAioTokens?.css({ density: 'compact' }) || '';
   const host = document.createElement('div');
   host.id = ROOT_ID;
@@ -3849,7 +3787,6 @@
       .field label { color: var(--aio-text-muted, #687068); font-size: 12px; }
       .live-toggle { display: flex; align-items: flex-start; gap: 8px; color: var(--aio-text, #1b211c) !important; font-weight: 700; }
       .live-toggle input { width: 18px; height: 18px; flex: 0 0 auto; margin: 0; accent-color: var(--aio-accent, #347844); }
-      .live-status { margin: 0; color: var(--aio-text-muted, #687068); font-size: 11px; }
       select, input[type="range"] { width: 100%; }
       select { min-height: 44px; border: 1px solid var(--aio-line, #cfd5cc); border-radius: 8px; padding: 8px; background: var(--aio-bg, #fff); color: var(--aio-text, #1b211c); }
       select option { background: var(--aio-bg, #fff); color: var(--aio-text, #1b211c); }
@@ -3868,9 +3805,10 @@
       details.settings > summary::-webkit-details-marker { display:none; }
       .settings-panel { position: absolute; z-index: 5; top: 48px; right: 0; width: min(250px, calc(100vw - 32px)); max-height: var(--aio-settings-max-height); overflow: auto; padding: 12px; border: 1px solid var(--aio-line, #cfd5cc); border-radius: 10px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) 97%, transparent); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel, 0 16px 46px rgba(0,0,0,.2)); }
       .range-row { display:grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items:center; }
-      .footer { padding-right: 46px; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); color: var(--aio-text-muted, #687068); font-size: 11px; }
-      .resize { position: absolute; right: 4px; bottom: 4px; display: flex; width: 76px; height: 44px; z-index: 5; align-items: center; justify-content: flex-start; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 9px; padding: 0 24px 0 9px; background: var(--aio-bg-raised, #fff); color: var(--aio-text-muted, #687068); cursor: nwse-resize; touch-action: none; font-size: 11px; font-weight: 700; }
-      .resize::before { content:""; position:absolute; right:7px; bottom:7px; width:9px; height:9px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; }
+      .footer { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 54px 8px 12px; border-top: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); color: var(--aio-text-muted, #687068); font-size: 11px; }
+      .resize { position: absolute; right: 0; bottom: 0; display: block; width: 44px; height: 44px; z-index: 5; border: 0; border-radius: 10px 0 12px 0; padding: 0; background: transparent; color: var(--aio-text-muted, #687068); cursor: nwse-resize; touch-action: none; }
+      .resize::before { content:""; position:absolute; right:9px; bottom:9px; width:12px; height:12px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; opacity:.9; }
+      .resize:hover { background: color-mix(in srgb, var(--aio-accent-soft, #e8f3ec) 72%, transparent); color: var(--aio-text, #1b211c); }
       button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, .file:focus-within { outline: 3px solid var(--aio-focus, #168cff); outline-offset: 2px; }
       @media (max-width: 600px) { .panel { top:auto; right:0; bottom:0; left:0; width:100%; height:min(78dvh,720px); border-radius:14px 14px 0 0; } .handle,.resize { display:none; } .header { grid-template-columns:minmax(0,1fr) auto; } }
       @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; } }
@@ -3929,7 +3867,6 @@
       .button.primary:hover { filter: brightness(1.08); }
       .button.big { width: 100%; padding: 10px 12px; font-size: var(--system-14-font-size, 14px); line-height: var(--system-14-line-height, 18px); border-radius: 8px; }
       .button:disabled { cursor: not-allowed; filter: none; opacity: .48; }
-      .mode[data-live="unlocked"] { border-color: var(--aio-success, #347844); color: var(--aio-success, #275d34); }
       @keyframes aio-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
       @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel { background:Canvas; } .panel,.card,.tool,.metric { border:2px solid CanvasText; } }
@@ -3938,16 +3875,11 @@
     <aside class="panel" aria-label="Insta AIO Tampermonkey Instagram toolbox" hidden>
       <header class="header">
         <button class="handle" type="button" data-role="move" aria-label="Move toolbox; use arrow keys for precise movement" title="Drag to move">✥</button>
-        <div><h1>Insta AIO Toolbox</h1><p>Tools injected directly on Instagram</p><span class="mode" data-role="mode-label" data-live="locked">Userscript mode · live actions locked</span></div>
+        <div><h1>Insta AIO Toolbox</h1><p>Tools injected directly on Instagram</p><span class="mode" data-role="mode-label">Userscript mode · local controls</span></div>
         <div style="display:flex">
           <details class="settings">
             <summary aria-label="Toolbox preferences">⚙</summary>
             <div class="settings-panel">
-              <strong>Live controls</strong>
-              <div class="field">
-                <label class="live-toggle" for="aio-live-actions"><input id="aio-live-actions" type="checkbox" data-role="live-actions"> Enable live actions for 15 minutes</label>
-                <p class="live-status" data-role="live-status">Locked by default. Scans and no-click checks still work.</p>
-              </div>
               <strong>Layout</strong>
               <div class="field"><label for="aio-opacity">Surface transparency</label><div class="range-row"><input id="aio-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
               <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
@@ -3972,7 +3904,7 @@
           <li><strong>DM Unsend</strong> — remove messages you sent in one conversation.</li>
         </ol>
         <p class="intro-note">Everything stays in this browser. Nothing is uploaded, and there is no account to sign in to.</p>
-        <p class="intro-note"><strong>Checks are read-only.</strong> Anything that changes your account stays locked until you unlock it for one run, and stops on the first rate limit or security check.</p>
+        <p class="intro-note"><strong>Checks are read-only.</strong> A change starts only after one exact action, target, and count confirmation, and stops on the first rate limit or security check.</p>
         <div class="toolbar"><button class="button primary" type="button" data-action="intro-done">Start with the checker</button></div>
       </section>
       <nav class="tabs" role="tablist" aria-label="Insta AIO userscript tools">
@@ -3984,22 +3916,21 @@
         <section id="aio-panel-checker" class="view" role="tabpanel" aria-labelledby="aio-tab-checker" data-panel="checker" hidden><section class="card" aria-labelledby="aio-checker-account-title"><h2 id="aio-checker-account-title">Check an account</h2><p>Uses the Instagram session already open in this tab. This is read only.</p><div class="field"><label for="aio-checker-username">Instagram username</label><input id="aio-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-role="checker-username"></div><div class="toolbar"><button class="button primary" type="button" data-action="check-account-relationships" data-role="checker-run">Check Followers + Following</button></div><p class="lead">Loads paginated relationship data from Instagram, compares it on this device, and never follows, unfollows, sends, unsends, or opens account controls.</p></section>
           <div class="scan-progress" data-role="scan-progress" hidden><div class="run-bar"><span data-role="scan-fill"></span></div><p class="lead" data-role="scan-detail"></p></div>
           <div class="field"><label for="aio-filter">Filter results</label><input id="aio-filter" type="search" placeholder="Search a username" data-role="result-filter"></div>
-          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Advanced: list-dialog fallback and export</summary><p class="lead">If Instagram rejects the account check, open your own Following or Followers dialog and use the matching fallback scan. Starting a fallback scan clears authenticated results first so accounts from different profiles cannot mix.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan open Following dialog</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan open Followers dialog</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows only</button><button class="button quiet" type="button" data-action="download-list">Download a raw list</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="aio-list-type">Raw list to use</label><select id="aio-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
-        <section id="aio-panel-account" class="view" role="tabpanel" aria-labelledby="aio-tab-account" data-panel="account" hidden><p class="lead"><strong>Follow / Unfollow review.</strong> Inspect the profile already open, or choose a bounded reviewed list. Nothing clicks during review.</p><div class="card" data-role="queue-current"></div>
+          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Advanced: list-dialog fallback and export</summary><p class="lead">If Instagram rejects the account check, open your own Following or Followers dialog and use the matching fallback scan. Starting a fallback scan clears authenticated results first so accounts from different profiles cannot mix.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan open Following dialog</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan open Followers dialog</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows only</button><button class="button quiet" type="button" data-action="download-list">Download a raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download machine-readable JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="aio-list-type">Raw list to use</label><select id="aio-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
+        <section id="aio-panel-account" class="view" role="tabpanel" aria-labelledby="aio-tab-account" data-panel="account" hidden><p class="lead"><strong>Follow / Unfollow.</strong> Choose the action first, then review a finite compatible target list. Nothing clicks during review.</p><div class="card" data-role="queue-current"></div>
           <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Inspect exact profile</button><button class="button quiet" type="button" data-action="open-profile">Open exact profile</button></div><details class="settings-inline"><summary>Advanced: queue state and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
-          <div class="field"><label for="aio-bot-source">Targets</label><select id="aio-bot-source" data-role="bot-source"><option value="current-profile">Current exact profile</option><option value="not-following-me-back">Not following me back</option><option value="i-do-not-follow-back">I don't follow back</option><option value="scanned-followers">Last scanned Followers list</option><option value="scanned-following">Last scanned Following list</option><option value="queue">Imported queue</option></select></div>
-          <div class="field"><label for="aio-bot-action">Action</label><select id="aio-bot-action" data-role="bot-action"><option value="unfollow">Unfollow</option><option value="follow">Follow</option></select></div>
-          <div class="field"><label for="aio-bot-count">How many this run</label><input id="aio-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
-          <p class="lead" data-role="account-run-summary">Choose a source, action, and bounded amount, then review the exact targets.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review run</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
+          <div class="field"><label for="aio-bot-action">What do you want to do?</label><select id="aio-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
+          <div class="field"><label for="aio-bot-source">Choose compatible targets</label><select id="aio-bot-source" data-role="bot-source"><option value="current-profile">Current exact profile</option><option value="i-do-not-follow-back">People who follow you that you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Compatible queue items</option></select></div>
+          <div class="field" data-role="bot-count-field"><label for="aio-bot-count">How many this run</label><input id="aio-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
+          <p class="lead" data-role="account-run-summary">Choose compatible targets, then review the exact accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
           <p class="notice">To grow from someone else's audience, open their profile, scan their Followers in the checker, then run with <strong>Last scanned Followers list</strong>. Accounts you already follow are skipped automatically. The run stops itself on any rate limit, security check, or block.</p></section>
-        <section id="aio-panel-messages" class="view" role="tabpanel" aria-labelledby="aio-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend.</strong> Resolve this conversation and its eligible sent-message count before reviewing any permanent action.</p><div class="toolbar"><button class="button primary big" type="button" data-action="scan-sent">Check conversation</button></div>
+        <section id="aio-panel-messages" class="view" role="tabpanel" aria-labelledby="aio-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend.</strong> One button checks this conversation when needed, then asks once before removing anything.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
-          <details class="settings-inline"><summary>Other message tools</summary><div class="toolbar"><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">No-click exact check</button></div></details><div class="card" data-role="dm-result"></div><ul class="list" data-role="message-list"></ul>
-          <div data-role="unsend-plan"><div class="field"><label for="aio-unsend-scope">Scope</label><select id="aio-unsend-scope" data-role="unsend-scope"><option value="all">All eligible sent messages</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="field"><label for="aio-unsend-count">Number of messages</label><input id="aio-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div><div class="toolbar"><button class="button danger" type="button" data-action="run-unsend" data-role="unsend-primary" disabled>Check conversation first</button></div><p class="notice">Only messages you sent are eligible. The exact thread, scope, finite count, digest, and expiry are revalidated before the first message menu opens.</p></div></section>
+          <details class="settings-inline"><summary>Advanced message options</summary><div data-role="unsend-plan"><div class="field"><label for="aio-unsend-scope">Scope</label><select id="aio-unsend-scope" data-role="unsend-scope"><option value="all">All eligible sent messages</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="field" data-role="unsend-count-field"><label for="aio-unsend-count">Number of messages</label><input id="aio-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation only</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">No-click exact check</button></div></details><div class="card" data-role="dm-result"></div><ul class="list" data-role="message-list"></ul><p class="notice">Only messages you sent are eligible. The exact thread, scope, finite count, digest, and expiry are revalidated before the first message menu opens.</p></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer" role="status" aria-live="polite"><span data-role="status">Ready. No Instagram control has been used.</span><strong>Local only</strong></footer>
-      <button class="resize" type="button" data-role="resize" aria-label="Resize toolbox; use arrow keys for precise sizing" title="Drag to resize">Resize</button>
+      <button class="resize" type="button" data-role="resize" aria-label="Resize toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
     </aside>`;
 
   const query = (selector) => shadow.querySelector(selector);
@@ -4054,9 +3985,6 @@
   function renderShellState() {
     const panel = query('.panel');
     const launcher = query('.launcher');
-    const newRunUnlocked = newLiveRunAuthorized();
-    const activeRunAuthorized = runAuthorizationValid(state.run);
-    const liveAvailable = newRunUnlocked || activeRunAuthorized;
     panel.hidden = !preferences.open;
     launcher.hidden = preferences.open;
     launcher.setAttribute('aria-expanded', String(preferences.open));
@@ -4069,37 +3997,14 @@
 
     const modeLabel = query('[data-role="mode-label"]');
     if (modeLabel) {
-      modeLabel.dataset.live = liveAvailable ? 'unlocked' : 'locked';
-      modeLabel.textContent = externalLiveRunActive
-        ? externalRunOperation === 'check'
-          ? 'Userscript mode · read-only conversation check'
-          : `Userscript mode · thread Unsend authorized ${authorizationRemainingMinutes(liveActionsUnlockedUntil)}m`
-        : activeRunAuthorized
-        ? `Userscript mode · active run authorized ${authorizationRemainingMinutes(state.run.authorizationExpiresAt)}m`
-        : newRunUnlocked
-          ? `Userscript mode · live actions unlocked ${authorizationRemainingMinutes(liveActionsUnlockedUntil)}m`
-          : 'Userscript mode · live actions locked';
-    }
-
-    const liveToggle = query('[data-role="live-actions"]');
-    if (liveToggle) {
-      liveToggle.checked = newRunUnlocked;
-      liveToggle.disabled = state.run?.status === 'running' || externalLiveRunActive;
-    }
-    setText(
-      'live-status',
-      externalLiveRunActive
-        ? externalRunOperation === 'check'
-          ? 'A read-only conversation check is active. Nothing can be removed.'
-          : 'Thread-wide Unsend is active. Use Stop to revoke its remaining authorization.'
-        : activeRunAuthorized
-        ? 'A reviewed batch is active. Use Stop to revoke its remaining authorization.'
-        : newRunUnlocked
-          ? 'Unlocked temporarily. Every destructive run still needs a separate confirmation.'
-          : 'Locked by default. Scans and no-click checks still work.',
-    );
-    for (const control of queryAll('[data-live-action]')) {
-      control.disabled = !newRunUnlocked || state.run?.status === 'running' || externalLiveRunActive;
+      const dmActive = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
+      modeLabel.textContent = state.run?.status === 'running'
+        ? 'Userscript mode · finite account run active'
+        : dmActive
+          ? dmRunnerSnapshot.operation === 'check'
+            ? 'Userscript mode · checking this conversation'
+            : 'Userscript mode · finite Unsend run active'
+          : 'Userscript mode · local controls';
     }
   }
 
@@ -4110,11 +4015,10 @@
     const verifiedFollowers = verifiedCapture('followers');
     const verifiedFollowing = verifiedCapture('following');
     const item = currentQueueItem();
-    const liveBadge = liveAuthorized() ? 'live unlocked' : 'live locked';
     const tools = [
       ['checker', 'Follower checker', `${verifiedFollowers.length} followers · ${verifiedFollowing.length} following · ${comparison.notFollowingMeBack.length} not following back`, 'read only'],
-      ['account', 'Follow / Unfollow', item ? `${item.action} @${item.account.username} is next` : 'Import a reviewed manual queue', liveBadge],
-      ['messages', 'DM Unsend', state.dmTarget ? `Reviewed message ${state.dmTarget.messageId} loaded` : 'Visible evidence and exact-message review', liveBadge],
+      ['account', 'Follow / Unfollow', item ? `${item.action} @${item.account.username} is next` : 'Choose an action and compatible targets', 'review then confirm'],
+      ['messages', 'DM Unsend', dmThreadPreview ? `${dmThreadPreview.eligibleCount} eligible in this thread` : 'Checks this conversation when needed', 'scan then confirm'],
     ];
     for (const [view, title, detail, badge] of tools) {
       const button = document.createElement('button');
@@ -4198,19 +4102,14 @@
       const button = document.createElement('button');
       button.className = 'button quiet';
       button.type = 'button';
-      button.textContent = 'Download comparison';
-      button.addEventListener('click', () => downloadJson(`insta-aio-follower-comparison-${Date.now()}.json`, {
-        schemaVersion: 1,
-        kind: 'insta-aio-comparison',
-        generatedAt: nowIso(),
-        subjectUsername: state.capture.subjectUsername || '',
-        source: state.capture.source || {},
-        complete: state.capture.complete || {},
-        verified: state.capture.verified || {},
-        mutuals: comparison.mutuals,
-        notFollowingMeBack: comparison.notFollowingMeBack,
-        iDoNotFollowBack: comparison.iDoNotFollowBack,
-      }));
+      button.textContent = 'Download comparison report';
+      button.addEventListener('click', () => {
+        const generatedAt = nowIso();
+        downloadText(
+          `insta-aio-follower-comparison-${generatedAt.replace(/[:.]/g, '-')}.txt`,
+          engine.followerComparisonReport(state.capture, comparison, generatedAt),
+        );
+      });
       actions.append(button);
       result.append(actions);
     }
@@ -4251,6 +4150,7 @@
         ? 'Open the exact queued profile, then run the check.'
         : 'Open an Instagram profile, then inspect it without clicking.');
     result.append(resultTitle, resultDetail);
+    syncAccountComposer();
     renderAccountRunPrimary();
   }
 
@@ -4425,14 +4325,32 @@
     status(`Marked @${item.account.username} ${statusValue} in userscript-local state.`);
   }
 
-  // --- Live actions -------------------------------------------------------
+  // --- Finite confirmed actions ------------------------------------------
   //
   // The engine bundled above is the same one the extension runs. It still mints
   // a one-use resolution token during inspection and refuses to act unless the
   // token matches the element it resolved, so a live run here gets exactly the
   // same exact-target checks the extension gets.
 
+  let batchAbort = false;
+  let accountRunDraft = null;
+  let relationshipController = null;
+  let dmThreadPreview = null;
+  let dmRunnerSnapshot = null;
+
   const engine = globalThis.InstaAioInstagramInspector;
+  const dmRunner = globalThis.InstaAioDmThreadUnsender;
+  if (dmRunner) {
+    dmRunnerSnapshot = dmRunner.snapshot();
+    dmRunner.subscribe((next) => {
+      dmRunnerSnapshot = next;
+      renderDmSummary();
+      renderShellState();
+      if (['preparing', 'running', 'waiting', 'stopping', 'completed', 'stopped', 'error'].includes(next.status)) {
+        status(next.message);
+      }
+    });
+  }
 
   const LIMIT_BOUNDS = {
     dailyActions: [1, 400],
@@ -4443,107 +4361,27 @@
   const REST_EVERY = 20;
   const REST_MS = 90_000;
 
-  let batchAbort = false;
-  let liveActionsUnlockedUntil = 0;
-  let liveAuthorizationTimer = null;
-  let externalLiveRunActive = false;
-  let externalRunOperation = null;
-  let accountRunDraft = null;
-  let relationshipController = null;
-
-  function authorizationRemainingMinutes(expiresAt) {
-    return Math.max(1, Math.ceil((Number(expiresAt) - Date.now()) / 60_000));
+  function runCapabilityValid(run = state.run) {
+    return Boolean(
+      run?.status === 'running'
+      && safeText(run.capabilityId)
+      && Number(run.capabilityExpiresAt) > Date.now()
+      && Array.isArray(run.approvedTargets)
+      && run.capabilityDigest === accountCapabilityDigest(run.action, run.approvedTargets)
+      && (run.queue || []).every((username) => run.approvedTargets.includes(username)),
+    );
   }
 
-  function newLiveRunAuthorized() {
-    return liveActionsUnlockedUntil > Date.now();
-  }
-
-  function runAuthorizationValid(run = state.run) {
-    return run?.status === 'running' && Number(run.authorizationExpiresAt) > Date.now();
-  }
-
-  function liveAuthorized() {
-    return newLiveRunAuthorized() || runAuthorizationValid();
-  }
-
-  function requireNewRunAuthorization() {
-    if (newLiveRunAuthorized() && !externalLiveRunActive) return true;
-    if (externalLiveRunActive) {
-      status(externalRunOperation === 'check'
-        ? 'A read-only conversation check is running. Stop it before starting a live action.'
-        : 'Thread-wide Unsend is already running. Stop it before starting another live action.');
-      renderAll();
-      return false;
-    }
-    // Starting an already-reviewed action is itself an explicit request to use
-    // the temporary live window. Avoid a second, unrelated phrase ceremony;
-    // the exact action still receives its own target-bound confirmation below.
-    setLiveActionsUnlocked(true);
-    return newLiveRunAuthorized();
-  }
-
-  function stopForExpiredAuthorization() {
+  function stopForExpiredCapability() {
     batchAbort = true;
-    const accountPatch = state.run?.kind === 'account' ? { queue: [] } : {};
     setRun({
-      ...accountPatch,
       status: 'stopped',
-      stopReason: 'live authorization expired',
+      stopReason: 'finite run capability expired',
       current: '',
       nextAt: null,
+      queue: [],
     });
-    status('Live authorization expired. The run stopped before another Instagram action.');
-  }
-
-  function scheduleLiveAuthorizationExpiry() {
-    if (liveAuthorizationTimer) clearTimeout(liveAuthorizationTimer);
-    if (!newLiveRunAuthorized()) return;
-    liveAuthorizationTimer = setTimeout(() => {
-      liveActionsUnlockedUntil = 0;
-      liveAuthorizationTimer = null;
-      if (externalLiveRunActive && externalRunOperation === 'unsend') {
-        globalThis.InstaAioDmThreadUnsender?.stop?.();
-        renderAll();
-        status('Live authorization expired. Thread-wide Unsend is stopping before another message.');
-        return;
-      }
-      if (state.run?.status === 'running' && !runAuthorizationValid()) {
-        stopForExpiredAuthorization();
-        return;
-      }
-      renderAll();
-      status('The 15-minute live window expired. Scans and no-click checks remain available.');
-    }, Math.max(0, liveActionsUnlockedUntil - Date.now()));
-  }
-
-  function setLiveActionsUnlocked(enabled) {
-    if (!enabled) {
-      liveActionsUnlockedUntil = 0;
-      if (liveAuthorizationTimer) clearTimeout(liveAuthorizationTimer);
-      liveAuthorizationTimer = null;
-      if (externalLiveRunActive && externalRunOperation === 'unsend') {
-        globalThis.InstaAioDmThreadUnsender?.stop?.();
-        renderAll();
-        status('Live actions locked. Thread-wide Unsend is stopping.');
-        return;
-      }
-      if (state.run?.status === 'running') {
-        stopForExpiredAuthorization();
-        return;
-      }
-      renderAll();
-      status('Live actions locked. Instagram was not changed.');
-      return;
-    }
-
-    // This tab-only window is never saved as a general preference. Exact
-    // Follow, Unfollow, and Unsend runs still require their target-bound review
-    // and irreversible-action confirmation before any Instagram control runs.
-    liveActionsUnlockedUntil = Date.now() + LIVE_AUTHORIZATION_MS;
-    scheduleLiveAuthorizationExpiry();
-    renderAll();
-    status('Live actions unlocked for 15 minutes. Each run still needs confirmation.');
+    status('The finite run expired. It stopped before another Instagram action.');
   }
 
   function clampNumber(value, [minimum, maximum], fallback) {
@@ -4585,12 +4423,11 @@
     const reviewedDigest = String(plan?.reviewedDigest || '');
     const bounds = limits();
     if (
-      !newLiveRunAuthorized()
-      || !Number.isInteger(count)
+      !Number.isInteger(count)
       || count < 1
       || !/^[0-9a-f]{8}$/.test(reviewedDigest)
       || Number(plan?.expiresAt) <= Date.now()
-    ) return { ok: false, reason: 'The live window or reviewed plan expired.' };
+    ) return { ok: false, reason: 'The reviewed thread plan expired.' };
     const current = state.ledger?.day === today()
       ? state.ledger
       : { day: today(), actions: 0, unsends: 0 };
@@ -4683,8 +4520,8 @@
   async function continueAccountRun() {
     const run = resumableAccountRun();
     if (!run) return;
-    if (!runAuthorizationValid(run)) {
-      stopForExpiredAuthorization();
+    if (!runCapabilityValid(run)) {
+      stopForExpiredCapability();
       return;
     }
     const username = run.queue[0];
@@ -4740,7 +4577,6 @@
   }
 
   async function startAccountRun({ action, usernames }) {
-    if (!requireNewRunAuthorization()) return;
     if (!managerTabStorageAvailable) {
       status('This userscript manager does not provide isolated tab storage, so account batches stay disabled. Scans and no-click checks still work.');
       return;
@@ -4755,7 +4591,13 @@
       status(`Daily limit reached (${bounds.dailyActions}). Raise it in preferences or continue tomorrow.`);
       return;
     }
-    const queue = usernames.slice(0, allowance);
+    if (usernames.length > allowance) {
+      status(`Only ${allowance} of ${bounds.dailyActions} daily account actions remain. Review a smaller exact run.`);
+      return;
+    }
+    const queue = [...usernames];
+    const capabilityId = globalThis.crypto?.randomUUID?.()
+      || `run-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     batchAbort = false;
     setRun({
       status: 'running',
@@ -4768,7 +4610,10 @@
       failed: 0,
       current: '',
       stopReason: null,
-      authorizationExpiresAt: liveActionsUnlockedUntil,
+      approvedTargets: [...queue],
+      capabilityDigest: accountCapabilityDigest(action, queue),
+      capabilityExpiresAt: Date.now() + RUN_CAPABILITY_MS,
+      capabilityId,
       results: [],
     });
     await continueAccountRun();
@@ -4994,6 +4839,14 @@
             setText('scan-detail', `Finding the exact @${username} account…`);
             return;
           }
+          if (progress.phase === 'retrying') {
+            const label = progress.listType || 'account lookup';
+            setText(
+              'scan-detail',
+              `Retrying ${label}: attempt ${progress.attempt} of ${progress.maxAttempts} in ${(progress.retryDelayMs / 1_000).toFixed(1)}s. ${progress.found} accounts from ${progress.pages} completed pages are preserved.`,
+            );
+            return;
+          }
           if (progress.listType) showScanProgress(progress.listType, progress.found, false);
         },
       });
@@ -5031,7 +4884,7 @@
 
   // --- Sections 4 and 5: show the targets before anything runs ------------
 
-  function renderRunReview(items, { omitted = 0, removed = 0 } = {}) {
+  function renderRunReview(items, { omitted = 0, removed = 0, skippedReasons = [] } = {}) {
     const panel = query('[data-role="run-review"]');
     if (!panel) return;
     panel.hidden = !items.length;
@@ -5040,23 +4893,60 @@
     const list = query('[data-role="review-list"]');
     if (list) {
       list.replaceChildren();
-      for (const item of items.slice(0, 8)) {
+      for (const item of items) {
         const row = document.createElement('li');
         row.textContent = `@${item.username}`;
         list.append(row);
       }
-      if (items.length > 8) {
-        const more = document.createElement('li');
-        more.textContent = `+ ${items.length - 8} more`;
-        list.append(more);
+      for (const entry of skippedReasons) {
+        const skipped = document.createElement('li');
+        skipped.textContent = `${entry.count} skipped — ${entry.reason}`;
+        list.append(skipped);
       }
     }
     // Naming why targets were dropped is the difference between a trustworthy
     // count and a surprising one.
     setText(
       'review-skips',
-      `${removed} duplicate or already-followed target${removed === 1 ? '' : 's'} removed; ${omitted} left outside this bounded run. Every profile is rechecked before action.`,
+      `${removed} duplicate or already-correct target${removed === 1 ? '' : 's'} removed; ${omitted} valid target${omitted === 1 ? '' : 's'} remain outside this finite run; ${skippedReasons.reduce((total, entry) => total + entry.count, 0)} protected or incompatible target${skippedReasons.reduce((total, entry) => total + entry.count, 0) === 1 ? '' : 's'} skipped. Every profile is rechecked before action.`,
     );
+  }
+
+  function compatibleAccountSources(action) {
+    return action === 'follow'
+      ? [
+        ['current-profile', 'Current exact profile'],
+        ['i-do-not-follow-back', 'People who follow you that you do not follow'],
+        ['scanned-followers', 'Scanned Followers'],
+        ['queue', 'Compatible queue items'],
+      ]
+      : [
+        ['current-profile', 'Current exact profile'],
+        ['not-following-me-back', 'People not following you back'],
+        ['scanned-following', 'Scanned Following'],
+        ['queue', 'Compatible queue items'],
+      ];
+  }
+
+  function syncAccountComposer() {
+    const action = query('[data-role="bot-action"]')?.value === 'unfollow' ? 'unfollow' : 'follow';
+    const source = query('[data-role="bot-source"]');
+    if (!source) return;
+    const previous = source.value;
+    const options = compatibleAccountSources(action);
+    source.replaceChildren();
+    for (const [value, label] of options) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      source.append(option);
+    }
+    source.value = options.some(([value]) => value === previous) ? previous : options[0][0];
+    const currentProfile = source.value === 'current-profile';
+    const countField = query('[data-role="bot-count-field"]');
+    if (countField) countField.hidden = currentProfile;
+    const count = query('[data-role="bot-count"]');
+    if (currentProfile && count) count.value = '1';
   }
 
   function accountRunPlan() {
@@ -5066,15 +4956,34 @@
     const count = source === 'current-profile' ? 1 : requestedCount;
     const comparison = compareCapture();
     const names = (list) => (list || []).map((entry) => entry.username || entry).filter(Boolean);
+    const skippedReasons = [];
     const pools = {
       'current-profile': () => {
         const username = engine.normalizeUsername?.(location.pathname) || '';
-        return username ? [username] : [];
+        if (!username) return [];
+        const observation = engine.inspectProfile?.(username) || {};
+        const alreadyCorrect = action === 'follow'
+          ? ['following', 'requested'].includes(observation.relationship)
+          : observation.relationship === 'not-following';
+        if (alreadyCorrect) {
+          skippedReasons.push({ count: 1, reason: `@${username} already has the requested relationship.` });
+          return [];
+        }
+        return [username];
       },
-      queue: () => (state.queue.queue || [])
-        .filter((entry) => ACTIONABLE_STATUSES.has(entry.status))
-        .map((entry) => entry.account?.username)
-        .filter(Boolean),
+      queue: () => {
+        const queue = state.queue.queue || [];
+        const protectedCount = queue.filter((entry) => entry.status === 'protected').length;
+        const incompatibleCount = queue.filter((entry) => (
+          ACTIONABLE_STATUSES.has(entry.status) && entry.action !== action
+        )).length;
+        if (protectedCount) skippedReasons.push({ count: protectedCount, reason: 'Protected queue items stay excluded.' });
+        if (incompatibleCount) skippedReasons.push({ count: incompatibleCount, reason: 'Queue items for the opposite action were excluded.' });
+        return queue
+          .filter((entry) => ACTIONABLE_STATUSES.has(entry.status) && entry.action === action)
+          .map((entry) => entry.account?.username)
+          .filter(Boolean);
+      },
       'i-do-not-follow-back': () => names(comparison.iDoNotFollowBack),
       'not-following-me-back': () => names(comparison.notFollowingMeBack),
       'scanned-followers': () => names(verifiedCapture('followers')),
@@ -5094,6 +5003,8 @@
       items: Object.freeze(items),
       omitted: Math.max(0, unique.length - items.length),
       removed: Math.max(0, pool.length - unique.length),
+      requested: count,
+      skippedReasons: Object.freeze(skippedReasons),
       signature: JSON.stringify({ action, count, source, usernames: items.map((item) => item.username) }),
       source,
     });
@@ -5104,7 +5015,8 @@
     if (!button) return;
     if (accountRunDraft) {
       button.dataset.action = 'run-accounts';
-      button.textContent = `Start ${accountRunDraft.action} run`;
+      const label = accountRunDraft.action === 'follow' ? 'Follow' : 'Unfollow';
+      button.textContent = `Start ${label} on ${accountRunDraft.items.length} account${accountRunDraft.items.length === 1 ? '' : 's'}`;
       button.classList.add('danger');
       button.classList.remove('primary');
       const preview = accountRunDraft.items.slice(0, 3).map((item) => `@${item.username}`).join(', ');
@@ -5112,7 +5024,9 @@
     } else {
       button.dataset.action = 'review-accounts';
       button.disabled = false;
-      button.textContent = 'Review run';
+      const plan = accountRunPlan();
+      const label = plan.action === 'follow' ? 'Follow' : 'Unfollow';
+      button.textContent = `Review ${plan.requested} ${label} target${plan.requested === 1 ? '' : 's'}`;
       button.classList.add('primary');
       button.classList.remove('danger');
       setText('account-run-summary', 'Choose a source, action, and bounded amount, then review the exact targets.');
@@ -5121,6 +5035,7 @@
 
   function clearAccountRunDraft() {
     accountRunDraft = null;
+    syncAccountComposer();
     renderRunReview([]);
     renderAccountRunPrimary();
   }
@@ -5130,11 +5045,12 @@
     if (!plan.items.length) {
       clearAccountRunDraft();
       status(
-        plan.source === 'current-profile'
+        plan.skippedReasons[0]?.reason
+          || (plan.source === 'current-profile'
           ? 'Open one Instagram profile first. No target was reviewed.'
           : plan.source.startsWith('scanned')
           ? 'That list is empty. Open the list you want and scan it in the checker first.'
-          : 'No targets. Scan both lists in the checker first, or import a queue.',
+          : 'No targets. Scan both lists in the checker first, or import a queue.'),
       );
       return;
     }
@@ -5156,8 +5072,10 @@
   function renderDmSummary() {
     const summary = query('[data-role="dm-summary"]');
     const primary = query('[data-role="unsend-primary"]');
-    const found = (state.sentDms || []).length;
-    const checked = state.sentDmsChecked === true;
+    const found = Number(dmThreadPreview?.eligibleCount) || 0;
+    const checked = dmThreadPreview?.ready === true
+      && dmThreadPreview.threadId === currentDirectThreadId();
+    const active = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
     if (summary) {
       summary.hidden = !checked;
       setText('dm-summary-title', found
@@ -5165,13 +5083,87 @@
         : 'No removable messages found');
       setText('dm-summary-detail', !found
         ? 'Nothing here could be identified as yours, so nothing will be touched.'
-        : state.sentDmsComplete
+        : dmThreadPreview?.complete
           ? 'The whole conversation was read.'
           : 'The conversation did not fully load, so there may be more further back.');
     }
     // Never hidden. Progressive disclosure applies to secondary controls, not
     // to the action the tool exists for.
-    if (primary) primary.hidden = false;
+    if (primary) {
+      primary.hidden = false;
+      primary.textContent = active ? 'Stop DM Unsend' : 'Unsend DMs';
+      primary.disabled = active
+        ? dmRunnerSnapshot?.canStop !== true
+        : !currentDirectThreadId();
+    }
+    const scope = query('[data-role="unsend-scope"]')?.value || 'all';
+    const countField = query('[data-role="unsend-count-field"]');
+    if (countField) countField.hidden = scope === 'all';
+  }
+
+  async function scanSentConversation() {
+    if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
+    status('Checking this conversation for messages you sent. Nothing will be removed.');
+    const outcome = await dmRunner.inspectAll();
+    dmThreadPreview = outcome?.ready && outcome.complete === true ? outcome : null;
+    renderAll();
+    status(outcome?.ready && outcome.complete === true
+      ? `${outcome.eligibleCount} sent message${outcome.eligibleCount === 1 ? '' : 's'} eligible in thread ${outcome.threadId}. Nothing was changed.`
+      : outcome?.reason || 'The conversation could not be checked. Nothing was changed.');
+    return outcome;
+  }
+
+  async function runDmUnsend() {
+    if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
+    const snapshot = dmRunner.snapshot();
+    if (snapshot.canStop || ['preparing', 'running', 'waiting', 'stopping'].includes(snapshot.status)) {
+      dmRunner.stop();
+      return;
+    }
+    let preview = dmThreadPreview?.threadId === currentDirectThreadId() ? dmThreadPreview : null;
+    if (!preview?.ready || preview.complete !== true) {
+      const scanned = await scanSentConversation();
+      if (!scanned?.ready || scanned.complete !== true) return;
+      preview = scanned;
+    }
+    if (preview.eligibleCount < 1) {
+      status(`No sent messages are eligible in thread ${preview.threadId}. Nothing was changed.`);
+      return;
+    }
+    const scope = query('[data-role="unsend-scope"]')?.value || 'all';
+    const requested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
+    const limit = scope === 'all'
+      ? preview.eligibleCount
+      : Math.min(preview.eligibleCount, Math.max(1, requested));
+    const plan = dmRunner.createPlan({
+      threadId: preview.threadId,
+      scope,
+      limit,
+      eligibleCount: preview.eligibleCount,
+      expiresAt: Date.now() + DM_PLAN_CAPABILITY_MS,
+    });
+    if (!plan) throw new Error('The reviewed Unsend plan could not be created. Check the conversation again.');
+    const scopeLabel = scope === 'all'
+      ? `all ${limit} eligible sent message${limit === 1 ? '' : 's'}`
+      : `${scope} ${limit} sent message${limit === 1 ? '' : 's'}`;
+    if (!confirmRun(
+      `Permanently unsend ${scopeLabel} from thread ${plan.threadId}?\n\n`
+      + `The eligible count will be revalidated before any message menu opens.`,
+    )) {
+      status('Canceled. The conversation check is still available and nothing was changed.');
+      return;
+    }
+    const reservation = reserveUnsendPlan(plan);
+    if (!reservation.ok) {
+      status(`${reservation.reason} Nothing was changed.`);
+      return;
+    }
+    dmThreadPreview = null;
+    await dmRunner.start({
+      plan,
+      minDelayMs: reservation.minDelayMs,
+      maxDelayMs: reservation.maxDelayMs,
+    });
   }
 
 
@@ -5229,6 +5221,10 @@
     open: () => savePreferences({ open: true }),
     close: () => savePreferences({ open: false }),
     'stop-run': () => {
+      if (dmRunner?.stop?.()) {
+        status('Stopping DM Unsend after the current step.');
+        return;
+      }
       batchAbort = true;
       // Clearing the queue is what actually stops a resumable account run; the
       // in-memory flag alone would not survive the next page load.
@@ -5280,35 +5276,7 @@
               : ' The list did not reach its end, so some may be missing.'}`,
       );
     },
-    'scan-sent': async () => {
-      status('Scanning this conversation for messages you sent.');
-      const outcome = await engine.enumerateSentDms();
-      if (sessionStop(outcome)) {
-        status(`Stopped: ${sessionStop(outcome)}.`);
-        return;
-      }
-      const activeThreadId = currentDirectThreadId();
-      const scanMatchesThread = Boolean(
-        activeThreadId
-        && directThreadId(outcome?.conversationId) === activeThreadId,
-      );
-      state.sentDms = scanMatchesThread
-        ? sentMessagesForThread(outcome?.messages, activeThreadId)
-        : [];
-      state.sentDmsComplete = scanMatchesThread && outcome?.complete === true;
-      state.sentDmsChecked = true;
-      saveState();
-      renderAll();
-      status(
-        !activeThreadId
-          ? 'Open an Instagram conversation first.'
-          : !scanMatchesThread
-            ? 'The conversation changed during the scan. Scan this conversation again.'
-            : state.sentDms.length
-              ? `Found ${state.sentDms.length} of your sent messages.${outcome.complete ? '' : ' Older ones may still be unloaded.'}`
-              : 'No exactly identifiable sent messages were found in this thread.',
-      );
-    },
+    'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
       const current = accountRunPlan();
       if (!accountRunDraft || accountRunDraft.signature !== current.signature) {
@@ -5316,20 +5284,16 @@
         status('Targets changed. Review the run again before starting.');
         return;
       }
+      const targetList = accountRunDraft.items.map((item) => `@${item.username}`).join('\n');
       if (!confirmRun(
         `${accountRunDraft.action === 'follow' ? 'Follow' : 'Unfollow'} ${accountRunDraft.items.length} reviewed account${accountRunDraft.items.length === 1 ? '' : 's'}?\n\n`
-        + 'This tab will move between profiles and the run continues across page loads. It changes your account.',
+        + `${targetList}\n\nThis tab will move between these exact profiles. Each account is revalidated before the action.`,
       )) return;
       const approved = accountRunDraft;
       clearAccountRunDraft();
       await startAccountRun({ action: approved.action, usernames: approved.items.map((item) => item.username) });
     },
-    // The capture-phase shared runner owns this action. If that enhancement is
-    // unavailable, fail closed rather than falling back to a second mutation
-    // path with weaker review semantics.
-    'run-unsend': () => {
-      status('The reviewed DM runner is not ready. Reload Instagram; nothing was changed.');
-    },
+    'run-unsend': () => runDmUnsend(),
     'save-limits': () => {
       state.limits = {
         dailyActions: clampNumber(query('[data-role="limit-actions"]')?.value, LIMIT_BOUNDS.dailyActions, 100),
@@ -5392,6 +5356,19 @@
           ? 'Read from bounded authenticated Instagram pagination. No follow, unfollow, message, or click action was performed.'
           : 'Only rows rendered in Instagram were captured. Scroll manually and capture again to merge more rows.',
       });
+    },
+    'download-comparison-json': () => {
+      const comparisonReady = state.capture.verified?.followers === true
+        && state.capture.verified?.following === true;
+      if (!comparisonReady) {
+        status('Complete both follower lists before downloading a comparison.');
+        return;
+      }
+      const generatedAt = nowIso();
+      downloadJson(
+        `insta-aio-follower-comparison-${generatedAt.replace(/[:.]/g, '-')}.json`,
+        engine.followerComparisonRecord(state.capture, compareCapture(), generatedAt),
+      );
     },
     'export-queue': () => downloadJson(`insta-aio-companion-state-${Date.now()}.json`, {
       schemaVersion: 2,
@@ -5456,8 +5433,8 @@
         renderChecker();
         return;
       }
-      if (event.target.matches('[data-role="live-actions"]')) {
-        setLiveActionsUnlocked(event.target.checked);
+      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"]')) {
+        renderDmSummary();
         return;
       }
       if (event.target.matches('[data-preference="opacity"]')) {
@@ -5588,6 +5565,7 @@
     const currentHref = location.href;
     if (currentHref !== lastLocationHref) {
       lastLocationHref = currentHref;
+      dmThreadPreview = null;
       state.messageEvidence = null;
       state.dmCheck = null;
       state.sentDms = [];
@@ -5607,29 +5585,6 @@
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
-
-  Object.defineProperty(globalThis, 'InstaAioUserscriptLiveAuthority', {
-    configurable: false,
-    enumerable: false,
-    value: Object.freeze({
-      canStart: () => newLiveRunAuthorized()
-        && state.run?.status !== 'running'
-        && !externalLiveRunActive,
-      enable: () => {
-        if (state.run?.status === 'running' || externalLiveRunActive) return false;
-        setLiveActionsUnlocked(true);
-        return newLiveRunAuthorized();
-      },
-      expiresAt: () => (newLiveRunAuthorized() ? liveActionsUnlockedUntil : 0),
-      reserveUnsendPlan,
-      setExternalRunActive: (active, operation = null) => {
-        externalLiveRunActive = active === true;
-        externalRunOperation = externalLiveRunActive ? operation : null;
-        renderAll();
-      },
-    }),
-    writable: false,
-  });
 
   document.documentElement.append(host);
   saveState();

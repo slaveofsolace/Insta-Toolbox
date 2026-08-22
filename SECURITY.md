@@ -27,18 +27,18 @@ Insta AIO Tool:
 - Rejects bridge payload fields associated with credentials or authorization
 - Keeps live execution locked off by default
 - Keeps dry runs no-click and permits only a fresh, signed, reviewed batch of
-  exactly one Follow or Unfollow item through the short-lived Instagram arm,
+  exactly one Follow or Unfollow item through a transient exact confirmation capability,
   PWA and extension-side durable ledgers, verified profile-header ownership,
   target-bound confirmation dialog, and one-use DOM-token boundary
-- Permits one exact sent-message Unsend only after two fresh confirmations, a
-  signed one-item intent, a tab-scoped 90-second arm, exact conversation,
+- Permits one exact sent-message Unsend only after a fresh exact confirmation, a
+  signed one-item intent, a transient tab-scoped capability, exact conversation,
   message, timestamp, content-digest, and sent-ownership revalidation, PWA and
   extension-side reservations, one-use DOM-token consumption, structurally
   bound interactive menu/dialog controls, and same-thread exact-removal proof
   with stable identity coverage
 - Permits a local thread-wide Unsend only after a no-click full-history check
   proves a finite eligible count, followed by an exact thread/scope/count/
-  digest/expiry plan, a count-specific typed phrase, and a final confirmation.
+  digest/expiry plan and one exact thread/count confirmation.
   The count and full-history completeness are revalidated before the first
   message menu opens; the finite plan is reserved against a persistent daily
   allowance and uses bounded pacing; capped or incomplete checks cannot create

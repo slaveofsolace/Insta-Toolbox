@@ -270,10 +270,12 @@ test('extension message view uses the shared runner and Instagram design tokens'
   assert.match(messagesSource, /DM_PLAN_TTL_MS = 15 \* 60 \* 1_000/);
   assert.match(messagesSource, /threadId: preview\.threadId/);
   assert.match(messagesSource, /eligibleCount: preview\.eligibleCount/);
-  assert.match(messagesSource, /phrase = `UNSEND \$\{limit\} \$\{plan\.reviewedDigest\}`/);
-  assert.match(messagesSource, /Unsend messages/);
-  assert.match(messagesSource, /Check conversation first/);
-  assert.match(messagesSource, /No sent messages eligible/);
+  assert.doesNotMatch(messagesSource, /phrase = `UNSEND|ARM UNSEND|ENABLE LIVE ACTIONS/);
+  assert.match(messagesSource, /data-ia-action="mass-unsend"/);
+  assert.match(messagesSource, /'Unsend DMs'/);
+  assert.match(messagesSource, /const scanned = await scanSent\(runtime\)/);
+  assert.match(messagesSource, /Permanently unsend \$\{scopeLabel\} from thread \$\{plan\.threadId\}/);
+  assert.match(messagesSource, /Canceled\. The conversation check is still available and nothing was changed/);
   assert.match(messagesSource, /--ig-primary-background/);
   assert.match(messagesSource, /--ig-primary-button/);
   assert.match(messagesSource, /prefers-reduced-motion/);

@@ -27,8 +27,8 @@ test('browser QA covers every PWA view at deterministic responsive sizes without
     assert.match(harness, new RegExp(`\\['${view}',`), view);
   }
   assert.match(harness, /screenshotViews = new Set\(\['overview', 'messages', 'settings'\]\)/);
-  assert.match(harness, /liveActionEnabled, false/);
-  assert.match(harness, /liveDmEnabled, false/);
+  assert.match(harness, /liveActionEnabled, null/);
+  assert.match(harness, /liveDmEnabled, null/);
   assert.doesNotMatch(harness, /executeReviewedActionJob|createReviewedActionJob|requestExtensionBridge/);
 });
 

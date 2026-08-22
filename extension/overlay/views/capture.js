@@ -73,7 +73,7 @@
 
   function render(runtime) {
     const {
-      document, downloads, model, query, setText,
+      document, downloads, inspector, model, query, setText,
     } = runtime;
     const list = query('[data-ia-role="capture-list"]');
     if (!list) return;
@@ -102,6 +102,25 @@
     const followingVerified = workspace.verified?.following === true;
     const selectedVerified = workspace.verified?.[listType] === true;
     const comparisonReady = followersVerified && followingVerified;
+    const reportDownload = query('[data-ia-role="comparison-report-download"]');
+    const jsonDownload = query('[data-ia-role="comparison-json-download"]');
+    if (comparisonReady
+      && typeof inspector.followerComparisonReport === 'function'
+      && typeof inspector.followerComparisonRecord === 'function') {
+      const generatedAt = new Date().toISOString();
+      const filenameSuffix = generatedAt.replace(/[:.]/g, '-');
+      downloads.update('comparison-report', reportDownload, {
+        filename: `insta-aio-follower-comparison-${filenameSuffix}.txt`,
+        text: inspector.followerComparisonReport(workspace, comparison, generatedAt),
+      });
+      downloads.update('comparison-json', jsonDownload, {
+        filename: `insta-aio-follower-comparison-${filenameSuffix}.json`,
+        payload: inspector.followerComparisonRecord(workspace, comparison, generatedAt),
+      });
+    } else {
+      downloads.clear('comparison-report', reportDownload);
+      downloads.clear('comparison-json', jsonDownload);
+    }
     setText('followers-count', String(followersVerified ? workspace.followers.length : 0));
     setText('following-count', String(followingVerified ? workspace.following.length : 0));
     setText('capture-count', String(accounts.length));
@@ -388,6 +407,20 @@
           if (relationshipController !== controller) return;
           if (progress.phase === 'resolving') {
             setState(runtime, `Resolving @${username}`, 'Finding the exact Instagram account.', 'warning');
+            return;
+          }
+          if (progress.phase === 'retrying') {
+            const label = progress.listType === 'followers'
+              ? 'Followers'
+              : progress.listType === 'following'
+                ? 'Following'
+                : 'account lookup';
+            setState(
+              runtime,
+              `Retrying ${label} for @${username}`,
+              `Attempt ${progress.attempt} of ${progress.maxAttempts} starts in ${(progress.retryDelayMs / 1_000).toFixed(1)}s. ${progress.found} accounts across ${progress.pages} completed pages are preserved.`,
+              'warning',
+            );
             return;
           }
           if (progress.listType) {

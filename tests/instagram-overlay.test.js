@@ -67,7 +67,7 @@ test('Instagram loads the inspector before the visible sidecar', () => {
     'overlay/views/workspace.js',
     'instagram-overlay.js',
   ]);
-  assert.equal(manifest.version, '0.11.0');
+  assert.equal(manifest.version, '2.0.0');
 });
 
 test('sidecar migrates the visible capture and manual queue workflow', () => {
@@ -115,18 +115,22 @@ test('sidecar guides list capture, reviews account targets, and keeps one DM pri
   assert.match(overlay, /reviewed\.signature !== current\.signature/);
   assert.match(overlay, /data-ia-role="bot-review-list"/);
   assert.match(overlay, /class="ia-primary-action" data-ia-role="unsend-disclosure"/);
-  assert.match(overlay, /data-ia-action="scan-sent-dms">Check conversation/);
+  assert.match(overlay, /data-ia-action="mass-unsend">Unsend DMs/);
+  assert.match(overlay, /data-ia-action="scan-sent-dms">Check conversation only/);
   assert.match(overlay, /data-ia-role="unsend-plan">/);
-  assert.match(overlay, /data-ia-action="mass-unsend" disabled>Check conversation first/);
+  const dmPrimary = overlay.match(/<button[^>]*data-ia-action="mass-unsend"[^>]*>/);
+  assert.ok(dmPrimary, 'the permanent Unsend DMs button must be in the static shell');
+  assert.doesNotMatch(dmPrimary[0], /\sdisabled(?:\s|>|=)/);
   assert.match(overlay, /Advanced: list-dialog fallback and export/);
   assert.match(overlay, /aria-labelledby="ia-bot-composer-title"/);
-  assert.match(overlay, /<summary>Visible evidence<\/summary>/);
+  assert.match(overlay, /<summary>Advanced message options<\/summary>/);
 });
 
 test('sidecar can review only the exact profile already open without an imported queue', () => {
   assert.match(overlay, /<option value="current-profile">Current exact profile<\/option>/);
   assert.match(overlay, /source === 'current-profile'/);
-  assert.match(overlay, /context\.pageKind === 'profile' && context\.username \? \[context\.username\] : \[\]/);
+  assert.match(overlay, /context\.pageKind !== 'profile' \|\| !context\.username/);
+  assert.match(overlay, /return \{ pool: \[context\.username\], skipped \}/);
   assert.match(overlay, /const requested = source === 'current-profile'\s+\? 1/);
   assert.match(overlay, /Open one Instagram profile first\. No target was reviewed\./);
 });
@@ -181,23 +185,16 @@ test('dry runs remain no-click while the one live activator is token-bound and o
   assert.match(overlay, /Inspection is no-click/);
 });
 
-test('sidecar exposes an exact, expiring live arm without executing from the overlay', () => {
-  assert.match(overlay, /data-ia-role="account-live-disclosure"/);
-  assert.match(overlay, /ARM \$\{String\(intent\.action/);
-  assert.match(overlay, /Arm for 90 seconds/);
-  assert.match(overlay, /Arming alone does not click/);
-  assert.match(controlledPolicy, /ACCOUNT_ARM_TTL_MS = 90 \* 1000/);
-  assert.match(background, /insta-aio-arm-account-action/);
-  assert.match(background, /expectedPhrase = `ARM \$\{intent\.action\.toUpperCase\(\)\} @\$\{intent\.username\}`/);
-  assert.match(overlay, /data-ia-role="dm-live-disclosure"/);
-  assert.match(overlay, /ARM UNSEND \$\{intent\.armCode\}/);
-  assert.match(overlay, /data-ia-action="arm-dm-live"/);
-  assert.match(overlay, /Arming does not open a menu or remove anything/);
-  assert.match(overlay, /The prior arm expired/);
-  assert.match(overlay, /the old expiry is never extended/);
-  assert.match(overlay, /state: 'canceled'/);
-  assert.match(controlledDmPolicy, /DM_ARM_TTL_MS = 90 \* 1000/);
-  assert.match(background, /insta-aio-arm-dm-unsend/);
+test('sidecar uses one exact finite confirmation without global arm controls', () => {
+  assert.doesNotMatch(overlay, /account-live-disclosure|dm-live-disclosure|arm-dm-live|Arm for 90 seconds|ARM UNSEND/);
+  assert.doesNotMatch(background, /insta-aio-arm-account-action|insta-aio-arm-dm-unsend|expectedPhrase/);
+  assert.match(overlay, /window\.confirm/);
+  assert.match(background, /function accountConfirmationMatches\(confirmation, intent\)/);
+  assert.match(background, /function dmConfirmationMatches\(confirmation, intent\)/);
+  assert.match(background, /consumeTransientCapability\(accountCapabilities/);
+  assert.match(background, /consumeTransientCapability\(dmCapabilities/);
+  assert.match(controlledPolicy, /ready: true/);
+  assert.match(controlledDmPolicy, /ready: true/);
 });
 
 test('visible DM evidence stays read-only while reviewed jobs require stable exact identity', () => {
@@ -213,7 +210,7 @@ test('visible DM evidence stays read-only while reviewed jobs require stable exa
   assert.match(overlay, /Visible text alone cannot authorize removal/);
 });
 
-test('background reveals only sanitized pairing, intent, arm, and run summaries to Instagram', () => {
+test('background reveals only sanitized pairing, intent, confirmation, and run summaries to Instagram', () => {
   const overlayStateBody = background.slice(
     background.indexOf('function overlayState'),
     background.indexOf('function isInstagramSender'),
@@ -221,9 +218,11 @@ test('background reveals only sanitized pairing, intent, arm, and run summaries 
   assert.match(background, /insta-aio-overlay-state/);
   assert.match(background, /instagram-origin-required/);
   assert.match(background, /pendingLiveIntent: publicLiveIntent/);
-  assert.match(background, /liveArm: publicLiveArm/);
+  assert.match(background, /liveArm: null/);
   assert.match(background, /pendingDmIntent: publicDmIntent/);
-  assert.match(background, /dmArm: publicDmArm/);
+  assert.match(background, /dmArm: null/);
+  assert.match(background, /exactConfirmationRequired: true/);
+  assert.match(background, /liveExecutionEnabled: false/);
   assert.doesNotMatch(overlayStateBody, /secret|signature|nonce/i);
 });
 

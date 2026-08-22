@@ -1,6 +1,6 @@
 # Release status
 
-Current version: **0.11.0**
+Current version: **2.0.0**
 
 ## Available tools
 
@@ -9,19 +9,28 @@ Current version: **0.11.0**
 - Imports Instagram relationship exports and supported legacy formats.
 - Resolves a user-entered or locally detected username and loads Followers and
   Following through bounded, authenticated Instagram pagination.
+- Gives each page request and JSON decode a 20-second watchdog, retries a
+  stalled page twice with visible bounded backoff, and preserves the prior
+  comparison if the new read cannot finish.
 - Keeps the exact-dialog scanner as an Advanced fallback without mixing its
   rows with authenticated results from another username.
 - Reports mutuals, accounts that do not follow back, and accounts the user does
   not follow back.
 - Filters any comparison group by captured username or display name, locally.
+- Downloads a readable UTF-8 comparison report; the schema-1 JSON export remains
+  available under Advanced for machine use.
 - Does not need live-action permission.
 
 ### Follow / Unfollow
 
 - Builds a fixed review list before a run can start.
 - Supports true dry runs that do not activate Instagram controls.
-- Requires a typed, time-limited authorization and a separate confirmation for
-  any live userscript batch.
+- Shows only sources compatible with the selected Follow or Unfollow action,
+  then names exact targets, duplicates, already-correct relationships, and
+  protected/skipped reasons before one finite confirmation.
+- Mints a non-persistent capability bound to the confirmed target list; it is
+  revoked on completion, Stop, expiry, challenge, block, rate limit, or an
+  unexpected profile state.
 - Extension live jobs are limited to one reviewed account, with signed intent,
   exact profile matching, independent reservations, and post-action checks.
 - Live execution is disabled by default.
@@ -32,9 +41,12 @@ Current version: **0.11.0**
 - Supports read-only inspection and no-click dry runs.
 - The signed extension path is limited to one reviewed message with stable
   thread and message identity.
-- The userscript and extension thread runner require a successful no-click
-  conversation check followed by an exact thread, scope, finite count,
-  reviewed digest, expiry, typed phrase, and final confirmation.
+- The userscript and extension always show **Unsend DMs**. Its first click runs
+  the no-click conversation check when needed, then asks once for the exact
+  thread and eligible count. All messages is the default; newest/oldest finite
+  scopes remain under Advanced.
+- Each thread plan remains bound to the exact thread, scope, finite count,
+  reviewed digest, expiry, pacing, and daily allowance.
 - Live execution is disabled by default.
 
 ## Delivery formats
@@ -79,10 +91,39 @@ The repository includes checks for:
 - PWA and overlay screenshot baselines;
 - desktop package smoke tests in CI.
 
-The final local Windows matrix currently passes **244/244 tests**, nine PWA
-screenshots, 43 overlay states, isolated extension/userscript fixture
-acceptance, and disposable-Chrome extension/PWA pairing. The Windows 0.11.0
-installer builds successfully and is intentionally unsigned.
+The final local Windows matrix count and artifact hashes are refreshed for each
+release candidate after the generated userscript and extension have been rebuilt.
+The Windows 2.0.0 installer remains intentionally unsigned.
+
+### Current 2.0.0 candidate evidence (2026-08-22)
+
+- `pnpm test`: **248/248** passing, including dependency verification,
+  repository hygiene, extension reproducibility, userscript parity, migrations,
+  finite capabilities, no-click paths, retry watchdogs, and safe stops.
+- Controlled extension build subset: **25/25** passing before packaging.
+- Extension/userscript fixture acceptance: production Follow, Unfollow, and
+  one-message Unsend DOM chains; keyboard/accessibility-tree checks; five
+  toolbox viewports; thread-bound Unsend; PWA installability; and default
+  read-only pairing all accepted in isolated Chromium.
+- Google Chrome pairing acceptance: PWA installability and the real unpacked
+  extension paired successfully with action permission off and no global live
+  unlock controls.
+- Visual regression gates: **9/9** reviewed Windows PWA baselines and **43/43**
+  reviewed Windows overlay states, including mobile, short-laptop, forced-color,
+  translucent floating, and 200-percent zoom cases.
+- Windows NSIS packaging completed for the intentionally unsigned installer.
+  Native macOS lifecycle acceptance remains CI-only from this Windows host.
+
+Release-candidate SHA-256 values:
+
+- `userscripts/insta-aio-companion.user.js` —
+  `422c92758bec4098cf888071ba09907952dca3e8084f53cf69f938c9aabcfd51`
+- `dist/insta-aio-companion-2.0.0.zip` —
+  `50e1dda5dadeaf60ef4a625897968d8a92a3dad1b8310ce615c7fe22eaba5767`
+- `dist/desktop/Insta AIO Tool Setup 2.0.0.exe` —
+  `a8d37e7b8f35ef1a8a4a699a19b4fcf4d8fdfaaba032a3b213e05d805be5c241`
+- `dist/desktop/Insta AIO Tool Setup 2.0.0.exe.blockmap` —
+  `355217c6606b77910ee2c8cb00eb62b912919ab15d9f5ce2438fb4e4711f07da`
 
 Exact commands are documented in [Overlay QA](./OVERLAY_QA.md),
 [Browser QA](./BROWSER_QA.md), and the [Maintainer guide](./MAINTAINER_GUIDE.md).
@@ -95,7 +136,7 @@ and are not automated:
 - install the current userscript or unpacked extension in the intended Chrome
   profile;
 - confirm the overlay on current Instagram profile, list, and conversation
-  routes without arming a live action;
+  routes, canceling at every exact destructive confirmation;
 - complete a human screen-reader walkthrough;
 - verify persistent-profile PWA pairing;
 - sign and notarize macOS packages for public distribution;

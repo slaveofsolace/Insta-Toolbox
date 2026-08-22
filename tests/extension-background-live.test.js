@@ -21,7 +21,7 @@ import {
 } from '../src/core/action-jobs.js';
 import { createQueueItem } from '../src/core/queue.js';
 
-test('background consumes one armed capability before dispatching an exact live action', async () => {
+test('background consumes one transient exact confirmation before dispatching a live action', async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-aio-background-'));
   const libraryRoot = path.join(temporaryRoot, 'lib');
   await mkdir(libraryRoot, { recursive: true });
@@ -153,30 +153,16 @@ test('background consumes one armed capability before dispatching an exact live 
 
   const intentResponse = await bridge('action.account-live-intent', { job });
   assert.equal(intentResponse.type, 'action.account-live-intent-result');
-  assert.equal(intentResponse.payload.armed, false);
+  assert.equal(intentResponse.payload.ready, true);
 
-  const beforeArm = await deliver({ kind: 'insta-aio-overlay-state' }, {
+  const beforeConfirmation = await deliver({ kind: 'insta-aio-overlay-state' }, {
     url: 'https://www.instagram.com/controlled_target/',
     tab: { id: 7, url: 'https://www.instagram.com/controlled_target/' },
   });
-  assert.equal(beforeArm.state.pendingLiveIntent.username, 'controlled_target');
-  assert.equal(Object.hasOwn(beforeArm.state.pendingLiveIntent, 'pairingId'), false);
+  assert.equal(beforeConfirmation.state.pendingLiveIntent.username, 'controlled_target');
+  assert.equal(Object.hasOwn(beforeConfirmation.state.pendingLiveIntent, 'pairingId'), false);
 
   const item = job.items[0];
-  const armed = await deliver({
-    kind: 'insta-aio-arm-account-action',
-    action: 'follow',
-    itemId: item.id,
-    jobId: job.id,
-    phrase: 'ARM FOLLOW @controlled_target',
-    username: 'controlled_target',
-  }, {
-    url: 'https://www.instagram.com/controlled_target/',
-    tab: { id: 7, url: 'https://www.instagram.com/controlled_target/' },
-  });
-  assert.equal(armed.error, undefined);
-  assert.equal(armed.state.liveExecutionEnabled, true);
-
   assert.equal((await bridge('action.account-session', { jobId: job.id })).payload.authenticated, true);
   const profile = (await bridge('action.account-profile', {
     jobId: job.id,
@@ -188,7 +174,19 @@ test('background consumes one armed capability before dispatching an exact live 
     expectedRelationship: profile.relationship,
     resolutionToken: profile.resolutionToken,
   };
+  const unconfirmed = (await bridge('action.account-live-readiness', {
+    jobId: job.id,
+    item: executionItem,
+  })).payload;
+  assert.equal(unconfirmed.authorized, false);
+  assert.equal(unconfirmed.reason, 'exact-account-confirmation-required');
   const readiness = (await bridge('action.account-live-readiness', {
+    confirmation: {
+      confirmed: true,
+      action: 'follow',
+      count: 1,
+      username: 'controlled_target',
+    },
     jobId: job.id,
     item: executionItem,
   })).payload;

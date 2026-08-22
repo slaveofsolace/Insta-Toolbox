@@ -167,7 +167,7 @@ test('background completes an exact DM dry run without exposing an Unsend path',
   }
 });
 
-test('background reserves and consumes one exact armed DM capability before dispatch', async () => {
+test('background reserves and consumes one transient exact DM confirmation before dispatch', async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-aio-background-dm-live-'));
   const libraryRoot = path.join(temporaryRoot, 'lib');
   await mkdir(libraryRoot, { recursive: true });
@@ -293,7 +293,7 @@ test('background reserves and consumes one exact armed DM capability before disp
           assert.equal(stored.pendingDmIntent, null);
           assert.equal(stored.dmArm, null);
           assert.equal(stored.dmActionLedger[0].status, 'reserved');
-          assert.equal(message.item.resolutionToken, 'dm-token-2');
+          assert.equal(message.item.resolutionToken, 'dm-token-1');
           messageRemoved = true;
           return {
             result: 'unsent',
@@ -322,11 +322,6 @@ test('background reserves and consumes one exact armed DM capability before disp
       url: `${origin}/index.html`,
       tab: { url: `${origin}/index.html` },
     };
-    const instagramSender = {
-      url: 'https://www.instagram.com/direct/t/123/',
-      tab: { id: 7, url: 'https://www.instagram.com/direct/t/123/' },
-    };
-
     function deliver(request, sender) {
       return new Promise((resolve) => {
         const result = runtimeListener(request, sender, resolve);
@@ -352,30 +347,8 @@ test('background reserves and consumes one exact armed DM capability before disp
 
     const prepared = await bridge('action.dm-live-intent', { job });
     assert.equal(prepared.message.type, 'action.dm-live-intent-result');
-    assert.equal(prepared.message.payload.armed, false);
+    assert.equal(prepared.message.payload.ready, true);
     const intent = prepared.message.payload.intent;
-
-    const rejectedArm = await deliver({
-      kind: 'insta-aio-arm-dm-unsend',
-      phrase: 'ARM UNSEND WRONG',
-      jobId: intent.jobId,
-      itemId: intent.itemId,
-      conversationId: intent.conversationId,
-      messageId: intent.messageId,
-    }, instagramSender);
-    assert.equal(rejectedArm.error, 'dm-live-arm-phrase-mismatch');
-
-    const armed = await deliver({
-      kind: 'insta-aio-arm-dm-unsend',
-      phrase: `ARM UNSEND ${intent.armCode}`,
-      jobId: intent.jobId,
-      itemId: intent.itemId,
-      conversationId: intent.conversationId,
-      messageId: intent.messageId,
-    }, instagramSender);
-    assert.equal(armed.error, undefined);
-    assert.equal(armed.state.dmArm.jobId, job.id);
-    assert.equal(inspectionCount, 1);
 
     const session = await bridge('action.dm-session', { jobId: job.id });
     assert.equal(session.message.payload.sessionExpired, false);
@@ -385,10 +358,23 @@ test('background reserves and consumes one exact armed DM capability before disp
     });
     assert.equal(conversation.message.payload.conversationId, item.conversationId);
     const resolved = await bridge('action.dm-message', { jobId: job.id, item });
-    assert.equal(resolved.message.payload.resolutionToken, 'dm-token-2');
+    assert.equal(resolved.message.payload.resolutionToken, 'dm-token-1');
 
     const liveItem = { ...item, resolutionToken: resolved.message.payload.resolutionToken };
+    const unconfirmed = await bridge('action.dm-live-readiness', {
+      jobId: job.id,
+      item: liveItem,
+    });
+    assert.equal(unconfirmed.message.payload.authorized, false);
+    assert.equal(unconfirmed.message.payload.reason, 'dm-exact-confirmation-required');
     const readiness = await bridge('action.dm-live-readiness', {
+      confirmation: {
+        confirmed: true,
+        action: 'unsend',
+        conversationId: intent.conversationId,
+        count: 1,
+        messageId: intent.messageId,
+      },
       jobId: job.id,
       item: liveItem,
     });

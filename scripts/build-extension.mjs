@@ -178,7 +178,10 @@ async function validateSources() {
   if (
     !controlledSource.includes('controlled-live-batch-must-be-one')
     || !controlledSource.includes('live-confirmation-expired')
-    || !backgroundSource.includes('Reserve and consume the one-shot capability durably')
+    || !backgroundSource.includes('accountCapabilities')
+    || !backgroundSource.includes('accountConfirmationMatches')
+    || !backgroundSource.includes('consumeTransientCapability(accountCapabilities')
+    || !backgroundSource.includes('Reserve durably before the')
     || !backgroundSource.includes('accountActionLedger')
     || !backgroundSource.includes('reserveExtensionAction')
   ) {
@@ -187,6 +190,9 @@ async function validateSources() {
   if (
     !controlledDmSource.includes('controlled-live-dm-batch-must-be-one')
     || !controlledDmSource.includes('dm-destructive-confirmation-expired')
+    || !backgroundSource.includes('dmCapabilities')
+    || !backgroundSource.includes('dmConfirmationMatches')
+    || !backgroundSource.includes('consumeTransientCapability(dmCapabilities')
     || !backgroundSource.includes('Reserve and consume the one-shot DM capability durably')
     || !backgroundSource.includes('dmActionLedger')
     || !backgroundSource.includes('reserveExtensionDmAction')

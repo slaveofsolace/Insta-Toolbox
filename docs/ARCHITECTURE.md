@@ -103,8 +103,8 @@ The sidecar owns only browser-local field state:
 - An imported `insta-aio-manual-queue` and extension-local completion/skip updates
 - Read-only visible-message evidence plus conditional stable-identity DM dry runs
 - Sanitized pairing and recent dry-run summaries returned by the background worker
-- A sanitized pending one-item account intent and 90-second one-use arm
-- A sanitized pending exact-message intent and 90-second one-use DM arm
+- Sanitized pending one-item account and exact-message intents; transient
+  capabilities remain in the background worker and are never returned to the page
 - A versioned V3 visual preference record; fresh state is collapsed, V1/V2
   choices migrate, and bounded position, size, and opacity fields do not change
   existing capture-export or queue contracts
@@ -115,20 +115,21 @@ returns pairing secrets, signatures, or nonces to the Instagram sidecar.
 
 Account dry runs never reach a page-control method. A live account job must be
 fresh, signed with action permission, contain exactly one item, and match an
-Instagram-side intent. The operator must type the exact action and username on
-the matching profile. The resulting arm expires after 90 seconds. The
-background worker persists its own reservation and consumes the arm before it
+Instagram-side intent. The operator accepts one ordinary confirmation naming the
+exact action and username on the matching profile. The resulting transient
+capability expires and cannot persist across a worker restart. The background
+worker persists its own reservation and consumes the capability before it
 sends the single execution request, then finalizes that reservation after the
 result. The content script binds the request to a short-lived exact DOM token,
 requires one relationship control inside one header that independently names
 the pathname account, stops before any click when a dialog is already visible,
 and accepts only a newly surfaced Unfollow dialog that names the reviewed
 username. It then verifies the resulting relationship. The PWA independently
-rechecks the arm before its transactional reservation and checkpoints the
+rechecks the exact readiness before its transactional reservation and checkpoints the
 before/after result. DM dry runs use only the separate stable-identity inspector.
-The controlled DM path accepts exactly one twice-confirmed sent-message item,
-uses a separate signed intent and 90-second tab arm, reserves independent PWA
-and extension ledgers, consumes the arm before the isolated page driver, and
+The controlled DM path accepts exactly one freshly confirmed sent-message item,
+uses a separate signed intent and transient tab capability, reserves independent PWA
+and extension ledgers, consumes the capability before the isolated page driver, and
 revalidates the exact row before its action menu, localized Unsend option, and
 localized confirmation. The menu and dialog must be new, interactive, and
 structurally related to their triggering controls. Success requires the same
@@ -168,9 +169,9 @@ explicitly selects the userscript manager's isolated DOM sandbox.
 
 The injected toolbox exposes the follower scanner and comparison, no-click
 profile/message checks, paced Follow/Unfollow, and thread-wide DM Unsend. Live
-execution starts off. Starting an already-reviewed action or using the one-click
-switch opens a non-persistent 15-minute window; the exact target-bound
-confirmation is still required for each run. The expiry is stored only on an already-confirmed account run so the
+execution starts off. Each already-reviewed account run requires one exact
+action, target-list, and count confirmation, then receives a non-persistent
+capability bound only to that finite run. The expiry is stored only on an already-confirmed account run so the
 run can cross its own profile navigations. Resumable account state is held in
 manager-provided tab storage (`GM_getTab`/`GM_saveTab`), never in the shared GM
 value record; without those APIs, account batches fail closed. DM runs are

@@ -34,11 +34,12 @@ test('view navigation moves focus to the rendered page heading', async () => {
   ]);
   assert.match(shell, /<h1 data-page-heading tabindex="-1">/);
   assert.match(renderer, /focusTarget\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(handlers, /window\.scrollTo\(0, 0\);[\s\S]*?render\(\{ focusHeading: true \}\)/);
   assert.match(handlers, /render\(\{ focusHeading: true \}\)/);
   assert.match(handlers, /focusSelector: `\[data-action="relationship-tab"\]/);
 });
 
-test('controlled live account UI prepares and arms one item before durable execution', async () => {
+test('controlled live account UI confirms one exact item before durable execution', async () => {
   const [imports, queueView, settingsView, handlers] = await Promise.all([
     readFile('src/app.parts/part-01.jsfrag', 'utf8'),
     readFile('src/app.parts/part-02.jsfrag', 'utf8'),
@@ -49,15 +50,18 @@ test('controlled live account UI prepares and arms one item before durable execu
   assert.match(imports, /createIndexedDbActionLedger/);
   assert.match(imports, /saveActionJobCheckpoint/);
   assert.match(queueView, /latestActionJob\.items\.length === 1/);
-  assert.match(queueView, /confirm-action-live/);
-  assert.match(settingsView, /Fixed at one account/);
+  assert.doesNotMatch(queueView, /confirm-action-live|requestExactConfirmation/);
+  assert.doesNotMatch(settingsView, /live-action-enabled|live-action-batch-limit/);
   assert.match(queueView, /data-action="run-action-extension-live"/);
   assert.match(handlers, /'action\.account-live-intent'/);
-  assert.match(handlers, /prepared\.payload\?\.armed !== true/);
+  assert.match(handlers, /const confirmed = window\.confirm\(/);
+  assert.match(handlers, /const confirmation = \{[\s\S]*?action: item\.action,[\s\S]*?count: 1,[\s\S]*?username: item\.username/);
+  assert.match(handlers, /prepared\.payload\?\.ready !== true/);
+  assert.match(handlers, /createExtensionAccountActionDriver\(state\.bridgePairing, \{[\s\S]*?confirmation,[\s\S]*?jobId: job\.id/);
   assert.match(handlers, /const savedState = await saveActionJobCheckpoint\(checkpointJob\)/);
   assert.match(handlers, /state = savedState/);
   assert.match(handlers, /markQueueItem\(state\.queue, item\.queueItemId, 'completed'\)/);
-  assert.match(handlers, /state\.settings\.liveActionBatchLimit = 1/);
+  assert.match(handlers, /liveActionBatchLimit: 1,[\s\S]*?liveActionEnabled: true/);
   assert.equal(
     handlers.indexOf("'action.account-live-intent'")
       < handlers.indexOf('executeReviewedActionJob(job'),
@@ -65,7 +69,7 @@ test('controlled live account UI prepares and arms one item before durable execu
   );
 });
 
-test('controlled live DM UI prepares exactly one item before either ledger or driver', async () => {
+test('controlled live DM UI confirms exactly one item before either ledger or driver', async () => {
   const [imports, messagesView, handlers] = await Promise.all([
     readFile('src/app.parts/part-01.jsfrag', 'utf8'),
     readFile('src/app.parts/part-02.jsfrag', 'utf8'),
@@ -77,7 +81,10 @@ test('controlled live DM UI prepares exactly one item before either ledger or dr
   assert.match(messagesView, /latestDmJob\.items\.length === 1/);
   assert.match(messagesView, /data-action="run-dm-extension-live"/);
   assert.match(handlers, /'action\.dm-live-intent'/);
-  assert.match(handlers, /prepared\.payload\?\.armed !== true/);
+  assert.match(handlers, /'Unsend 1 DM\?'/);
+  assert.match(handlers, /const confirmation = \{[\s\S]*?action: 'unsend',[\s\S]*?conversationId: item\.conversationId,[\s\S]*?count: 1,[\s\S]*?messageId: item\.messageId/);
+  assert.match(handlers, /prepared\.payload\?\.ready !== true/);
+  assert.match(handlers, /createExtensionDmUnsendDriver\(state\.bridgePairing, \{[\s\S]*?confirmation,[\s\S]*?jobId: job\.id/);
   assert.match(handlers, /const savedState = await saveDmJobCheckpoint\(checkpointJob\)/);
   assert.match(handlers, /state = savedState/);
   assert.equal(

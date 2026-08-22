@@ -122,10 +122,16 @@
           width: rect.width,
         }))
         : [];
-      const armed = Boolean(state.accountArm || state.dmArm);
+      const exactConfirmationActive = Boolean(
+        state.accountIntent || state.dmIntent || state.accountArm || state.dmArm,
+      );
       const next = {
-        active: armed || rectangles.length > 0,
-        kind: rectangles.length ? 'native-surface' : armed ? 'armed' : null,
+        active: exactConfirmationActive || rectangles.length > 0,
+        kind: rectangles.length
+          ? 'native-surface'
+          : exactConfirmationActive
+            ? 'exact-confirmation'
+            : null,
         rectangles,
         reviewedRectangles,
         target: state.accountIntent?.username

@@ -124,10 +124,11 @@ The source is one dependency-free script designed for execution in an authentica
 
 The script relies on the existing browser session, a fixed application header,
 private search and relationship GET routes, and pagination tokens. Version
-0.11.0's next-pass checker independently implements that narrow read flow after
+2.0.0's checker independently implements that narrow read flow after
 the operator supplied and requested it: exact username matching, a fixed
 Instagram-origin route allowlist, 50-row pages, bounded iteration, 800–1499 ms
-page pacing, stop support, schema validation, and immediate session/challenge/
+page pacing, a 20-second per-attempt watchdog, two bounded stalled-page retries,
+stop support, schema validation, and immediate session/challenge/
 block/rate-limit stops. It never reads or exports the session and exposes no
 relationship mutation route. The older exact-dialog reader remains a fallback.
 
@@ -201,8 +202,8 @@ the audited rendered-DOM interaction sequence. It does not reuse the source's
 unbounded start control or authorization model. A no-click history pass must
 prove completeness and a finite eligible count before the UI exposes `all`,
 `newest N`, or `oldest N`. The exact thread, scope, count, digest, and expiry are
-frozen into the reviewed plan; a count-specific phrase and final confirmation
-follow. The runner revalidates the full count before opening a message menu,
+frozen into the reviewed plan; one exact thread/count confirmation follows. The
+runner revalidates the full count before opening a message menu,
 reserves the finite plan against a persistent daily allowance, uses the saved
 bounded delay range, selects only one newly surfaced menu and confirmation
 control for its active sent row, verifies removal, and stops on expiry,
@@ -217,15 +218,15 @@ attribute, exact timestamp, exact content digest, and one sent candidate. Dry
 run never invokes hover, menu, dialog, loop, or Unsend paths. Fixture coverage
 proves exact, missing, changed, received, wrong-thread, and ambiguous outcomes.
 
-Extension 0.11.0 preserves the independently migrated source-audited one-message UI
+Extension 2.0.0 preserves the independently migrated source-audited one-message UI
 sequence behind a stronger capability boundary. It retains the exact row's
 source-backed hover and action-control patterns plus exact localized Unsend
 labels. Those labels now live in one frozen UTF-8 module, normalize with NFKC,
 and include an executable `zurücknehmen` regression. The implementation excludes the source's mass loop, automatic retries, randomized
 batch delays, stale-overlay dismissal, generic first-dialog-button selection,
-and descendant-wide ownership guesses. One fresh twice-confirmed item creates a signed
-intent and short-lived tab arm. Independent ledgers reserve before the first
-page control, the arm and token are consumed once, the same row is revalidated
+and descendant-wide ownership guesses. One freshly confirmed exact item creates
+a signed intent and transient tab-scoped capability. Independent ledgers reserve
+before the first page control, the capability and token are consumed once, the same row is revalidated
 before every destructive stage, pre-existing or unbound surfaces reject
 execution, and same-thread removal requires retained-node disconnection plus
 stable identity coverage. Authenticated Instagram DOM and live-action acceptance
@@ -266,12 +267,12 @@ The reviewed sources do not supply a safe live executor that satisfies current
 contracts. The independent action and DM adapters implement transaction
 ordering, durable checkpoints, no-click dry runs, and safe stops.
 
-Extension 0.11.0 includes independently implemented controlled account and DM
+Extension 2.0.0 includes independently implemented controlled account and DM
 drivers;
 it does not copy the SimpleInstaBot executor. A fresh signed job of exactly one
 item creates a sanitized intent. The Instagram sidecar requires the matching
-profile, relationship, action/username phrase, and a 90-second one-use arm. The
-PWA revalidates that arm before reserving the ledger; the extension consumes it
+profile, relationship, and one exact action/target confirmation. The resulting
+transient capability is revalidated before the PWA ledger reservation; the extension consumes it
 before activating one exact Follow control or the exact Following plus
 Unfollow-confirmation controls. Token replay and ambiguous controls fail closed.
 

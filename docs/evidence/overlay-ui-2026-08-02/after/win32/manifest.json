@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-08-22T15:16:07.100Z",
+  "capturedAt": "2026-08-22T17:48:28.676Z",
   "platform": "win32",
-  "builtExtensionVersion": "0.11.0",
+  "builtExtensionVersion": "2.0.0",
   "screenshots": [
     {
       "id": "first-run-walkthrough",
-      "sha256": "707c3c9ff2e148d0a5596bfc99050bd2e51155e8ad77d6db1d1c7c968d6baced",
+      "sha256": "48c1dcba1cfcb1bcda2f716c1d73ded85fbc9c785fcfbf432c2dddcd01ccf635",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -37,7 +37,7 @@
               "Follower checker",
               "Follow / Unfollow",
               "DM Unsend",
-              "Live actions stay locked"
+              "confirm it once"
             ],
             "selector": "[data-ia-role=\"first-run\"]"
           },
@@ -153,7 +153,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Start with a read-only checkInsta AIO adds three tools to Instagram without sending account data elsewhere.Follower checkerScan Followers and Following, then compare usernames on this device.Follow / UnfollowBuild and review an exact target list. Live actions stay locked by default.DM UnsendInspect one conversation before reviewing exact sent messages. Live removal stays locked.Open follower checkerNot now",
+              "text": "Start with a read-only checkInsta AIO adds three tools to Instagram without sending account data elsewhere.Follower checkerScan Followers and Following, then compare usernames on this device.Follow / UnfollowBuild and review an exact finite target list, then confirm it once.DM UnsendCheck one conversation, then confirm the exact thread and eligible count once.Open follower checkerNot now",
               "tone": null,
               "visible": true
             },
@@ -192,7 +192,7 @@
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -260,7 +260,7 @@
     },
     {
       "id": "toolbox-floating-translucent",
-      "sha256": "e6b3fa523054aeb60b3c901f79efe6a1550a07782277788b428fd38a1102c869",
+      "sha256": "d8b954cb3027f20ab2f022a9eceac7d34cbf37020f72b2352b1692c24e7be795",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -293,7 +293,7 @@
               "Follower checker",
               "Follow / Unfollow",
               "DM Unsend",
-              "live locked"
+              "review then confirm"
             ],
             "selector": "[data-ia-role=\"now-content\"] .ia-tool-grid"
           },
@@ -415,7 +415,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Follower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.live lockedDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.live locked",
+              "text": "Follower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             },
@@ -449,11 +449,11 @@
               "disabled": false,
               "exists": true,
               "hidden": false,
-              "backgroundColor": "rgb(255, 255, 255)",
+              "backgroundColor": "rgba(0, 0, 0, 0)",
               "color": "rgb(115, 115, 115)",
-              "textContrast": 4.741667181590045,
+              "textContrast": null,
               "textFillColor": "rgb(115, 115, 115)",
-              "text": "Resize",
+              "text": "",
               "tone": null,
               "visible": true
             },
@@ -480,7 +480,7 @@
               "visible": false
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -538,7 +538,7 @@
     },
     {
       "id": "profile-not-following-no-match",
-      "sha256": "1c4aeb6abbcbd7ca089348f93b048920e8df623d11fbac91ce08963408031a19",
+      "sha256": "ee7e499d8acb6ee89ae0c9c9fae8be251e07904f4dd4eefb05ce2b2158d2c48f",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -668,12 +668,12 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewnot-followingRouteprofileQueueNext: @someone_elseNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.live lockedDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.live locked",
+              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewnot-followingRouteprofileQueueNext: @someone_elseNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -738,7 +738,7 @@
     },
     {
       "id": "profile-following-queue-match",
-      "sha256": "f0d21509f13d61ec5b1d00b435121db8ea034c9c4db582aaad1e69f5f7e8e1ad",
+      "sha256": "e78d93b20e135f054cb705018dad674e19186ba3b3b980a2d714680fe405ee57",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -868,12 +868,12 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewfollowingRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.live lockedDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.live locked",
+              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewfollowingRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -938,7 +938,7 @@
     },
     {
       "id": "profile-ambiguous-safe-stop",
-      "sha256": "ce9c65d8cd0ab604842525eb56a294b7eaefa86e78d1f45068d941a5db24b831",
+      "sha256": "80b3cdf991a51a26c017bc963c5ca90731892e9294c58c5be385bd99688cb761",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -1067,12 +1067,12 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewAmbiguous — safe stopRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.live lockedDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.live locked",
+              "text": "Page readyIdentity and state were read without clicking.@@demo_creatorProfile reviewAmbiguous — safe stopRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -1137,7 +1137,7 @@
     },
     {
       "id": "followers-first-capture",
-      "sha256": "1aa7e418b920ceba0b96810e7d42ecbd1dd455ec7de73cdd92b8462ed10c0b20",
+      "sha256": "f368e642e473d9e10047f545ac0dc96568492c77c5f229f3dc2bd344afb359cf",
       "scenario": {
         "after": "capture-visible",
         "captureListType": "followers",
@@ -1195,11 +1195,11 @@
           "documentWidth": 1425,
           "dock": "right",
           "footer": {
-            "bottom": 882.65625,
+            "bottom": 883,
             "height": 51.78125,
             "left": 1076,
             "right": 1410,
-            "top": 830.875,
+            "top": 831.21875,
             "width": 334
           },
           "header": {
@@ -1385,12 +1385,17 @@
             {
               "height": 44,
               "label": "",
-              "width": 272
+              "width": 257
             },
             {
               "height": 44,
               "label": "Check Followers + Following",
               "width": 207.734375
+            },
+            {
+              "height": 44,
+              "label": "Download comparison report",
+              "width": 212.71875
             },
             {
               "height": 44,
@@ -1405,7 +1410,7 @@
             {
               "height": 44,
               "label": "FollowingFollowers",
-              "width": 302
+              "width": 287
             },
             {
               "height": 44,
@@ -1416,6 +1421,11 @@
               "height": 44,
               "label": "Download selected list",
               "width": 168.875
+            },
+            {
+              "height": 44,
+              "label": "Download machine-readable JSON",
+              "width": 247.359375
             },
             {
               "height": 44,
@@ -1430,7 +1440,7 @@
     },
     {
       "id": "following-repeated-capture",
-      "sha256": "465c44c20fc4316373ab9383f5a5d6a41d60dab83a3abd67bfb9ac603e382630",
+      "sha256": "9260b58301f6ca54185730361c4588c3a231d707530848f07b4d4969d2885c0f",
       "scenario": {
         "after": "capture-visible",
         "captureListType": "following",
@@ -1488,11 +1498,11 @@
           "documentWidth": 1425,
           "dock": "right",
           "footer": {
-            "bottom": 882.65625,
+            "bottom": 883,
             "height": 51.78125,
             "left": 1076,
             "right": 1410,
-            "top": 830.875,
+            "top": 831.21875,
             "width": 334
           },
           "header": {
@@ -1678,12 +1688,17 @@
             {
               "height": 44,
               "label": "",
-              "width": 272
+              "width": 257
             },
             {
               "height": 44,
               "label": "Check Followers + Following",
               "width": 207.734375
+            },
+            {
+              "height": 44,
+              "label": "Download comparison report",
+              "width": 212.71875
             },
             {
               "height": 44,
@@ -1698,7 +1713,7 @@
             {
               "height": 44,
               "label": "FollowingFollowers",
-              "width": 302
+              "width": 287
             },
             {
               "height": 44,
@@ -1709,6 +1724,11 @@
               "height": 44,
               "label": "Download selected list",
               "width": 168.875
+            },
+            {
+              "height": 44,
+              "label": "Download machine-readable JSON",
+              "width": 247.359375
             },
             {
               "height": 44,
@@ -1723,7 +1743,7 @@
     },
     {
       "id": "checker-filtered-results",
-      "sha256": "0298f2ce4d5b416e2047aecb30aed2e10c1c1f170127a99e3c9f212b5408a6ef",
+      "sha256": "b347802b64338dfc4c41ad9510ddf38194296f97c1472b4358f35b3f2353b842",
       "scenario": {
         "after": "filter-checker-results",
         "captureListType": null,
@@ -1927,7 +1947,7 @@
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -1984,6 +2004,11 @@
             },
             {
               "height": 44,
+              "label": "Download comparison report",
+              "width": 212.71875
+            },
+            {
+              "height": 44,
               "label": "Not following me backI do not follow backMutual followers",
               "width": 139.5
             },
@@ -2019,6 +2044,11 @@
             },
             {
               "height": 44,
+              "label": "Download machine-readable JSON",
+              "width": 247.359375
+            },
+            {
+              "height": 44,
               "label": "Clear checker",
               "width": 110.609375
             }
@@ -2030,7 +2060,7 @@
     },
     {
       "id": "checker-authenticated-read",
-      "sha256": "d765ee44a3e73302c635b5d9110f4a9cb3ca1a7aa000017e77c70022402a9a71",
+      "sha256": "24ce0c623a0fc14047d241a18435c8de2d289ac2a44f196c05c399f1959d6a56",
       "scenario": {
         "after": "check-account-relationships",
         "captureListType": null,
@@ -2334,6 +2364,11 @@
             },
             {
               "height": 44,
+              "label": "Download comparison report",
+              "width": 212.71875
+            },
+            {
+              "height": 44,
               "label": "Not following me backI do not follow backMutual followers",
               "width": 139.5
             },
@@ -2369,6 +2404,11 @@
             },
             {
               "height": 44,
+              "label": "Download machine-readable JSON",
+              "width": 247.359375
+            },
+            {
+              "height": 44,
               "label": "Clear checker",
               "width": 110.609375
             }
@@ -2379,8 +2419,8 @@
       }
     },
     {
-      "id": "queue-locked",
-      "sha256": "674a12a6a99975e83ea00cb82cc72e17ffc451f7a9bc2fb179f3e6e8b86cbb5d",
+      "id": "queue-action-first",
+      "sha256": "b13096a4ccc7613a7218a19f10d6a72bc8075a890ad2f89bc04558ae546e9ffe",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -2406,23 +2446,29 @@
         "zoom": 1,
         "semantics": [
           {
-            "equals": "Live actions locked",
-            "selector": "[data-ia-role=\"live-title\"]"
-          },
-          {
-            "equals": "locked",
-            "tone": "warning",
-            "selector": "[data-ia-role=\"live-badge\"]"
+            "includes": [
+              "Follow people",
+              "Unfollow people"
+            ],
+            "selector": "[data-ia-role=\"bot-action\"]"
           },
           {
             "includes": [
-              "Confirm one live item in the paired PWA"
+              "Current exact profile",
+              "People who follow you that you do not follow"
             ],
-            "selector": "[data-ia-role=\"live-detail\"]"
+            "selector": "[data-ia-role=\"bot-source\"]"
           },
           {
-            "disabled": true,
-            "selector": "[data-ia-action=\"arm-account-live\"]"
+            "includes": [
+              "Review",
+              "Follow target"
+            ],
+            "selector": "[data-ia-action=\"bot-review\"]"
+          },
+          {
+            "exists": false,
+            "selector": "[data-ia-role=\"bot-start\"]"
           }
         ],
         "metrics": {
@@ -2509,74 +2555,72 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {
-            "[data-ia-role=\"live-title\"]": {
+            "[data-ia-role=\"bot-action\"]": {
               "attributes": {
-                "data-ia-role": "live-title"
+                "class": "ia-select",
+                "id": "ia-bot-action",
+                "data-ia-role": "bot-action"
               },
-              "disabled": null,
+              "disabled": false,
               "exists": true,
               "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
+              "backgroundColor": "rgb(255, 255, 255)",
               "color": "rgb(38, 38, 38)",
-              "textContrast": null,
+              "textContrast": 15.133529408889883,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Live actions locked",
+              "text": "Follow peopleUnfollow people",
               "tone": null,
               "visible": true
             },
-            "[data-ia-role=\"live-badge\"]": {
+            "[data-ia-role=\"bot-source\"]": {
               "attributes": {
-                "class": "ia-badge",
-                "data-ia-role": "live-badge",
-                "data-tone": "warning"
+                "class": "ia-select",
+                "id": "ia-bot-source",
+                "data-ia-role": "bot-source"
               },
-              "disabled": null,
+              "disabled": false,
               "exists": true,
               "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(155, 93, 9)",
-              "textContrast": null,
-              "textFillColor": "rgb(155, 93, 9)",
-              "text": "locked",
-              "tone": "warning",
-              "visible": true
-            },
-            "[data-ia-role=\"live-detail\"]": {
-              "attributes": {
-                "class": "ia-gate-detail",
-                "data-ia-role": "live-detail"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(115, 115, 115)",
-              "textContrast": null,
-              "textFillColor": "rgb(115, 115, 115)",
-              "text": "Confirm one live item in the paired PWA before an exact arm is even available.",
+              "backgroundColor": "rgb(255, 255, 255)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": 15.133529408889883,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "tone": null,
               "visible": true
             },
-            "[data-ia-action=\"arm-account-live\"]": {
+            "[data-ia-action=\"bot-review\"]": {
               "attributes": {
-                "class": "ia-button ia-button--danger",
+                "class": "ia-button",
                 "type": "button",
-                "data-ia-action": "arm-account-live",
-                "disabled": ""
+                "data-ia-action": "bot-review"
               },
-              "disabled": true,
+              "disabled": false,
               "exists": true,
               "hidden": false,
-              "backgroundColor": "rgb(173, 48, 37)",
-              "color": "rgb(255, 255, 255)",
-              "textContrast": 6.508918180944025,
-              "textFillColor": "rgb(255, 255, 255)",
-              "text": "Arm exact action",
+              "backgroundColor": "rgb(250, 250, 250)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": 14.498978405673947,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "Review 1 Follow target",
               "tone": null,
               "visible": true
+            },
+            "[data-ia-role=\"bot-start\"]": {
+              "attributes": {},
+              "disabled": null,
+              "exists": false,
+              "hidden": null,
+              "backgroundColor": "",
+              "color": "",
+              "textContrast": null,
+              "textFillColor": "",
+              "text": "",
+              "tone": null,
+              "visible": false
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -2638,28 +2682,18 @@
             },
             {
               "height": 44,
-              "label": "Arm exact action",
-              "width": 133.21875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 257
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 257
             },
             {
               "height": 44,
-              "label": "",
-              "width": 257
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -2673,8 +2707,8 @@
       }
     },
     {
-      "id": "queue-exact-target-ready",
-      "sha256": "50d06b0a28ce0d8eadcc0cfa615485453154ca6324dffbae3238856b15763b10",
+      "id": "queue-exact-target-review",
+      "sha256": "d6d298ac015d80eff81a6fc95c6eef996d22caff74fe0884781e3c2c03d79f7e",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -2683,7 +2717,7 @@
         "forcedColors": false,
         "firstRun": true,
         "layout": "docked",
-        "mode": "qa-account-ready",
+        "mode": "qa-queue-locked",
         "opacity": null,
         "open": true,
         "pairing": "action",
@@ -2700,24 +2734,30 @@
         "zoom": 1,
         "semantics": [
           {
-            "equals": "unfollow @demo_creator",
-            "selector": "[data-ia-role=\"live-title\"]"
-          },
-          {
-            "equals": "ready",
-            "tone": "warning",
-            "selector": "[data-ia-role=\"live-badge\"]"
+            "hidden": false,
+            "visible": true,
+            "includes": [
+              "Run composer",
+              "Inspect exact profiles"
+            ],
+            "selector": "[data-ia-role=\"bot-disclosure\"]"
           },
           {
             "includes": [
-              "exactly match the signed intent",
-              "Arming alone does not click"
+              "Current exact profile"
             ],
-            "selector": "[data-ia-role=\"live-detail\"]"
+            "selector": "[data-ia-role=\"bot-source\"]"
+          },
+          {
+            "hidden": true,
+            "selector": "[data-ia-role=\"bot-count-field\"]"
           },
           {
             "disabled": false,
-            "selector": "[data-ia-action=\"arm-account-live\"]"
+            "includes": [
+              "Review 1"
+            ],
+            "selector": "[data-ia-action=\"bot-review\"]"
           }
         ],
         "metrics": {
@@ -2804,73 +2844,76 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {
-            "[data-ia-role=\"live-title\"]": {
+            "[data-ia-role=\"bot-disclosure\"]": {
               "attributes": {
-                "data-ia-role": "live-title"
+                "class": "ia-primary-action",
+                "data-ia-role": "bot-disclosure",
+                "aria-labelledby": "ia-bot-composer-title"
               },
               "disabled": null,
               "exists": true,
               "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
+              "backgroundColor": "color(srgb 1 1 1 / 0.96)",
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "unfollow @demo_creator",
+              "text": "Run composerInspect exact profiles before any live action.idle What do you want to do?Follow peopleUnfollow people Choose compatible targetsCurrent exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items How many this run Each target is opened, verified, and acted on one at a time with randomised pacing. Review 1 Follow targetStart Follow on reviewed accounts The run stops itself on any rate limit, checkpoint, block, or unexpected screen. Instagram's terms discourage automated following; you are responsible for how you pace it.",
               "tone": null,
               "visible": true
             },
-            "[data-ia-role=\"live-badge\"]": {
+            "[data-ia-role=\"bot-source\"]": {
               "attributes": {
-                "class": "ia-badge",
-                "data-ia-role": "live-badge",
-                "data-tone": "warning"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(155, 93, 9)",
-              "textContrast": null,
-              "textFillColor": "rgb(155, 93, 9)",
-              "text": "ready",
-              "tone": "warning",
-              "visible": true
-            },
-            "[data-ia-role=\"live-detail\"]": {
-              "attributes": {
-                "class": "ia-gate-detail",
-                "data-ia-role": "live-detail"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(115, 115, 115)",
-              "textContrast": null,
-              "textFillColor": "rgb(115, 115, 115)",
-              "text": "This profile and relationship exactly match the signed intent. Arming alone does not click.",
-              "tone": null,
-              "visible": true
-            },
-            "[data-ia-action=\"arm-account-live\"]": {
-              "attributes": {
-                "class": "ia-button ia-button--danger",
-                "type": "button",
-                "data-ia-action": "arm-account-live"
+                "class": "ia-select",
+                "id": "ia-bot-source",
+                "data-ia-role": "bot-source"
               },
               "disabled": false,
               "exists": true,
               "hidden": false,
-              "backgroundColor": "rgb(173, 48, 37)",
-              "color": "rgb(255, 255, 255)",
-              "textContrast": 6.508918180944025,
-              "textFillColor": "rgb(255, 255, 255)",
-              "text": "Arm one unfollow",
+              "backgroundColor": "rgb(255, 255, 255)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": 15.133529408889883,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"bot-count-field\"]": {
+              "attributes": {
+                "class": "ia-field",
+                "data-ia-role": "bot-count-field",
+                "hidden": ""
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": true,
+              "backgroundColor": "rgba(0, 0, 0, 0)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": null,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "How many this run",
+              "tone": null,
+              "visible": false
+            },
+            "[data-ia-action=\"bot-review\"]": {
+              "attributes": {
+                "class": "ia-button",
+                "type": "button",
+                "data-ia-action": "bot-review"
+              },
+              "disabled": false,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(250, 250, 250)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": 14.498978405673947,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "Review 1 Follow target",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -2939,33 +2982,18 @@
             },
             {
               "height": 44,
-              "label": "Arm one unfollow",
-              "width": 140.4375
-            },
-            {
-              "height": 44,
-              "label": "Cancel intent",
-              "width": 109.171875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 257
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 257
             },
             {
               "height": 44,
-              "label": "",
-              "width": 257
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -2979,8 +3007,8 @@
       }
     },
     {
-      "id": "queue-armed-countdown",
-      "sha256": "dd23ce110670342ed97a189721b855bcecfcb09784f660b0a96c640b7312f821",
+      "id": "queue-confirmation-collision",
+      "sha256": "88b321d20e5af0f458233c375d58627688a013c1935507117ee2136d64f0f834",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -3006,27 +3034,13 @@
         "zoom": 1,
         "semantics": [
           {
-            "equals": "unfollow @demo_creator",
-            "selector": "[data-ia-role=\"live-title\"]"
-          },
-          {
-            "equals": "armed",
-            "tone": "danger",
-            "selector": "[data-ia-role=\"live-badge\"]"
-          },
-          {
-            "hidden": false,
             "includes": [
-              "s remaining"
+              "@demo_creator"
             ],
-            "selector": "[data-ia-role=\"live-countdown\"]"
+            "selector": "[data-ia-role=\"collision-target\"]"
           },
           {
-            "disabled": true,
-            "selector": "[data-ia-action=\"arm-account-live\"]"
-          },
-          {
-            "equals": "One-use arm active · page controls remain untouched",
+            "equals": "Exact confirmation active · page controls remain untouched",
             "selector": "[data-ia-role=\"collision-state\"]"
           }
         ],
@@ -3079,9 +3093,9 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {
-            "[data-ia-role=\"live-title\"]": {
+            "[data-ia-role=\"collision-target\"]": {
               "attributes": {
-                "data-ia-role": "live-title"
+                "data-ia-role": "collision-target"
               },
               "disabled": null,
               "exists": true,
@@ -3090,60 +3104,9 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "unfollow @demo_creator",
+              "text": "@demo_creator",
               "tone": null,
-              "visible": false
-            },
-            "[data-ia-role=\"live-badge\"]": {
-              "attributes": {
-                "class": "ia-badge",
-                "data-ia-role": "live-badge",
-                "data-tone": "danger"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(173, 48, 37)",
-              "textContrast": null,
-              "textFillColor": "rgb(173, 48, 37)",
-              "text": "armed",
-              "tone": "danger",
-              "visible": false
-            },
-            "[data-ia-role=\"live-countdown\"]": {
-              "attributes": {
-                "class": "ia-gate-detail",
-                "data-ia-role": "live-countdown"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(115, 115, 115)",
-              "textContrast": null,
-              "textFillColor": "rgb(115, 115, 115)",
-              "text": "90s remaining",
-              "tone": null,
-              "visible": false
-            },
-            "[data-ia-action=\"arm-account-live\"]": {
-              "attributes": {
-                "class": "ia-button ia-button--danger",
-                "type": "button",
-                "data-ia-action": "arm-account-live",
-                "disabled": ""
-              },
-              "disabled": true,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgb(173, 48, 37)",
-              "color": "rgb(255, 255, 255)",
-              "textContrast": 6.508918180944025,
-              "textFillColor": "rgb(255, 255, 255)",
-              "text": "One action armed",
-              "tone": null,
-              "visible": false
+              "visible": true
             },
             "[data-ia-role=\"collision-state\"]": {
               "attributes": {
@@ -3156,12 +3119,12 @@
               "color": "rgb(115, 115, 115)",
               "textContrast": null,
               "textFillColor": "rgb(115, 115, 115)",
-              "text": "One-use arm active · page controls remain untouched",
+              "text": "Exact confirmation active · page controls remain untouched",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": {
             "bottom": 886,
             "height": 67,
@@ -3186,17 +3149,17 @@
       }
     },
     {
-      "id": "queue-arm-expired",
-      "sha256": "eae0ba0a612fd1bbcafd34cf0263503017a3459ab4bf7deda42daf8e62ee76c9",
+      "id": "queue-compatible-source-options",
+      "sha256": "d587edbb5dab6b198b0527f2d10c6064f19a7c6bab7569ff1c4856e530f5a03b",
       "scenario": {
-        "after": "wait-account-expired",
+        "after": null,
         "captureListType": null,
         "density": "comfortable",
         "dock": "right",
         "forcedColors": false,
         "firstRun": true,
         "layout": "docked",
-        "mode": "qa-account-expiring",
+        "mode": "qa-queue-locked",
         "opacity": null,
         "open": true,
         "pairing": "action",
@@ -3213,32 +3176,30 @@
         "zoom": 1,
         "semantics": [
           {
-            "equals": "unfollow @demo_creator",
-            "selector": "[data-ia-role=\"live-title\"]"
-          },
-          {
-            "equals": "expired",
-            "tone": "danger",
-            "selector": "[data-ia-role=\"live-badge\"]"
+            "includes": [
+              "Follow people",
+              "Unfollow people"
+            ],
+            "selector": "[data-ia-role=\"bot-action\"]"
           },
           {
             "includes": [
-              "prior arm expired",
-              "old expiry is never extended"
+              "Scanned Followers",
+              "Compatible queue items"
             ],
-            "selector": "[data-ia-role=\"live-detail\"]"
+            "selector": "[data-ia-role=\"bot-source\"]"
           },
           {
-            "hidden": true,
-            "selector": "[data-ia-role=\"live-countdown\"]"
-          },
-          {
-            "disabled": false,
-            "selector": "[data-ia-action=\"arm-account-live\"]"
+            "includes": [
+              "Run composer",
+              "Each target is opened",
+              "rate limit"
+            ],
+            "selector": "[data-ia-role=\"bot-disclosure\"]"
           }
         ],
         "metrics": {
-          "activeElementSection": null,
+          "activeElementSection": "queue",
           "adaptiveDock": null,
           "adaptiveWidth": null,
           "bodyWidth": 1425,
@@ -3321,90 +3282,59 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {
-            "[data-ia-role=\"live-title\"]": {
+            "[data-ia-role=\"bot-action\"]": {
               "attributes": {
-                "data-ia-role": "live-title"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(38, 38, 38)",
-              "textContrast": null,
-              "textFillColor": "rgb(38, 38, 38)",
-              "text": "unfollow @demo_creator",
-              "tone": null,
-              "visible": true
-            },
-            "[data-ia-role=\"live-badge\"]": {
-              "attributes": {
-                "class": "ia-badge",
-                "data-ia-role": "live-badge",
-                "data-tone": "danger"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(173, 48, 37)",
-              "textContrast": null,
-              "textFillColor": "rgb(173, 48, 37)",
-              "text": "expired",
-              "tone": "danger",
-              "visible": true
-            },
-            "[data-ia-role=\"live-detail\"]": {
-              "attributes": {
-                "class": "ia-gate-detail",
-                "data-ia-role": "live-detail"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(115, 115, 115)",
-              "textContrast": null,
-              "textFillColor": "rgb(115, 115, 115)",
-              "text": "The prior arm expired. Type the exact phrase again to create a new 90-second arm; the old expiry is never extended.",
-              "tone": null,
-              "visible": true
-            },
-            "[data-ia-role=\"live-countdown\"]": {
-              "attributes": {
-                "class": "ia-gate-detail",
-                "data-ia-role": "live-countdown",
-                "hidden": ""
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": true,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(115, 115, 115)",
-              "textContrast": null,
-              "textFillColor": "rgb(115, 115, 115)",
-              "text": "1s remaining",
-              "tone": null,
-              "visible": false
-            },
-            "[data-ia-action=\"arm-account-live\"]": {
-              "attributes": {
-                "class": "ia-button ia-button--danger",
-                "type": "button",
-                "data-ia-action": "arm-account-live"
+                "class": "ia-select",
+                "id": "ia-bot-action",
+                "data-ia-role": "bot-action"
               },
               "disabled": false,
               "exists": true,
               "hidden": false,
-              "backgroundColor": "rgb(173, 48, 37)",
-              "color": "rgb(255, 255, 255)",
-              "textContrast": 6.508918180944025,
-              "textFillColor": "rgb(255, 255, 255)",
-              "text": "Arm fresh unfollow",
+              "backgroundColor": "rgb(255, 255, 255)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": 15.133529408889883,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "Follow peopleUnfollow people",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"bot-source\"]": {
+              "attributes": {
+                "class": "ia-select",
+                "id": "ia-bot-source",
+                "data-ia-role": "bot-source"
+              },
+              "disabled": false,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(255, 255, 255)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": 15.133529408889883,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"bot-disclosure\"]": {
+              "attributes": {
+                "class": "ia-primary-action",
+                "data-ia-role": "bot-disclosure",
+                "aria-labelledby": "ia-bot-composer-title"
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "color(srgb 1 1 1 / 0.96)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": null,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "Run composerInspect exact profiles before any live action.idle What do you want to do?Follow peopleUnfollow people Choose compatible targetsCurrent exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items How many this run Each target is opened, verified, and acted on one at a time with randomised pacing. Review 1 Follow targetStart Follow on reviewed accounts The run stops itself on any rate limit, checkpoint, block, or unexpected screen. Instagram's terms discourage automated following; you are responsible for how you pace it.",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -3473,33 +3403,18 @@
             },
             {
               "height": 44,
-              "label": "Arm fresh unfollow",
-              "width": 147.984375
-            },
-            {
-              "height": 44,
-              "label": "Cancel intent",
-              "width": 109.171875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 257
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 257
             },
             {
               "height": 44,
-              "label": "",
-              "width": 257
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -3514,7 +3429,7 @@
     },
     {
       "id": "messages-evidence-only",
-      "sha256": "51e4bfa4c0158147f844b55a69bb65b6565dbc65565b1fa05142734990da1f81",
+      "sha256": "48735830968192e9d842fcb3760ce69d066ec74260de95ad3bf81f3b9f8f68c5",
       "scenario": {
         "after": "inspect-messages",
         "captureListType": null,
@@ -3555,9 +3470,9 @@
             "selector": "[data-ia-role=\"message-state-detail\"]"
           },
           {
-            "equals": "locked",
-            "tone": "neutral",
-            "selector": "[data-ia-role=\"dm-live-badge\"]"
+            "disabled": false,
+            "equals": "Unsend DMs",
+            "selector": "[data-ia-action=\"mass-unsend\"]"
           }
         ],
         "metrics": {
@@ -3685,25 +3600,25 @@
               "color": "rgb(115, 115, 115)",
               "textContrast": null,
               "textFillColor": "rgb(115, 115, 115)",
-              "text": "Read visible evidence or check the full conversation. Unsend stays unavailable until the eligible count is resolved.",
+              "text": "Read visible evidence or check the full conversation. Unsend DMs resolves the eligible count before asking for confirmation.",
               "tone": null,
               "visible": true
             },
-            "[data-ia-role=\"dm-live-badge\"]": {
+            "[data-ia-action=\"mass-unsend\"]": {
               "attributes": {
-                "class": "ia-badge",
-                "data-ia-role": "dm-live-badge",
-                "data-tone": "neutral"
+                "class": "ia-button ia-button--danger",
+                "type": "button",
+                "data-ia-action": "mass-unsend"
               },
-              "disabled": null,
+              "disabled": false,
               "exists": true,
               "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(115, 115, 115)",
-              "textContrast": null,
-              "textFillColor": "rgb(115, 115, 115)",
-              "text": "locked",
-              "tone": "neutral",
+              "backgroundColor": "rgb(173, 48, 37)",
+              "color": "rgb(255, 255, 255)",
+              "textContrast": 6.508918180944025,
+              "textFillColor": "rgb(255, 255, 255)",
+              "text": "Unsend DMs",
+              "tone": null,
               "visible": true
             }
           },
@@ -3761,18 +3676,18 @@
             },
             {
               "height": 44,
-              "label": "Check conversation",
-              "width": 149.46875
+              "label": "Unsend DMs",
+              "width": 257
             },
             {
               "height": 44,
               "label": "All eligible sent messagesNewest NOldest N",
-              "width": 257
+              "width": 287
             },
             {
               "height": 44,
-              "label": "Check conversation first",
-              "width": 257
+              "label": "Check conversation",
+              "width": 149.46875
             },
             {
               "height": 44,
@@ -3783,11 +3698,6 @@
               "height": 44,
               "label": "Download evidence",
               "width": 150.875
-            },
-            {
-              "height": 44,
-              "label": "Arm exact message",
-              "width": 149.171875
             }
           ],
           "viewTitle": "DM Unsend",
@@ -3796,8 +3706,8 @@
       }
     },
     {
-      "id": "messages-exact-target-ready",
-      "sha256": "41f52b612ab8d325d21060d3b0ab18c8bf760d3a10bd78c1b2e76aa6a9383393",
+      "id": "messages-permanent-primary",
+      "sha256": "556cff9a73e14d5a0cdc7cec70fc6ae6b6a55cc1b700c437ef928932e3a90801",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -3806,7 +3716,7 @@
         "forcedColors": false,
         "firstRun": true,
         "layout": "docked",
-        "mode": "qa-messages-ready",
+        "mode": "messages-exact",
         "opacity": null,
         "open": true,
         "pairing": "action",
@@ -3823,24 +3733,21 @@
         "zoom": 1,
         "semantics": [
           {
-            "equals": "Message sent-1",
-            "selector": "[data-ia-role=\"dm-live-title\"]"
-          },
-          {
-            "equals": "ready",
-            "tone": "warning",
-            "selector": "[data-ia-role=\"dm-live-badge\"]"
+            "disabled": false,
+            "equals": "Unsend DMs",
+            "selector": "[data-ia-action=\"mass-unsend\"]"
           },
           {
             "includes": [
-              "Exactly one rendered sent-message identity matches",
-              "Arming does not open its menu"
+              "All eligible sent messages",
+              "Newest N",
+              "Oldest N"
             ],
-            "selector": "[data-ia-role=\"dm-live-detail\"]"
+            "selector": "[data-ia-role=\"unsend-scope\"]"
           },
           {
-            "disabled": false,
-            "selector": "[data-ia-action=\"arm-dm-live\"]"
+            "equals": "Check conversation",
+            "selector": "[data-ia-action=\"scan-sent-dms\"]"
           }
         ],
         "metrics": {
@@ -3853,11 +3760,11 @@
           "documentWidth": 1440,
           "dock": "left",
           "footer": {
-            "bottom": 883,
+            "bottom": 837.859375,
             "height": 69.171875,
             "left": 139,
             "right": 473,
-            "top": 813.828125,
+            "top": 768.6875,
             "width": 334
           },
           "header": {
@@ -3905,18 +3812,18 @@
           "opacity": "88%",
           "overflowing": [],
           "panel": {
-            "bottom": 882,
-            "height": 828,
+            "bottom": 838.859375,
+            "height": 784.859375,
             "left": 14,
             "right": 474,
             "top": 54,
             "width": 460
           },
-          "panelAreaShare": 0.29388888888888887,
+          "panelAreaShare": 0.2785766300154321,
           "panelHorizontalOverflow": 0,
           "presentation": {
-            "bottom": 882,
-            "height": 828,
+            "bottom": 838.859375,
+            "height": 784.859375,
             "left": 14,
             "right": 474,
             "top": 54,
@@ -3927,59 +3834,11 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {
-            "[data-ia-role=\"dm-live-title\"]": {
-              "attributes": {
-                "data-ia-role": "dm-live-title"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(38, 38, 38)",
-              "textContrast": null,
-              "textFillColor": "rgb(38, 38, 38)",
-              "text": "Message sent-1",
-              "tone": null,
-              "visible": true
-            },
-            "[data-ia-role=\"dm-live-badge\"]": {
-              "attributes": {
-                "class": "ia-badge",
-                "data-ia-role": "dm-live-badge",
-                "data-tone": "warning"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(155, 93, 9)",
-              "textContrast": null,
-              "textFillColor": "rgb(155, 93, 9)",
-              "text": "ready",
-              "tone": "warning",
-              "visible": true
-            },
-            "[data-ia-role=\"dm-live-detail\"]": {
-              "attributes": {
-                "class": "ia-gate-detail",
-                "data-ia-role": "dm-live-detail"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(115, 115, 115)",
-              "textContrast": null,
-              "textFillColor": "rgb(115, 115, 115)",
-              "text": "Exactly one rendered sent-message identity matches. Arming does not open its menu.",
-              "tone": null,
-              "visible": true
-            },
-            "[data-ia-action=\"arm-dm-live\"]": {
+            "[data-ia-action=\"mass-unsend\"]": {
               "attributes": {
                 "class": "ia-button ia-button--danger",
                 "type": "button",
-                "data-ia-action": "arm-dm-live"
+                "data-ia-action": "mass-unsend"
               },
               "disabled": false,
               "exists": true,
@@ -3988,12 +3847,46 @@
               "color": "rgb(255, 255, 255)",
               "textContrast": 6.508918180944025,
               "textFillColor": "rgb(255, 255, 255)",
-              "text": "Arm one Unsend",
+              "text": "Unsend DMs",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"unsend-scope\"]": {
+              "attributes": {
+                "class": "ia-select",
+                "id": "ia-unsend-scope",
+                "data-ia-role": "unsend-scope"
+              },
+              "disabled": false,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(255, 255, 255)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": 15.133529408889883,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "All eligible sent messagesNewest NOldest N",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-action=\"scan-sent-dms\"]": {
+              "attributes": {
+                "class": "ia-button ia-button--quiet",
+                "type": "button",
+                "data-ia-action": "scan-sent-dms"
+              },
+              "disabled": false,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(250, 250, 250)",
+              "color": "rgb(38, 38, 38)",
+              "textContrast": 14.498978405673947,
+              "textFillColor": "rgb(38, 38, 38)",
+              "text": "Check conversation",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 237.578125,
@@ -4047,18 +3940,18 @@
             },
             {
               "height": 44,
-              "label": "Check conversation",
-              "width": 149.46875
+              "label": "Unsend DMs",
+              "width": 272
             },
             {
               "height": 44,
               "label": "All eligible sent messagesNewest NOldest N",
-              "width": 257
+              "width": 302
             },
             {
               "height": 44,
-              "label": "Check conversation first",
-              "width": 257
+              "label": "Check conversation",
+              "width": 149.46875
             },
             {
               "height": 44,
@@ -4069,16 +3962,6 @@
               "height": 44,
               "label": "Download evidence",
               "width": 150.875
-            },
-            {
-              "height": 44,
-              "label": "Arm one Unsend",
-              "width": 132.75
-            },
-            {
-              "height": 44,
-              "label": "Cancel intent",
-              "width": 109.171875
             }
           ],
           "viewTitle": "DM Unsend",
@@ -4087,8 +3970,8 @@
       }
     },
     {
-      "id": "messages-wrong-conversation",
-      "sha256": "41f52b612ab8d325d21060d3b0ab18c8bf760d3a10bd78c1b2e76aa6a9383393",
+      "id": "messages-thread-bound-primary",
+      "sha256": "556cff9a73e14d5a0cdc7cec70fc6ae6b6a55cc1b700c437ef928932e3a90801",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -4097,7 +3980,7 @@
         "forcedColors": false,
         "firstRun": true,
         "layout": "docked",
-        "mode": "qa-messages-wrong",
+        "mode": "messages-exact",
         "opacity": null,
         "open": true,
         "pairing": "action",
@@ -4114,23 +3997,19 @@
         "zoom": 1,
         "semantics": [
           {
-            "equals": "Message sent-1",
-            "selector": "[data-ia-role=\"dm-live-title\"]"
+            "equals": "Conversation ready",
+            "selector": "[data-ia-role=\"message-state-title\"]"
           },
           {
-            "equals": "open message",
-            "tone": "danger",
-            "selector": "[data-ia-role=\"dm-live-badge\"]"
+            "disabled": false,
+            "equals": "Unsend DMs",
+            "selector": "[data-ia-action=\"mass-unsend\"]"
           },
           {
             "includes": [
-              "Open the exact conversation"
+              "first checks this conversation"
             ],
-            "selector": "[data-ia-role=\"dm-live-detail\"]"
-          },
-          {
-            "disabled": true,
-            "selector": "[data-ia-action=\"arm-dm-live\"]"
+            "selector": "[data-ia-role=\"unsend-detail\"]"
           }
         ],
         "metrics": {
@@ -4143,11 +4022,11 @@
           "documentWidth": 1440,
           "dock": "left",
           "footer": {
-            "bottom": 883,
+            "bottom": 837.859375,
             "height": 69.171875,
             "left": 139,
             "right": 473,
-            "top": 813.828125,
+            "top": 768.6875,
             "width": 334
           },
           "header": {
@@ -4195,18 +4074,18 @@
           "opacity": "88%",
           "overflowing": [],
           "panel": {
-            "bottom": 882,
-            "height": 828,
+            "bottom": 838.859375,
+            "height": 784.859375,
             "left": 14,
             "right": 474,
             "top": 54,
             "width": 460
           },
-          "panelAreaShare": 0.29388888888888887,
+          "panelAreaShare": 0.2785766300154321,
           "panelHorizontalOverflow": 0,
           "presentation": {
-            "bottom": 882,
-            "height": 828,
+            "bottom": 838.859375,
+            "height": 784.859375,
             "left": 14,
             "right": 474,
             "top": 54,
@@ -4217,9 +4096,9 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {
-            "[data-ia-role=\"dm-live-title\"]": {
+            "[data-ia-role=\"message-state-title\"]": {
               "attributes": {
-                "data-ia-role": "dm-live-title"
+                "data-ia-role": "message-state-title"
               },
               "disabled": null,
               "exists": true,
@@ -4228,31 +4107,31 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Message sent-1",
+              "text": "Conversation ready",
               "tone": null,
               "visible": true
             },
-            "[data-ia-role=\"dm-live-badge\"]": {
+            "[data-ia-action=\"mass-unsend\"]": {
               "attributes": {
-                "class": "ia-badge",
-                "data-ia-role": "dm-live-badge",
-                "data-tone": "danger"
+                "class": "ia-button ia-button--danger",
+                "type": "button",
+                "data-ia-action": "mass-unsend"
               },
-              "disabled": null,
+              "disabled": false,
               "exists": true,
               "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(173, 48, 37)",
-              "textContrast": null,
-              "textFillColor": "rgb(173, 48, 37)",
-              "text": "open message",
-              "tone": "danger",
+              "backgroundColor": "rgb(173, 48, 37)",
+              "color": "rgb(255, 255, 255)",
+              "textContrast": 6.508918180944025,
+              "textFillColor": "rgb(255, 255, 255)",
+              "text": "Unsend DMs",
+              "tone": null,
               "visible": true
             },
-            "[data-ia-role=\"dm-live-detail\"]": {
+            "[data-ia-role=\"unsend-detail\"]": {
               "attributes": {
                 "class": "ia-gate-detail",
-                "data-ia-role": "dm-live-detail"
+                "data-ia-role": "unsend-detail"
               },
               "disabled": null,
               "exists": true,
@@ -4261,30 +4140,12 @@
               "color": "rgb(115, 115, 115)",
               "textContrast": null,
               "textFillColor": "rgb(115, 115, 115)",
-              "text": "Open the exact conversation and keep sent message sent-1 rendered.",
-              "tone": null,
-              "visible": true
-            },
-            "[data-ia-action=\"arm-dm-live\"]": {
-              "attributes": {
-                "class": "ia-button ia-button--danger",
-                "type": "button",
-                "data-ia-action": "arm-dm-live",
-                "disabled": ""
-              },
-              "disabled": true,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgb(173, 48, 37)",
-              "color": "rgb(255, 255, 255)",
-              "textContrast": 6.508918180944025,
-              "textFillColor": "rgb(255, 255, 255)",
-              "text": "Arm one Unsend",
+              "text": "Unsend DMs first checks this conversation without opening a message menu or removing anything.",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 237.578125,
@@ -4338,18 +4199,18 @@
             },
             {
               "height": 44,
-              "label": "Check conversation",
-              "width": 149.46875
+              "label": "Unsend DMs",
+              "width": 272
             },
             {
               "height": 44,
               "label": "All eligible sent messagesNewest NOldest N",
-              "width": 257
+              "width": 302
             },
             {
               "height": 44,
-              "label": "Check conversation first",
-              "width": 257
+              "label": "Check conversation",
+              "width": 149.46875
             },
             {
               "height": 44,
@@ -4360,16 +4221,6 @@
               "height": 44,
               "label": "Download evidence",
               "width": 150.875
-            },
-            {
-              "height": 44,
-              "label": "Arm one Unsend",
-              "width": 132.75
-            },
-            {
-              "height": 44,
-              "label": "Cancel intent",
-              "width": 109.171875
             }
           ],
           "viewTitle": "DM Unsend",
@@ -4378,8 +4229,8 @@
       }
     },
     {
-      "id": "messages-armed-countdown",
-      "sha256": "426e1b23b334c2777728bfef57be7210879c598601e62d7c5959203f8861a0e0",
+      "id": "messages-confirmation-collision",
+      "sha256": "521af18c0a164443f9c5354ae9ea889a4c27ab358fd9ba5d3fc66c778a6cef0e",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -4405,31 +4256,11 @@
         "zoom": 1,
         "semantics": [
           {
-            "equals": "Message sent-1",
-            "selector": "[data-ia-role=\"dm-live-title\"]"
-          },
-          {
-            "equals": "armed",
-            "tone": "danger",
-            "selector": "[data-ia-role=\"dm-live-badge\"]"
-          },
-          {
-            "hidden": false,
-            "includes": [
-              "s remaining"
-            ],
-            "selector": "[data-ia-role=\"dm-live-countdown\"]"
-          },
-          {
-            "disabled": true,
-            "selector": "[data-ia-action=\"arm-dm-live\"]"
-          },
-          {
             "equals": "message sent-1",
             "selector": "[data-ia-role=\"collision-target\"]"
           },
           {
-            "equals": "One-use arm active · page controls remain untouched",
+            "equals": "Exact confirmation active · page controls remain untouched",
             "selector": "[data-ia-role=\"collision-state\"]"
           }
         ],
@@ -4482,72 +4313,6 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {
-            "[data-ia-role=\"dm-live-title\"]": {
-              "attributes": {
-                "data-ia-role": "dm-live-title"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(38, 38, 38)",
-              "textContrast": null,
-              "textFillColor": "rgb(38, 38, 38)",
-              "text": "Message sent-1",
-              "tone": null,
-              "visible": false
-            },
-            "[data-ia-role=\"dm-live-badge\"]": {
-              "attributes": {
-                "class": "ia-badge",
-                "data-ia-role": "dm-live-badge",
-                "data-tone": "danger"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(173, 48, 37)",
-              "textContrast": null,
-              "textFillColor": "rgb(173, 48, 37)",
-              "text": "armed",
-              "tone": "danger",
-              "visible": false
-            },
-            "[data-ia-role=\"dm-live-countdown\"]": {
-              "attributes": {
-                "class": "ia-gate-detail",
-                "data-ia-role": "dm-live-countdown"
-              },
-              "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(115, 115, 115)",
-              "textContrast": null,
-              "textFillColor": "rgb(115, 115, 115)",
-              "text": "90s remaining",
-              "tone": null,
-              "visible": false
-            },
-            "[data-ia-action=\"arm-dm-live\"]": {
-              "attributes": {
-                "class": "ia-button ia-button--danger",
-                "type": "button",
-                "data-ia-action": "arm-dm-live",
-                "disabled": ""
-              },
-              "disabled": true,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgb(173, 48, 37)",
-              "color": "rgb(255, 255, 255)",
-              "textContrast": 6.508918180944025,
-              "textFillColor": "rgb(255, 255, 255)",
-              "text": "One message armed",
-              "tone": null,
-              "visible": false
-            },
             "[data-ia-role=\"collision-target\"]": {
               "attributes": {
                 "data-ia-role": "collision-target"
@@ -4574,12 +4339,12 @@
               "color": "rgb(115, 115, 115)",
               "textContrast": null,
               "textFillColor": "rgb(115, 115, 115)",
-              "text": "One-use arm active · page controls remain untouched",
+              "text": "Exact confirmation active · page controls remain untouched",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": {
             "bottom": 886,
             "height": 67,
@@ -4605,7 +4370,7 @@
     },
     {
       "id": "workspace-unpaired",
-      "sha256": "dd0a9a71715caded5238e24a5b9416b2b1afdd8b8229143d07506e9e13480656",
+      "sha256": "a120570ce0eb6ce591ce0b98976c0ac5dfc9d947218850840d5f7bd52dbf7264",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -4797,7 +4562,7 @@
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -4855,7 +4620,7 @@
     },
     {
       "id": "workspace-read-only",
-      "sha256": "d9f7a4d02cd9957c7d3ee8852f29739bd57885ffd3095a6ae16ff709cf555ccd",
+      "sha256": "6ca0ab86d3a35654134340b1f08d64cc6bc38bb4bea0f0d8e71258aa1c74784d",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5027,7 +4792,7 @@
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -5085,7 +4850,7 @@
     },
     {
       "id": "workspace-action-permission",
-      "sha256": "3f2f1b1c6504a848475b9775014337dc627a544959c9c1e69a345e77600fd849",
+      "sha256": "d916d8a012b3158dc0398c2376e2e00eaf892efbdd4e699e0895ac6bd4f473ab",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5257,7 +5022,7 @@
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -5315,7 +5080,7 @@
     },
     {
       "id": "native-dialog-coexistence",
-      "sha256": "b3516d8001b4dfbee4c55a23bd272b365b7719a126a39cc79a7d980ed6ef7206",
+      "sha256": "995900d5c25e50181ca6b2dd35d5062681d090366f434e9c9cc40afd99081b84",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5341,8 +5106,7 @@
         "zoom": 1,
         "semantics": [
           {
-            "equals": "armed",
-            "tone": "danger",
+            "exists": false,
             "selector": "[data-ia-role=\"live-badge\"]"
           },
           {
@@ -5404,20 +5168,16 @@
           "selectedHorizontalOverflow": 0,
           "semantics": {
             "[data-ia-role=\"live-badge\"]": {
-              "attributes": {
-                "class": "ia-badge",
-                "data-ia-role": "live-badge",
-                "data-tone": "danger"
-              },
+              "attributes": {},
               "disabled": null,
-              "exists": true,
-              "hidden": false,
-              "backgroundColor": "rgba(0, 0, 0, 0)",
-              "color": "rgb(173, 48, 37)",
+              "exists": false,
+              "hidden": null,
+              "backgroundColor": "",
+              "color": "",
               "textContrast": null,
-              "textFillColor": "rgb(173, 48, 37)",
-              "text": "armed",
-              "tone": "danger",
+              "textFillColor": "",
+              "text": "",
+              "tone": null,
               "visible": false
             },
             "[data-ia-role=\"collision-target\"]": {
@@ -5451,7 +5211,7 @@
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": {
             "bottom": 886,
             "height": 67,
@@ -5477,7 +5237,7 @@
     },
     {
       "id": "session-expired",
-      "sha256": "66fd065d70cd344a9f8d5013981d2c6b1de49a66e6b3179272f14b377e739834",
+      "sha256": "51ccb702c0d97c5ab16130bed2ffe0bd636c4bcbb453fdcaf843d792daa81051",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5605,12 +5365,12 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Login requiredSign in manually before inspecting again.IGNo exact target on this routeInstagram contextloginRouteloginQueueNext: @demo_creatorNext safe stepRefresh page contextInspection remains available; account and message actions stay unavailable.Refresh page contextObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.live lockedDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.live locked",
+              "text": "Login requiredSign in manually before inspecting again.IGNo exact target on this routeInstagram contextloginRouteloginQueueNext: @demo_creatorNext safe stepRefresh page contextInspection remains available; account and message actions stay unavailable.Refresh page contextObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -5668,7 +5428,7 @@
     },
     {
       "id": "session-challenge",
-      "sha256": "7403e5e6685425d4fefd37fcb8a923e6d57003fb67be88844c8c9efe8262279c",
+      "sha256": "47561947d8fd1491c1b892245c625fb46f32db2738616e93d7ae506d242ae4a4",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5796,12 +5556,12 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Challenge detectedResolve Instagram’s challenge manually before continuing.IGNo exact target on this routeInstagram contextfeedRoutefeedQueueNext: @demo_creatorNext safe stepRefresh page contextInspection remains available; account and message actions stay unavailable.Refresh page contextObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.live lockedDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.live locked",
+              "text": "Challenge detectedResolve Instagram’s challenge manually before continuing.IGNo exact target on this routeInstagram contextfeedRoutefeedQueueNext: @demo_creatorNext safe stepRefresh page contextInspection remains available; account and message actions stay unavailable.Refresh page contextObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -5859,7 +5619,7 @@
     },
     {
       "id": "session-rate-limited",
-      "sha256": "ae11cf25dd9fb1e1e3f09609cff8ce084df14d4d14cd0a0b4cf6223b12b987e2",
+      "sha256": "1447878d15fb97bf06c8bfa7b55274a2fd8749410b7c0084c61fe1b0a9788a57",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -5987,12 +5747,12 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": null,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Rate limit detectedWait before doing more work in this session.@@demo_creatorProfile reviewNot resolvedRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.live lockedDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.live locked",
+              "text": "Rate limit detectedWait before doing more work in this session.@@demo_creatorProfile reviewNot resolvedRouteprofileQueueMatches unfollowNext safe stepRefresh no-click inspectionRe-read the exact profile header and relationship control without activating it.Refresh no-click inspectionObserved Aug 2, 2026, 12:00 PM. Inspection is no-click.Installed Instagram toolsFollower checkerCapture Followers and Following separately, then compare the rendered rows locally.read onlyFollow / UnfollowImport a reviewed queue and inspect one exact profile without clicking first.review then confirmDM UnsendRead visible evidence or resolve one exact reviewed sent message without opening its menu.scan then confirm",
               "tone": null,
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": null,
           "theme": "light",
@@ -6050,7 +5810,7 @@
     },
     {
       "id": "profile-dark-desktop",
-      "sha256": "c92f1f88c68ade929c480c98a9822fc47252605d03e36de2e18b87287aaf16ed",
+      "sha256": "94c0198ef109270915fcfcfb2142abf5e9a9a018804840d9f402989ef1f46f90",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6159,7 +5919,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -6224,7 +5984,7 @@
     },
     {
       "id": "queue-dark-desktop",
-      "sha256": "07b048920f8ec96107108f5ab15895ee9914abbbc072e2167d4c39a7b9b79cb3",
+      "sha256": "0d0f30e832810ff65ec9de24e77c2a824627d2ab9acf815c553d632fe7559ec3",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6333,7 +6093,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -6402,28 +6162,18 @@
             },
             {
               "height": 44,
-              "label": "Arm exact action",
-              "width": 133.21875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 257
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 257
             },
             {
               "height": 44,
-              "label": "",
-              "width": 257
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -6438,7 +6188,7 @@
     },
     {
       "id": "profile-short-laptop",
-      "sha256": "0617efa111c7daa2964c4eebadc324853ed96cf27295205d09d0c85faf1ab853",
+      "sha256": "cbc3a24384a938b30dd1c3a4fcb1439aad54786a44ee98cd0151f2bd65181863",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6547,7 +6297,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -6612,7 +6362,7 @@
     },
     {
       "id": "queue-short-laptop-dark",
-      "sha256": "2024e3a892afa15f52f581cb24e280443aa0bd795ae71a0fc92e92ebf6981e14",
+      "sha256": "45801d72ec94301a237820ddf053559c728448170f356fba4b8baaa823aee784",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6721,7 +6471,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -6790,28 +6540,18 @@
             },
             {
               "height": 44,
-              "label": "Arm exact action",
-              "width": 133.21875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 257
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 257
             },
             {
               "height": 44,
-              "label": "",
-              "width": 257
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -6826,7 +6566,7 @@
     },
     {
       "id": "profile-narrow-tablet",
-      "sha256": "c78f98dadb5b0461d3b4fc11aecca697a2ee6b7583b922af76a37925b3ee1f5d",
+      "sha256": "feb7bb06609d4811b74855803d71aab029c72da6cdcdb829d69a725d60336f73",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -6862,10 +6602,10 @@
           "dock": "right",
           "footer": {
             "bottom": 840,
-            "height": 42,
+            "height": 44,
             "left": 1,
             "right": 819,
-            "top": 798,
+            "top": 796,
             "width": 818
           },
           "header": {
@@ -6935,7 +6675,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 117,
@@ -6995,7 +6735,7 @@
     },
     {
       "id": "messages-narrow-tablet-dark",
-      "sha256": "83f455e1307c97e66fcf4c74891fc86ce04b335d77f0ab656fd025eac519c6af",
+      "sha256": "bf649c4f93d538666ed14dce4fdc8bb98a34f45a792025139c482c743a9b7021",
       "scenario": {
         "after": "inspect-messages",
         "captureListType": null,
@@ -7031,10 +6771,10 @@
           "dock": "right",
           "footer": {
             "bottom": 840,
-            "height": 42,
+            "height": 44,
             "left": 1,
             "right": 819,
-            "top": 798,
+            "top": 796,
             "width": 818
           },
           "header": {
@@ -7153,18 +6893,18 @@
             },
             {
               "height": 44,
-              "label": "Check conversation",
-              "width": 149.46875
+              "label": "Unsend DMs",
+              "width": 741
             },
             {
               "height": 44,
               "label": "All eligible sent messagesNewest NOldest N",
-              "width": 741
+              "width": 771
             },
             {
               "height": 44,
-              "label": "Check conversation first",
-              "width": 741
+              "label": "Check conversation",
+              "width": 149.46875
             },
             {
               "height": 44,
@@ -7175,11 +6915,6 @@
               "height": 44,
               "label": "Download evidence",
               "width": 150.875
-            },
-            {
-              "height": 44,
-              "label": "Arm exact message",
-              "width": 149.171875
             }
           ],
           "viewTitle": "DM Unsend",
@@ -7189,7 +6924,7 @@
     },
     {
       "id": "profile-mobile-portrait",
-      "sha256": "266ceab77e302bf30dd952f1092982bbf08c5cdc7798901331948361a37b60cc",
+      "sha256": "49a11ad448b7814d1c83ca9464e7b94746748f835e64af5ebd52598da65b14ba",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7298,7 +7033,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 61,
@@ -7358,7 +7093,7 @@
     },
     {
       "id": "queue-mobile-portrait-dark",
-      "sha256": "413397fad4228d24e3d90bc1feb48ae09167a6eee1ca0445a12279df9435deca",
+      "sha256": "9e229510255ca2213bf8394b38d07540f048ae71acb9d59da44d7c57cb511648",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7467,7 +7202,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 61,
@@ -7531,28 +7266,18 @@
             },
             {
               "height": 44,
-              "label": "Arm exact action",
-              "width": 133.21875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 311
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 311
             },
             {
               "height": 44,
-              "label": "",
-              "width": 311
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -7567,7 +7292,7 @@
     },
     {
       "id": "profile-mobile-landscape",
-      "sha256": "f2324e450e2b60ed8f447480fad174576892ab82254984ff0459c4044d898dae",
+      "sha256": "9e230b11d1882a9ccad7b6ce4b085c2626cb77078231ceb6eb8aa147d822c75c",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7676,7 +7401,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -7736,7 +7461,7 @@
     },
     {
       "id": "queue-mobile-landscape-dark",
-      "sha256": "8f67e235f6b5a8340c56728e20e8a85b7e33baecf651835cf5e4c908cd147c33",
+      "sha256": "a077a8e0f9c78fde79d9f2c8b1ee585bc88d99bc95e575cc9565470fcd92387b",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7845,7 +7570,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -7909,28 +7634,18 @@
             },
             {
               "height": 44,
-              "label": "Arm exact action",
-              "width": 133.21875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 185
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 185
             },
             {
               "height": 44,
-              "label": "",
-              "width": 185
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -7945,7 +7660,7 @@
     },
     {
       "id": "profile-zoom-200-light",
-      "sha256": "9f4c26a8cdd60b8d0be0e7699e91ecd1b31e8568c6be2e4fb79c4f8cb04b1eb8",
+      "sha256": "ded4303b54435b61dfd46bcddb2e7d51caeb877e2982a4d693037727197dbd0c",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -7981,10 +7696,10 @@
           "dock": "right",
           "footer": {
             "bottom": 390,
-            "height": 42,
+            "height": 44,
             "left": 1,
             "right": 711.5,
-            "top": 348,
+            "top": 346,
             "width": 710.5
           },
           "header": {
@@ -8054,7 +7769,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 61.5,
@@ -8114,7 +7829,7 @@
     },
     {
       "id": "profile-zoom-200-dark",
-      "sha256": "5abafcf369b36c499e93fafa3cce5abdab91eee2236214491f31f08206331cb7",
+      "sha256": "1e170dbc972bbadbd9910351770d654eb6b76970d38762c9fd6d0a6a842eed5c",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -8150,10 +7865,10 @@
           "dock": "right",
           "footer": {
             "bottom": 390,
-            "height": 42,
+            "height": 44,
             "left": 1,
             "right": 711.5,
-            "top": 348,
+            "top": 346,
             "width": 710.5
           },
           "header": {
@@ -8223,7 +7938,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 61.5,
@@ -8283,7 +7998,7 @@
     },
     {
       "id": "queue-zoom-200-light",
-      "sha256": "7412cf50e88ffdf98131d8e8b1c1b04418facc2881233c645e9f8259963e5dec",
+      "sha256": "daeb227f42e64e1db59ae350167bff3e769b165b2bca94d9d0247b324fcc3f25",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -8319,10 +8034,10 @@
           "dock": "right",
           "footer": {
             "bottom": 390,
-            "height": 42,
+            "height": 44,
             "left": 1,
             "right": 711.5,
-            "top": 348,
+            "top": 346,
             "width": 710.5
           },
           "header": {
@@ -8392,7 +8107,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 61.5,
@@ -8456,28 +8171,18 @@
             },
             {
               "height": 44,
-              "label": "Arm exact action",
-              "width": 133.21875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 641
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 641
             },
             {
               "height": 44,
-              "label": "",
-              "width": 641
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -8492,7 +8197,7 @@
     },
     {
       "id": "queue-zoom-200-dark",
-      "sha256": "3c2c6a5bfc97eb8266783f4b1cf79943eea87d2f9a3a40d94a6546056de30a94",
+      "sha256": "ff2dc1debe5e89475d6467a227b0681fe1c424c8ed78ad7ffec16724682f38e8",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -8535,10 +8240,10 @@
           "dock": "right",
           "footer": {
             "bottom": 390,
-            "height": 42,
+            "height": 44,
             "left": 1,
             "right": 711.5,
-            "top": 348,
+            "top": 346,
             "width": 710.5
           },
           "header": {
@@ -8628,7 +8333,7 @@
               "visible": true
             }
           },
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 61.5,
@@ -8692,28 +8397,18 @@
             },
             {
               "height": 44,
-              "label": "Arm exact action",
-              "width": 133.21875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 641
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 641
             },
             {
               "height": 44,
-              "label": "",
-              "width": 641
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -8728,7 +8423,7 @@
     },
     {
       "id": "profile-forced-colors",
-      "sha256": "0ed5922e0a0d0e4c99de27354aab0800ca489429f68d7477b4c7a9d1684a1a76",
+      "sha256": "abd117ec08a76a20b7bf54c5d54ef5c24620f907536a119c1cb12f382bfb7625",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -8837,7 +8532,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -8902,7 +8597,7 @@
     },
     {
       "id": "queue-forced-colors",
-      "sha256": "ff8fca21386d7c9aae8189fca5415b32d4ddb2e76b226d4381fdf4e97c79775b",
+      "sha256": "53e2713fa216fef4ec6f5b756d110a483407edc9d51e9243c79d7e52299b5712",
       "scenario": {
         "after": null,
         "captureListType": null,
@@ -9011,7 +8706,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -9080,28 +8775,18 @@
             },
             {
               "height": 44,
-              "label": "Arm exact action",
-              "width": 133.21875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 255
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople who follow you that you do not followScanned FollowersCompatible queue items",
               "width": 255
             },
             {
               "height": 44,
-              "label": "",
-              "width": 255
-            },
-            {
-              "height": 44,
-              "label": "Review targets",
-              "width": 118.8125
+              "label": "Review 1 Follow target",
+              "width": 167.765625
             },
             {
               "height": 44,
@@ -9197,7 +8882,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 91,
@@ -9303,7 +8988,7 @@
           "selectedHidden": false,
           "selectedHorizontalOverflow": 0,
           "semantics": {},
-          "status": "Ready. Inspection ready. Live actions remain locked until one signed exact-item intent is armed.Local only",
+          "status": "Ready. Inspection ready. Every destructive run waits for its exact target confirmation.Local only",
           "strip": null,
           "target": {
             "bottom": 61,
@@ -9328,7 +9013,7 @@
     },
     {
       "id": "queue-run-review",
-      "sha256": "046340ff2a91df79870987761c378e8e3808104364f4ab55812fe6b0a7c1dadb",
+      "sha256": "e5524f13b624ef11174f3dd76b2586383c0a1e9a8508b9105d9377f3694c5177",
       "scenario": {
         "after": "bot-review",
         "captureListType": null,
@@ -9365,7 +9050,7 @@
           {
             "includes": [
               "0 duplicates removed",
-              "0 left outside this bounded run",
+              "0 valid targets remain outside this finite run",
               "rechecked before action"
             ],
             "selector": "[data-ia-role=\"bot-review-detail\"]"
@@ -9520,7 +9205,7 @@
               "color": "rgb(115, 115, 115)",
               "textContrast": null,
               "textFillColor": "rgb(115, 115, 115)",
-              "text": "0 duplicates removed; 0 left outside this bounded run. Every profile is rechecked before action.",
+              "text": "0 duplicates removed; 0 valid targets remain outside this finite run; 0 protected, incompatible, or already-correct targets skipped. Every profile is rechecked before action.",
               "tone": null,
               "visible": true
             },
@@ -9570,7 +9255,7 @@
               "color": "rgb(38, 38, 38)",
               "textContrast": 14.498978405673947,
               "textFillColor": "rgb(38, 38, 38)",
-              "text": "Review targets",
+              "text": "Review 1 Unfollow target",
               "tone": null,
               "visible": false
             },
@@ -9587,7 +9272,7 @@
               "color": "rgb(255, 255, 255)",
               "textContrast": 6.508918180944025,
               "textFillColor": "rgb(255, 255, 255)",
-              "text": "Start unfollow run",
+              "text": "Start Unfollow on 1 account",
               "tone": null,
               "visible": true
             }
@@ -9654,17 +9339,12 @@
             },
             {
               "height": 44,
-              "label": "Arm exact action",
-              "width": 133.21875
-            },
-            {
-              "height": 44,
-              "label": "Current exact profileNot following me back (from checker)I don't follow back (from checker)Manual queue",
+              "label": "Follow peopleUnfollow people",
               "width": 257
             },
             {
               "height": 44,
-              "label": "UnfollowFollow",
+              "label": "Current exact profilePeople not following you backScanned FollowingCompatible queue items",
               "width": 257
             },
             {
@@ -9674,7 +9354,7 @@
             },
             {
               "height": 44,
-              "label": "Start unfollow run",
+              "label": "Start Unfollow on 1 account",
               "width": 257
             },
             {
@@ -9690,13 +9370,13 @@
     }
   ],
   "performance": {
-    "collapsedTaskMs": 3.6380000000000003,
-    "openTaskMs": 1.906999999999999,
+    "collapsedTaskMs": 4.423,
+    "openTaskMs": 3.082,
     "queue": {
-      "durationMs": 25,
+      "durationMs": 23.100000001490116,
       "renderedItems": 1,
-      "totalOverlayNodes": 399
+      "totalOverlayNodes": 362
     },
-    "routeTransitionMs": 92.79999999701977
+    "routeTransitionMs": 90.69999999552965
   }
 }

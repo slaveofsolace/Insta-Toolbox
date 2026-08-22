@@ -276,10 +276,12 @@ async function run() {
     ), 'PWA settings in Google Chrome');
     const defaults = await evaluate(pwa, `({
       actionPermission: document.querySelector('#bridge-action-permission')?.checked,
-      liveAccount: document.querySelector('#live-action-enabled')?.checked,
-      liveDm: document.querySelector('#live-dm-enabled')?.checked,
+      globalLiveUnlocks: Boolean(
+        document.querySelector('#live-action-enabled')
+        || document.querySelector('#live-dm-enabled'),
+      ),
     })`);
-    assert.deepEqual(defaults, { actionPermission: false, liveAccount: false, liveDm: false });
+    assert.deepEqual(defaults, { actionPermission: false, globalLiveUnlocks: false });
     await evaluate(
       pwa,
       `document.querySelector('[data-action="create-extension-pairing"]').click()`,
@@ -333,8 +335,10 @@ async function run() {
     ), 'signed bridge service worker');
     const pairedUi = await evaluate(pwa, `({
       codeRemoved: !document.querySelector('#bridge-pairing-code'),
-      liveAccount: document.querySelector('#live-action-enabled')?.checked,
-      liveDm: document.querySelector('#live-dm-enabled')?.checked,
+      globalLiveUnlocks: Boolean(
+        document.querySelector('#live-action-enabled')
+        || document.querySelector('#live-dm-enabled'),
+      ),
       paired: [...document.querySelectorAll('.badge')].some((badge) => badge.textContent.trim() === 'paired'),
       permissions: [...document.querySelectorAll('.field')]
         .find((field) => field.querySelector('label')?.textContent === 'Permissions')
@@ -342,8 +346,7 @@ async function run() {
     })`);
     assert.deepEqual(pairedUi, {
       codeRemoved: true,
-      liveAccount: false,
-      liveDm: false,
+      globalLiveUnlocks: false,
       paired: true,
       permissions: 'read',
     });

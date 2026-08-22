@@ -66,7 +66,7 @@ test('browser acceptance covers accessibility, installability, and read-only pai
   assert.match(acceptance, /sidecar collapse and focus restoration/);
   assert.match(acceptance, /navigator\.serviceWorker\.ready/);
   assert.match(acceptance, /manifest\.display/);
-  assert.match(acceptance, /actionPermission: false, liveAccount: false, liveDm: false/);
+  assert.match(acceptance, /actionPermission: false, globalLiveUnlocks: false/);
   assert.match(acceptance, /permissions, 'read'/);
   assert.match(acceptance, /setPermissionCheckHandler\(\(\) => false\)/);
   assert.match(acceptance, /setPermissionRequestHandler/);

@@ -22,9 +22,10 @@ list. Any input change discards the draft and hides Start; live authorization is
 checked only after a matching review exists.
 
 The injected toolbox surfaces follow the same default-off rule. Tampermonkey
-does not persist a general live preference: selecting an already-reviewed action
-or the one-click switch opens a 15-minute tab window, each run still requires its
-exact target-bound confirmation, and an account run
+does not persist a general live preference, switch, arm control, or typed phrase.
+Each already-reviewed account run requires one ordinary confirmation naming its
+exact action, targets, and count, then receives a capability bound only to that
+finite run. An account run
 persists only its original expiry across the profile navigations it causes.
 That resumable run is stored through `GM_getTab`/`GM_saveTab`, not the shared GM
 record; a manager without tab storage leaves account batches disabled. The
@@ -37,8 +38,8 @@ expiry before every page control. The finite plan is reserved against the
 persistent daily Unsend allowance and uses the saved bounded delay range. It
 snapshots existing menu and dialog
 candidates and accepts exactly one newly surfaced control. The extension's
-thread tool requires the count-specific plan phrase and a final permanent-action
-confirmation. That DM patch added no host permission, remote dependency,
+thread tool requires one ordinary count-specific permanent-action confirmation.
+That DM patch added no host permission, remote dependency,
 credential field, private endpoint, or network request.
 
 The follower-checker next pass deliberately adds a narrow authenticated read
@@ -90,8 +91,9 @@ candidate, and sent ownership before recording `resolved-no-click`. Missing,
 changed, duplicate, received, wrong-thread, and unknown-ownership states stop
 without opening a menu. The route returns no raw message text and cannot reach
 the live control activator. The controlled live consumer additionally requires
-two fresh confirmations, exactly one item, exact arm-code entry on the matching
-thread, an independent finite extension ledger, and a one-use row token. It
+one ordinary confirmation naming the exact thread and message, exactly one
+reviewed item, a matching-thread transient capability, an independent finite
+extension ledger, and a one-use row token. It
 rejects pre-existing menus or dialogs, revalidates the same row before each
 stage, accepts only new ARIA-bound interactive menu/dialog controls with exact
 localized Unsend labels, and reports success only when the same thread remains
@@ -161,6 +163,15 @@ The 2026-08-22 follower-checker pass received route-allowlist, response-shape,
 pagination-bound, provenance, atomic-replacement, and fallback-isolation tests.
 Authenticated acceptance remains an external release gate; fixture success does
 not prove that Instagram still serves these unsupported web routes.
+The final 2.0.0 diff review covered the 27 source-like release files in the
+security inventory plus all four PWA source fragments. Manifest and package
+changes are version-only; no host permission or production dependency was
+added. The new credentialed request is confined to the tested same-origin
+Followers/Following GET allowlist, and the added userscript anchor activation is
+the local comparison download path rather than an Instagram control. Every
+destructive entry point remains behind a finite exact confirmation, transient
+capability, target revalidation, reservation, pacing, Stop path, and
+postcondition check. No plausible security candidate survived discovery.
 The repository test suite, extension fixture acceptance, real disposable-Chrome
 pairing, nine PWA baselines, the 43-state overlay check, the production
 dependency audit, and the 10,000-message ZIP benchmark passed. Native installer

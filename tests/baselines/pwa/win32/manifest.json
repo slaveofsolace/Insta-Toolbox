@@ -28,7 +28,7 @@
       "width": 1134,
       "height": 700,
       "view": "overview",
-      "sha256": "4aee6e0efd7f04d0544c90505ce124a83f68318a2f50c6bebcd375b53e7b9e95"
+      "sha256": "53f3d13c5c7651c736a4332fde9d8799a9bc89dd1afe77360893993ee303f3d2"
     },
     {
       "file": "desktop-messages.png",
@@ -36,7 +36,7 @@
       "width": 1134,
       "height": 700,
       "view": "messages",
-      "sha256": "f238cc858a96951ee1b83163a3f215f0c6a201d6d111c657932da050d27cccc8"
+      "sha256": "2cbfb79b02e6262cf3081e59930631189436e503938f74b62085d3298d12fcc5"
     },
     {
       "file": "desktop-settings.png",
@@ -44,7 +44,7 @@
       "width": 1134,
       "height": 700,
       "view": "settings",
-      "sha256": "7d6b2625feab606b2a28fb8df12f7f94cb54f1edd5915533cf7a8acf8794fae9"
+      "sha256": "b0fd83c333a395475ce82eb22dac9c89ad0022bc8402cd1213b79d8e27d56d0a"
     },
     {
       "file": "tablet-overview.png",
@@ -52,7 +52,7 @@
       "width": 820,
       "height": 900,
       "view": "overview",
-      "sha256": "166c5d6ec5a7de2c43c47492712f1aff5678241abc0e4d77da100ce132a47fc3"
+      "sha256": "ae668f6ccab1b76eef0f10ab116b13375067c89c9798514e5d0ed8e71b435453"
     },
     {
       "file": "tablet-messages.png",
@@ -60,7 +60,7 @@
       "width": 820,
       "height": 900,
       "view": "messages",
-      "sha256": "538b71bdc4e5f684ea1959262fcde1c133ca91b741f0342690babcb2f065eaa2"
+      "sha256": "44e019371b92ffa0758fdd8ab1fa94b1b26cfc6e9d5158455ea978dca109e038"
     },
     {
       "file": "tablet-settings.png",
@@ -68,7 +68,7 @@
       "width": 820,
       "height": 900,
       "view": "settings",
-      "sha256": "233f59a5745ab0a51b189abce14aff728c1cbb00d4173d5dde1a09bbbdd6f917"
+      "sha256": "51ab18bc6b5dd3fff6e0cae9a6029e129b154cbef145cada7d15e7cc61a46e60"
     },
     {
       "file": "mobile-overview.png",
@@ -92,7 +92,7 @@
       "width": 390,
       "height": 844,
       "view": "settings",
-      "sha256": "a3f00fe3117b84c587ced85b2b676df60147feedf3e26912e60ff7648383f477"
+      "sha256": "5f5ed3d2deb9f943810b482348cc93116edaa9338b5d3d4e8a275ee06bd894fa"
     }
   ]
 }

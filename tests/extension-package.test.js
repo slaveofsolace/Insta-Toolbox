@@ -132,20 +132,23 @@ test('extension DM dry run stays no-click while live Unsend is isolated behind e
   assert.match(background, /reserveExtensionDmAction/);
 });
 
-test('bridge transport pins the page origin and requires one fresh, armed live account intent', () => {
+test('bridge transport pins the page origin and requires one fresh exact transient capability', () => {
   assert.match(pwaContent, /event\.origin !== location\.origin/);
   assert.match(pwaContent, /window\.postMessage/);
   assert.match(background, /bridgeSenderOrigin\(sender\)/);
   assert.match(background, /origin !== request\.origin/);
   assert.match(controlledPolicy, /controlled-live-batch-must-be-one/);
   assert.match(controlledPolicy, /live-confirmation-expired/);
-  assert.match(background, /live-arm-required/);
-  assert.match(background, /Reserve and consume the one-shot capability durably before the first page control is used/);
+  assert.match(background, /function accountConfirmationMatches\(confirmation, intent\)/);
+  assert.match(background, /consumeTransientCapability\(accountCapabilities/);
+  assert.match(background, /Reserve durably before the/);
   assert.match(background, /accountActionLedger/);
   assert.match(background, /reserveExtensionAction/);
   assert.match(instagramContent, /function verifiedProfileHeader\(username\)/);
   assert.match(instagramContent, /profileRoot !== resolution\.profileRoot/);
   assert.match(instagramContent, /preexisting-dialog-before-live-action/);
   assert.match(instagramContent, /dialogNamesUsername\(dialog, username\)/);
-  assert.match(background, /state\.liveArm = null;[\s\S]*state\.pendingLiveIntent = null;[\s\S]*await saveBridgeState\(state\)/);
+  assert.match(background, /exactConfirmationRequired: true/);
+  assert.match(background, /liveExecutionEnabled: false/);
+  assert.match(background, /liveArm: null/);
 });

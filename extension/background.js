@@ -5,23 +5,16 @@ import {
   verifySignedBridgeMessage,
 } from './lib/bridge-protocol.js';
 import {
-  ACCOUNT_ARM_TTL_MS,
-  accountArmMatchesIntent as armMatchesIntent,
   accountIntentMatchesItem as intentMatchesItem,
   normalizeActionUsername as normalizeUsername,
   prepareControlledAccountIntent as prepareLiveAccountIntent,
   pruneControlledAccountState as pruneLiveState,
-  publicAccountArm as publicLiveArm,
   publicAccountIntent as publicLiveIntent,
 } from './lib/controlled-account-action.js';
 import {
-  DM_ARM_TTL_MS,
-  controlledDmArmPhrase,
-  dmArmMatchesIntent,
   dmIntentMatchesItem,
   prepareControlledDmIntent,
   pruneControlledDmState,
-  publicDmArm,
   publicDmIntent,
   verifiedControlledDmResult,
 } from './lib/controlled-dm-unsend.js';
@@ -38,7 +31,8 @@ const DEFAULT_DAILY_DM_LIMIT = 50;
 const MAX_DAILY_ACTION_LIMIT = 400;
 const MAX_DAILY_DM_LIMIT = 300;
 const MAX_BATCH_ITEMS = 250;
-const BATCH_ARM_TTL_MS = 30 * 60 * 1000;
+const RUN_CAPABILITY_TTL_MS = 20 * 60 * 1000;
+const EXACT_ITEM_CAPABILITY_TTL_MS = 90 * 1000;
 const DEFAULT_BATCH_MIN_DELAY_MS = 4_000;
 const DEFAULT_BATCH_MAX_DELAY_MS = 11_000;
 const MIN_ALLOWED_BATCH_DELAY_MS = 1_500;
@@ -48,6 +42,8 @@ const BATCH_REST_EVERY = 20;
 const BATCH_REST_MS = 90_000;
 let requestTail = Promise.resolve();
 let activeBatchAbort = false;
+const accountCapabilities = new Map();
+const dmCapabilities = new Map();
 
 function clampInteger(value, fallback, min, max) {
   const numeric = Number(value);
@@ -114,10 +110,12 @@ async function loadBridgeState() {
       ? stored.threadUnsendLedger
       : [],
     pendingLiveIntent: stored.pendingLiveIntent || null,
-    liveArm: stored.liveArm || null,
+    // Retained storage keys are migration-only. Authority is never restored
+    // from disk in 2.0.0.
+    liveArm: null,
     pendingDmIntent: stored.pendingDmIntent || null,
-    dmArm: stored.dmArm || null,
-    batchArm: stored.batchArm || null,
+    dmArm: null,
+    batchArm: null,
     batchRun: stored.batchRun || null,
     batchLimits: normalizeBatchLimits(stored.batchLimits),
   };
@@ -150,8 +148,7 @@ async function activeInstagramTab() {
   return tabs.find((tab) => tab.active) || tabs[0] || null;
 }
 
-async function intentInstagramTab(state) {
-  const tabId = state.liveArm?.tabId;
+async function instagramTabById(tabId) {
   if (Number.isInteger(tabId)) {
     try {
       const tab = await chrome.tabs.get(tabId);
@@ -163,18 +160,9 @@ async function intentInstagramTab(state) {
   return activeInstagramTab();
 }
 
-async function dmIntentInstagramTab(state) {
-  const tabId = state.dmArm?.tabId;
-  if (Number.isInteger(tabId)) {
-    try {
-      const tab = await chrome.tabs.get(tabId);
-      if (new URL(tab.url || '').origin === 'https://www.instagram.com') return tab;
-    } catch {
-      return null;
-    }
-  }
-  return activeInstagramTab();
-}
+async function intentInstagramTab() { return activeInstagramTab(); }
+
+async function dmIntentInstagramTab() { return activeInstagramTab(); }
 
 async function inspectProfileInTab(tabId, username) {
   try {
@@ -548,18 +536,54 @@ function matchingDmAttempt(state, pairing, jobId, item) {
   )) || null;
 }
 
-async function dmLiveReadiness(state, pairing, jobId, item, now = Date.now()) {
+function exactCapabilityKey(pairingId, jobId, itemId) {
+  return `${String(pairingId || '')}:${String(jobId || '')}:${String(itemId || '')}`;
+}
+
+function pruneTransientCapabilities(now = Date.now()) {
+  for (const [key, capability] of accountCapabilities) {
+    if (capability.expiresAt <= now) accountCapabilities.delete(key);
+  }
+  for (const [key, capability] of dmCapabilities) {
+    if (capability.expiresAt <= now) dmCapabilities.delete(key);
+  }
+}
+
+function accountConfirmationMatches(confirmation, intent) {
+  return Boolean(
+    confirmation?.confirmed === true
+    && Number(confirmation.count) === 1
+    && confirmation.action === intent?.action
+    && normalizeUsername(confirmation.username) === intent?.username,
+  );
+}
+
+function dmConfirmationMatches(confirmation, intent) {
+  return Boolean(
+    confirmation?.confirmed === true
+    && confirmation.action === 'unsend'
+    && Number(confirmation.count) === 1
+    && String(confirmation.conversationId || '') === intent?.conversationId
+    && String(confirmation.messageId || '') === intent?.messageId,
+  );
+}
+
+function consumeTransientCapability(map, key, matches, now = Date.now()) {
+  pruneTransientCapabilities(now);
+  const capability = map.get(key);
+  if (!capability || !matches(capability)) return null;
+  map.delete(key);
+  return capability;
+}
+
+async function dmLiveReadiness(state, pairing, jobId, item, confirmation, now = Date.now()) {
   pruneControlledDmState(state, now);
   const intent = state.pendingDmIntent;
   if (!dmIntentMatchesItem(intent, jobId, item) || intent?.pairingId !== pairing.pairingId) {
     return { authorized: false, reason: 'dm-live-intent-required' };
   }
-  if (!dmArmMatchesIntent(state.dmArm, intent)) {
-    return {
-      authorized: false,
-      reason: 'dm-live-arm-required',
-      intent: publicDmIntent(intent),
-    };
+  if (!dmConfirmationMatches(confirmation, intent)) {
+    return { authorized: false, reason: 'dm-exact-confirmation-required', intent: publicDmIntent(intent) };
   }
   if (!item?.resolutionToken) {
     return { authorized: false, reason: 'exact-dm-resolution-required' };
@@ -568,22 +592,42 @@ async function dmLiveReadiness(state, pairing, jobId, item, now = Date.now()) {
   if (reservationConflict) {
     return { authorized: false, reason: reservationConflict.reason };
   }
-  const tab = await dmIntentInstagramTab(state);
-  if (!tab?.id || tab.id !== state.dmArm.tabId) {
-    return { authorized: false, reason: 'armed-instagram-tab-unavailable' };
+  const tab = await dmIntentInstagramTab();
+  if (!tab?.id || directThreadId(tab.url) !== directThreadId(intent.conversationId)) {
+    return { authorized: false, reason: 'wrong-conversation' };
   }
+  const key = exactCapabilityKey(pairing.pairingId, jobId, item.id);
+  dmCapabilities.set(key, {
+    conversationId: intent.conversationId,
+    expiresAt: now + EXACT_ITEM_CAPABILITY_TTL_MS,
+    messageId: intent.messageId,
+    resolutionToken: item.resolutionToken,
+    tabId: tab.id,
+  });
   return {
     authorized: true,
-    expiresAt: state.dmArm.expiresAt,
+    expiresAt: new Date(now + EXACT_ITEM_CAPABILITY_TTL_MS).toISOString(),
     intent: publicDmIntent(intent),
   };
 }
 
 async function performLiveDmUnsend(state, pairing, jobId, item) {
-  const readiness = await dmLiveReadiness(state, pairing, jobId, item);
-  if (!readiness.authorized) return readiness;
   const intent = state.pendingDmIntent;
-  const tab = await dmIntentInstagramTab(state);
+  if (!dmIntentMatchesItem(intent, jobId, item) || intent?.pairingId !== pairing.pairingId) {
+    return { authorized: false, reason: 'dm-live-intent-required' };
+  }
+  const key = exactCapabilityKey(pairing.pairingId, jobId, item?.id);
+  const capability = consumeTransientCapability(dmCapabilities, key, (candidate) => (
+    candidate.conversationId === intent.conversationId
+    && candidate.messageId === intent.messageId
+    && candidate.resolutionToken === item?.resolutionToken
+  ));
+  if (!capability) return { authorized: false, reason: 'dm-exact-confirmation-required' };
+  const tab = await instagramTabById(capability.tabId);
+  if (!tab?.id || tab.id !== capability.tabId
+    || directThreadId(tab.url) !== directThreadId(intent.conversationId)) {
+    return { authorized: false, reason: 'wrong-conversation' };
+  }
   const reservation = reserveExtensionDmAction(
     state,
     jobId,
@@ -638,18 +682,22 @@ async function performLiveDmUnsend(state, pairing, jobId, item) {
   return result || { unexpectedUi: true, reason: 'empty-live-dm-result' };
 }
 
-async function accountLiveReadiness(state, pairing, jobId, item, now = Date.now()) {
+function profileUsernameFromUrl(value) {
+  try {
+    return normalizeUsername(new URL(value || '').pathname.split('/').filter(Boolean)[0]);
+  } catch {
+    return '';
+  }
+}
+
+async function accountLiveReadiness(state, pairing, jobId, item, confirmation, now = Date.now()) {
   pruneLiveState(state, now);
   const intent = state.pendingLiveIntent;
   if (!intentMatchesItem(intent, jobId, item) || intent?.pairingId !== pairing.pairingId) {
     return { authorized: false, reason: 'live-intent-required' };
   }
-  if (!armMatchesIntent(state.liveArm, intent)) {
-    return {
-      authorized: false,
-      reason: 'live-arm-required',
-      intent: publicLiveIntent(intent),
-    };
+  if (!accountConfirmationMatches(confirmation, intent)) {
+    return { authorized: false, reason: 'exact-account-confirmation-required', intent: publicLiveIntent(intent) };
   }
   if (
     !item?.resolutionToken
@@ -664,28 +712,48 @@ async function accountLiveReadiness(state, pairing, jobId, item, now = Date.now(
       reason: reservationConflict.reason,
     };
   }
-  const tab = await intentInstagramTab(state);
-  if (!tab?.id || tab.id !== state.liveArm.tabId) {
-    return { authorized: false, reason: 'armed-instagram-tab-unavailable' };
+  const tab = await intentInstagramTab();
+  if (!tab?.id || profileUsernameFromUrl(tab.url) !== intent.username) {
+    return { authorized: false, reason: 'wrong-profile' };
   }
+  const key = exactCapabilityKey(pairing.pairingId, jobId, item.id);
+  accountCapabilities.set(key, {
+    action: intent.action,
+    expiresAt: now + EXACT_ITEM_CAPABILITY_TTL_MS,
+    resolutionToken: item.resolutionToken,
+    tabId: tab.id,
+    username: intent.username,
+  });
   return {
     authorized: true,
-    expiresAt: state.liveArm.expiresAt,
+    expiresAt: new Date(now + EXACT_ITEM_CAPABILITY_TTL_MS).toISOString(),
     intent: publicLiveIntent(intent),
   };
 }
 
 async function performLiveAccountAction(state, pairing, jobId, item) {
-  const readiness = await accountLiveReadiness(state, pairing, jobId, item);
-  if (!readiness.authorized) return readiness;
   const intent = state.pendingLiveIntent;
-  const tab = await intentInstagramTab(state);
+  if (!intentMatchesItem(intent, jobId, item) || intent?.pairingId !== pairing.pairingId) {
+    return { authorized: false, reason: 'live-intent-required' };
+  }
+  const key = exactCapabilityKey(pairing.pairingId, jobId, item?.id);
+  const capability = consumeTransientCapability(accountCapabilities, key, (candidate) => (
+    candidate.action === intent.action
+    && candidate.username === intent.username
+    && candidate.resolutionToken === item?.resolutionToken
+  ));
+  if (!capability) return { authorized: false, reason: 'exact-account-confirmation-required' };
+  const tab = await instagramTabById(capability.tabId);
+  if (!tab?.id || tab.id !== capability.tabId || profileUsernameFromUrl(tab.url) !== intent.username) {
+    return { authorized: false, reason: 'wrong-profile' };
+  }
   const reservation = reserveExtensionAction(state, jobId, intent, tab.id);
   if (!reservation.ok) {
     return { authorized: false, reason: reservation.reason };
   }
 
-  // Reserve and consume the one-shot capability durably before the first page control is used.
+  // The transient capability was consumed above. Reserve durably before the
+  // first page control is used so retries cannot duplicate the mutation.
   state.liveArm = null;
   state.pendingLiveIntent = null;
   await saveBridgeState(state);
@@ -739,14 +807,23 @@ async function performLiveAccountAction(state, pairing, jobId, item) {
 //
 // The audited controlled path stays one-shot: every item below still runs a
 // complete inspect -> exact-resolution -> reserve -> perform -> finalize cycle
-// against the live DOM. The batch layer only removes the need to retype a
-// confirmation phrase for each item, and it stops the whole run the moment
+// against the live DOM. The batch layer binds one ordinary confirmation to an
+// exact finite target digest, and it stops the whole run the moment
 // Instagram signals a challenge, rate limit, block, or an unexpected surface.
 // ---------------------------------------------------------------------------
 
-function batchArmPhrase(kind, action, count) {
-  if (kind === 'dm') return `ARM MASS UNSEND ${count}`;
-  return `ARM BATCH ${String(action || '').toUpperCase()} ${count}`;
+function batchTargetDigest(kind, action, items) {
+  const source = JSON.stringify((items || []).map((item) => (
+    kind === 'account'
+      ? [String(item?.id || ''), normalizeUsername(item?.username)]
+      : [String(item?.id || ''), String(item?.messageId || ''), String(item?.threadId || '')]
+  )));
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${kind}:${action || ''}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 function sessionStopReason(observation) {
@@ -765,42 +842,6 @@ function jitteredDelay(limits) {
 
 function sleep(ms) {
   return new Promise((resolve) => { setTimeout(resolve, ms); });
-}
-
-function batchArmValid(state, now = Date.now()) {
-  const arm = state.batchArm;
-  if (!arm) return false;
-  return Date.parse(arm.expiresAt) > now;
-}
-
-async function armBatch(request, sender) {
-  const state = await loadBridgeState();
-  if (!Number.isInteger(sender?.tab?.id)) return { error: 'instagram-tab-required' };
-  const kind = request?.batchKind === 'dm' ? 'dm' : 'account';
-  const action = kind === 'account' ? String(request?.action || '') : null;
-  if (kind === 'account' && !['follow', 'unfollow'].includes(action)) {
-    return { error: 'batch-action-invalid' };
-  }
-  const count = clampInteger(request?.count, 0, 1, MAX_BATCH_ITEMS);
-  if (!count) return { error: 'batch-count-invalid' };
-
-  const expected = batchArmPhrase(kind, action, count);
-  if (String(request?.phrase || '').trim() !== expected) {
-    return { error: 'batch-arm-phrase-mismatch', expectedPhrase: expected };
-  }
-
-  const now = Date.now();
-  state.batchArm = {
-    kind,
-    action,
-    count,
-    jobId: String(request?.jobId || `batch-${now}`),
-    tabId: sender.tab.id,
-    armedAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + BATCH_ARM_TTL_MS).toISOString(),
-  };
-  await saveBridgeState(state);
-  return { arm: { ...state.batchArm }, state: overlayState(state) };
 }
 
 async function tabSettled(tabId, timeoutMs = 20_000) {
@@ -1001,24 +1042,41 @@ async function runBatchDmItem(state, pairingId, tabId, jobId, item, limits) {
 async function startBatch(request, sender, pairingId = null) {
   const state = await loadBridgeState();
   const now = Date.now();
-  if (!batchArmValid(state, now)) return { error: 'batch-arm-required' };
-  const arm = state.batchArm;
-  if (!Number.isInteger(sender?.tab?.id) || sender.tab.id !== arm.tabId) {
-    return { error: 'armed-instagram-tab-unavailable' };
-  }
+  if (!Number.isInteger(sender?.tab?.id)) return { error: 'instagram-tab-required' };
   if (state.batchRun?.status === 'running') return { error: 'batch-already-running' };
 
-  const items = Array.isArray(request?.items) ? request.items.slice(0, arm.count) : [];
+  const kind = request?.batchKind === 'dm' ? 'dm' : 'account';
+  const action = kind === 'account' ? String(request?.action || '') : null;
+  if (kind === 'account' && !['follow', 'unfollow'].includes(action)) {
+    return { error: 'batch-action-invalid' };
+  }
+  const items = Array.isArray(request?.items) ? request.items.slice(0, MAX_BATCH_ITEMS) : [];
   if (!items.length) return { error: 'batch-items-required' };
-  if (request?.batchKind !== arm.kind) return { error: 'batch-kind-mismatch' };
+  const confirmation = request?.confirmation;
+  const targetDigest = batchTargetDigest(kind, action, items);
+  if (request?.confirmed !== true
+    || Number(confirmation?.count) !== items.length
+    || (confirmation?.action ?? null) !== action
+    || confirmation?.targetDigest !== targetDigest) {
+    return { error: 'batch-confirmation-mismatch' };
+  }
+  const capability = {
+    kind,
+    action,
+    count: items.length,
+    jobId: String(request?.jobId || `batch-${now}`),
+    tabId: sender.tab.id,
+    targetDigest,
+    expiresAt: new Date(now + RUN_CAPABILITY_TTL_MS).toISOString(),
+  };
 
   const limits = normalizeBatchLimits(state.batchLimits);
   const runId = `run-${now}`;
   state.batchRun = {
     id: runId,
-    kind: arm.kind,
-    action: arm.action,
-    jobId: arm.jobId,
+    kind: capability.kind,
+    action: capability.action,
+    jobId: capability.jobId,
     status: 'running',
     total: items.length,
     completed: 0,
@@ -1033,12 +1091,14 @@ async function startBatch(request, sender, pairingId = null) {
     results: [],
   };
   // The arm authorises exactly this run; it cannot be replayed for another.
+  // A previous persisted arm is migration-only. The capability above lives in
+  // this call and is consumed by this exact run; it is never saved for replay.
   state.batchArm = null;
   activeBatchAbort = false;
   await saveBridgeState(state);
 
   // Run detached so the caller gets an immediate acknowledgement and can poll.
-  void executeBatch(runId, arm, items, limits, pairingId);
+  void executeBatch(runId, capability, items, limits, pairingId);
   return { run: { ...state.batchRun }, state: overlayState(state) };
 }
 
@@ -1130,7 +1190,7 @@ async function batchStatus() {
   const state = await loadBridgeState();
   return {
     run: state.batchRun ? { ...state.batchRun } : null,
-    arm: batchArmValid(state) ? { ...state.batchArm } : null,
+    arm: null,
     limits: normalizeBatchLimits(state.batchLimits),
   };
 }
@@ -1145,127 +1205,12 @@ async function updateBatchLimits(request) {
   return { limits: state.batchLimits };
 }
 
-async function armPendingAccountIntent(request, sender) {
-  const state = pruneLiveState(await loadBridgeState());
-  const intent = state.pendingLiveIntent;
-  if (!intent) return { error: 'live-intent-required' };
-  if (!Number.isInteger(sender?.tab?.id)) return { error: 'instagram-tab-required' };
-
-  const expectedPhrase = `ARM ${intent.action.toUpperCase()} @${intent.username}`;
-  if (String(request?.phrase || '').trim() !== expectedPhrase) {
-    return { error: 'live-arm-phrase-mismatch' };
-  }
-  if (
-    request?.jobId !== intent.jobId
-    || request?.itemId !== intent.itemId
-    || normalizeUsername(request?.username) !== intent.username
-    || request?.action !== intent.action
-  ) {
-    return { error: 'live-intent-mismatch' };
-  }
-
-  const observation = await inspectProfileInTab(sender.tab.id, intent.username);
-  const expectedRelationship = intent.action === 'follow' ? 'not-following' : 'following';
-  if (
-    observation?.username !== intent.username
-    || observation?.relationship !== expectedRelationship
-    || observation?.ambiguous
-    || observation?.unexpectedUi
-    || observation?.sessionExpired
-    || observation?.challenge
-    || observation?.actionBlocked
-    || observation?.rateLimited
-    || !observation?.resolutionToken
-  ) {
-    return {
-      error: observation?.reason
-        || (observation?.username !== intent.username ? 'wrong-profile' : 'ambiguous-profile-control'),
-    };
-  }
-
-  const now = Date.now();
-  state.liveArm = {
-    action: intent.action,
-    armedAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + ACCOUNT_ARM_TTL_MS).toISOString(),
-    itemId: intent.itemId,
-    jobId: intent.jobId,
-    tabId: sender.tab.id,
-    username: intent.username,
-  };
-  await saveBridgeState(state);
-  return {
-    arm: publicLiveArm(state.liveArm),
-    state: overlayState(state),
-  };
-}
-
 async function cancelPendingAccountIntent() {
   const state = await loadBridgeState();
   state.pendingLiveIntent = null;
   state.liveArm = null;
   await saveBridgeState(state);
   return { state: overlayState(state) };
-}
-
-async function armPendingDmIntent(request, sender) {
-  const state = pruneControlledDmState(await loadBridgeState());
-  const intent = state.pendingDmIntent;
-  if (!intent) return { error: 'dm-live-intent-required' };
-  if (!Number.isInteger(sender?.tab?.id)) return { error: 'instagram-tab-required' };
-  if (String(request?.phrase || '').trim() !== controlledDmArmPhrase(intent)) {
-    return { error: 'dm-live-arm-phrase-mismatch' };
-  }
-  if (
-    request?.jobId !== intent.jobId
-    || request?.itemId !== intent.itemId
-    || String(request?.conversationId || '') !== intent.conversationId
-    || String(request?.messageId || '') !== intent.messageId
-  ) {
-    return { error: 'dm-live-intent-mismatch' };
-  }
-
-  const observation = await inspectDmItemInTab(sender.tab.id, {
-    conversationId: intent.conversationId,
-    contentDigest: intent.contentDigest,
-    messageId: intent.messageId,
-    sentByMe: true,
-    timestamp: intent.timestamp,
-  });
-  if (
-    observation?.conversationId !== intent.conversationId
-    || observation?.messageId !== intent.messageId
-    || Number(observation?.timestamp) !== intent.timestamp
-    || observation?.contentDigest !== intent.contentDigest
-    || observation?.sentByMe !== true
-    || observation?.exactIdentityAvailable !== true
-    || observation?.ownershipAvailable !== true
-    || observation?.ambiguous
-    || observation?.unexpectedUi
-    || observation?.sessionExpired
-    || observation?.challenge
-    || observation?.actionBlocked
-    || observation?.rateLimited
-    || !observation?.resolutionToken
-  ) {
-    return { error: observation?.reason || 'exact-dm-resolution-required' };
-  }
-
-  const now = Date.now();
-  state.dmArm = {
-    armedAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + DM_ARM_TTL_MS).toISOString(),
-    itemId: intent.itemId,
-    jobId: intent.jobId,
-    tabId: sender.tab.id,
-    conversationId: intent.conversationId,
-    messageId: intent.messageId,
-  };
-  await saveBridgeState(state);
-  return {
-    arm: publicDmArm(state.dmArm),
-    state: overlayState(state),
-  };
 }
 
 async function cancelPendingDmIntent() {
@@ -1287,12 +1232,12 @@ async function routeVerifiedRequest(request, pairing, state) {
         permissions: pairing.permissions,
         controlledAccountActionsAvailable: true,
         controlledDmUnsendAvailable: true,
-        liveExecutionEnabled: armMatchesIntent(state.liveArm, state.pendingLiveIntent)
-          || dmArmMatchesIntent(state.dmArm, state.pendingDmIntent),
+        exactConfirmationRequired: true,
+        liveExecutionEnabled: false,
         pendingLiveIntent: publicLiveIntent(state.pendingLiveIntent),
-        liveArm: publicLiveArm(state.liveArm),
+        liveArm: null,
         pendingDmIntent: publicDmIntent(state.pendingDmIntent),
-        dmArm: publicDmArm(state.dmArm),
+        dmArm: null,
       },
     };
   }
@@ -1384,6 +1329,7 @@ async function routeVerifiedRequest(request, pairing, state) {
         pairing,
         request.payload?.jobId,
         request.payload?.item,
+        request.payload?.confirmation,
       ),
     };
   }
@@ -1478,6 +1424,7 @@ async function routeVerifiedRequest(request, pairing, state) {
         pairing,
         request.payload?.jobId,
         request.payload?.item,
+        request.payload?.confirmation,
       ),
     };
   }
@@ -1635,12 +1582,12 @@ function overlayState(state) {
     extensionVersion: chrome.runtime.getManifest().version,
     controlledAccountActionsAvailable: true,
     controlledDmUnsendAvailable: true,
-    liveExecutionEnabled: armMatchesIntent(state.liveArm, state.pendingLiveIntent)
-      || dmArmMatchesIntent(state.dmArm, state.pendingDmIntent),
+    exactConfirmationRequired: true,
+    liveExecutionEnabled: false,
     pendingLiveIntent: publicLiveIntent(state.pendingLiveIntent),
-    liveArm: publicLiveArm(state.liveArm),
+    liveArm: null,
     pendingDmIntent: publicDmIntent(state.pendingDmIntent),
-    dmArm: publicDmArm(state.dmArm),
+    dmArm: null,
     pairings: state.pairings.map((pairing) => ({
       origin: pairing.origin,
       permissions: Array.isArray(pairing.permissions) ? [...pairing.permissions] : [],
@@ -1683,16 +1630,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(() => sendResponse({ error: 'overlay-state-unavailable' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-arm-account-action') {
-    if (!isInstagramSender(sender)) {
-      sendResponse({ error: 'instagram-origin-required' });
-      return false;
-    }
-    const operation = requestTail.then(() => armPendingAccountIntent(request, sender));
-    requestTail = operation.catch(() => {});
-    operation.then(sendResponse).catch(() => sendResponse({ error: 'live-arm-unavailable' }));
-    return true;
-  }
   if (request?.kind === 'insta-aio-cancel-account-action') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
@@ -1703,16 +1640,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     operation.then(sendResponse).catch(() => sendResponse({ error: 'live-intent-cancel-failed' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-arm-dm-unsend') {
-    if (!isInstagramSender(sender)) {
-      sendResponse({ error: 'instagram-origin-required' });
-      return false;
-    }
-    const operation = requestTail.then(() => armPendingDmIntent(request, sender));
-    requestTail = operation.catch(() => {});
-    operation.then(sendResponse).catch(() => sendResponse({ error: 'dm-live-arm-unavailable' }));
-    return true;
-  }
   if (request?.kind === 'insta-aio-cancel-dm-unsend') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
@@ -1721,16 +1648,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const operation = requestTail.then(() => cancelPendingDmIntent());
     requestTail = operation.catch(() => {});
     operation.then(sendResponse).catch(() => sendResponse({ error: 'dm-live-intent-cancel-failed' }));
-    return true;
-  }
-  if (request?.kind === 'insta-aio-arm-batch') {
-    if (!isInstagramSender(sender)) {
-      sendResponse({ error: 'instagram-origin-required' });
-      return false;
-    }
-    const operation = requestTail.then(() => armBatch(request, sender));
-    requestTail = operation.catch(() => {});
-    operation.then(sendResponse).catch(() => sendResponse({ error: 'batch-arm-unavailable' }));
     return true;
   }
   if (request?.kind === 'insta-aio-start-batch') {

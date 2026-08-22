@@ -17,10 +17,6 @@ export function controlledDmPreviewDigest(items) {
   )).join('\n'));
 }
 
-export function controlledDmArmPhrase(intent) {
-  return intent?.armCode ? `ARM UNSEND ${intent.armCode}` : '';
-}
-
 export function pruneControlledDmState(state, now = Date.now()) {
   if (state.pendingDmIntent && new Date(state.pendingDmIntent.expiresAt).getTime() <= now) {
     state.pendingDmIntent = null;
@@ -207,13 +203,14 @@ export function prepareControlledDmIntent(job, pairing, state, now = Date.now())
     && state.pendingDmIntent.previewDigest === job.previewDigest
     && state.pendingDmIntent.pairingId === pairing.pairingId
     && state.pendingDmIntent.armCode === armCode;
-  if (!sameIntent) state.dmArm = null;
+  // Clear legacy persisted authority. The 2.0.0 runner mints a transient
+  // capability only after the user confirms the exact current thread/message.
+  state.dmArm = null;
   state.pendingDmIntent = sameIntent
     ? { ...state.pendingDmIntent, expiresAt: nextIntent.expiresAt }
     : nextIntent;
   return {
     intent: publicDmIntent(state.pendingDmIntent),
-    armed: dmArmMatchesIntent(state.dmArm, state.pendingDmIntent),
-    arm: publicDmArm(state.dmArm),
+    ready: true,
   };
 }

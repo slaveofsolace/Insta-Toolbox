@@ -155,22 +155,17 @@ function renderQueue() {
             Blocked: ${latestActionJob.blockedItems.map((item) => `@${escapeHtml(item.username || 'invalid')} (${escapeHtml(item.blockReason)})`).join(', ')}
           </div>
         ` : ''}
-        ${latestActionJob.status === 'awaiting-confirmation' && latestActionJob.items.length ? `
-          <div class="notice" style="margin-top:14px">
-            Confirmation phrase: <span class="code">${escapeHtml(latestActionJob.confirmationPhrase)}</span>
-          </div>
-        ` : ''}
         ${latestActionJob.status === 'ready' && latestActionJob.mode === 'live' ? `
           <div class="notice warning" style="margin-top:14px">
-            Controlled extension execution accepts exactly one reviewed account. First send the signed intent, then arm that exact action for 90 seconds from the Instagram Field Desk. The PWA rechecks the arm before reserving the durable ledger entry.
+            Controlled extension execution accepts exactly one reviewed account. One ordinary confirmation names the exact action and target; the extension then revalidates that profile before reserving the durable ledger entry.
           </div>
         ` : ''}
         ${bridgeStatus ? `<div class="notice" style="margin-top:14px">${escapeHtml(bridgeStatus)}</div>` : ''}
         <div class="toolbar" style="margin-top:14px">
-          ${latestActionJob.status === 'awaiting-confirmation' && latestActionJob.items.length ? '<button class="primary" data-action="confirm-action-dry-run">Confirm no-click dry run</button>' : ''}
-          ${latestActionJob.status === 'awaiting-confirmation' && latestActionJob.items.length === 1 && state.settings.liveActionEnabled ? '<button class="danger" data-action="confirm-action-live">Confirm one-account live action</button>' : ''}
+          ${latestActionJob.status === 'awaiting-confirmation' && latestActionJob.items.length ? '<button class="primary" data-action="confirm-action-dry-run">Prepare no-click inspection</button>' : ''}
+          ${latestActionJob.status === 'awaiting-confirmation' && latestActionJob.items.length === 1 && state.bridgePairing?.pairedAt && state.bridgePairing.permissions?.includes('action') ? `<button class="danger" data-action="run-action-extension-live">Start ${escapeHtml(latestActionJob.items[0].action === 'follow' ? 'Follow' : 'Unfollow')} on 1 account</button>` : ''}
           ${latestActionJob.status === 'ready' && latestActionJob.mode === 'dry-run' && state.bridgePairing?.pairedAt && state.bridgePairing.permissions?.includes('action') ? '<button class="primary" data-action="run-action-extension-dry-run">Inspect current Instagram profile</button>' : ''}
-          ${latestActionJob.status === 'ready' && latestActionJob.mode === 'live' && latestActionJob.items.length === 1 && state.bridgePairing?.pairedAt && state.bridgePairing.permissions?.includes('action') ? '<button class="danger" data-action="run-action-extension-live">Continue controlled live action</button>' : ''}
+          ${latestActionJob.status === 'ready' && latestActionJob.mode === 'live' && latestActionJob.items.length === 1 && state.bridgePairing?.pairedAt && state.bridgePairing.permissions?.includes('action') ? `<button class="danger" data-action="run-action-extension-live">Start ${escapeHtml(latestActionJob.items[0].action === 'follow' ? 'Follow' : 'Unfollow')} on 1 account</button>` : ''}
           ${latestActionJob.confirmedAt ? '<button data-action="export-reviewed-action-job">Export reviewed job</button>' : ''}
           <button data-action="discard-action-job">Discard preview</button>
         </div>
@@ -277,28 +272,17 @@ function renderMessages() {
             ${latestDmJob.blockedItems.length} selected message${latestDmJob.blockedItems.length === 1 ? ' was' : 's were'} blocked, including received or incomplete records.
           </div>
         ` : ''}
-        ${latestDmJob.status === 'awaiting-review-confirmation' && latestDmJob.items.length ? `
-          <div class="notice" style="margin-top:14px">
-            Review phrase: <span class="code">${escapeHtml(latestDmJob.reviewConfirmationPhrase)}</span>
-          </div>
-        ` : ''}
-        ${latestDmJob.status === 'awaiting-destructive-confirmation' ? `
-          <div class="notice warning" style="margin-top:14px">
-            Second confirmation phrase: <span class="code">${escapeHtml(latestDmJob.destructiveConfirmationPhrase)}</span>
-          </div>
-        ` : ''}
         ${latestDmJob.status === 'ready' && latestDmJob.mode === 'live' && latestDmJob.items.length === 1 ? `
           <div class="notice warning" style="margin-top:14px">
-            Controlled extension execution accepts exactly one reviewed sent message. Send its signed intent, open the exact Instagram conversation, then arm that message for 90 seconds from Field Desk. The PWA rechecks the one-use capability before reserving either durable ledger.
+            Controlled extension execution accepts exactly one reviewed sent message. One ordinary confirmation names the exact thread and message; the extension revalidates both before reserving either durable ledger.
           </div>
         ` : ''}
         ${bridgeStatus ? `<div class="notice" style="margin-top:14px">${escapeHtml(bridgeStatus)}</div>` : ''}
         <div class="toolbar" style="margin-top:14px">
-          ${latestDmJob.status === 'awaiting-review-confirmation' && latestDmJob.items.length ? '<button class="primary" data-action="confirm-dm-dry-run">Confirm no-click dry run</button>' : ''}
-          ${latestDmJob.status === 'awaiting-review-confirmation' && latestDmJob.items.length && state.settings.liveDmUnsendEnabled ? '<button class="danger" data-action="review-dm-live">Review live unsend batch</button>' : ''}
-          ${latestDmJob.status === 'awaiting-destructive-confirmation' ? '<button class="danger" data-action="confirm-dm-destructive">Confirm destructive batch</button>' : ''}
+          ${latestDmJob.status === 'awaiting-review-confirmation' && latestDmJob.items.length ? '<button class="primary" data-action="confirm-dm-dry-run">Prepare no-click inspection</button>' : ''}
+          ${['awaiting-review-confirmation', 'awaiting-destructive-confirmation'].includes(latestDmJob.status) && latestDmJob.items.length === 1 && state.bridgePairing?.pairedAt && state.bridgePairing.permissions?.includes('action') ? '<button class="danger" data-action="run-dm-extension-live">Unsend 1 DM</button>' : ''}
           ${latestDmJob.status === 'ready' && latestDmJob.mode === 'dry-run' && state.bridgePairing?.pairedAt && state.bridgePairing.permissions?.includes('action') ? '<button data-action="run-dm-extension-dry-run">Check extension resolution</button>' : ''}
-          ${latestDmJob.status === 'ready' && latestDmJob.mode === 'live' && latestDmJob.items.length === 1 && state.bridgePairing?.pairedAt && state.bridgePairing.permissions?.includes('action') ? '<button class="danger" data-action="run-dm-extension-live">Continue controlled live Unsend</button>' : ''}
+          ${latestDmJob.status === 'ready' && latestDmJob.mode === 'live' && latestDmJob.items.length === 1 && state.bridgePairing?.pairedAt && state.bridgePairing.permissions?.includes('action') ? '<button class="danger" data-action="run-dm-extension-live">Unsend 1 DM</button>' : ''}
           ${latestDmJob.reviewConfirmedAt ? '<button data-action="export-reviewed-dm-job">Export reviewed DM job</button>' : ''}
           <button data-action="discard-dm-job">Discard preview</button>
         </div>

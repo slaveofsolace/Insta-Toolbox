@@ -2,8 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  controlledDmArmPhrase,
-  dmArmMatchesIntent,
   prepareControlledDmIntent,
   pruneControlledDmState,
   validateControlledDmJob,
@@ -60,13 +58,13 @@ test('prepares only one fresh, twice-confirmed, unchanged DM intent', () => {
   const prepared = prepareControlledDmIntent(job, pairing, state, 1_700_000_001_000);
 
   assert.equal(prepared.error, undefined);
-  assert.equal(prepared.armed, false);
+  assert.equal(prepared.ready, true);
+  assert.equal(Object.hasOwn(prepared, 'armed'), false);
   assert.equal(prepared.intent.jobId, job.id);
   assert.equal(prepared.intent.itemId, job.items[0].id);
   assert.equal(prepared.intent.conversationId, 'inbox/friend_123');
   assert.equal(prepared.intent.messageId, 'message-1');
   assert.match(prepared.intent.armCode, /^[A-F0-9]{8}$/);
-  assert.equal(controlledDmArmPhrase(prepared.intent), `ARM UNSEND ${prepared.intent.armCode}`);
   assert.equal(Object.hasOwn(prepared.intent, 'pairingId'), false);
   assert.equal(prepared.intent.contentDigest, job.items[0].contentDigest);
   assert.equal(state.pendingDmIntent.pairingId, 'pairing-1');
@@ -115,7 +113,7 @@ test('rejects stale, out-of-order, received, and incompletely confirmed DM jobs'
   );
 });
 
-test('preserves a matching arm, invalidates a changed intent, and expires closed', () => {
+test('clears legacy persisted authority and expires the reviewed intent closed', () => {
   const job = liveJob();
   const state = { pendingDmIntent: null, dmArm: null };
   prepareControlledDmIntent(job, pairing, state, 1_700_000_001_000);
@@ -131,18 +129,17 @@ test('preserves a matching arm, invalidates a changed intent, and expires closed
   };
 
   const repeated = prepareControlledDmIntent(job, pairing, state, 1_700_000_002_000);
-  assert.equal(repeated.armed, true);
-  assert.equal(dmArmMatchesIntent(state.dmArm, state.pendingDmIntent), true);
+  assert.equal(repeated.ready, true);
+  assert.equal(state.dmArm, null);
 
   const different = liveJob(1_700_000_003_000);
   different.items[0].messageId = 'message-2';
   different.previewDigest = 'c1572602';
   const invalid = prepareControlledDmIntent(different, pairing, state, 1_700_000_004_000);
   assert.equal(invalid.error, 'reviewed-dm-preview-changed');
-  assert.notEqual(state.dmArm, null);
+  assert.equal(state.dmArm, null);
 
   state.pendingDmIntent.expiresAt = '2023-11-14T22:13:20.000Z';
-  state.dmArm.expiresAt = '2023-11-14T22:13:20.000Z';
   pruneControlledDmState(state, 1_700_000_000_001);
   assert.equal(state.pendingDmIntent, null);
   assert.equal(state.dmArm, null);

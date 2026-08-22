@@ -28,7 +28,7 @@ async function loadBackground({ profileResponses, performResponses, stored }) {
 
   globalThis.chrome = {
     runtime: {
-      getManifest: () => ({ version: '0.11.0' }),
+      getManifest: () => ({ version: '2.0.0' }),
       onMessage: { addListener(listener) { runtimeListener = listener; } },
     },
     storage: {
@@ -119,6 +119,35 @@ function baseStored() {
   };
 }
 
+function batchTargetDigest(kind, action, items) {
+  const source = JSON.stringify(items.map((item) => (
+    kind === 'account'
+      ? [String(item?.id || ''), String(item?.username || '').toLowerCase()]
+      : [String(item?.id || ''), String(item?.messageId || ''), String(item?.threadId || '')]
+  )));
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${kind}:${action || ''}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function confirmedAccountBatch(action, items) {
+  return {
+    kind: 'insta-aio-start-batch',
+    batchKind: 'account',
+    action,
+    items,
+    confirmed: true,
+    confirmation: {
+      action,
+      count: items.length,
+      targetDigest: batchTargetDigest('account', action, items),
+    },
+  };
+}
+
 test('thread-wide Unsend reserves its finite plan against the daily DM limit', async () => {
   const stored = baseStored();
   stored.batchLimits = {
@@ -182,7 +211,7 @@ async function waitForRun(deliver, predicate, timeoutMs = 15_000) {
   throw new Error('Batch did not reach the expected state in time.');
 }
 
-test('batch arming requires the exact phrase and the armed tab', async () => {
+test('batch start requires an exact finite confirmation from the active Instagram tab', async () => {
   const stored = baseStored();
   const { cleanup, deliver } = await loadBackground({
     profileResponses: {},
@@ -190,36 +219,29 @@ test('batch arming requires the exact phrase and the armed tab', async () => {
     stored,
   });
   try {
+    const items = [
+      { id: 'i-1', username: 'alpha' },
+      { id: 'i-2', username: 'beta' },
+      { id: 'i-3', username: 'gamma' },
+    ];
     const wrong = await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 3,
-      phrase: 'ARM BATCH UNFOLLOW 2',
+      ...confirmedAccountBatch('unfollow', items),
+      confirmation: {
+        action: 'unfollow',
+        count: 2,
+        targetDigest: batchTargetDigest('account', 'unfollow', items),
+      },
     }, sender);
-    assert.equal(wrong.error, 'batch-arm-phrase-mismatch');
+    assert.equal(wrong.error, 'batch-confirmation-mismatch');
     assert.equal(stored.batchArm, null);
 
-    const missingTab = await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 3,
-      phrase: 'ARM BATCH UNFOLLOW 3',
-    }, { url: 'https://www.instagram.com/', tab: {} });
+    const missingTab = await deliver(
+      confirmedAccountBatch('unfollow', items),
+      { url: 'https://www.instagram.com/', tab: {} },
+    );
     assert.equal(missingTab.error, 'instagram-tab-required');
 
-    const armed = await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 3,
-      phrase: 'ARM BATCH UNFOLLOW 3',
-    }, sender);
-    assert.equal(armed.error, undefined);
-    assert.equal(armed.arm.kind, 'account');
-    assert.equal(armed.arm.count, 3);
-    assert.equal(armed.arm.tabId, 7);
+    assert.equal(stored.batchRun, null);
   } finally {
     await cleanup();
   }
@@ -236,19 +258,8 @@ test('batch run navigates, verifies, and acts on each account exactly once', asy
     stored,
   });
   try {
-    await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 2,
-      phrase: 'ARM BATCH UNFOLLOW 2',
-    }, sender);
-
-    const started = await deliver({
-      kind: 'insta-aio-start-batch',
-      batchKind: 'account',
-      items: [{ id: 'i-1', username: 'alpha' }, { id: 'i-2', username: 'beta' }],
-    }, sender);
+    const items = [{ id: 'i-1', username: 'alpha' }, { id: 'i-2', username: 'beta' }];
+    const started = await deliver(confirmedAccountBatch('unfollow', items), sender);
     assert.equal(started.error, undefined);
     assert.equal(started.run.total, 2);
 
@@ -287,18 +298,8 @@ test('batch skips a target whose relationship no longer matches without stopping
     stored,
   });
   try {
-    await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 2,
-      phrase: 'ARM BATCH UNFOLLOW 2',
-    }, sender);
-    await deliver({
-      kind: 'insta-aio-start-batch',
-      batchKind: 'account',
-      items: [{ id: 'i-1', username: 'alpha' }, { id: 'i-2', username: 'beta' }],
-    }, sender);
+    const items = [{ id: 'i-1', username: 'alpha' }, { id: 'i-2', username: 'beta' }];
+    await deliver(confirmedAccountBatch('unfollow', items), sender);
 
     const run = await waitForRun(deliver, (value) => value?.status === 'completed');
     assert.equal(run.skipped, 1);
@@ -324,22 +325,12 @@ test('batch stops the whole run when Instagram signals a rate limit', async () =
     stored,
   });
   try {
-    await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 3,
-      phrase: 'ARM BATCH UNFOLLOW 3',
-    }, sender);
-    await deliver({
-      kind: 'insta-aio-start-batch',
-      batchKind: 'account',
-      items: [
-        { id: 'i-1', username: 'alpha' },
-        { id: 'i-2', username: 'beta' },
-        { id: 'i-3', username: 'gamma' },
-      ],
-    }, sender);
+    const items = [
+      { id: 'i-1', username: 'alpha' },
+      { id: 'i-2', username: 'beta' },
+      { id: 'i-3', username: 'gamma' },
+    ];
+    await deliver(confirmedAccountBatch('unfollow', items), sender);
 
     const run = await waitForRun(deliver, (value) => value?.status === 'stopped');
     assert.equal(run.stopReason, 'rate-limited');
@@ -372,18 +363,8 @@ test('a slow-loading profile is retried rather than silently skipped', async () 
     stored,
   });
   try {
-    await deliver({
-      kind: 'insta-aio-arm-batch',
-      batchKind: 'account',
-      action: 'unfollow',
-      count: 1,
-      phrase: 'ARM BATCH UNFOLLOW 1',
-    }, sender);
-    await deliver({
-      kind: 'insta-aio-start-batch',
-      batchKind: 'account',
-      items: [{ id: 'i-1', username: 'alpha' }],
-    }, sender);
+    const items = [{ id: 'i-1', username: 'alpha' }];
+    await deliver(confirmedAccountBatch('unfollow', items), sender);
 
     const run = await waitForRun(deliver, (value) => value?.status === 'completed');
     assert.equal(run.completed, 1, 'the target was acted on once it resolved');
@@ -395,7 +376,7 @@ test('a slow-loading profile is retried rather than silently skipped', async () 
   }
 });
 
-test('starting a batch without a valid arm is rejected', async () => {
+test('starting a batch without an exact confirmation is rejected', async () => {
   const stored = baseStored();
   const { cleanup, deliver } = await loadBackground({
     profileResponses: {},
@@ -406,9 +387,10 @@ test('starting a batch without a valid arm is rejected', async () => {
     const response = await deliver({
       kind: 'insta-aio-start-batch',
       batchKind: 'account',
+      action: 'unfollow',
       items: [{ id: 'i-1', username: 'alpha' }],
     }, sender);
-    assert.equal(response.error, 'batch-arm-required');
+    assert.equal(response.error, 'batch-confirmation-mismatch');
   } finally {
     await cleanup();
   }

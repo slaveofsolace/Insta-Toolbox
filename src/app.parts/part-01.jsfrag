@@ -260,53 +260,6 @@ function downloadBlob(filename, blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function requestExactConfirmation({
-  title,
-  description,
-  phrase,
-  destructive = false,
-}) {
-  let dialog = document.querySelector('#exact-confirmation-dialog');
-  if (!dialog) {
-    dialog = document.createElement('dialog');
-    dialog.id = 'exact-confirmation-dialog';
-    dialog.innerHTML = `
-      <form method="dialog" class="confirmation-card">
-        <h2 data-confirmation-title></h2>
-        <p data-confirmation-description></p>
-        <div class="notice"><span class="code" data-confirmation-phrase></span></div>
-        <div class="field">
-          <label for="exact-confirmation-input">Enter the phrase exactly</label>
-          <input id="exact-confirmation-input" autocomplete="off" spellcheck="false">
-        </div>
-        <div class="toolbar confirmation-actions">
-          <button value="cancel">Cancel</button>
-          <button data-confirmation-submit value="confirm">Confirm</button>
-        </div>
-      </form>
-    `;
-    document.body.append(dialog);
-  }
-  dialog.querySelector('[data-confirmation-title]').textContent = title;
-  dialog.querySelector('[data-confirmation-description]').textContent = description;
-  dialog.querySelector('[data-confirmation-phrase]').textContent = phrase;
-  const input = dialog.querySelector('#exact-confirmation-input');
-  const submit = dialog.querySelector('[data-confirmation-submit]');
-  input.value = '';
-  dialog.returnValue = 'cancel';
-  submit.className = destructive ? 'danger' : 'primary';
-
-  return new Promise((resolve) => {
-    const onClose = () => {
-      dialog.removeEventListener('close', onClose);
-      resolve(dialog.returnValue === 'confirm' ? input.value : null);
-    };
-    dialog.addEventListener('close', onClose);
-    dialog.showModal();
-    input.focus();
-  });
-}
-
 function csvEscape(value) {
   const text = String(value ?? '');
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -363,7 +316,7 @@ function renderShell(content) {
         </nav>
         <div class="sidebar-foot">
           Data remains in this browser unless you export it.<br>
-          Live actions stay locked until one exact reviewed item is armed on Instagram.
+          Every permanent action requires one exact confirmation on Instagram.
         </div>
       </aside>
       <main class="main">${content}</main>
@@ -396,7 +349,7 @@ function renderOverview() {
       <article class="tool-lane">
         <div class="tool-lane-index">02</div>
         <div class="tool-lane-copy"><p class="eyebrow">Review exact profiles</p><h2>Follow / Unfollow</h2><p>Compose a bounded target list, inspect relationship state without clicking, then send reviewed work to Instagram.</p><div class="tool-lane-facts"><span><strong>${queue.ready || 0}</strong> ready</span><span><strong>${queue.waiting || 0}</strong> waiting</span><span><strong>${diff.lostFollowers.length}</strong> recent unfollows</span></div></div>
-        <div class="tool-lane-action"><span>Live actions locked on load</span><button data-action="navigate" data-view="queue">Open queue</button></div>
+        <div class="tool-lane-action"><span>Exact confirmation required for every action</span><button data-action="navigate" data-view="queue">Open queue</button></div>
       </article>
       <article class="tool-lane">
         <div class="tool-lane-index">03</div>

@@ -217,3 +217,126 @@ test('authenticated follower check enforces its hard deadline during a pending r
   );
   assert.equal(cleared, true);
 });
+
+test('authenticated follower check retries a hung fetch twice before preserving the previous result', async () => {
+  const inspector = createInspector();
+  const progress = [];
+  let calls = 0;
+  await assert.rejects(
+    inspector.fetchFollowerComparison({
+      fetchImpl: async () => {
+        calls += 1;
+        return new Promise(() => {});
+      },
+      onProgress: (entry) => progress.push(entry),
+      requestTimeoutMs: 5,
+      retryBaseMs: 0,
+      sleepImpl: async () => {},
+      username: 'target_name',
+    }),
+    (error) => error.code === 'request-timeout'
+      && /3 attempts/.test(error.message)
+      && /previous comparison is unchanged/i.test(error.message),
+  );
+  assert.equal(calls, 3);
+  assert.deepEqual(
+    progress.filter((entry) => entry.phase === 'retrying').map((entry) => ({
+      attempt: entry.attempt,
+      listType: entry.listType,
+      pages: entry.pages,
+    })),
+    [
+      { attempt: 2, listType: null, pages: 0 },
+      { attempt: 3, listType: null, pages: 0 },
+    ],
+  );
+});
+
+test('authenticated follower check retries a hung JSON body and succeeds without duplicate rows', async () => {
+  const inspector = createInspector();
+  const progress = [];
+  let searchBodies = 0;
+  const result = await inspector.fetchFollowerComparison({
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname.includes('topsearch')) {
+        searchBodies += 1;
+        if (searchBodies < 3) return { ok: true, status: 200, json: async () => new Promise(() => {}) };
+        return response({ users: [{ user: { pk: '44', username: 'target_name' } }] });
+      }
+      return response({
+        users: [
+          { username: 'same.person', full_name: 'Same Person' },
+          { username: 'same.person', full_name: 'Same Person' },
+        ],
+      });
+    },
+    onProgress: (entry) => progress.push(entry),
+    requestTimeoutMs: 5,
+    retryBaseMs: 0,
+    sleepImpl: async () => {},
+    username: 'target_name',
+  });
+  assert.equal(searchBodies, 3);
+  assert.equal(result.followers.length, 1);
+  assert.equal(result.following.length, 1);
+  assert.deepEqual(
+    progress.filter((entry) => entry.phase === 'retrying').map((entry) => entry.attempt),
+    [2, 3],
+  );
+});
+
+test('authenticated follower check stops immediately when aborted during retry backoff', async () => {
+  const inspector = createInspector();
+  const controller = new AbortController();
+  let calls = 0;
+  await assert.rejects(
+    inspector.fetchFollowerComparison({
+      fetchImpl: async () => {
+        calls += 1;
+        throw new TypeError('offline');
+      },
+      onProgress(entry) {
+        if (entry.phase === 'retrying') queueMicrotask(() => controller.abort());
+      },
+      retryBaseMs: 250,
+      signal: controller.signal,
+      username: 'target_name',
+    }),
+    (error) => error.code === 'stopped',
+  );
+  assert.equal(calls, 1);
+});
+
+test('follower comparison export provides a readable UTF-8 report and preserves schema-1 JSON', () => {
+  const inspector = createInspector();
+  const workspace = {
+    subjectUsername: 'Demo.Creator',
+    followers: [{ username: 'friend.one' }, { username: 'incoming.only' }],
+    following: [{ username: 'friend.one' }, { username: 'outgoing.only' }],
+    complete: { followers: true, following: true },
+    verified: { followers: true, following: true },
+    source: { followers: 'authenticated-web', following: 'authenticated-web' },
+  };
+  const comparison = {
+    mutuals: [{ username: 'friend.one', displayName: 'Friend One' }],
+    notFollowingMeBack: [{ username: 'outgoing.only', displayName: 'Outgoing Only' }],
+    iDoNotFollowBack: [{ username: 'incoming.only', displayName: 'Incoming Only' }],
+  };
+  const generatedAt = '2026-08-22T12:34:56.000Z';
+  const report = inspector.followerComparisonReport(workspace, comparison, generatedAt);
+  assert.match(report, /^INSTA AIO FOLLOWER COMPARISON\r\n/m);
+  assert.match(report, /Account: @demo\.creator/);
+  assert.match(report, /Generated: 2026-08-22T12:34:56\.000Z/);
+  assert.match(report, /Completeness: Complete/);
+  assert.match(report, /Followers: 2\r\nFollowing: 2\r\nMutual followers: 1/);
+  assert.match(report, /NOT FOLLOWING YOU BACK\r\n-+\r\n1\. @outgoing\.only — Outgoing Only/);
+  assert.match(report, /YOU DO NOT FOLLOW BACK\r\n-+\r\n1\. @incoming\.only — Incoming Only/);
+  assert.match(report, /MUTUAL FOLLOWERS\r\n-+\r\n1\. @friend\.one — Friend One/);
+
+  const record = inspector.followerComparisonRecord(workspace, comparison, generatedAt);
+  assert.equal(record.schemaVersion, 1);
+  assert.equal(record.kind, 'insta-aio-comparison');
+  assert.equal(record.generatedAt, generatedAt);
+  assert.equal(record.notFollowingMeBack[0].username, 'outgoing.only');
+});

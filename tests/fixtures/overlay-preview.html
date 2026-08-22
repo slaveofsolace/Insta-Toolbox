@@ -256,7 +256,6 @@
       username: 'demo_creator',
     } : null;
     const fixtureDmIntent = fixtureDmIntentMode ? {
-      armCode: 'FIXTURE7',
       confirmedAt: new Date().toISOString(),
       contentDigest: globalThis.fixtureDmItem.contentDigest,
       conversationId: fixtureMode === 'qa-messages-wrong'
@@ -313,32 +312,13 @@
       reason: 'fixture review',
       scheduledFor: '2026-07-31T07:00:00.000Z',
     }];
-    const fixtureAccountArm = ['qa-account-armed', 'qa-native-dialog', 'qa-account-expiring']
-      .includes(fixtureMode)
-      ? {
-        action: fixtureAction,
-        armedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + (fixtureMode === 'qa-account-expiring' ? 700 : 90_000)).toISOString(),
-        itemId: fixtureIntent.itemId,
-        jobId: fixtureIntent.jobId,
-        username: fixtureIntent.username,
-      }
-      : null;
-    const fixtureDmArm = fixtureMode === 'qa-messages-armed' ? {
-      armedAt: new Date().toISOString(),
-      conversationId: fixtureDmIntent.conversationId,
-      expiresAt: new Date(Date.now() + 90_000).toISOString(),
-      itemId: fixtureDmIntent.itemId,
-      jobId: fixtureDmIntent.jobId,
-      messageId: fixtureDmIntent.messageId,
-    } : null;
     const fixtureStorage = {
       bridgePairings: fixturePairings,
       pendingJobs: [],
       pendingLiveIntent: fixtureIntent,
       pendingDmIntent: fixtureDmIntent,
-      liveArm: fixtureAccountArm,
-      dmArm: fixtureDmArm,
+      liveArm: null,
+      dmArm: null,
       batchArm: null,
       batchRun: null,
       batchLimits: {
@@ -410,17 +390,18 @@
     globalThis.chrome = {
       runtime: {
         lastError: null,
-        getManifest: () => ({ version: '0.11.0' }),
+        getManifest: () => ({ version: '2.0.0' }),
         onMessage: { addListener: (listener) => runtimeListeners.push(listener) },
         sendMessage: (request, callback) => {
           if (request.kind === 'insta-aio-overlay-state') {
             callback({ state: {
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
-              dmArm: fixtureStorage.dmArm,
-              extensionVersion: '0.11.0',
-              liveExecutionEnabled: Boolean(fixtureStorage.liveArm || fixtureStorage.dmArm),
-              liveArm: fixtureStorage.liveArm,
+              dmArm: null,
+              extensionVersion: '2.0.0',
+              exactConfirmationRequired: true,
+              liveExecutionEnabled: false,
+              liveArm: null,
               pairings: fixtureStorage.bridgePairings,
               pendingDmIntent: fixtureStorage.pendingDmIntent,
               pendingLiveIntent: fixtureStorage.pendingLiveIntent,
@@ -436,75 +417,20 @@
             } });
             return;
           }
-          if (request.kind === 'insta-aio-arm-account-action') {
-            const expectedPhrase = `ARM ${fixtureAction.toUpperCase()} @demo_creator`;
-            if (request.phrase !== expectedPhrase) {
-              callback({ error: 'live-arm-phrase-mismatch' });
-              return;
-            }
-            fixtureStorage.liveArm = {
-              action: fixtureAction,
-              armedAt: new Date().toISOString(),
-              expiresAt: new Date(Date.now() + 90 * 1000).toISOString(),
-              itemId: fixtureIntent.itemId,
-              jobId: fixtureIntent.jobId,
-              username: fixtureIntent.username,
-            };
-            callback({ state: {
-              controlledAccountActionsAvailable: true,
-              controlledDmUnsendAvailable: true,
-              dmArm: fixtureStorage.dmArm,
-              extensionVersion: '0.11.0',
-              liveExecutionEnabled: true,
-              liveArm: fixtureStorage.liveArm,
-              pairings: fixtureStorage.bridgePairings,
-              pendingDmIntent: fixtureStorage.pendingDmIntent,
-              pendingLiveIntent: fixtureStorage.pendingLiveIntent,
-              recentRuns: [],
-            } });
-            return;
-          }
           if (request.kind === 'insta-aio-cancel-account-action') {
             fixtureStorage.pendingLiveIntent = null;
             fixtureStorage.liveArm = null;
             callback({ state: {
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
-              dmArm: fixtureStorage.dmArm,
-              extensionVersion: '0.11.0',
+              dmArm: null,
+              extensionVersion: '2.0.0',
+              exactConfirmationRequired: true,
               liveExecutionEnabled: false,
               liveArm: null,
               pairings: fixtureStorage.bridgePairings,
               pendingDmIntent: fixtureStorage.pendingDmIntent,
               pendingLiveIntent: null,
-              recentRuns: [],
-            } });
-            return;
-          }
-          if (request.kind === 'insta-aio-arm-dm-unsend') {
-            const expectedPhrase = `ARM UNSEND ${fixtureDmIntent.armCode}`;
-            if (request.phrase !== expectedPhrase) {
-              callback({ error: 'dm-live-arm-phrase-mismatch' });
-              return;
-            }
-            fixtureStorage.dmArm = {
-              armedAt: new Date().toISOString(),
-              conversationId: fixtureDmIntent.conversationId,
-              expiresAt: new Date(Date.now() + 90 * 1000).toISOString(),
-              itemId: fixtureDmIntent.itemId,
-              jobId: fixtureDmIntent.jobId,
-              messageId: fixtureDmIntent.messageId,
-            };
-            callback({ state: {
-              controlledAccountActionsAvailable: true,
-              controlledDmUnsendAvailable: true,
-              dmArm: fixtureStorage.dmArm,
-              extensionVersion: '0.11.0',
-              liveExecutionEnabled: true,
-              liveArm: fixtureStorage.liveArm,
-              pairings: fixtureStorage.bridgePairings,
-              pendingDmIntent: fixtureStorage.pendingDmIntent,
-              pendingLiveIntent: fixtureStorage.pendingLiveIntent,
               recentRuns: [],
             } });
             return;
@@ -516,9 +442,10 @@
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
               dmArm: null,
-              extensionVersion: '0.11.0',
-              liveExecutionEnabled: Boolean(fixtureStorage.liveArm),
-              liveArm: fixtureStorage.liveArm,
+              extensionVersion: '2.0.0',
+              exactConfirmationRequired: true,
+              liveExecutionEnabled: false,
+              liveArm: null,
               pairings: fixtureStorage.bridgePairings,
               pendingDmIntent: null,
               pendingLiveIntent: fixtureStorage.pendingLiveIntent,

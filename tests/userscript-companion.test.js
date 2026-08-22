@@ -47,9 +47,9 @@ test('live Follow, Unfollow, and Unsend are available and go through the engine'
   assert.match(shell, /engine\.performReviewedProfileAction\(/);
   assert.doesNotMatch(shell, /engine\.performReviewedDmUnsend\(/);
   assert.match(source, /InstaAioDmThreadUnsender/);
-  assert.match(source, /await runner\.start\(\{/);
+  assert.match(source, /await dmRunner\.start\(\{/);
   assert.match(shell, /engine\.collectAccountList\(/);
-  assert.match(shell, /engine\.enumerateSentDms\(/);
+  assert.match(shell, /dmRunner\.inspectAll\(\)/);
   assert.match(source, /data-action="review-accounts"/);
   assert.match(shell, /button\.dataset\.action = 'run-accounts'/);
   assert.match(shell, /accountRunDraft\.signature !== current\.signature/);
@@ -71,24 +71,23 @@ test('the userscript can review the current exact profile as a one-item run', ()
   assert.match(shell, /engine\.normalizeUsername\?\.\(location\.pathname\)/);
 });
 
-test('live mutation controls are locked by default and authorization expires during a run', () => {
-  assert.match(source, /Userscript mode · live actions locked/);
-  assert.match(source, /data-role="live-actions"/);
-  assert.match(shell, /LIVE_AUTHORIZATION_MS = 15 \* 60 \* 1_000/);
-  assert.doesNotMatch(shell, /ENABLE LIVE ACTIONS|LIVE_AUTHORIZATION_PHRASE/);
-  assert.match(shell, /setLiveActionsUnlocked\(true\);[\s\S]*?return newLiveRunAuthorized\(\)/);
-  assert.match(shell, /let liveActionsUnlockedUntil = 0/);
-  assert.match(shell, /function requireNewRunAuthorization\(\)/);
-  assert.match(shell, /authorizationExpiresAt: liveActionsUnlockedUntil/);
+test('each mutation uses one exact finite capability without a global unlock', () => {
+  assert.match(source, /Userscript mode · local controls/);
+  assert.doesNotMatch(source, /data-role="live-actions"|live actions locked/);
+  assert.match(shell, /RUN_CAPABILITY_MS = 20 \* 60 \* 1_000/);
+  assert.match(shell, /DM_PLAN_CAPABILITY_MS = 15 \* 60 \* 1_000/);
+  assert.doesNotMatch(shell, /ENABLE LIVE ACTIONS|LIVE_AUTHORIZATION_PHRASE|setLiveActionsUnlocked|InstaAioUserscriptLiveAuthority/);
+  assert.match(shell, /function accountCapabilityDigest\(action, usernames\)/);
+  assert.match(shell, /capabilityExpiresAt: Date\.now\(\) \+ RUN_CAPABILITY_MS/);
+  assert.match(shell, /approvedTargets: \[\.\.\.queue\]/);
+  assert.match(shell, /if \(!confirmRun\(/);
   assert.match(shell, /normalizeResumableAccountRun\(tabState\?\.\[TAB_RUN_FIELD\]\)/);
   assert.match(shell, /GM_setValue\(STATE_KEY, \{ \.\.\.state, run: null \}\)/);
-  assert.match(shell, /if \(!runAuthorizationValid\(run\)\)/);
-  assert.match(shell, /The run stopped before another Instagram action/);
-  assert.match(shell, /InstaAioUserscriptLiveAuthority/);
-  assert.match(shell, /enable: \(\) => \{/);
-  assert.match(source, /A fresh, count-specific reviewed plan is required before Unsend can start/);
+  assert.match(shell, /if \(!runCapabilityValid\(run\)\)/);
+  assert.match(shell, /The finite run expired\. It stopped before another Instagram action/);
+  assert.match(source, /The exact thread, scope, finite count, digest, and expiry are revalidated/);
   assert.match(source, /currentEligibleCount !== plan\.eligibleCount/);
-  assert.doesNotMatch(shell, /live actions enabled/);
+  assert.doesNotMatch(shell, /live actions enabled|global unlock/i);
 });
 
 test('every live action still has to clear the exact-target checks first', () => {
@@ -131,7 +130,7 @@ test('account runs use daily pacing while DM plans remain finite and paced', () 
   assert.match(source, /Permanently unsend \$\{scopeLabel\}/);
   assert.match(shell, /function reserveUnsendPlan\(plan\)/);
   assert.match(shell, /bounds\.dailyUnsends - Number\(current\.unsends \|\| 0\)/);
-  assert.match(source, /liveAuthority\.reserveUnsendPlan\?\.\(plan\)/);
+  assert.match(shell, /const reservation = reserveUnsendPlan\(plan\)/);
   // The allowance is spent against today's ledger, so a resumed run cannot
   // reset its own budget by reloading.
   assert.match(shell, /function usedToday\(kind\)/);
@@ -168,12 +167,14 @@ test('DM evidence and saved Unsend candidates stay bound to the active conversat
   assert.match(shell, /function sentMessagesForThread\(messages, threadId = currentDirectThreadId\(\)\)/);
   assert.match(shell, /state\.messageEvidence\?\.threadId === activeThreadId/);
   assert.match(shell, /state\.dmCheck\?\.threadId === activeThreadId/);
-  assert.match(shell, /directThreadId\(outcome\?\.conversationId\) === activeThreadId/);
-  assert.match(shell, /state\.sentDmsComplete = scanMatchesThread && outcome\?\.complete === true/);
+  assert.match(shell, /dmThreadPreview\?\.threadId === currentDirectThreadId\(\)/);
+  assert.match(shell, /dmThreadPreview = outcome\?\.ready && outcome\.complete === true \? outcome : null/);
+  assert.match(shell, /dmThreadPreview = outcome\?\.ready && outcome\.complete === true \? outcome : null/);
+  assert.match(shell, /eligible in thread \$\{outcome\.threadId\}/);
   assert.match(source, /if \(!expectedThreadId \|\| context\.threadId !== expectedThreadId\)/);
   assert.match(source, /currentEligibleCount !== plan\.eligibleCount/);
   assert.match(shell, /if \(currentHref !== lastLocationHref\)/);
-  assert.match(shell, /lastLocationHref = currentHref;\s+state\.messageEvidence = null;/);
+  assert.match(shell, /lastLocationHref = currentHref;\s+dmThreadPreview = null;\s+state\.messageEvidence = null;/);
   assert.match(shell, /state\.dmCheck = null;\s+state\.sentDms = \[\];/);
   // Clearing must persist and re-render. Additional fields may be reset in the
   // same block, so match the intent rather than an exact three-line sequence.

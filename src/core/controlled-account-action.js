@@ -141,13 +141,15 @@ export function prepareControlledAccountIntent(job, pairing, state, now = Date.n
   const sameIntent = accountIntentMatchesItem(state.pendingLiveIntent, job.id, item)
     && state.pendingLiveIntent.previewDigest === job.previewDigest
     && state.pendingLiveIntent.pairingId === pairing.pairingId;
-  if (!sameIntent) state.liveArm = null;
+  // Legacy persisted arms are migration-only in 2.0.0. Execution authority is
+  // minted in memory after the ordinary exact-target confirmation and cannot
+  // survive a background-worker restart.
+  state.liveArm = null;
   state.pendingLiveIntent = sameIntent
     ? { ...state.pendingLiveIntent, expiresAt: nextIntent.expiresAt }
     : nextIntent;
   return {
     intent: publicAccountIntent(state.pendingLiveIntent),
-    armed: accountArmMatchesIntent(state.liveArm, state.pendingLiveIntent),
-    arm: publicAccountArm(state.liveArm),
+    ready: true,
   };
 }

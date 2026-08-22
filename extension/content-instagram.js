@@ -41,6 +41,9 @@
   const RELATIONSHIP_MAX_PAGES = 1_000;
   const RELATIONSHIP_MAX_ACCOUNTS = 25_000;
   const RELATIONSHIP_MAX_DURATION_MS = 20 * 60 * 1_000;
+  const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
+  const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
+  const RELATIONSHIP_RETRY_BASE_MS = 1_000;
 
   function normalizeUsername(value) {
     const username = String(value || '')
@@ -143,47 +146,148 @@
     return '';
   }
 
-  async function fetchInstagramRelationshipJson(url, {
-    fetchImpl,
+  function relationshipStepWithTimeout(task, {
+    clearTimer,
+    setTimer,
     signal,
+    timeoutMs,
   }) {
-    let response;
-    try {
-      response = await fetchImpl(url.href, {
-        credentials: 'include',
-        headers: { 'X-IG-App-ID': INSTAGRAM_WEB_APP_ID },
-        method: 'GET',
-        signal,
-      });
-    } catch (error) {
-      if (signal?.aborted || error?.name === 'AbortError') {
-        throw relationshipError('stopped', 'Follower check stopped.');
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(relationshipError('stopped', 'Follower check stopped.'));
+        return;
       }
-      throw relationshipError('network-error', 'Instagram follower data could not be reached from this tab.');
+      const controller = new AbortController();
+      let settled = false;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimer(timer);
+        signal?.removeEventListener?.('abort', stop);
+        callback(value);
+      };
+      const stop = () => {
+        controller.abort();
+        finish(reject, relationshipError('stopped', 'Follower check stopped.'));
+      };
+      const timer = setTimer(() => {
+        controller.abort();
+        finish(reject, relationshipError(
+          'request-timeout',
+          'Instagram did not finish this follower page within 20 seconds.',
+        ));
+      }, timeoutMs);
+      signal?.addEventListener?.('abort', stop, { once: true });
+      Promise.resolve()
+        .then(() => task(controller.signal))
+        .then((value) => finish(resolve, value))
+        .catch((error) => {
+          if (signal?.aborted) {
+            finish(reject, relationshipError('stopped', 'Follower check stopped.'));
+            return;
+          }
+          finish(reject, error);
+        });
+    });
+  }
+
+  async function fetchInstagramRelationshipJson(url, {
+    clearTimer,
+    fetchImpl,
+    found = 0,
+    listType = null,
+    onProgress,
+    pages = 0,
+    random,
+    requestAttempts,
+    requestTimeoutMs,
+    retryBaseMs,
+    setTimer,
+    signal,
+    sleepImpl,
+    username,
+  }) {
+    for (let attempt = 1; attempt <= requestAttempts; attempt += 1) {
+      try {
+        const response = await relationshipStepWithTimeout(
+          (attemptSignal) => fetchImpl(url.href, {
+            credentials: 'include',
+            headers: { 'X-IG-App-ID': INSTAGRAM_WEB_APP_ID },
+            method: 'GET',
+            signal: attemptSignal,
+          }),
+          {
+            clearTimer, setTimer, signal, timeoutMs: requestTimeoutMs,
+          },
+        );
+        let data = null;
+        try {
+          data = await relationshipStepWithTimeout(
+            () => response.json(),
+            {
+              clearTimer, setTimer, signal, timeoutMs: requestTimeoutMs,
+            },
+          );
+        } catch (error) {
+          if (error?.code === 'request-timeout' || error?.code === 'stopped') throw error;
+          throw relationshipError('invalid-response', 'Instagram returned an unreadable follower response.');
+        }
+        const responseStop = relationshipResponseStop(data);
+        if (response.status === 429 || responseStop === 'rate-limited') {
+          throw relationshipError('rate-limited', 'Instagram asked this session to wait before loading more accounts.');
+        }
+        if (response.status === 401 || responseStop === 'session-expired') {
+          throw relationshipError('session-expired', 'Instagram requires a fresh login.');
+        }
+        if (responseStop === 'challenge') {
+          throw relationshipError('challenge', 'Instagram opened a security challenge.');
+        }
+        if (responseStop === 'action-blocked') {
+          throw relationshipError('action-blocked', 'Instagram restricted activity.');
+        }
+        if (!response.ok || data?.status === 'fail') {
+          throw relationshipError('request-failed', `Instagram could not load this follower page (HTTP ${response.status || 'error'}).`);
+        }
+        return data;
+      } catch (error) {
+        let retryable = error?.code === 'request-timeout' || error?.code === 'network-error';
+        if (signal?.aborted || error?.code === 'stopped') {
+          throw relationshipError('stopped', 'Follower check stopped.');
+        }
+        if (!error?.code && error?.name === 'AbortError') {
+          retryable = true;
+        } else if (!error?.code) {
+          retryable = true;
+          error = relationshipError('network-error', 'Instagram follower data could not be reached from this tab.');
+        }
+        if (!retryable || attempt >= requestAttempts) {
+          if (retryable) {
+            throw relationshipError(
+              'request-timeout',
+              `Instagram did not finish this ${listType || 'account'} request after ${requestAttempts} attempts. The previous comparison is unchanged.`,
+            );
+          }
+          throw error;
+        }
+        const retryDelayMs = Math.min(
+          5_000,
+          (retryBaseMs * attempt) + Math.floor(Math.max(0, Math.min(0.999999, random())) * 250),
+        );
+        onProgress?.(Object.freeze({
+          attempt: attempt + 1,
+          failedAttempt: attempt,
+          found,
+          listType,
+          maxAttempts: requestAttempts,
+          pages,
+          phase: 'retrying',
+          retryDelayMs,
+          username,
+        }));
+        await sleepImpl(retryDelayMs, signal);
+      }
     }
-    let data = null;
-    try {
-      data = await response.json();
-    } catch {
-      throw relationshipError('invalid-response', 'Instagram returned an unreadable follower response.');
-    }
-    const responseStop = relationshipResponseStop(data);
-    if (response.status === 429 || responseStop === 'rate-limited') {
-      throw relationshipError('rate-limited', 'Instagram asked this session to wait before loading more accounts.');
-    }
-    if (response.status === 401 || responseStop === 'session-expired') {
-      throw relationshipError('session-expired', 'Instagram requires a fresh login.');
-    }
-    if (responseStop === 'challenge') {
-      throw relationshipError('challenge', 'Instagram opened a security challenge.');
-    }
-    if (responseStop === 'action-blocked') {
-      throw relationshipError('action-blocked', 'Instagram restricted activity.');
-    }
-    if (!response.ok || data?.status === 'fail') {
-      throw relationshipError('request-failed', `Instagram could not load this follower page (HTTP ${response.status || 'error'}).`);
-    }
-    return data;
+    throw relationshipError('request-timeout', 'Instagram follower data did not finish.');
   }
 
   async function resolveRelationshipUserId(username, options) {
@@ -203,6 +307,7 @@
   }
 
   async function fetchRelationshipList(listType, userId, username, {
+    clearTimer,
     fetchImpl,
     maxAccounts,
     maxDurationMs,
@@ -210,6 +315,10 @@
     now,
     onProgress,
     random,
+    requestAttempts,
+    requestTimeoutMs,
+    retryBaseMs,
+    setTimer,
     signal,
     sleepImpl,
     startedAt,
@@ -223,7 +332,22 @@
       const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
       url.searchParams.set('count', String(RELATIONSHIP_PAGE_SIZE));
       if (nextMaxId) url.searchParams.set('max_id', nextMaxId);
-      const data = await fetchInstagramRelationshipJson(url, { fetchImpl, signal });
+      const data = await fetchInstagramRelationshipJson(url, {
+        clearTimer,
+        fetchImpl,
+        found: accounts.size,
+        listType,
+        onProgress,
+        pages,
+        random,
+        requestAttempts,
+        requestTimeoutMs,
+        retryBaseMs,
+        setTimer,
+        signal,
+        sleepImpl,
+        username,
+      });
       if (!Array.isArray(data?.users)) {
         throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} page.`);
       }
@@ -280,6 +404,9 @@
     now = Date.now,
     onProgress = null,
     random = Math.random,
+    requestAttempts = RELATIONSHIP_REQUEST_ATTEMPTS,
+    requestTimeoutMs = RELATIONSHIP_REQUEST_TIMEOUT_MS,
+    retryBaseMs = RELATIONSHIP_RETRY_BASE_MS,
     signal = null,
     sleepImpl = relationshipDelay,
     setTimer = setTimeout,
@@ -297,6 +424,9 @@
     const boundedPages = Math.max(1, Math.min(RELATIONSHIP_MAX_PAGES, Math.trunc(Number(maxPages) || 0)));
     const boundedAccounts = Math.max(1, Math.min(RELATIONSHIP_MAX_ACCOUNTS, Math.trunc(Number(maxAccounts) || 0)));
     const boundedDuration = Math.max(1_000, Math.min(RELATIONSHIP_MAX_DURATION_MS, Math.trunc(Number(maxDurationMs) || 0)));
+    const boundedAttempts = Math.max(1, Math.min(RELATIONSHIP_REQUEST_ATTEMPTS, Math.trunc(Number(requestAttempts) || 0)));
+    const boundedRequestTimeout = Math.max(1, Math.min(RELATIONSHIP_REQUEST_TIMEOUT_MS, Math.trunc(Number(requestTimeoutMs) || 0)));
+    const boundedRetryBase = Math.max(0, Math.min(5_000, Math.trunc(Number(retryBaseMs) || 0)));
     const deadline = relationshipRunDeadline(signal, boundedDuration, setTimer, clearTimer);
     const runSignal = deadline.signal;
     try {
@@ -311,11 +441,22 @@
         now,
         onProgress,
         random,
+        requestAttempts: boundedAttempts,
+        requestTimeoutMs: boundedRequestTimeout,
+        retryBaseMs: boundedRetryBase,
+        clearTimer,
+        setTimer,
         signal: runSignal,
         sleepImpl,
         startedAt,
       };
-      const userId = await resolveRelationshipUserId(username, { fetchImpl, signal: runSignal });
+      const userId = await resolveRelationshipUserId(username, {
+        ...common,
+        found: 0,
+        listType: null,
+        pages: 0,
+        username,
+      });
       const followers = await fetchRelationshipList('followers', userId, username, common);
       const following = await fetchRelationshipList('following', userId, username, common);
       assertRelationshipRunActive(runSignal, startedAt, now, boundedDuration);
@@ -347,6 +488,74 @@
     } finally {
       deadline.cleanup();
     }
+  }
+
+  function followerComparisonRecord(workspace, comparison, generatedAt = new Date().toISOString()) {
+    return {
+      schemaVersion: 1,
+      kind: 'insta-aio-comparison',
+      generatedAt,
+      subjectUsername: normalizeUsername(workspace?.subjectUsername),
+      source: workspace?.source && typeof workspace.source === 'object' ? workspace.source : {},
+      complete: workspace?.complete && typeof workspace.complete === 'object' ? workspace.complete : {},
+      verified: workspace?.verified && typeof workspace.verified === 'object' ? workspace.verified : {},
+      mutuals: Array.isArray(comparison?.mutuals) ? comparison.mutuals : [],
+      notFollowingMeBack: Array.isArray(comparison?.notFollowingMeBack)
+        ? comparison.notFollowingMeBack
+        : [],
+      iDoNotFollowBack: Array.isArray(comparison?.iDoNotFollowBack)
+        ? comparison.iDoNotFollowBack
+        : [],
+    };
+  }
+
+  function followerComparisonReport(workspace, comparison, generatedAt = new Date().toISOString()) {
+    const record = followerComparisonRecord(workspace, comparison, generatedAt);
+    const followersCount = Array.isArray(workspace?.followers) ? workspace.followers.length : 0;
+    const followingCount = Array.isArray(workspace?.following) ? workspace.following.length : 0;
+    const fullyVerified = record.verified.followers === true && record.verified.following === true;
+    const fullyComplete = fullyVerified
+      && record.complete.followers === true
+      && record.complete.following === true;
+    const source = record.source.followers === 'authenticated-web'
+      && record.source.following === 'authenticated-web'
+      ? 'Authenticated Instagram web pagination'
+      : record.source.followers === 'list-dialog' && record.source.following === 'list-dialog'
+        ? 'Instagram list-dialog capture'
+        : 'Mixed local captures';
+    const lines = [
+      'INSTA AIO FOLLOWER COMPARISON',
+      '================================',
+      `Account: ${record.subjectUsername ? `@${record.subjectUsername}` : 'Not recorded'}`,
+      `Generated: ${record.generatedAt}`,
+      `Source: ${source}`,
+      `Completeness: ${fullyComplete ? 'Complete — both lists reached their verified end.' : 'Partial — one or both lists did not reach a verified end.'}`,
+      '',
+      'SUMMARY',
+      '-------',
+      `Followers: ${followersCount}`,
+      `Following: ${followingCount}`,
+      `Mutual followers: ${record.mutuals.length}`,
+      `Not following you back: ${record.notFollowingMeBack.length}`,
+      `You do not follow back: ${record.iDoNotFollowBack.length}`,
+    ];
+    const addSection = (title, accounts) => {
+      lines.push('', title, '-'.repeat(title.length));
+      if (!accounts.length) {
+        lines.push('None');
+        return;
+      }
+      accounts.forEach((account, index) => {
+        const username = normalizeUsername(account?.username);
+        const displayName = String(account?.displayName || '').trim();
+        lines.push(`${index + 1}. @${username}${displayName ? ` — ${displayName}` : ''}`);
+      });
+    };
+    addSection('NOT FOLLOWING YOU BACK', record.notFollowingMeBack);
+    addSection('YOU DO NOT FOLLOW BACK', record.iDoNotFollowBack);
+    addSection('MUTUAL FOLLOWERS', record.mutuals);
+    lines.push('', 'Generated locally by Insta AIO. No account action was performed.', '');
+    return lines.join('\r\n');
   }
 
   function visibleText(element) {
@@ -1619,6 +1828,8 @@
     detectAuthenticatedUsername,
     enumerateSentDms,
     fetchFollowerComparison,
+    followerComparisonRecord,
+    followerComparisonReport,
     inspectPageContext,
     inspectProfile,
     inspectReviewedDmItem,

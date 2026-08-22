@@ -15,8 +15,9 @@ extension additionally pairs with the app for signed, recorded jobs.
 ## Option 1 — Userscript (one click)
 
 This gives you all three tools in a movable, resizable, translucent panel on
-Instagram. Live Follow, Unfollow, and Unsend are included but locked on every
-page load until you explicitly authorize a short window.
+Instagram. Live Follow, Unfollow, and Unsend are inactive on every page load.
+Read-only tools require no unlock; each destructive run uses one exact finite
+confirmation when it starts.
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) for your browser.
 2. Open the install link:
@@ -42,43 +43,46 @@ Instagram tab and compares them locally. It never opens a page control. If
 Instagram rejects that read, use the exact-dialog scanner under **Advanced:
 list-dialog fallback and export**.
 
-**Follow / Unfollow** — pick targets, action, and how many, then choose **Review
-run**. The exact targets, duplicates, and omissions are frozen for inspection;
-**Start** appears only while that review matches the current controls. The script
+**Follow / Unfollow** — choose **Follow people** or **Unfollow people**, select a
+compatible target source and count, then choose the explicit **Review N …
+targets** action. Exact targets, duplicates, already-correct relationships,
+protected/skipped reasons, and omissions are frozen for inspection; **Start**
+appears only while that review matches the current controls. The script
 opens each profile when its turn comes and resolves the exact relationship
 control again before acting.
 
-**DM Unsend** — open a conversation and choose **Check conversation**. The
-no-click pass must prove a complete, finite eligible count before `all`,
-`newest N`, or `oldest N` plan controls appear. The runner processes only rows
-proven sent by the current account and uses the source-audited menu and
+**DM Unsend** — open a conversation and choose the always-visible **Unsend DMs**.
+Its first click performs the no-click history check when needed, then asks once
+for the exact thread and eligible count. All eligible sent messages is the
+default; `newest N` and `oldest N` are under Advanced. The runner processes only
+rows proven sent by the current account and uses the source-audited menu and
 confirmation sequence. The finite plan is reserved against the daily Unsend
 allowance and uses the saved delay range. Incomplete or capped checks cannot
-create a live plan. This cannot be undone.
+create a live plan. Cancel preserves the check and changes nothing. This cannot
+be undone.
 
-**Unlocking live controls** — start an already-reviewed action, or open the gear
-menu and select **Enable live actions for 15 minutes**. The temporary window opens
-with one click; there is no unrelated global phrase. This does not click
-Instagram. Starting a run still requires its exact target-bound confirmation.
-The authorization is checked before every later item and expiry
-stops the run. Scanning, comparison, evidence reading, and no-click checks work
-without unlocking.
+**Starting a finite action** — review the exact target list or conversation,
+then use the ordinary confirmation naming its action, targets or thread, and
+finite count. There is no global unlock, enable-live toggle, arm button, or typed
+phrase. The resulting non-persistent capability cannot be widened or replayed
+and is checked before every later item; expiry stops the run. Scanning,
+comparison, evidence reading, and no-click checks require no confirmation.
 
 Pacing lives under the gear icon: per-day caps and the delay range. Runs pause
 longer every 20 items, stop on any rate limit or security check, skip targets
 that changed, and end immediately on **Stop**. A DM run is discarded on reload.
 An already-confirmed account run may continue across the profile navigations it
-causes in the same manager tab, but only while its original 15-minute
-authorization remains valid. Thread-wide Unsend is bound to the open thread and
+causes in the same manager tab, but only while its original finite capability
+remains valid. Thread-wide Unsend is bound to the open thread and
 accepts only the newly surfaced menu and confirmation controls for each item.
 
 Updates are automatic. Tampermonkey re-checks the same address and offers new
 versions as they are published.
 
-Confirm the Tampermonkey dashboard shows **0.11.0 or later**
-after updating. A panel that says **Live actions enabled in this tab** is the
-legacy 0.9.0 build; reload only after Tampermonkey shows the newer version. The
-current build starts with **Userscript mode · live actions locked**.
+Confirm the Tampermonkey dashboard shows **2.0.0 or later** after updating. A
+panel that asks you to enable live actions, arm a run, or type an authorization
+phrase is an older build. The current idle label is **Userscript mode · local
+controls**.
 
 ### Using the exact CI-tested review bundle
 
@@ -92,8 +96,8 @@ reviewing an unmerged commit. It contains:
 - `insta-aio-companion.user.js` for Tampermonkey
 
 Use the artifact whose commit matches the reviewed pull-request head. After
-installation, reload Instagram and verify **Userscript mode · live actions
-locked** or the extension's equivalent live-off state before any read-only
+installation, reload Instagram and verify **Userscript mode · local controls**
+or the extension's equivalent live-off state before any read-only
 walkthrough. The artifact proves which bytes passed CI; it does not replace the
 persistent-profile, authenticated, or human acceptance checks.
 
@@ -139,7 +143,7 @@ shared code into `dist/extension/lib/`, and the extension will not start without
 
 After rebuilding, reload the extension in the extension manager **and** reload
 any open Instagram tabs, or you will keep running the previous version.
-The extension manager should show **0.11.0 or later**.
+The extension manager should show **2.0.0 or later**.
 
 On a fresh install Instagram shows only a small launcher; opening it reveals the
 tools. On desktop, drag the header to move the panel and use the marked
@@ -159,25 +163,27 @@ successful run replaces both prior lists atomically. A stopped or failed run
 keeps the prior comparison. The Advanced exact-dialog fallback remains available
 if Instagram changes or rejects its authenticated read interface.
 
-**Follow / Unfollow.** Choose where the targets come from (either checker result
-or an imported queue), the action, and how many to run this time. Choose **Review
-run** to inspect and freeze the exact targets, duplicates, and omissions. **Start**
+**Follow / Unfollow.** Choose the action first, then a compatible current-profile,
+checker-result, scanned-list, or queue source and a finite count. Choose the
+explicit **Review N … targets** action to inspect and freeze exact targets,
+duplicates, already-correct relationships, protected/skipped reasons, and
+omissions. **Start**
 appears only while the review remains current. Each account is opened, re-checked,
 and acted on individually.
 
-**DM Unsend.** Open a conversation and choose **Check conversation** first. The
-read-only pass loads history without opening a message menu. After it proves a
-complete finite count, choose `all`, `newest N`, or `oldest N`; review the exact
-thread, count, digest, and expiry; type the count-specific phrase; and accept the
-permanent-action confirmation. The 15-minute authorization is checked before
-each message. The finite plan is reserved against the daily Unsend allowance and
-uses the saved delay range. Incomplete or capped checks remain locked.
+**DM Unsend.** Open a conversation and choose **Unsend DMs**. The first click
+loads history without opening a message menu. After it proves a complete finite
+count, it defaults to all eligible sent messages and asks once for the exact
+thread and count. Choose `newest N` or `oldest N` under Advanced when needed.
+The 15-minute finite plan is checked before each message, reserved against the
+daily Unsend allowance, and paced with the saved delay range. Incomplete or
+capped checks do not create a plan.
 **Unsending cannot be undone.**
 
 ### Batch runs, pacing, and stopping
 
-Batch runs type one confirmation phrase for the whole run instead of one per
-item. Every item still gets its own full check before anything happens.
+Batch runs use one exact finite action/target/count confirmation. Every item
+still gets its own full check before anything happens.
 
 - Delays between items are randomised, with a longer pause every 20 items.
 - Daily limits and delays are under **Settings → Batch pacing**. They are capped
@@ -206,7 +212,7 @@ queue, navigate to the profile selected by the user, and update its own local
 completion/skip state. It does not auto-scroll Instagram. Dry runs never use an
 Instagram page control. Controlled live Follow, Unfollow, and exact
 sent-message Unsend are available only through the separate one-item workflows
-below and remain locked by default.
+below and remain inactive until their exact confirmations.
 
 Reviewed DM dry runs can report `resolved-no-click` only while the exact thread
 is open and one visible sent row exposes every stable identity field required by
@@ -222,18 +228,17 @@ This workflow changes the selected Instagram relationship. Use it only for one
 account the operator has explicitly reviewed:
 
 1. Pair the extension with **action** permission.
-2. In PWA Settings, enable reviewed live account actions and keep the live batch limit at one.
+2. Keep the live batch limit at one.
 3. Select exactly one queue record, create its reviewed preview, and complete the no-click dry run first.
-4. Create a new preview if needed, choose live mode, and type its exact review phrase.
-5. Select **Continue controlled live action**. The first selection sends only a signed intent; it does not click Instagram.
-6. Open the exact target profile. In **Field Desk → Queue**, verify the username, action, and relationship, then type the displayed `ARM FOLLOW @username` or `ARM UNFOLLOW @username` phrase.
-7. Return to the PWA within 90 seconds and select **Continue controlled live action** again.
-8. Review the job checkpoint, queue result, activity entry, and action-ledger record before doing anything else.
-9. Disable reviewed live account actions when the controlled check is finished.
+4. Create a fresh preview if needed and choose controlled live mode.
+5. Open the exact target profile and verify the username, action, and relationship in **Field Desk → Queue**.
+6. Select **Continue controlled live action** and accept the ordinary confirmation naming that exact profile and action. The signed intent, transient capability, and durable reservation are consumed as one bounded operation.
+7. Review the job checkpoint, queue result, activity entry, and action-ledger record before doing anything else.
 
-The arm is scoped to one job item, username, action, Instagram tab, and short
-expiry. It is consumed before the page-control request, including on uncertain
-outcomes. A new review and arm are required for any later attempt.
+The transient capability is scoped to one job item, username, action, Instagram
+tab, and short expiry. It is consumed before the page-control request, including
+on uncertain outcomes. A new review and exact confirmation are required for any
+later attempt.
 
 ### Controlled one-message Unsend
 
@@ -241,19 +246,17 @@ This workflow removes one exact sent message. Do not use it until the operator
 has reviewed that specific message and accepts that Unsend is destructive:
 
 1. Pair the extension with **action** permission.
-2. In PWA Settings, enable reviewed live DM Unsend. The extension path accepts exactly one message even if exported core jobs use another reviewed limit.
+2. The extension path accepts exactly one message even if exported core jobs use another reviewed limit.
 3. Select one sent message, create its reviewed preview, and complete the no-click dry run first.
-4. Create a new preview if needed, choose live mode, type the review phrase, then type the separate destructive phrase.
-5. Select **Continue controlled live Unsend**. The first selection sends only a signed intent; it does not open an Instagram menu.
-6. Open the exact conversation and keep the exact sent message rendered. In **Field Desk → Messages**, verify the message identity and type the displayed `ARM UNSEND <code>` phrase.
-7. Return to the PWA within 90 seconds and select **Continue controlled live Unsend** again.
-8. Stop immediately if the PWA reports any ambiguity or uncertain outcome. Review the DM job checkpoint plus both ledger records before any later attempt.
-9. Disable reviewed live DM Unsend when the controlled check is finished.
+4. Create a fresh preview if needed and choose controlled live mode.
+5. Open the exact conversation and keep the exact sent message rendered. In **Field Desk → Messages**, verify the message identity.
+6. Select **Continue controlled live Unsend** and accept the ordinary confirmation naming the exact thread and message. The signed intent, transient capability, and durable reservations are consumed as one bounded operation.
+7. Stop immediately if the PWA reports any ambiguity or uncertain outcome. Review the DM job checkpoint plus both ledger records before any later attempt.
 
-The arm is scoped to one job, item, conversation, message, and Instagram tab.
-The extension reserves and consumes it before the first page control. The PWA
+The transient capability is scoped to one job, item, conversation, message, and
+Instagram tab. The extension reserves and consumes it before the first page control. The PWA
 separately reserves its durable ledger, and the row token is one-use. A new
-twice-confirmed review and arm are required for any later attempt. Deterministic
+fresh review and exact confirmation are required for any later attempt. Deterministic
 fixtures do not replace authenticated selector and action acceptance.
 If Instagram does not expose explicit control/surface relationships or another
 stable message identity for post-removal proof, the driver stops uncertain. Do

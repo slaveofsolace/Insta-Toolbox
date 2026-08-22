@@ -400,7 +400,7 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
     })()`,
     'thread-wide Unsend no-click preview',
   );
-  assert.equal(dmPreview.button, 'Unsend messages');
+  assert.equal(dmPreview.button, 'Unsend DMs');
   assert.equal(dmPreview.disabled, false);
   assert.match(dmPreview.eligible, /^\d+ sent messages? eligible$/);
   assert.equal(dmPreview.clicks, 0, 'checking the conversation opens no Instagram control');
@@ -592,10 +592,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       opacityMin: shadow.querySelector('[data-preference="opacity"]')?.min,
       resize: shadow.querySelector('[data-role="resize"]')?.getAttribute('aria-label'),
       mode: shadow.querySelector('.mode')?.textContent,
-      liveToggle: {
-        checked: shadow.querySelector('[data-role="live-actions"]')?.checked,
-        disabled: shadow.querySelector('[data-role="live-actions"]')?.disabled,
-      },
+      hasGlobalUnlock: Boolean(shadow.querySelector('[data-role="live-actions"]')),
       liveControls: [
         'review-accounts', 'run-unsend', 'scan-following', 'scan-followers', 'scan-sent', 'stop-run',
       ].map((action) => Boolean(shadow.querySelector('[data-action="' + action + '"]'))),
@@ -611,8 +608,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
         disabled: shadow.querySelector('[data-action="run-unsend"]')?.disabled,
         label: shadow.querySelector('[data-action="run-unsend"]')?.textContent.trim(),
       },
-      destructiveDisabled: [...shadow.querySelectorAll('[data-live-action]')]
-        .map((control) => control.disabled),
+      ambientLiveControls: shadow.querySelectorAll('[data-live-action]').length,
       hasContextStrip: Boolean(shadow.querySelector('[data-role="context"]')),
       context: {
         title: shadow.querySelector('[data-role="context-title"]')?.textContent,
@@ -648,11 +644,11 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(initial.opacityMin, '55');
   assert.match(initial.move, /Move toolbox/);
   assert.match(initial.resize, /Resize toolbox/);
-  assert.match(initial.mode, /live actions locked/i);
-  assert.deepEqual(initial.liveToggle, { checked: false, disabled: false });
-  assert.deepEqual(initial.destructiveDisabled, []);
+  assert.match(initial.mode, /local controls/i);
+  assert.equal(initial.hasGlobalUnlock, false);
+  assert.equal(initial.ambientLiveControls, 0);
   assert.deepEqual(initial.reviewControl, { disabled: false, live: false });
-  assert.deepEqual(initial.unsendControl, { disabled: true, label: 'Check conversation first' });
+  assert.deepEqual(initial.unsendControl, { disabled: true, label: 'Unsend DMs' });
   assert.equal(initial.introHidden, false);
   assert.deepEqual(initial.context, {
     title: 'Following list open',
@@ -664,9 +660,8 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.deepEqual(initial.liveControls, [true, true, true, true, true, true]);
   assert.deepEqual(initial.checkerScanLabels, ['Scan Following', 'Scan Followers']);
   assert.equal(initial.hasContextStrip, true);
-  // The action area stays visible so the workflow is discoverable, but its
-  // destructive button remains disabled until the check-first flow resolves
-  // the exact conversation and eligible sent-message count.
+  // The action area stays visible so the workflow is discoverable. On this
+  // non-conversation fixture it is disabled by route, not by a global unlock.
   assert.equal(initial.unsendPlanHidden, false);
   assert.deepEqual(initial.engineExecutors, ['function', 'function']);
 
@@ -741,38 +736,20 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   });
   await webContents.executeJavaScript(`globalThis.fixtureSetList('following')`, true);
 
-  const unlocked = await webContents.executeJavaScript(`(() => {
+  const finiteAuthority = await webContents.executeJavaScript(`(() => {
     globalThis.prompt = () => { throw new Error('global phrase prompt must not be used'); };
     const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
-    const toggle = shadow.querySelector('[data-role="live-actions"]');
-    toggle.checked = true;
-    toggle.dispatchEvent(new Event('change', { bubbles: true }));
     return {
       mode: shadow.querySelector('.mode')?.textContent,
-      destructiveDisabled: [...shadow.querySelectorAll('[data-live-action]')]
-        .map((control) => control.disabled),
+      hasGlobalUnlock: Boolean(shadow.querySelector('[data-role="live-actions"]')),
+      ambientLiveControls: shadow.querySelectorAll('[data-live-action]').length,
       clicks: globalThis.fixtureProfileClickCount,
     };
   })()`, true);
-  assert.match(unlocked.mode, /live actions unlocked/i);
-  assert.deepEqual(unlocked.destructiveDisabled, []);
-  assert.equal(unlocked.clicks, 0, 'unlocking authority performs no Instagram action');
-
-  const relocked = await webContents.executeJavaScript(`(() => {
-    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
-    const toggle = shadow.querySelector('[data-role="live-actions"]');
-    toggle.checked = false;
-    toggle.dispatchEvent(new Event('change', { bubbles: true }));
-    return {
-      mode: shadow.querySelector('.mode')?.textContent,
-      destructiveDisabled: [...shadow.querySelectorAll('[data-live-action]')]
-        .map((control) => control.disabled),
-      clicks: globalThis.fixtureProfileClickCount,
-    };
-  })()`, true);
-  assert.match(relocked.mode, /live actions locked/i);
-  assert.deepEqual(relocked.destructiveDisabled, []);
-  assert.equal(relocked.clicks, 0, 'relocking authority performs no Instagram action');
+  assert.match(finiteAuthority.mode, /local controls/i);
+  assert.equal(finiteAuthority.hasGlobalUnlock, false);
+  assert.equal(finiteAuthority.ambientLiveControls, 0);
+  assert.equal(finiteAuthority.clicks, 0, 'rendering finite controls performs no Instagram action');
 
   await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
@@ -910,7 +887,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(inboxEvidence.threadId, '');
   assert.equal(inboxEvidence.fragments.length, 0);
   assert.match(inboxEvidence.reason, /Open an Instagram conversation first/);
-  console.log('Accepted the movable Tampermonkey toolbox, default live lock, local follower comparison, and account/DM no-click checks.');
+  console.log('Accepted the movable Tampermonkey toolbox, finite-confirmation default, local follower comparison, and account/DM no-click checks.');
 }
 
 async function acceptPwaInstallability(webContents, baseUrl) {
@@ -952,10 +929,12 @@ async function acceptPwaInstallability(webContents, baseUrl) {
   );
   const defaults = await webContents.executeJavaScript(`({
     actionPermission: document.querySelector('#bridge-action-permission')?.checked,
-    liveAccount: document.querySelector('#live-action-enabled')?.checked,
-    liveDm: document.querySelector('#live-dm-enabled')?.checked,
+    globalLiveUnlocks: Boolean(
+      document.querySelector('#live-action-enabled')
+      || document.querySelector('#live-dm-enabled'),
+    ),
   })`, true);
-  assert.deepEqual(defaults, { actionPermission: false, liveAccount: false, liveDm: false });
+  assert.deepEqual(defaults, { actionPermission: false, globalLiveUnlocks: false });
   await webContents.executeJavaScript(
     `document.querySelector('[data-action="create-extension-pairing"]').click()`,
     true,
@@ -1005,6 +984,8 @@ async function run() {
   } catch (error) {
     exitCode = 1;
     console.error(error?.stack || error);
+    if (overlay.problems.length) console.error(`Overlay fixture problems:\n${overlay.problems.join('\n')}`);
+    if (pwa.problems.length) console.error(`PWA fixture problems:\n${pwa.problems.join('\n')}`);
   } finally {
     if (!overlay.window.isDestroyed()) overlay.window.destroy();
     if (!pwa.window.isDestroyed()) pwa.window.destroy();

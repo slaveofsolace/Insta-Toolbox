@@ -38,8 +38,9 @@ full Instagram overlay and owns these in-page surfaces:
 The generated Tampermonkey script embeds the same exact-label and Instagram
 engine sources behind a userscript-specific three-tab shell. It supports guided
 full-list scanning/comparison, review-before-start paced Follow/Unfollow, and thread DM
-Unsend. Destructive controls start disabled and need a typed, non-persistent
-15-minute authorization plus a separate run confirmation. It does not receive
+Unsend. Destructive controls start disabled and require one ordinary confirmation
+naming the exact finite action, target list or thread, and count. The resulting
+capability is non-persistent and bound only to that reviewed run. It does not receive
 the signed extension bridge, PWA one-item arms, or durable workspace ledgers.
 
 ## Module graph
@@ -127,9 +128,10 @@ saved. Capture and queue contracts remain V1 and import-compatible.
 ## Execution boundary
 
 Overlay views do not own Instagram selectors or synthetic event sequences. They
-can request or cancel one exact 90-second signed arm, request an exact phrase for
-a local account batch, or create a finite thread plan after a complete no-click
-history check. Execution remains in the audited background/content drivers. The
+can request or cancel one exact 90-second transient capability for a signed PWA
+job, mint one finite local-account capability after its ordinary run
+confirmation, or create a finite thread plan after a complete no-click history
+check. Execution remains in the audited background/content drivers. The
 thread runner binds that plan to the exact thread, scope, eligible count, digest,
 and future expiry; it revalidates completeness and count before the first menu
 and rechecks expiry before every message.

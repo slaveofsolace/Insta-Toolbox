@@ -309,10 +309,13 @@ async function applyAfterState(webContents, scenario) {
     await webContents.executeJavaScript(`(() => {
       const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
       const disclosure = shadow.querySelector('[data-ia-role="bot-disclosure"]');
+      const action = shadow.querySelector('[data-ia-role="bot-action"]');
       const source = shadow.querySelector('[data-ia-role="bot-source"]');
       const control = shadow.querySelector('[data-ia-action="bot-review"]');
-      if (!disclosure || !source || !control) throw new Error('Follow / Unfollow review controls are missing.');
+      if (!disclosure || !action || !source || !control) throw new Error('Follow / Unfollow review controls are missing.');
       disclosure.open = true;
+      action.value = 'unfollow';
+      action.dispatchEvent(new Event('change', { bubbles: true }));
       source.value = 'queue';
       source.dispatchEvent(new Event('change', { bubbles: true }));
       control.click();
@@ -336,14 +339,6 @@ async function applyAfterState(webContents, scenario) {
       webContents,
       `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="checker-filter-count"]')?.textContent === '1'`,
       `${scenario.id}: local follower result filter`,
-    );
-  }
-  if (scenario.after === 'wait-account-expired') {
-    await waitForValue(
-      webContents,
-      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="live-badge"]').textContent === 'expired'`,
-      `${scenario.id}: immutable arm expiry`,
-      5_000,
     );
   }
 }
@@ -554,6 +549,10 @@ function assertScenario(metrics, scenario) {
   }
   for (const expectation of scenario.semantics) {
     const actual = metrics.semantics[expectation.selector];
+    if (expectation.exists === false) {
+      assert.equal(actual?.exists, false, `${scenario.id}: semantic target should not exist: ${expectation.selector}`);
+      continue;
+    }
     assert.ok(actual?.exists, `${scenario.id}: semantic target is missing: ${expectation.selector}`);
     if (Object.hasOwn(expectation, 'equals')) {
       assert.equal(actual.text, expectation.equals, `${scenario.id}: semantic text mismatch: ${expectation.selector}`);

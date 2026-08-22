@@ -65,24 +65,24 @@ download `insta-aio-companion-state` JSON for review or archiving. Signed dry-ru
 and controlled live results sent through the PWA bridge appear in a separate
 read-only history.
 
-The local Follow / Unfollow runner also has an explicit **Review run** phase.
-Review freezes the exact targets and reports duplicates and omissions. **Start**
+The local Follow / Unfollow runner also has an explicit action-first review
+phase. Review freezes the exact targets and reports duplicates, already-correct
+relationships, protected/skipped reasons, and omissions. **Start**
 is rendered only while the review signature still matches the selected source,
 action, limit, and target list; any change invalidates it.
 
-Queue also contains the **Controlled live gate**. It remains locked until the
+Queue also contains the controlled one-item path. It remains inactive until the
 paired PWA sends a fresh signed live intent containing exactly one reviewed
 Follow or Unfollow item. The sidecar then requires:
 
 1. The exact target profile to be open and named by one visible profile header.
 2. One relationship control inside that verified header matching the requested action.
-3. The exact `ARM FOLLOW @username` or `ARM UNFOLLOW @username` phrase.
+3. One ordinary confirmation naming the exact action and username.
 
-Arming lasts 90 seconds and performs no Instagram action. The operator must
-return to the PWA and continue the same reviewed job. The PWA reinspects the
-profile and arm, reserves the attempt transactionally, and only then sends the
-one-use execution request. The background worker creates its own durable mirror
-reservation and consumes the arm before the page-control request. Follow may
+That confirmation mints a short-lived in-memory capability and performs no page
+action by itself. The PWA and background worker re-inspect the exact profile,
+reserve the attempt transactionally, and consume the one-use capability before
+the page-control request. Follow may
 activate one exact Follow control. Unfollow stops if any dialog was already
 visible and accepts only a newly surfaced confirmation that names the reviewed
 username.
@@ -111,16 +111,15 @@ or a wrong thread remain safe stops. The deterministic `messages-exact` fixture
 proves this no-click boundary; whether the intended authenticated Instagram DOM
 currently exposes every required identity field is still an acceptance blocker.
 Dry run never opens a menu. A separately signed one-message intent can appear in
-the Messages gate only after the PWA's two confirmations. The sidecar enables
-arming only when the open thread resolves the exact sent-message identity; the
-background repeats that check before creating the 90-second arm.
+Messages only after exact review. The sidecar accepts one ordinary confirmation
+only when the open thread resolves the exact sent-message identity; the
+background repeats that check before creating a transient one-use capability.
 
-The independent local thread tool starts with **Check conversation**. That
-no-click pass loads history without opening a message menu and must prove a
-complete finite eligible count before the plan controls appear. The operator
-chooses `all`, `newest N`, or `oldest N`, then reviews the exact thread, scope,
-count, digest, and 15-minute expiry. A count-specific typed phrase and final
-permanent-action confirmation are required. The source-audited runner
+The independent local thread tool always shows **Unsend DMs**. Its first click
+loads history without opening a message menu and must prove a complete finite
+eligible count. The default is all eligible messages; `newest N` and `oldest N`
+remain under Advanced. One permanent-action confirmation names the exact thread
+and count. The source-audited runner
 revalidates completeness and count before the first menu, accepts only rows
 proven sent by the current account, follows the rendered menu/dialog sequence,
 reserves the finite plan against the daily Unsend allowance, uses the saved
@@ -132,7 +131,8 @@ failure end or prevent the run.
 
 Shows sanitized pairing status and links to the exact paired PWA origin. The
 Instagram page receives the origin, permissions, pairing time, extension
-version, bounded run summaries, and sanitized live intent/arm fields only. It
+version, bounded run summaries, sanitized pending intents, and explicit
+confirmation-required/live-off flags only. It
 never receives the pairing secret, signed messages, signatures, replay nonces,
 Instagram cookies, or credentials.
 
@@ -178,15 +178,15 @@ ledger.
 - `instagram-overlay.js` contains no Instagram selector or synthetic-event
   implementation; it delegates authorized work to the isolated shared drivers.
 - `content-instagram.js` contains one isolated control activator, reachable only
-  after the signed intent, exact phrase, live arm, PWA authorization check,
+  after the signed intent, exact confirmation, transient capability, PWA authorization check,
   ledger reservation, and short-lived DOM token all match.
 - All Instagram reading is limited to the visible DOM.
 - Only the explicit full-list scanner scrolls, and only inside the open account
   list dialog; normal inspection and visible capture do not scroll Instagram.
-- Live settings remain off by default. Signed PWA execution still accepts at
-  most one reviewed account or DM item and consumes its arm before mutation.
-  Local batches require an exact typed arm; thread-wide Unsend additionally
-  requires a 15-minute authorization checked inside the runner before every
+- No global live setting or arm control exists. Signed PWA execution still accepts at
+  most one reviewed account or DM item and consumes its transient capability
+  before mutation. Local batches require one exact finite confirmation;
+  thread-wide Unsend additionally requires a 15-minute plan checked before every
   message.
 - Discarding the matching PWA reviewed job aborts its in-flight pre-driver work.
   Any completed reservation is finalized `canceled`, missing-job checkpoints
@@ -194,7 +194,7 @@ ledger.
   remains subject to postcondition and durable outcome verification because it
   cannot be recalled.
 - Reviewed DM dry runs resolve only a stable exact identity. Controlled Unsend
-  additionally requires two fresh confirmations, the matching Messages gate,
+  additionally requires one fresh exact confirmation, the matching Messages gate,
   independent reservations, a one-use row token, newly surfaced ARIA-bound
   interactive menu/dialog controls, repeated row revalidation, and same-thread
   exact-removal proof while another stable identity remains available.

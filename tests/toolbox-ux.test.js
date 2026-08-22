@@ -14,7 +14,7 @@ test('first use explains the tools, local storage, and the read-only boundary', 
   assert.match(generated, /Everything stays in this browser/);
   // The distinction a first-time user most needs: checks read, actions change.
   assert.match(generated, /Checks are read-only/);
-  assert.match(generated, /stays locked until you unlock it/);
+  assert.match(generated, /A change starts only after one exact action, target, and count confirmation/);
   // It is dismissible and remembered, not shown on every load.
   assert.match(shell, /'intro-done':/);
   assert.match(shell, /introDone: value\.introDone === true/);
@@ -122,19 +122,20 @@ test('a partial scan is never presented as a complete comparison', () => {
 });
 
 test('a run shows its targets and skip reasons before it starts', () => {
-  assert.match(shell, /function renderRunReview\(items, \{ omitted = 0, removed = 0 \} = \{\}\)/);
+  assert.match(shell, /function renderRunReview\(items, \{ omitted = 0, removed = 0, skippedReasons = \[\] \} = \{\}\)/);
   assert.match(generated, /data-role="run-review"/);
   assert.match(shell, /function reviewAccountRun\(\)/);
   assert.match(shell, /renderRunReview\(plan\.items, plan\)/);
   assert.match(shell, /data-action="review-accounts"/);
-  assert.match(shell, /duplicate or already-followed/);
+  assert.match(shell, /duplicate or already-correct target/);
   // Review is read-only. The action-specific confirmation happens before the
-  // run opens its temporary live window.
+  // finite capability is minted.
   const runBody = shell.slice(shell.indexOf("'run-accounts': async"), shell.indexOf("'run-unsend': ()"));
   assert.ok(runBody.indexOf('accountRunDraft.signature !== current.signature') < runBody.indexOf('confirmRun('));
   assert.ok(runBody.indexOf('confirmRun(') < runBody.indexOf('startAccountRun('));
   const startBody = shell.slice(shell.indexOf('async function startAccountRun'), shell.indexOf('function confirmRun'));
-  assert.ok(startBody.indexOf('requireNewRunAuthorization()') < startBody.indexOf("status: 'running'"));
+  assert.ok(startBody.indexOf('const capabilityId') < startBody.indexOf("status: 'running'"));
+  assert.ok(startBody.indexOf('approvedTargets: [...queue]') < startBody.indexOf('await continueAccountRun()'));
 });
 
 test('the open exact profile is the direct bounded Follow or Unfollow source', () => {
@@ -148,44 +149,41 @@ test('the open exact profile is the direct bounded Follow or Unfollow source', (
 });
 
 test('read-only conversation resolution precedes the count-specific Unsend plan', () => {
-  const checkButton = generated.match(/<button[^>]*class="button primary big"[^>]*data-action="scan-sent"[^>]*>/);
-  assert.ok(checkButton, 'the read-only conversation check must be the visible primary action');
-  assert.doesNotMatch(checkButton[0], /\shidden(?![-\w])/);
+  const unsendButton = generated.match(/<button[^>]*class="button danger big"[^>]*data-action="run-unsend"[^>]*>Unsend DMs<\/button>/);
+  assert.ok(unsendButton, 'Unsend DMs must remain the visible primary action');
+  assert.doesNotMatch(unsendButton[0], /\shidden(?![-\w])/);
   const plan = generated.match(/<div[^>]*data-role="unsend-plan"[^>]*>/);
   assert.ok(plan, 'the DM action area must always be visible');
   assert.doesNotMatch(plan[0], /\shidden(?![-\w])/);
-  assert.match(generated, /data-action="run-unsend"[^>]*disabled[^>]*>Check conversation first/);
-  assert.match(labels, /'Unsend messages'/);
-  assert.match(labels, /'No sent messages eligible'/);
-  assert.match(labels, /reviewedPreview = result\.complete && result\.eligibleCount > 0 \? result : null/);
-  assert.match(labels, /if \(planPanel\) planPanel\.hidden = false/);
-  assert.match(labels, /const result = await runner\.inspectAll\(\)/);
-  assert.match(labels, /operation: 'check'/);
-  assert.match(labels, /readOnlyCheck\s*\?\s*'Read-only check · nothing changed'/);
-  assert.match(labels, /stopButton\.hidden = !running/);
-  assert.match(shell, /Userscript mode · read-only conversation check/);
-  assert.match(shell, /setExternalRunActive: \(active, operation = null\)/);
-  assert.match(labels, /runner\.createPlan\(\{/);
-  assert.match(labels, /phrase = `UNSEND \$\{limit\} \$\{plan\.reviewedDigest\}`/);
-  assert.match(labels, /The eligible count is revalidated before any message menu opens/);
+  assert.match(generated, /data-action="scan-sent">Check conversation only/);
+  assert.match(shell, /async function runDmUnsend\(\)/);
+  assert.match(shell, /const scanned = await scanSentConversation\(\)/);
+  assert.match(shell, /let preview = dmThreadPreview\?\.threadId === currentDirectThreadId\(\)/);
+  assert.match(shell, /const plan = dmRunner\.createPlan\(\{/);
+  assert.match(shell, /Permanently unsend \$\{scopeLabel\} from thread \$\{plan\.threadId\}/);
+  assert.match(shell, /await dmRunner\.start\(\{/);
+  assert.match(labels, /function createPlan\(value = \{\}\)/);
+  assert.doesNotMatch(labels, /phrase = `UNSEND|ENABLE LIVE ACTIONS/);
+  assert.match(shell, /The eligible count will be revalidated before any message menu opens/);
   assert.match(labels, /complete: quietRounds >= 10/);
   assert.match(labels, /if \(!history\.complete \|\| resolvedCount > MAX_PLAN_MESSAGES\)/);
   assert.doesNotMatch(shell, /'unsend-all':/);
-  const fallback = shell.slice(shell.indexOf("'run-unsend': ()"), shell.indexOf("'save-limits':"));
-  assert.match(fallback, /reviewed DM runner is not ready/);
-  assert.doesNotMatch(fallback, /runBatch|performReviewedDmUnsend|\.click\(/);
+  assert.match(shell, /'run-unsend': \(\) => runDmUnsend\(\)/);
   // An empty result says nothing was touched rather than implying success.
   assert.match(shell, /so nothing will be touched/);
   // A partial read is never reported as full coverage.
   assert.match(shell, /there may be more further back/);
 });
 
-test('temporary live access is one click and never asks for a global phrase', () => {
+test('finite run confirmation replaces global unlock controls and phrases', () => {
   assert.doesNotMatch(shell, /ENABLE LIVE ACTIONS|LIVE_AUTHORIZATION_PHRASE/);
   assert.doesNotMatch(shell, /Type .*unlock Follow, Unfollow, and Unsend/);
-  assert.match(shell, /function setLiveActionsUnlocked\(enabled\)/);
-  assert.match(shell, /setLiveActionsUnlocked\(true\);[\s\S]*?return newLiveRunAuthorized\(\)/);
-  assert.match(labels, /!liveAuthority\?\.canStart\?\.\(\) && !liveAuthority\?\.enable\?\.\(\)/);
+  assert.doesNotMatch(shell, /setLiveActionsUnlocked|InstaAioUserscriptLiveAuthority|data-role="live-actions"/);
+  assert.match(shell, /function confirmRun\(message\)/);
+  assert.match(shell, /approvedTargets: \[\.\.\.queue\]/);
+  assert.match(shell, /capabilityExpiresAt: Date\.now\(\) \+ RUN_CAPABILITY_MS/);
+  assert.match(labels, /currentEligibleCount !== plan\.eligibleCount/);
+  assert.doesNotMatch(labels, /liveAuthority\?\.enable|ARM UNSEND/);
 });
 
 test('the extension keeps Stop available and labels read-only checks truthfully', async () => {

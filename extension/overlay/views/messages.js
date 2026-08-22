@@ -25,18 +25,6 @@
       : null;
   }
 
-  function matchingArm(intent, arm) {
-    return Boolean(
-      intent
-      && arm
-      && arm.jobId === intent.jobId
-      && arm.itemId === intent.itemId
-      && arm.conversationId === intent.conversationId
-      && arm.messageId === intent.messageId
-      && shared.armRemainingMs(arm) > 0,
-    );
-  }
-
   function inspectIntent(runtime, intent) {
     if (!intent || typeof runtime.inspector.inspectReviewedDmItem !== 'function') return null;
     return runtime.inspector.inspectReviewedDmItem({
@@ -193,75 +181,6 @@
     }
   }
 
-  function renderGate(runtime) {
-    const { model, query, setText } = runtime;
-    const intent = model.bridge.pendingDmIntent;
-    const arm = model.bridge.dmArm;
-    const notice = model.armNotice?.kind === 'dm' ? model.armNotice : null;
-    const armButton = query('[data-ia-action="arm-dm-live"]');
-    const cancelButton = query('[data-ia-action="cancel-dm-live"]');
-    const badge = query('[data-ia-role="dm-live-badge"]');
-    const disclosure = query('[data-ia-role="dm-live-disclosure"]');
-    const countdown = query('[data-ia-role="dm-live-countdown"]');
-    if (!armButton || !cancelButton || !badge || !disclosure || !countdown) return;
-    cancelButton.hidden = !intent;
-    disclosure.open = Boolean(intent || matchingArm(intent, arm) || notice);
-
-    if (!intent) {
-      const copy = notice?.state === 'expired'
-        ? ['Unsend arm expired', `The arm for message ${notice.target} expired. A fresh review is required.`, 'expired']
-        : notice?.state === 'canceled'
-          ? ['Unsend canceled', `The pending intent for message ${notice.target} was canceled.`, 'canceled']
-          : notice?.state === 'executing'
-            ? ['Executing in workspace', `The arm for message ${notice.target} was consumed. Wait for its signed result.`, 'executing']
-            : ['Exact-message review', 'Use this section only for a reviewed message imported from the workspace.', 'locked'];
-      setText('dm-live-title', copy[0]);
-      setText('dm-live-detail', copy[1]);
-      badge.textContent = copy[2];
-      badge.dataset.tone = notice ? 'danger' : 'neutral';
-      armButton.textContent = 'Arm exact message';
-      armButton.disabled = true;
-      countdown.hidden = true;
-      return;
-    }
-
-    setText('dm-live-title', `Message ${intent.messageId}`);
-    if (notice?.state === 'expired') {
-      const observation = inspectIntent(runtime, intent);
-      const ready = observationMatches(intent, observation);
-      setText('dm-live-detail', ready
-        ? 'The prior arm expired. Type the exact phrase again for a new 90-second arm; the old expiry is never extended.'
-        : `Reopen the exact conversation and keep message ${intent.messageId} rendered.`);
-      countdown.hidden = true;
-      badge.textContent = 'expired';
-      badge.dataset.tone = 'danger';
-      armButton.textContent = 'Arm fresh Unsend';
-      armButton.disabled = !ready;
-      return;
-    }
-    if (matchingArm(intent, arm)) {
-      setText('dm-live-detail', 'One exact sent message is armed. The workspace must revalidate before execution.');
-      countdown.textContent = shared.countdownLabel(arm);
-      countdown.hidden = false;
-      badge.textContent = 'armed';
-      badge.dataset.tone = 'danger';
-      armButton.textContent = 'One message armed';
-      armButton.disabled = true;
-      return;
-    }
-
-    const observation = inspectIntent(runtime, intent);
-    const ready = observationMatches(intent, observation);
-    setText('dm-live-detail', ready
-      ? 'Exactly one rendered sent-message identity matches. Arming does not open its menu.'
-      : `Open the exact conversation and keep sent message ${intent.messageId} rendered.`);
-    countdown.hidden = true;
-    badge.textContent = ready ? 'ready' : 'open message';
-    badge.dataset.tone = ready ? 'warning' : 'danger';
-    armButton.textContent = 'Arm one Unsend';
-    armButton.disabled = !ready;
-  }
-
   function runnerState(runtime) {
     return runtime.model.threadUnsend || runner?.snapshot?.() || {
       status: 'idle', processed: 0, failed: 0, message: 'Ready', canStop: false,
@@ -304,7 +223,7 @@
             ? `${preview.eligibleCount} ready`
             : checked
               ? 'incomplete'
-            : 'check first';
+            : 'ready to check';
       badge.dataset.tone = state.status === 'error' || (checked && !preview)
         ? 'danger'
         : active ? 'warning' : state.status === 'completed' ? 'good' : 'neutral';
@@ -313,22 +232,18 @@
       detail.textContent = active || ['completed', 'stopped', 'error'].includes(state.status)
         ? state.message
         : preview
-          ? `Read-only check complete for thread ${preview.threadId}. Choose a finite scope, then review the exact plan.`
+          ? `Read-only check complete for thread ${preview.threadId}. Unsend DMs will ask once for this exact thread and count.`
           : checked
             ? `${checked.reason} Destructive plans stay locked.`
-          : 'Check conversation loads sent-message history without opening a message menu or removing anything.';
+          : 'Unsend DMs first checks this conversation without opening a message menu or removing anything.';
     }
     if (button) {
       button.textContent = active
         ? readOnlyCheck ? 'Stop check' : 'Stop unsending'
-        : preview
-          ? 'Unsend messages'
-          : checked?.complete && checked.eligibleCount < 1
-            ? 'No sent messages eligible'
-            : 'Check conversation first';
+        : 'Unsend DMs';
       button.disabled = active
         ? !state.canStop
-        : !preview || preview.eligibleCount < 1;
+        : !activeConversationId() || Boolean(checked?.complete && checked.eligibleCount < 1);
     }
     if (progress) {
       progress.hidden = !active && !['completed', 'stopped', 'error'].includes(state.status);
@@ -380,7 +295,7 @@
     if (state) state.dataset.tone = conversationReady ? 'good' : 'neutral';
     setText('message-state-title', conversationReady ? 'Conversation ready' : 'Open a conversation');
     setText('message-state-detail', conversationReady
-      ? 'Read visible evidence or check the full conversation. Unsend stays unavailable until the eligible count is resolved.'
+      ? 'Read visible evidence or check the full conversation. Unsend DMs resolves the eligible count before asking for confirmation.'
       : 'Choose a conversation before using message tools.');
 
     for (const fragment of fragments) {
@@ -419,7 +334,6 @@
       downloads.clear('messages', download);
     }
     renderDirect(runtime);
-    renderGate(runtime);
   }
 
   async function inspect(runtime) {
@@ -434,7 +348,7 @@
   async function scanSent(runtime) {
     if (!runner) {
       runtime.status('Reload Instagram to load the current message runner.', 'error');
-      return;
+      return null;
     }
     const result = await runner.inspectAll();
     runtime.model.dmThreadPreview = result.ready ? result : null;
@@ -442,6 +356,7 @@
     runtime.status(result.ready && result.complete
       ? `${result.eligibleCount} sent message${result.eligibleCount === 1 ? '' : 's'} eligible in this conversation. Nothing was changed.`
       : result.reason, result.ready && result.complete ? 'good' : 'error');
+    return result;
   }
 
   async function massUnsend(runtime) {
@@ -451,11 +366,15 @@
       runner.stop();
       return;
     }
-    const preview = currentPreview(runtime);
+    let preview = currentPreview(runtime);
     if (!preview || preview.eligibleCount < 1) {
-      runtime.status('Check this conversation first. No destructive control was used.', 'error');
-      renderDirect(runtime);
-      return;
+      const scanned = await scanSent(runtime);
+      preview = currentPreview(runtime);
+      if (!scanned?.ready || scanned.complete !== true || !preview) return;
+      if (preview.eligibleCount < 1) {
+        runtime.status(`No sent messages are eligible in thread ${preview.threadId}. Nothing was changed.`, 'neutral');
+        return;
+      }
     }
     const inspection = runner.inspect();
     if (!inspection.ready) throw new Error(inspection.reason);
@@ -479,24 +398,14 @@
     });
     if (!plan) throw new Error('The reviewed Unsend plan could not be created. Check the conversation again.');
     const scopeLabel = scope === 'all'
-      ? 'all eligible sent messages'
+      ? `all ${limit} eligible sent message${limit === 1 ? '' : 's'}`
       : `${scope} ${limit} sent message${limit === 1 ? '' : 's'}`;
-    const phrase = `UNSEND ${limit} ${plan.reviewedDigest}`;
-    const entered = await runtime.requestArmPhrase({
-      description: `Thread ${plan.threadId} · ${scopeLabel}. This count-specific plan expires in 15 minutes.`,
-      phrase,
-    });
-    if (entered == null) return;
-    if (String(entered).trim() !== phrase) {
-      runtime.status('Unsend stayed locked because the count-specific phrase did not match.', 'error');
-      return;
-    }
     const confirmed = runtime.window.confirm(
       `Permanently unsend ${scopeLabel} from thread ${plan.threadId}?\n\n`
-      + `Reviewed digest: ${plan.reviewedDigest}. The eligible count will be revalidated immediately before any message menu opens.`,
+      + 'The eligible count will be revalidated immediately before any message menu opens.',
     );
     if (!confirmed) {
-      runtime.status('Canceled. Nothing was changed.', 'neutral');
+      runtime.status('Canceled. The conversation check is still available and nothing was changed.', 'neutral');
       return;
     }
     const reservation = await runtime.sendBridge({
@@ -519,52 +428,12 @@
     });
   }
 
-  async function arm(runtime) {
-    const intent = runtime.model.bridge.pendingDmIntent;
-    if (!intent) return;
-    const observation = inspectIntent(runtime, intent);
-    if (!observationMatches(intent, observation)) {
-      runtime.status(`Open the exact conversation and resolve sent message ${intent.messageId} before arming.`, 'error');
-      renderGate(runtime);
-      return;
-    }
-    const phrase = await runtime.requestArmPhrase({
-      description: `This arms only message ${intent.messageId}. The paired workspace must still revalidate both ledgers.`,
-      phrase: `ARM UNSEND ${intent.armCode}`,
-    });
-    if (phrase == null) return;
-    const response = await runtime.sendBridge({
-      kind: 'insta-aio-arm-dm-unsend',
-      conversationId: intent.conversationId,
-      itemId: intent.itemId,
-      jobId: intent.jobId,
-      messageId: intent.messageId,
-      phrase,
-    });
-    if (response.error) throw new Error(`DM arm rejected: ${response.error}.`);
-    runtime.applyBridgeState(response.state);
-    runtime.status(`Armed one Unsend for message ${intent.messageId} for 90 seconds. Nothing was removed.`, 'good');
-  }
-
-  async function cancel(runtime) {
-    const intent = runtime.model.bridge.pendingDmIntent;
-    const response = await runtime.sendBridge({ kind: 'insta-aio-cancel-dm-unsend' });
-    if (response.error) throw new Error(`Could not cancel the DM intent: ${response.error}.`);
-    runtime.applyBridgeState(response.state, { guardArmDrop: false });
-    runtime.setArmNotice({ kind: 'dm', state: 'canceled', target: intent?.messageId || 'reviewed message' });
-    runtime.status('Canceled the pending DM intent. No Instagram control was used.', 'good');
-  }
-
   shared.install('messagesView', {
-    arm,
-    cancel,
     inspect,
     inspectIntent,
     massUnsend,
-    matchingArm,
     observationMatches,
     render,
-    renderGate,
     renderSentScan: renderDirect,
     scanSent,
   });

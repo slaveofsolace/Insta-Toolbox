@@ -58,29 +58,28 @@ Full steps and the other options are in [Installation](./docs/INSTALLATION.md).
 
 ## Safety model
 
-Live account changes and DM removal are disabled by default. Scans, comparisons,
-visible evidence, and exact-target dry runs remain available while locked. The
-extension batch controls require an exact typed arm phrase. Thread-wide Unsend
-starts with a no-click conversation check, then creates a finite plan bound to
-the exact thread, scope (`all`, `newest`, or `oldest`), eligible count, digest,
-and 15-minute expiry. Its count-specific typed phrase and final confirmation are
-revalidated before the first message menu opens. The runner accepts only the
-one newly surfaced menu and confirmation control for the message it just opened. The
-userscript likewise starts with live execution off. Selecting an already-reviewed
-destructive action opens a tab-scoped 15-minute window without a second phrase;
-the exact run still requires its target-bound confirmation. Account batches carry only that expiry across the profile navigation
-they cause, using the userscript manager's tab-local storage; an expired window
-stops before another action.
+Live account changes and DM removal are disabled on every load. Scans,
+comparisons, visible evidence, and exact-target dry runs need no unlock. A
+destructive run becomes eligible only after one ordinary confirmation naming its
+exact action, target or thread, and finite count. That confirmation mints a
+non-persistent capability bound to the reviewed targets and expiry; completion,
+Stop, expiry, a challenge, a block, a rate limit, or an unexpected state revokes
+it. Thread-wide Unsend first performs a no-click conversation check when needed,
+then creates a finite plan bound to the exact thread, scope (`all`, `newest`, or
+`oldest`), eligible count, digest, and 15-minute expiry. The runner revalidates
+the count before accepting only the newly surfaced menu and confirmation control
+for each message. Account runs retain only their finite target-bound capability
+across the profile navigation they cause in the userscript manager's tab-local
+storage; an expired run stops before another action.
 
 The signed PWA path adds stricter one-item controls. A live Follow or Unfollow
-requires a fresh signed batch of exactly one item, action permission, an exact
-phrase entered on the matching Instagram profile, a 90-second one-use arm, PWA
-and extension-side durable reservations, a relationship control inside a
-verified profile header, a newly created target-named Unfollow dialog when
-needed, and post-action relationship verification. A live Unsend additionally
-requires two fresh confirmations for exactly one sent message, exact
-thread/message/timestamp/content-digest/ownership binding, an `ARM UNSEND
-<code>` phrase in the matching Instagram conversation, independent PWA and
+requires a fresh signed batch of exactly one item, action permission, one exact
+profile/action confirmation, a transient one-use capability, PWA and
+extension-side durable reservations, a relationship control inside a verified
+profile header, a newly created target-named Unfollow dialog when needed, and
+post-action relationship verification. A live Unsend additionally requires a
+fresh exact thread/message confirmation for one sent message,
+thread/message/timestamp/content-digest/ownership binding, independent PWA and
 extension reservations, a one-use rendered-message token, structurally bound
 interactive menu/dialog controls, and exact-message removal proof while stable
 identity coverage remains available. DOM resolution tokens are issued only by
@@ -153,19 +152,26 @@ Follow items enter a configurable waiting period before an unfollow review can b
 
 ## Reviewed action jobs
 
-Queue records must be selected explicitly. A preview lists the exact username and action for every item, calculates a digest, and requires the matching confirmation phrase.
+Queue records must be selected explicitly. A preview lists the exact username,
+action, duplicates, protected/skipped reasons, and remaining targets for every
+finite run. Starting requires one ordinary exact action/target/count confirmation.
 
-Dry runs inspect the current profile without clicking. The adapter safe-stops on the wrong profile, an unverified profile header, ambiguous controls, any pre-existing dialog, an unbound Unfollow dialog, session expiry, challenges, rate limits, action blocks, changed protection state, stale confirmation, or a missing/expired live arm. The PWA ledger and the extension's bounded mirror reserve before the isolated driver call and prevent duplicate or over-limit execution.
+Dry runs inspect the current profile without clicking. The adapter safe-stops on
+the wrong profile, an unverified profile header, ambiguous controls, any
+pre-existing dialog, an unbound Unfollow dialog, session expiry, challenges,
+rate limits, action blocks, changed protection state, stale confirmation, or a
+missing/expired finite capability. The PWA ledger and the extension's bounded
+mirror reserve before the isolated driver call and prevent duplicate or
+over-limit execution.
 
-Extension 0.11.0 preserves the stricter signed live paths for one reviewed PWA
-item. The PWA sends a signed intent; the Instagram overlay requires the matching
-profile or exact sent message plus `ARM FOLLOW @username`, `ARM UNFOLLOW
-@username`, or `ARM UNSEND <code>`; every arm expires after 90 seconds.
-Immediately before page control, the background persists its own reservation
-and consumes the arm, then finalizes that mirror as succeeded or uncertain. The
-PWA independently checkpoints its transactional ledger. These implemented paths
-still require authenticated selector acceptance before issues #3 and #4 can be
-closed.
+Extension 2.0.0 preserves the stricter signed live paths for one reviewed PWA
+item while removing typed arm phrases. The PWA sends a signed intent; the
+matching Instagram profile or exact sent message must receive one ordinary
+action-specific confirmation. The resulting capability exists only in memory,
+is consumed before page control, and is paired with a durable reservation that
+is finalized as succeeded or uncertain. The PWA independently checkpoints its
+transactional ledger. These implemented paths still require authenticated
+selector acceptance before issues #3 and #4 can be closed.
 
 ## Reviewed DM jobs
 
@@ -203,7 +209,7 @@ provides:
 - One-step authenticated Followers + Following pagination with username autofill/input and a local comparison; list-dialog scanning remains an Advanced fallback
 - A review-first account queue that freezes the exact targets before Start becomes available
 - Sanitized history for signed account/DM dry runs and controlled one-item results received from the PWA
-- Instagram-side, 90-second one-use arms for a fresh signed one-item Follow, Unfollow, or exact sent-message Unsend intent
+- Instagram-side transient one-use capabilities for a freshly confirmed signed one-item Follow, Unfollow, or exact sent-message Unsend intent
 - Read-only visible-message evidence plus conditional exact-identity DM dry runs that never open a menu
 - A direct link back to the exact paired PWA origin
 
@@ -222,28 +228,31 @@ page control. The result browser switches among mutuals and both non-mutual
 groups and filters locally. If Instagram changes or rejects the read interface,
 the Advanced section retains the older exact-dialog scanner as a fallback.
 
-**Follow / Unfollow bot.** In the Follow / Unfollow tab, pick a target source
-(either checker result or the manual queue), an action, and how many to run.
-Choose **Review run** to freeze and inspect the exact targets, duplicates, and
+**Follow / Unfollow bot.** In the Follow / Unfollow tab, choose **Follow people**
+or **Unfollow people**, then pick one of the compatible current-profile, checker,
+scanned-list, or queue sources. Choose the explicit **Review N Follow targets**
+or **Review N Unfollow targets** action to freeze and inspect the exact targets,
+duplicates, already-correct relationships, protected/skipped reasons, and
 omissions. **Start** appears only while that review still matches the controls.
 Each target is opened, re-verified, and acted on one at a time. **Complete** and
 **Skip** remain available under the secondary options disclosure.
 
-**DM Unsend.** Open a conversation and choose **Check conversation**. This
-no-click pass loads history and must prove a complete, finite count before the
-plan controls appear. Choose `all`, `newest N`, or `oldest N`, then review the
-exact thread, count, digest, and 15-minute expiry. Type the count-specific phrase
-and accept the permanent-action confirmation. Incomplete or capped checks stay
-locked. The finite plan is reserved against the daily Unsend allowance before
-the first page control and uses the saved delay range; only rows proven sent by
-the current account are eligible. Unsending is permanent.
+**DM Unsend.** Open a conversation and choose the always-visible **Unsend DMs**
+button. It automatically performs the no-click history check when needed and
+must prove a complete finite count before showing one permanent-action
+confirmation naming the exact thread and count. The default scope is all
+eligible sent messages; `newest N` and `oldest N` are under Advanced. Incomplete
+or capped checks do not create a destructive plan. The finite plan is reserved
+against the daily Unsend allowance before the first page control and uses the
+saved delay range; only rows proven sent by the current account are eligible.
+Cancel preserves the read-only count and changes nothing. Unsending is permanent.
 
 ### Batch pacing and safety
 
 Batch runs reuse the audited one-item path: each item still runs a complete
-inspect, exact-resolution, reserve, act, and record cycle. A batch arm replaces
-per-item phrase typing; it is consumed by the run it authorises and cannot be
-replayed.
+inspect, exact-resolution, reserve, act, and record cycle. One finite capability
+is bound to the confirmed target list, consumed by that run, and cannot be
+replayed or widened.
 
 - Randomised delays between items, plus a longer rest every 20 items
 - Configurable daily caps and delays under **Settings → Batch pacing**, clamped
@@ -292,15 +301,14 @@ cannot inherit a running batch. Tampermonkey is the supported manager; on a
 manager without those tab APIs, follower scanning, comparison, and no-click
 checks remain available but account batch execution stays disabled.
 
-Live execution is off on every page load. Start an already-reviewed action to
-open the temporary 15-minute window, or use the one-click switch in the gear
-menu. There is no general authorization phrase. Each destructive run still asks
-for its exact target-bound confirmation. The
-authorization expires during a run and is checked before every later item;
+Live execution is off on every page load. Each reviewed account run asks once
+for its exact action, target list, and count, then mints a finite capability for
+that run only. There is no general switch, arm control, or authorization phrase.
+The capability expires during a run and is checked before every later item;
 account navigation retains only the already-confirmed run and its expiry in the
-same manager tab. Thread-wide Unsend separately binds its arm to the current
-thread and rejects navigation, expired authority, pre-existing menu decoys, and
-ambiguous newly opened controls. The
+same manager tab. Thread-wide Unsend separately binds its finite plan to the
+current thread and rejects navigation, expired authority, pre-existing menu
+decoys, and ambiguous newly opened controls. The
 follower scanner, exported comparisons, visible-message scan, and exact no-click
 checks work while live controls are locked. The userscript does not include the
 extension's signed PWA bridge or its durable workspace ledgers.

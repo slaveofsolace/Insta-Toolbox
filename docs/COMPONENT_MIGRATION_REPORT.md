@@ -50,8 +50,8 @@ authenticated live Unsend acceptance.
 The independently reviewed account-action boundary now has an optional
 production extension driver. It does not reuse SimpleInstaBot's Puppeteer,
 session persistence, private routes, selector set, or retry automation. It
-accepts one fresh reviewed item, requires an Instagram-side exact phrase and
-short-lived one-use arm, consumes that arm before using the exact visible
+accepts one fresh reviewed item, requires one ordinary confirmation naming the
+exact action and target, and consumes a short-lived one-use capability before using the exact visible
 control, and returns before/after observations to the PWA ledger. This does not
 change the disposition of migrated SimpleInstaBot records: they remain
 historical and non-actionable.
