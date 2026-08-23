@@ -27,11 +27,20 @@ const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(moduleDirectory, '..');
 const resultsRoot = path.join(repositoryRoot, 'test-results', 'browser-qa');
 const actualRoot = path.join(resultsRoot, process.platform);
+const baselineVariant = String(
+  process.env.INSTA_TOOLBOX_BROWSER_QA_BASELINE_VARIANT || '',
+).trim();
+if (baselineVariant && !/^[a-z0-9](?:[a-z0-9_-]{0,62})$/i.test(baselineVariant)) {
+  throw new Error('Browser QA baseline variant must contain only letters, numbers, dashes, and underscores.');
+}
 const userDataRoot = path.resolve(
   process.env.INSTA_AIO_BROWSER_QA_USER_DATA
     || path.join(resultsRoot, 'user-data', String(process.pid)),
 );
-const baselineRoot = path.join(repositoryRoot, 'tests', 'baselines', 'pwa', process.platform);
+const platformBaselineRoot = path.join(repositoryRoot, 'tests', 'baselines', 'pwa', process.platform);
+const baselineRoot = baselineVariant
+  ? path.join(platformBaselineRoot, baselineVariant)
+  : platformBaselineRoot;
 const manifestPath = path.join(baselineRoot, 'manifest.json');
 const runnerLogPath = path.join(resultsRoot, 'runner.log');
 
@@ -296,13 +305,25 @@ async function updateBaselines(captures, manifest) {
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 }
 
+async function writeActualManifest(manifest) {
+  await mkdir(actualRoot, { recursive: true });
+  await writeFile(
+    path.join(actualRoot, 'manifest.json'),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    'utf8',
+  );
+}
+
 async function checkBaselines(captures, manifest) {
   let expected;
   try {
     expected = JSON.parse(await readFile(manifestPath, 'utf8'));
   } catch (error) {
+    const baselineLabel = baselineVariant
+      ? `${process.platform}/${baselineVariant}`
+      : process.platform;
     throw new Error(
-      `No readable ${process.platform} browser baseline manifest. Run pnpm qa:browser:update on this platform.`,
+      `No readable ${baselineLabel} browser baseline manifest. Review the captured evidence before updating it.`,
       { cause: error },
     );
   }
@@ -311,6 +332,7 @@ async function checkBaselines(captures, manifest) {
   assert.equal(expected.platform, manifest.platform, 'baseline platform changed');
   assert.equal(expected.electron, manifest.electron, 'baseline Electron version changed');
   assert.equal(expected.deviceScaleFactor, manifest.deviceScaleFactor, 'baseline scale changed');
+  assert.equal(expected.variant || '', manifest.variant || '', 'baseline renderer variant changed');
   assert.deepEqual(expected.viewports, manifest.viewports, 'baseline viewport contract changed');
   assert.deepEqual(
     expected.captures.map(({ file, viewport, width, height, view }) => ({ file, viewport, width, height, view })),
@@ -349,6 +371,8 @@ async function runBrowserQa() {
       viewports,
       captures,
     };
+    if (baselineVariant) manifest.variant = baselineVariant;
+    await writeActualManifest(manifest);
     if (mode === 'update') {
       await updateBaselines(captures, manifest);
       report(`Updated ${captures.length} ${process.platform} PWA screenshot baselines.`);

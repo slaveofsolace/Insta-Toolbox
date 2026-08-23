@@ -37,6 +37,7 @@
     let delayedWindowUsed = false;
     let newMessageInjected = false;
     let oldestGrowthScheduled = false;
+    let forceNextMenuMissAfterReplacement = false;
     const sentMessageIndexes = new Set([2, 9, 17, 24, 32, 40]);
     const logicalMessages = Array.from({ length: 42 }, (_, offset) => {
       const index = 42 - offset;
@@ -57,6 +58,7 @@
     globalThis.fixtureDecoyUnsendClicks = 0;
     globalThis.fixtureRenderedWindows = 0;
     globalThis.fixtureScrollerReplacements = 0;
+    globalThis.fixtureForcedRetryMisses = 0;
     globalThis.fixtureDelayedWindows = 0;
     globalThis.fixtureNewMessages = 0;
     globalThis.fixtureInitialScrollHeight = virtualRange + 220;
@@ -169,12 +171,13 @@
       });
     }
 
-    function replaceScroller() {
+    function replaceScroller({ forceRetry = false } = {}) {
       const replacement = document.createElement('div');
       replacement.id = 'thread';
       thread.replaceWith(replacement);
       thread = replacement;
       bindScroller(thread);
+      if (forceRetry) forceNextMenuMissAfterReplacement = true;
       globalThis.fixtureScrollerReplacements += 1;
       renderWindow();
     }
@@ -183,6 +186,11 @@
     renderWindow();
 
     function openMenu(row, messageId) {
+      if (forceNextMenuMissAfterReplacement) {
+        forceNextMenuMissAfterReplacement = false;
+        globalThis.fixtureForcedRetryMisses += 1;
+        return;
+      }
       if (globalThis.fixtureFirstMenuOpenedAt === null) {
         globalThis.fixtureFirstMenuOpenedAt = performance.now();
         globalThis.fixtureMenuOpenedBeforeOldestExpansion = loadedCount < logicalMessages.length;
@@ -237,7 +245,7 @@
         }
         // Replace mounted rows every time, and replace the scroller itself once
         // to prove the runner reacquires Instagram's live virtual-list root.
-        if (globalThis.fixtureUnsentCount === 2) replaceScroller();
+        if (globalThis.fixtureUnsentCount === 2) replaceScroller({ forceRetry: true });
         else renderWindow();
       });
       dialog.append(cancel, confirm);

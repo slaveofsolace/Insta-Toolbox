@@ -608,6 +608,7 @@ async function acceptThreadUnsend(webContents, baseUrl) {
       delayedWindows: globalThis.fixtureDelayedWindows,
       newMessages: globalThis.fixtureNewMessages,
       scrollerReplacements: globalThis.fixtureScrollerReplacements,
+      forcedRetryMisses: globalThis.fixtureForcedRetryMisses,
       initialScrollHeight: globalThis.fixtureInitialScrollHeight,
       finalScrollHeight: document.querySelector('#thread')?.scrollHeight,
       confirmedIds: globalThis.fixtureConfirmedIds,
@@ -629,6 +630,7 @@ async function acceptThreadUnsend(webContents, baseUrl) {
   assert.ok(outcome.delayedWindows >= 1, 'the fixture must delay at least one virtual page');
   assert.equal(outcome.newMessages, 1, 'the run must survive a new received-message boundary');
   assert.ok(outcome.scrollerReplacements >= 1, 'the runner must survive a replaced scroller');
+  assert.equal(outcome.forcedRetryMisses, 1, 'the replaced scroller must force one bounded transient miss');
   assert.ok(outcome.finalScrollHeight < outcome.initialScrollHeight, 'the virtual scroll range must shrink during removal');
   assert.equal(outcome.fixtureDecoyUnsendClicks, 0, 'a stale document-global Unsend decoy is never activated');
   assert.equal(
@@ -644,7 +646,10 @@ async function acceptThreadUnsend(webContents, baseUrl) {
   assert.equal(outcome.leftoverDialogs, 0, 'no confirmation dialog was left open');
   assert.equal(outcome.result?.processed, 6);
   assert.equal(outcome.result?.failed, 0, 'a working thread produces no failures');
-  assert.ok(outcome.retryAttempts >= 1, 'the replaced scroller must exercise bounded retry recovery');
+  assert.ok(
+    outcome.retryAttempts >= outcome.forcedRetryMisses,
+    'the replaced scroller must exercise bounded retry recovery',
+  );
   assert.equal(outcome.status, 'completed');
   assert.equal(outcome.replay?.status, 'error');
   assert.match(outcome.replay?.message || '', /already used/);

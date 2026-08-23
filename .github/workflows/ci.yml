@@ -76,6 +76,9 @@ jobs:
           INSTA_AIO_OVERLAY_QA_CI_WINDOWS_RASTER_TOLERANCE: "1"
         run: pnpm run qa:overlay:check
       - name: Verify reviewed Windows PWA baselines
+        env:
+          # Keep CI raster output exact without replacing the developer-machine baseline.
+          INSTA_TOOLBOX_BROWSER_QA_BASELINE_VARIANT: github-actions-windows-2025-vs2026
         run: pnpm run qa:browser:check
       - name: Upload failed Windows rendering evidence
         if: failure()
@@ -85,7 +88,7 @@ jobs:
           path: |
             test-results/overlay-qa/actual/win32
             test-results/overlay-qa/runner.log
-            test-results/browser-qa/actual/win32
+            test-results/browser-qa/win32
             test-results/browser-qa/runner.log
           if-no-files-found: warn
           retention-days: 3
@@ -114,9 +117,14 @@ jobs:
           $smokeParent = Join-Path ([System.IO.Path]::GetTempPath()) 'insta-aio-desktop-smoke-parent'
           New-Item -ItemType Directory -Path $smokeParent -Force | Out-Null
           $env:INSTA_AIO_DESKTOP_SMOKE_PARENT = (Resolve-Path -LiteralPath $smokeParent).Path
-          & 'dist/desktop/win-unpacked/Insta Toolbox.exe' --smoke-test
-          if ($LASTEXITCODE -ne 0) {
-            throw "Desktop smoke test exited with $LASTEXITCODE."
+          $smokeExecutable = (Resolve-Path -LiteralPath 'dist/desktop/win-unpacked/Insta Toolbox.exe').Path
+          $smokeProcess = Start-Process -FilePath $smokeExecutable -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+          if (-not $smokeProcess.WaitForExit(30000)) {
+            try { $smokeProcess.Kill($true) } catch {}
+            throw 'Desktop smoke test timed out after 30 seconds.'
+          }
+          if ($smokeProcess.ExitCode -ne 0) {
+            throw "Desktop smoke test exited with $($smokeProcess.ExitCode)."
           }
       - name: Verify Windows installer artifact
         shell: pwsh
@@ -140,9 +148,13 @@ jobs:
           $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
           $installer = Get-Item -LiteralPath "dist/desktop/Insta Toolbox Setup $version.exe"
           $installRoot = Join-Path $env:RUNNER_TEMP "insta-toolbox-nsis-$version"
-          & $installer.FullName /S "/D=$installRoot"
-          if ($LASTEXITCODE -ne 0) {
-            throw "NSIS installation exited with $LASTEXITCODE."
+          $installerProcess = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installRoot") -PassThru -WindowStyle Hidden
+          if (-not $installerProcess.WaitForExit(120000)) {
+            try { $installerProcess.Kill($true) } catch {}
+            throw 'NSIS installation timed out after 120 seconds.'
+          }
+          if ($installerProcess.ExitCode -ne 0) {
+            throw "NSIS installation exited with $($installerProcess.ExitCode)."
           }
           $installedExecutable = Join-Path $installRoot 'Insta Toolbox.exe'
           if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
@@ -151,17 +163,25 @@ jobs:
           $smokeParent = Join-Path ([System.IO.Path]::GetTempPath()) 'insta-aio-desktop-smoke-parent'
           New-Item -ItemType Directory -Path $smokeParent -Force | Out-Null
           $env:INSTA_AIO_DESKTOP_SMOKE_PARENT = (Resolve-Path -LiteralPath $smokeParent).Path
-          & $installedExecutable --smoke-test
-          if ($LASTEXITCODE -ne 0) {
-            throw "Installed application smoke test exited with $LASTEXITCODE."
+          $smokeProcess = Start-Process -FilePath $installedExecutable -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+          if (-not $smokeProcess.WaitForExit(30000)) {
+            try { $smokeProcess.Kill($true) } catch {}
+            throw 'Installed application smoke test timed out after 30 seconds.'
+          }
+          if ($smokeProcess.ExitCode -ne 0) {
+            throw "Installed application smoke test exited with $($smokeProcess.ExitCode)."
           }
           $uninstallers = @(Get-ChildItem -LiteralPath $installRoot -Filter 'Uninstall*.exe' -File)
           if ($uninstallers.Count -ne 1) {
             throw "Expected one NSIS uninstaller. Found: $($uninstallers.Name -join ', ')"
           }
-          & $uninstallers[0].FullName /S
-          if ($LASTEXITCODE -ne 0) {
-            throw "NSIS uninstall exited with $LASTEXITCODE."
+          $uninstallerProcess = Start-Process -FilePath $uninstallers[0].FullName -ArgumentList '/S' -PassThru -WindowStyle Hidden
+          if (-not $uninstallerProcess.WaitForExit(120000)) {
+            try { $uninstallerProcess.Kill($true) } catch {}
+            throw 'NSIS uninstall timed out after 120 seconds.'
+          }
+          if ($uninstallerProcess.ExitCode -ne 0) {
+            throw "NSIS uninstall exited with $($uninstallerProcess.ExitCode)."
           }
           for ($attempt = 0; $attempt -lt 30 -and (Test-Path -LiteralPath $installedExecutable); $attempt += 1) {
             Start-Sleep -Seconds 1
