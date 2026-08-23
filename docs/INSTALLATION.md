@@ -14,6 +14,9 @@ extension additionally pairs with the app for signed, recorded jobs.
 
 Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest), expand **Assets**, and choose one file:
 
+The 2.0.2 files appear there together after publication. Before then, the
+commit-named CI artifacts are review builds, not a public release.
+
 | Platform | Download | What to do |
 |---|---|---|
 | Windows 64-bit | `Insta Toolbox Setup 2.0.2.exe` | Open it and follow the short installer. |
@@ -298,6 +301,9 @@ uninstaller removes program files and shortcuts but keeps workspace data for an
 upgrade or reinstall. Export a workspace backup before uninstalling if you need
 to move that data elsewhere.
 
+If SmartScreen appears after the checksum matches the release, choose **More
+info → Run anyway** to open this unsigned build.
+
 ### macOS Apple Silicon
 
 1. Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest).
@@ -309,6 +315,10 @@ macOS may show a Gatekeeper warning. Verify its SHA-256 value before deciding
 whether to open it. The `arm64-mac.zip` asset contains the same app in ZIP form;
 it is mainly useful for controlled deployment and troubleshooting.
 
+After the checksum matches, Control-click Insta Toolbox and choose **Open**. If
+macOS still blocks it, open **System Settings → Privacy & Security**, choose
+**Open Anyway**, and confirm the same app.
+
 ### Web / PWA package
 
 The release includes `insta-toolbox-web-2.0.2.zip` for static hosting. It cannot
@@ -318,6 +328,26 @@ require HTTPS or `http://localhost`.
 1. Download and extract the web ZIP.
 2. Publish the extracted `insta-toolbox-web` folder with a static HTTPS host, or serve it from localhost.
 3. Open the root address. In Chrome or Edge, use **Install Insta Toolbox** from the address bar or browser menu.
+
+For a quick local preview with Python installed, open a terminal in the folder
+that contains `insta-toolbox-web`, run one command, then open
+`http://127.0.0.1:4173`:
+
+Windows:
+
+```powershell
+cd insta-toolbox-web
+py -m http.server 4173 --bind 127.0.0.1
+```
+
+macOS:
+
+```bash
+cd insta-toolbox-web
+python3 -m http.server 4173 --bind 127.0.0.1
+```
+
+Keep the terminal open while using the app. Press `Ctrl+C` there to stop it.
 
 Workspace data stays in that browser profile. A public hosted URL is not bundled
 with this release. Hosts should reproduce the repository server's framing,
@@ -344,8 +374,8 @@ pnpm run dist:mac
 ```
 
 `dist:win` must run on Windows. `dist:mac` and `qa:mac-package` must run on macOS.
-The macOS QA process uses an ad-hoc test signature; it does not replace public
-Developer ID signing or notarization.
+The macOS QA process uses an ad-hoc test signature. Public Developer ID signing
+and notarization require release credentials and are not part of this build.
 
 ## Upgrade
 

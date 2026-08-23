@@ -25,6 +25,10 @@ scanning and page controls apply to both.
 
 ## Download or install
 
+The 2.0.2 files below appear together when the release is published. If GitHub
+still shows an older release, use the commit-named CI artifacts only for review;
+do not mix files from different builds.
+
 - **Instagram overlay:** [install the Tampermonkey userscript](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js),
   reload Instagram, then press **Alt + Shift + I**.
 - **Windows 64-bit:** open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest),
@@ -376,7 +380,7 @@ ignored `test-results`.
 The overlay-specific commands rebuild the production extension before loading
 its manifest-ordered content scripts in the deterministic Instagram fixture.
 Use `pnpm run qa:overlay:update` only for an intentional, manually reviewed
-baseline replacement. The 43-state Windows baseline covers fresh install,
+baseline replacement. The 45-state Windows baseline covers fresh install,
 filtered Mutual Checker results, a centered 62%-opacity panel, desktop, tablet,
 mobile, zoom, forced colors, collision, exact confirmation, and
 review-before-start states. It has been reproduced by

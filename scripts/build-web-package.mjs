@@ -1,5 +1,4 @@
 import {
-  copyFile,
   lstat,
   mkdir,
   readFile,
@@ -19,6 +18,34 @@ const defaultRepositoryRoot = path.resolve(scriptDirectory, '..');
 const archiveRoot = 'insta-toolbox-web';
 const maxRuntimeFiles = 256;
 const maxRuntimeBytes = 64 * 1024 * 1024;
+const canonicalTextExtensions = new Set([
+  '.css',
+  '.html',
+  '.js',
+  '.jsfrag',
+  '.json',
+  '.md',
+  '.svg',
+  '.txt',
+  '.webmanifest',
+]);
+const binaryWebFiles = new Set([
+  'assets/icon-192.png',
+  'assets/icon-512.png',
+]);
+
+export function canonicalizeWebPackageEntry(relative, data) {
+  const source = Buffer.from(data);
+  if (binaryWebFiles.has(relative)) return source;
+
+  const extension = path.extname(relative).toLowerCase();
+  if (relative !== 'LICENSE' && !canonicalTextExtensions.has(extension)) {
+    throw new Error(`Web package source needs an explicit text or binary type: ${relative}`);
+  }
+
+  const decoded = new TextDecoder('utf-8', { fatal: true }).decode(source);
+  return Buffer.from(decoded.replace(/\r\n?/g, '\n'), 'utf8');
+}
 
 function storedZip(entries) {
   const localRecords = [];
@@ -103,6 +130,18 @@ This is the portable web build, not a desktop installer.
 3. Open the server address in a modern browser.
 4. Use the browser's Install app command if you want a standalone PWA window.
 
+Quick localhost option (requires Python):
+
+Windows:
+  cd insta-toolbox-web
+  py -m http.server 4173 --bind 127.0.0.1
+
+macOS:
+  cd insta-toolbox-web
+  python3 -m http.server 4173 --bind 127.0.0.1
+
+Then open http://127.0.0.1:4173 and keep that terminal open while using the app.
+
 Do not double-click index.html. Browser security rules prevent the modules and
 offline worker from loading correctly from a file:// address.
 
@@ -136,14 +175,17 @@ export async function buildWebPackage({ repositoryRoot = defaultRepositoryRoot }
     }
     totalBytes += metadata.size;
     if (totalBytes > maxRuntimeBytes) throw new Error('Web package exceeds its bounded source size.');
-    sourceEntries.push({ relative, data: await readFile(source) });
+    sourceEntries.push({
+      relative,
+      data: canonicalizeWebPackageEntry(relative, await readFile(source)),
+    });
   }
 
   await rm(outputRoot, { recursive: true, force: true });
   for (const entry of sourceEntries) {
     const destination = path.join(outputRoot, ...entry.relative.split('/'));
     await mkdir(path.dirname(destination), { recursive: true });
-    await copyFile(path.join(root, ...entry.relative.split('/')), destination);
+    await writeFile(destination, entry.data);
   }
 
   const generatedEntries = [

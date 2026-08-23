@@ -109,14 +109,14 @@ Windows installers remain intentionally unsigned.
   includes `LICENSE` plus `THIRD_PARTY_NOTICES.md` in the extension, desktop,
   release archives, and offline PWA cache.
 - Adds a deterministic `insta-toolbox-web-2.0.2.zip` containing the exact 42-file
-  public PWA runtime plus launch/version notes. Its verifier checks source-byte
-  parity, legal files, the offline asset graph, relative paths, private-file
-  exclusion, repeatable bytes, and extracted localhost delivery.
+  public PWA runtime plus launch/version notes. Its verifier checks canonical
+  source parity, legal files, the offline asset graph, relative paths,
+  private-file exclusion, repeatable bytes, and extracted localhost delivery.
 - Removes the Mutual Checker's former 500-account reconciliation cutoff. One
   bounded restart now also recovers a prematurely cursorless large-account
   response; a 2,104-follower regression and exhausted-retry case cover the
   reported failure without adding an unbounded loop.
-- Full local suite: **291/291** passing after the confirmation, finite-oldest,
+- Full local suite: **292/292** passing after the confirmation, finite-oldest,
   and web-package repairs, including dependency verification, repository
   hygiene, generated parity, migrations, virtualized DM traversal, bounded
   capabilities, safe stops, and the exact static release archive.
@@ -137,24 +137,16 @@ Windows installers remain intentionally unsigned.
   synthetic-click authorization path and a post-replacement finite-ordering
   defect. Both were repaired and regression-tested before this matrix; no
   reportable finding remains in the corrected local patch.
-- The corrected code candidate passed all five GitHub CI jobs at
-  [run 32671168068](https://github.com/slaveofsolace/Insta-AIO-Tool/actions/runs/32671168068),
-  for `fb9e4fcb18cf2871e2305d3841bc8314f73f179d`: tests, Chrome pairing,
+- The preceding candidate passed all five GitHub CI jobs at
+  [run 32673476244](https://github.com/slaveofsolace/Insta-AIO-Tool/actions/runs/32673476244),
+  for `589674bb3421344b6c4c5aa452f656eeb5570758`: tests, Chrome pairing,
   reviewed Windows rendering, Windows NSIS lifecycle, macOS DMG/ZIP lifecycle,
-  and combined release checksums.
-- Corrected CI artifact SHA-256 values:
-  - `insta-aio-companion.user.js`:
-    `f4972b14db2014df8dcf315d6e0ec9a7d1396b704ea779b733e15f1debe7b864`
-  - `insta-aio-companion-2.0.2.zip`:
-    `17e330958b166b5f4f6010b6c997fa0af5f5fc02c4ad4f985bf7dbbffeb01535`
-  - `Insta Toolbox Setup 2.0.2.exe`:
-    `2a0a1dcf43350758f87f5c283b88df01078d1e3675365191544e694bfa0ce310`
-  - `Insta Toolbox Setup 2.0.2.exe.blockmap`:
-    `8bbfda0446500e13b8618b21a4964b4bd85f9c49a166bbd0e3d8bf2eeebfeb66`
-  - `Insta Toolbox-2.0.2-arm64-mac.zip`:
-    `6fa7706ff399a0d09f0f002796ab312964b2b9254d1322390a26107222596d67`
-  - `Insta Toolbox-2.0.2-arm64.dmg`:
-    `d85d5af1880e417841c9fe4ab91aa0b2fa8c5bc1c8cf14e999016298d777fda8`
+  and a seven-file checksum set. A Windows/Linux comparison then exposed a
+  line-ending-only difference in the packaged MIT license. The packager now
+  canonicalizes public text entries while preserving binary assets; exact-head
+  CI remains required before release. Current artifact hashes belong in the
+  generated `SHA256SUMS.txt`, PR evidence, and published release rather than a
+  second hand-maintained list here.
 - The commit-pinned Tampermonkey build was installed in authenticated Chrome.
   The live overlay showed the compact header and credit line with the old mode
   pill and status footer absent.
@@ -168,18 +160,6 @@ Windows installers remain intentionally unsigned.
   corrected commit-pinned userscript, and separately authorized
   disposable-message reacceptance. No further authenticated action has been
   performed.
-- Final corrected local artifact SHA-256 values:
-  - `insta-aio-companion.user.js`:
-    `f4972b14db2014df8dcf315d6e0ec9a7d1396b704ea779b733e15f1debe7b864`
-  - `insta-aio-companion-2.0.2.zip`:
-    `a153991ffa2f82f0689c98de23dcd6e2d9d18fe0cf4bbc6a85c9f7034057088f`
-  - `insta-toolbox-web-2.0.2.zip`:
-    `52e73142841b87c3b43a19977cdbfd4caf2b72ba10c59ff68f9394e7fe325c89`
-  - `Insta Toolbox Setup 2.0.2.exe`:
-    `c7d5dfc53d671e6f1c17fa567cee29c4317fdae9bad36a544f2142c48c1534a8`
-  - `Insta Toolbox Setup 2.0.2.exe.blockmap`:
-    `f1b7c15dcf0e34c9f9542663ff0d7e8b16b6c64e8829d776c8883d81a340e97d`
-
 ### Prior 2.0.1 main-branch userscript hotfix evidence (2026-08-22)
 
 - Full test matrix: **259/259** passing, including dependency verification,
@@ -240,7 +220,7 @@ and are not automated:
 - verify persistent-profile PWA pairing;
 - download and checksum the published Windows, macOS, web, extension, and
   userscript assets;
-- sign and notarize macOS packages for public distribution;
+- sign and notarize macOS packages if release credentials are supplied;
 - if desired, authorize and observe a single real Instagram action against an
   explicitly selected target.
 

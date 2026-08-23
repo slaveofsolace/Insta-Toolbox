@@ -5,7 +5,7 @@ Last updated: 2026-08-23
 ## Current status
 
 The production-script overlay matrix is green on Windows. The 2.0.2 update
-generated and reviewed 43 baselines, including the compact header and credit,
+generated and reviewed 45 baselines, including the compact header and credit,
 the immediate thread-bound Unsend action, authenticated Mutual Checker state,
 floating translucency, mobile layouts, forced colors, and 200% zoom. A
 subsequent non-updating check reproduced every semantic, geometry, collision,
@@ -109,8 +109,8 @@ and hash happen to match a previously captured image.
 
 ## Viewport and presentation matrix
 
-The full matrix contains 43 unique scenarios: the 24 workflow states above plus
-19 presentation variants.
+The full matrix contains 45 unique scenarios: the 24 workflow states above plus
+21 presentation variants.
 
 | Coverage | Scenario IDs |
 | --- | --- |
@@ -201,7 +201,7 @@ thread-bound Unsend path, current extension version, authenticated checker,
 floating translucency, and responsive layouts. Key light, dark, DM, workspace,
 floating, mobile, and 200% zoom captures were inspected at full resolution;
 semantics, collision, accessibility-tree, and geometry checks ran across all
-43 scenarios. No human screen-reader or authenticated Instagram acceptance is
+45 scenarios. No human screen-reader or authenticated Instagram acceptance is
 claimed.
 
 ## Required runtime matrix before acceptance
@@ -228,11 +228,11 @@ test suite.
 
 Automated coverage includes:
 
-- generated 43 Windows baselines and visually reviewed the changed key states;
+- generated 45 Windows baselines and visually reviewed the changed key states;
 - reproduced them with the non-updating check and added the Windows CI gate;
 - passed deterministic assembly, the repository test suite, production extension
-  fixture acceptance, real disposable-Chrome pairing, all nine PWA baselines,
-  the non-updating 43-state overlay check, the 10,000-message ZIP benchmark, and
+  fixture acceptance, real disposable-Chrome pairing, all 11 PWA baselines,
+  the non-updating 45-state overlay check, the 10,000-message ZIP benchmark, and
   the production dependency audit; and
 - reviewed the diff and permission boundary: production extension permissions
   did not expand, target-aware adaptation creates no action token, the Chrome

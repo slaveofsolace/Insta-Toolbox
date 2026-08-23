@@ -7,7 +7,10 @@ import {
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildWebPackage } from '../scripts/build-web-package.mjs';
+import {
+  buildWebPackage,
+  canonicalizeWebPackageEntry,
+} from '../scripts/build-web-package.mjs';
 import { createAppServer } from '../scripts/serve.mjs';
 import { isAllowedAssetPath } from '../scripts/static-asset-policy.mjs';
 import { webRuntimeFiles } from '../scripts/web-package-files.mjs';
@@ -30,6 +33,7 @@ function storedEntryBytes(archiveBytes, entry) {
 test('build:web creates a deterministic, self-contained static web archive', async () => {
   assert.equal(packageMetadata.scripts['build:web'], 'node scripts/build-web-package.mjs');
   assert.equal(packageMetadata.scripts['verify:web-package'], 'node scripts/verify-web-package.mjs');
+  await buildWebPackage({ repositoryRoot });
   const first = await readFile(archivePath);
   await buildWebPackage({ repositoryRoot });
   const second = await readFile(archivePath);
@@ -68,7 +72,13 @@ test('build:web creates a deterministic, self-contained static web archive', asy
     if (generated.has(relative)) continue;
     packagedRuntimeFiles.push(relative);
     assert.equal(isAllowedAssetPath(relative), true, relative);
-    assert.deepEqual(Buffer.from(bytes), await readFile(path.join(repositoryRoot, ...relative.split('/'))));
+    assert.deepEqual(
+      Buffer.from(bytes),
+      canonicalizeWebPackageEntry(
+        relative,
+        await readFile(path.join(repositoryRoot, ...relative.split('/'))),
+      ),
+    );
   }
 
   const serviceWorker = await readFile(path.join(repositoryRoot, 'sw.js'), 'utf8');
@@ -98,7 +108,30 @@ test('build:web creates a deterministic, self-contained static web archive', asy
   assert.equal(version.trim(), packageMetadata.version);
   assert.match(instructions, /Do not double-click index\.html/i);
   assert.match(instructions, /HTTPS or from http:\/\/localhost/i);
+  assert.match(instructions, /py -m http\.server 4173 --bind 127\.0\.0\.1/i);
+  assert.match(instructions, /python3 -m http\.server 4173 --bind 127\.0\.0\.1/i);
   assert.match(instructions, /Windows installer\s+or macOS DMG/i);
+});
+
+test('build:web canonicalizes text line endings without changing binary assets', async () => {
+  assert.deepEqual(
+    canonicalizeWebPackageEntry('LICENSE', Buffer.from('first\r\nsecond\rthird\n', 'utf8')),
+    Buffer.from('first\nsecond\nthird\n', 'utf8'),
+  );
+  const binary = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  assert.deepEqual(canonicalizeWebPackageEntry('assets/icon-192.png', binary), binary);
+  assert.throws(
+    () => canonicalizeWebPackageEntry('assets/future-format.bin', binary),
+    /needs an explicit text or binary type/,
+  );
+
+  await buildWebPackage({ repositoryRoot });
+  const archiveBytes = await readFile(archivePath);
+  const archive = inspectZipArchive(archiveBytes);
+  const license = archive.entries.find((entry) => entry.path === `${archiveRoot}/LICENSE`);
+  assert.ok(license);
+  assert.equal(storedEntryBytes(archiveBytes, license).includes(0x0d), false);
+  assert.equal((await readFile(path.join(repositoryRoot, 'dist', 'web', 'LICENSE'))).includes(0x0d), false);
 });
 
 test('build:web also creates an inspectable static folder', async () => {
