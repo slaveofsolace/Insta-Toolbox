@@ -17,29 +17,34 @@ already open in that tab; it never reads, stores, or exports the session value.
 |---|---|---|
 | **Userscript** (Tampermonkey) | All three tools, including live Follow, Unfollow, and Unsend with paced batch runs. | Fastest start — one click, no build step. |
 | **Browser extension** | The same tools, plus pairing with the app for signed, recorded jobs. | Anyone who also uses the app workspace. |
-| **Desktop / web app** | The full workspace: import Instagram ZIP exports, snapshots, message search, queue history. | Working with exported data in bulk. |
+| **Desktop app** | The full workspace in an installed Windows or macOS app. | A ready-made local app for exported data. |
+| **Web / PWA** | The same workspace as a static web package with offline support. | Browser use or self-hosting over HTTPS/localhost. |
 
-The userscript and the extension run the **same inspected Instagram engine** —
-the userscript is built from the extension's own target-resolution code. Their
-delivery and pairing features differ, but their account/message checks share the
-same safe-stop rules.
+The userscript is generated from the extension's Instagram code, so fixes to
+scanning and page controls apply to both.
 
-### Quickest start
+## Download or install
 
-Install [Tampermonkey](https://www.tampermonkey.net/), then open this link and
-select **Install**:
+- **Instagram overlay:** [install the Tampermonkey userscript](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js),
+  reload Instagram, then press **Alt + Shift + I**.
+- **Windows 64-bit:** open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest),
+  download `Insta Toolbox Setup 2.0.2.exe`, and follow the short installer.
+- **macOS Apple Silicon:** open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest),
+  download `Insta Toolbox-2.0.2-arm64.dmg`, then drag the app to Applications.
+- **Web/PWA package:** download `insta-toolbox-web-2.0.2.zip` from the latest
+  release. It is ready for static hosting over HTTPS or localhost; it is not a
+  double-click app.
+- **Chrome extension:** download `insta-aio-companion-2.0.2.zip`, extract it,
+  then choose **Extensions → Developer mode → Load unpacked** and select the
+  extracted folder.
 
-**[Install Insta Toolbox](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js)**
+The desktop packages are not publicly code-signed. Windows SmartScreen or
+macOS Gatekeeper may warn. Verify the matching SHA-256 value in
+`SHA256SUMS.txt` before opening a download. The macOS build is currently for
+Apple Silicon; an Intel build and Apple notarization are not included.
 
-Then allow the userscript to run in Chrome:
-
-1. Open `chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo`.
-2. Open Tampermonkey's **Details**.
-3. Enable **Allow User Scripts**.
-
-Reload Instagram and press **Alt + Shift + I**. Updates arrive automatically.
-
-Full steps and the other options are in [Installation](./docs/INSTALLATION.md).
+See [Installation](./docs/INSTALLATION.md) for full steps, troubleshooting,
+upgrades, and source builds.
 
 <details>
 <summary>Full feature list</summary>
@@ -110,9 +115,9 @@ pnpm run serve
 `pnpm run serve` prints the local address to open in your browser. It listens on
 your own machine only and is not reachable from your network.
 
-`pnpm run assemble` rebuilds `src/app.js` from the UI fragments in
-`src/app.parts/`. That generated file is not committed, so run it after a fresh
-clone or you will get a blank app.
+`pnpm run assemble` rebuilds the audit copy at `src/app.js` from the committed UI
+fragments. The browser runtime loads those fragments through `src/app-loader.js`,
+so the generated audit copy is not required to open the PWA.
 
 ## Import workflow
 
@@ -191,7 +196,9 @@ Build the extension:
 pnpm run build:extension
 ```
 
-Load `dist/extension` as an unpacked extension, or install the generated ZIP through the appropriate browser-managed workflow.
+Load `dist/extension` as an unpacked extension. If you downloaded the generated
+ZIP, extract it first, then select the extracted folder with **Load unpacked**;
+the ZIP is not a Chrome Web Store package.
 
 Open Instagram after loading the extension. A compact **Toolbox** launcher appears
 on the right by default; the full overlay opens only when the operator requests
@@ -306,7 +313,7 @@ Mutual Checker, exported comparisons, visible-message scan, and exact no-click
 checks need no action confirmation. The userscript does not include the
 extension's signed PWA bridge or its durable workspace ledgers.
 
-## Desktop builds
+## Build packages from source
 
 Create an unpacked desktop build:
 
@@ -325,6 +332,15 @@ Create macOS DMG and ZIP artifacts on macOS:
 ```bash
 pnpm run dist:mac
 ```
+
+Create the static web folder and deployment ZIP:
+
+```bash
+pnpm run build:web
+pnpm run verify:web-package
+```
+
+The ready-made files are on the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest); these commands are for developers building locally.
 
 The Electron renderer runs with context isolation, sandboxing, Node integration disabled, denied permission requests, a confined custom protocol, and a restrictive content policy. Local Chromium data is retained across approved upgrades, and up to five startup backups are kept in an app-specific data directory.
 

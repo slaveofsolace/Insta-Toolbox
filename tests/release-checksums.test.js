@@ -14,8 +14,10 @@ import path from 'node:path';
 import {
   generateReleaseChecksums,
   verifyExtensionReleaseArchive,
+  verifyWebReleaseArchive,
 } from '../scripts/generate-release-checksums.mjs';
 import { createZip } from './support/zip-fixture.js';
+import { webRuntimeFiles } from '../scripts/web-package-files.mjs';
 
 const packageMetadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const version = packageMetadata.version;
@@ -33,6 +35,25 @@ function extensionArchive({ includeNotices = true } = {}) {
   return createZip(entries, { compression: 'store' });
 }
 
+function webArchive({ includeNotices = true } = {}) {
+  const root = 'insta-toolbox-web';
+  const contents = new Map([
+    ['LICENSE', 'MIT License\n\nPermission is hereby granted.\n'],
+    ['index.html', '<!doctype html><title>Insta Toolbox</title>'],
+    ['manifest.webmanifest', JSON.stringify({ name: 'Insta Toolbox', display: 'standalone' })],
+    ['sw.js', 'self.addEventListener("fetch", () => {});'],
+    ['THIRD_PARTY_NOTICES.md', '# Third-party notices\n'],
+  ]);
+  const entries = webRuntimeFiles
+    .filter((relative) => includeNotices || relative !== 'THIRD_PARTY_NOTICES.md')
+    .map((relative) => ({ path: `${root}/${relative}`, content: contents.get(relative) || `fixture:${relative}\n` }));
+  entries.push(
+    { path: `${root}/START_HERE.txt`, content: 'Do not double-click index.html. Serve with HTTPS or localhost.\n' },
+    { path: `${root}/VERSION.txt`, content: `${version}\n` },
+  );
+  return createZip(entries, { compression: 'store' });
+}
+
 async function fixtureRoot(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'insta-toolbox-release-checksums-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -44,6 +65,7 @@ async function fixtureRoot(t) {
     `// ==UserScript==\n// @version      ${version}\n// ==/UserScript==\n`,
   );
   await writeFile(path.join(root, 'dist', `insta-aio-companion-${version}.zip`), extensionArchive());
+  await writeFile(path.join(root, 'dist', `insta-toolbox-web-${version}.zip`), webArchive());
   return root;
 }
 
@@ -73,6 +95,7 @@ test('writes deterministic sorted SHA256SUMS entries without private paths', asy
     `Insta Toolbox-${version}.dmg`,
     `insta-aio-companion-${version}.zip`,
     'insta-aio-companion.user.js',
+    `insta-toolbox-web-${version}.zip`,
   ];
   assert.deepEqual(first.artifacts.map(({ name }) => name), expectedNames);
   assert.equal(second.contents, first.contents);
@@ -112,5 +135,18 @@ test('verifies extension legal files, manifest version, and stored-entry CRCs', 
   assert.throws(
     () => verifyExtensionReleaseArchive(corrupted, version),
     /failed its CRC check: LICENSE/,
+  );
+});
+
+test('verifies the portable web archive, version, instructions, and legal files', () => {
+  const valid = webArchive();
+  assert.deepEqual(verifyWebReleaseArchive(valid, version), [
+    ...webRuntimeFiles,
+    'START_HERE.txt',
+    'VERSION.txt',
+  ].map((relative) => `insta-toolbox-web/${relative}`).sort());
+  assert.throws(
+    () => verifyWebReleaseArchive(webArchive({ includeNotices: false }), version),
+    /missing insta-toolbox-web\/THIRD_PARTY_NOTICES\.md/,
   );
 });

@@ -10,6 +10,22 @@ The userscript is **built from the extension's own Instagram engine**, so both
 run identical code for scanning, following, unfollowing, and unsending. The
 extension additionally pairs with the app for signed, recorded jobs.
 
+## Ready-made downloads
+
+Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest), expand **Assets**, and choose one file:
+
+| Platform | Download | What to do |
+|---|---|---|
+| Windows 64-bit | `Insta Toolbox Setup 2.0.2.exe` | Open it and follow the short installer. |
+| macOS Apple Silicon | `Insta Toolbox-2.0.2-arm64.dmg` | Open it and drag Insta Toolbox to Applications. |
+| Web / PWA hosting | `insta-toolbox-web-2.0.2.zip` | Extract and serve the folder over HTTPS or localhost. |
+| Chrome extension | `insta-aio-companion-2.0.2.zip` | Extract it, then load the extracted folder as an unpacked extension. |
+
+No Node.js or command line is required for the Windows or macOS downloads.
+The desktop files are currently unsigned, and the macOS build is not notarized.
+Verify the file against `SHA256SUMS.txt` on the release before opening it. Intel
+Mac builds are not currently provided.
+
 ---
 
 ## Option 1 — Userscript (one click)
@@ -88,13 +104,17 @@ header and a creator credit at the bottom.
 ### Using the exact CI-tested review bundle
 
 Every pull-request CI run publishes a seven-day artifact named
-`insta-aio-browser-companions-<head-commit>` after the real unpacked extension
+`insta-toolbox-browser-companions-<head-commit>` after the real unpacked extension
 has loaded and paired read-only in disposable Chrome for Testing. Push-triggered
 runs use the pushed commit. Download that artifact from the workflow run when
 reviewing an unmerged commit. It contains:
 
 - `insta-aio-companion-<version>.zip` for **Load unpacked** after extraction
 - `insta-aio-companion.user.js` for Tampermonkey
+
+The same run publishes `insta-toolbox-web-<head-commit>` with the verified static
+web ZIP. These short-lived CI artifacts are for reviewing an unmerged commit;
+normal downloads belong on the GitHub release page.
 
 Use the artifact whose commit matches the reviewed pull-request head. After
 installation, reload Instagram and verify the compact **Insta Toolbox** header
@@ -262,56 +282,70 @@ not retry or weaken those checks; record the DOM acceptance blocker instead.
 
 ---
 
-## Option 3 — Web or desktop app
+## Option 3 — Workspace app
 
-The app is the workspace for data you have already exported from Instagram:
-snapshots, comparisons, message search, and queue history.
+The workspace app handles imported Instagram exports, snapshots, comparisons,
+message search, queue history, ledgers, and backups:
 
-To run it locally:
+### Windows 64-bit
 
-1. Run `corepack enable`.
-2. Run `pnpm install --frozen-lockfile`.
-3. Run `pnpm run assemble`.
-4. Run `pnpm run serve` and open the address it prints.
-5. Use your browser's install control if you want it as a standalone app.
+1. Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest).
+2. Under **Assets**, download `Insta Toolbox Setup 2.0.2.exe`.
+3. Open it, choose an install folder, and finish the installer.
 
-The server listens only on your own machine. After the first load the app works
-offline.
+The installer is one ready-made file; Node.js and pnpm are not needed. The
+uninstaller removes program files and shortcuts but keeps workspace data for an
+upgrade or reinstall. Export a workspace backup before uninstalling if you need
+to move that data elsewhere.
 
-Prefer a packaged desktop build? See [Windows desktop](#windows-desktop) or
-[macOS desktop](#macos-desktop) below.
+### macOS Apple Silicon
 
----
+1. Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest).
+2. Under **Assets**, download `Insta Toolbox-2.0.2-arm64.dmg`.
+3. Open the DMG and drag Insta Toolbox to Applications.
 
-## Windows desktop
+This build is for Apple Silicon and is not Developer ID signed or notarized.
+macOS may show a Gatekeeper warning. Verify its SHA-256 value before deciding
+whether to open it. The `arm64-mac.zip` asset contains the same app in ZIP form;
+it is mainly useful for controlled deployment and troubleshooting.
 
-Build:
+### Web / PWA package
+
+The release includes `insta-toolbox-web-2.0.2.zip` for static hosting. It cannot
+be opened by double-clicking `index.html`; browser modules and offline support
+require HTTPS or `http://localhost`.
+
+1. Download and extract the web ZIP.
+2. Publish the extracted `insta-toolbox-web` folder with a static HTTPS host, or serve it from localhost.
+3. Open the root address. In Chrome or Edge, use **Install Insta Toolbox** from the address bar or browser menu.
+
+Workspace data stays in that browser profile. A public hosted URL is not bundled
+with this release. Hosts should reproduce the repository server's framing,
+content-type, and `nosniff` response headers; the ZIP itself cannot set headers.
+
+### Build from source
+
+Install Node.js 22.12.0 or newer and pnpm 11.9.0, then run:
 
 ```bash
-pnpm run dist:win
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run assemble
+pnpm run serve
 ```
 
-Run the generated NSIS installer under `dist/desktop`. The assisted installer allows an installation directory choice.
-
-The uninstaller removes program files and shortcuts. Workspace data is retained by default so an approved reinstall or upgrade can recover it. Export a workspace backup before removal if the data must be portable.
-
-## macOS desktop
-
-Build on macOS:
+The local server listens only on your machine. To create distributable files:
 
 ```bash
+pnpm run build:web
+pnpm run verify:web-package
+pnpm run dist:win
 pnpm run dist:mac
 ```
 
-This creates DMG and ZIP targets under `dist/desktop`. Production distribution requires an Apple signing identity and notarization appropriate to the release channel.
-
-After building on macOS, run `pnpm run qa:mac-package`. It mounts the DMG,
-copies the app to a disposable install root, applies an ad-hoc test signature,
-launches `--smoke-test`, removes the copied app, and verifies the ZIP. The QA
-signature uses `build/entitlements.mac.qa.plist` because an ad-hoc identity has
-no Apple Team ID. The release entitlement files retain hardened runtime without
-that library-validation exception. This is acceptance evidence, not a substitute
-for Developer ID signing or notarization.
+`dist:win` must run on Windows. `dist:mac` and `qa:mac-package` must run on macOS.
+The macOS QA process uses an ad-hoc test signature; it does not replace public
+Developer ID signing or notarization.
 
 ## Upgrade
 

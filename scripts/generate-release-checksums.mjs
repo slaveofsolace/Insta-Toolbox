@@ -14,6 +14,7 @@ import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { crc32, inspectZipArchive } from '../src/core/zip.js';
+import { webRuntimeFiles } from './web-package-files.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepositoryRoot = path.resolve(scriptDirectory, '..');
@@ -23,6 +24,21 @@ const requiredExtensionEntries = Object.freeze([
   'THIRD_PARTY_NOTICES.md',
   'manifest.json',
 ]);
+const webArchiveRoot = 'insta-toolbox-web';
+const requiredWebEntries = Object.freeze([
+  `${webArchiveRoot}/LICENSE`,
+  `${webArchiveRoot}/THIRD_PARTY_NOTICES.md`,
+  `${webArchiveRoot}/START_HERE.txt`,
+  `${webArchiveRoot}/VERSION.txt`,
+  `${webArchiveRoot}/index.html`,
+  `${webArchiveRoot}/manifest.webmanifest`,
+  `${webArchiveRoot}/sw.js`,
+]);
+const expectedWebEntries = new Set([
+  ...webRuntimeFiles,
+  'START_HERE.txt',
+  'VERSION.txt',
+].map((relative) => `${webArchiveRoot}/${relative}`));
 const maxArtifactCount = 32;
 const maxCoreArtifactBytes = 64 * 1024 * 1024;
 const maxSingleArtifactBytes = 4 * 1024 * 1024 * 1024;
@@ -141,6 +157,58 @@ export function verifyExtensionReleaseArchive(input, version) {
   return archive.entries.map((entry) => entry.path).sort();
 }
 
+export function verifyWebReleaseArchive(input, version) {
+  const archiveBytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const archive = inspectZipArchive(archiveBytes, {
+    limits: {
+      maxEntries: 256,
+      maxEntryBytes: maxCoreArtifactBytes,
+      maxTotalUncompressedBytes: 128 * 1024 * 1024,
+    },
+  });
+  const entries = new Map(archive.entries.map((entry) => [entry.path, entry]));
+  for (const required of requiredWebEntries) {
+    if (!entries.has(required)) throw new Error(`Web archive is missing ${required}.`);
+  }
+  if (archive.entries.length !== expectedWebEntries.size) {
+    throw new Error('Web archive does not contain the exact public runtime file set.');
+  }
+  for (const entry of archive.entries) {
+    if (!expectedWebEntries.has(entry.path)) {
+      throw new Error(`Web archive contains an unexpected entry: ${entry.path}`);
+    }
+    storedEntryBytes(archiveBytes, entry);
+  }
+
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  const text = (relativePath) => decoder.decode(storedEntryBytes(
+    archiveBytes,
+    entries.get(`${webArchiveRoot}/${relativePath}`),
+  ));
+  if (text('VERSION.txt').trim() !== version) {
+    throw new Error(`Web archive version does not match ${version}.`);
+  }
+  if (!text('LICENSE').includes('MIT License') || !text('LICENSE').includes('Permission is hereby granted')) {
+    throw new Error('Web archive contains an incomplete LICENSE.');
+  }
+  if (!text('THIRD_PARTY_NOTICES.md').includes('Third-party notices')) {
+    throw new Error('Web archive contains incomplete third-party notices.');
+  }
+  if (!/do not double-click index\.html/i.test(text('START_HERE.txt')) || !/https|localhost/i.test(text('START_HERE.txt'))) {
+    throw new Error('Web archive is missing safe launch instructions.');
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(text('manifest.webmanifest'));
+  } catch {
+    throw new Error('Web archive manifest.webmanifest is not valid UTF-8 JSON.');
+  }
+  if (manifest?.name !== 'Insta Toolbox' || manifest?.display !== 'standalone') {
+    throw new Error('Web archive contains the wrong application manifest.');
+  }
+  return archive.entries.map((entry) => entry.path).sort();
+}
+
 async function packageVersion(root) {
   let metadata;
   try {
@@ -196,8 +264,10 @@ export async function generateReleaseChecksums({
   const version = await packageVersion(root);
   const userscriptPath = path.join(root, 'userscripts', 'insta-aio-companion.user.js');
   const extensionPath = path.join(root, 'dist', `insta-aio-companion-${version}.zip`);
+  const webPath = path.join(root, 'dist', `insta-toolbox-web-${version}.zip`);
   const userscript = await releaseFile(root, userscriptPath, { maxBytes: maxCoreArtifactBytes });
   const extension = await releaseFile(root, extensionPath, { maxBytes: maxCoreArtifactBytes });
+  const web = await releaseFile(root, webPath, { maxBytes: maxCoreArtifactBytes });
   const userscriptSource = await readReleaseText(userscriptPath, userscript.releaseName, maxCoreArtifactBytes);
   const userscriptVersion = userscriptSource.match(/^\/\/ @version\s+(\d+\.\d+\.\d+)\s*$/m)?.[1];
   if (userscriptVersion !== version) throw new Error(`Userscript version does not match ${version}.`);
@@ -210,7 +280,15 @@ export async function generateReleaseChecksums({
   }
   verifyExtensionReleaseArchive(extensionBytes, version);
 
-  const artifacts = [userscript, extension, ...await availableDesktopArtifacts(root, version)];
+  let webBytes;
+  try {
+    webBytes = await readFile(webPath);
+  } catch (error) {
+    throw new Error(`Unable to read release artifact ${web.releaseName} (${error?.code || 'read-error'}).`);
+  }
+  verifyWebReleaseArchive(webBytes, version);
+
+  const artifacts = [userscript, extension, web, ...await availableDesktopArtifacts(root, version)];
   if (artifacts.length > maxArtifactCount) throw new Error(`Too many release artifacts; maximum is ${maxArtifactCount}.`);
   const totalBytes = artifacts.reduce((sum, artifact) => sum + artifact.size, 0);
   if (totalBytes > maxTotalArtifactBytes) throw new Error('Release artifacts exceed the bounded total size.');

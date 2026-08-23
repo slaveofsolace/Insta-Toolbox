@@ -90,11 +90,15 @@ deletes the profile. Branded stable Chrome may reject command-line loading of an
 unpacked extension; do not weaken or modify the user's real profile to bypass
 that policy.
 
-For macOS packaging changes, run `pnpm run dist:mac -- --publish never` followed
+For macOS packaging changes, run `pnpm run dist:mac` followed
 by `pnpm run qa:mac-package` on macOS. CI performs this lifecycle with the
 QA-only ad-hoc entitlement file; the release and inherited entitlements omit its
 library-validation exception. A public release still requires its own Developer
 ID identity and notarization.
+
+For the portable web artifact, run `pnpm run build:web` and
+`pnpm run verify:web-package`. The ZIP is a static-hosting package, not a
+double-click application; verify it through HTTPS or localhost.
 
 ## Source integrations
 
@@ -155,6 +159,7 @@ Any uncertainty stops the job.
 - [ ] Unit/integration tests pass
 - [ ] ZIP benchmark reviewed when relevant
 - [ ] Extension sources validate and artifact builds
+- [ ] Static web archive builds, verifies, and matches the offline asset graph
 - [ ] Desktop target artifact builds
 - [ ] Installer and removal tested on the target operating system
 - [ ] Browser views checked at desktop, tablet, and mobile widths
@@ -162,5 +167,6 @@ Any uncertainty stops the job.
 - [ ] Destructive confirmations and safe-stop errors exercised
 - [ ] Public documentation contains no local paths, temporary notes, or credentials
 - [ ] Dependency and third-party license review completed
+- [ ] `SHA256SUMS.txt` covers the userscript, extension, web, and desktop artifacts
 - [ ] Secret scan completed
 - [ ] Repository metadata and issue titles are current

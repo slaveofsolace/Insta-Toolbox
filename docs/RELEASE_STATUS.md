@@ -108,14 +108,18 @@ Windows installers remain intentionally unsigned.
 - Updates MIT attribution, embeds the full MIT notice in the userscript, and
   includes `LICENSE` plus `THIRD_PARTY_NOTICES.md` in the extension, desktop,
   release archives, and offline PWA cache.
+- Adds a deterministic `insta-toolbox-web-2.0.2.zip` containing the exact 42-file
+  public PWA runtime plus launch/version notes. Its verifier checks source-byte
+  parity, legal files, the offline asset graph, relative paths, private-file
+  exclusion, repeatable bytes, and extracted localhost delivery.
 - Removes the Mutual Checker's former 500-account reconciliation cutoff. One
   bounded restart now also recovers a prematurely cursorless large-account
   response; a 2,104-follower regression and exhausted-retry case cover the
   reported failure without adding an unbounded loop.
-- Full local suite: **287/287** passing after the confirmation and finite-oldest
-  repairs, including dependency verification, repository hygiene, generated
-  parity, migrations, virtualized DM traversal, bounded capabilities, and safe
-  stops.
+- Full local suite: **291/291** passing after the confirmation, finite-oldest,
+  and web-package repairs, including dependency verification, repository
+  hygiene, generated parity, migrations, virtualized DM traversal, bounded
+  capabilities, safe stops, and the exact static release archive.
 - Extension/userscript acceptance: production Follow, Unfollow, and
   one-message Unsend fixture chains; exact newest/oldest ordering; delayed
   oldest-history growth after normal and reversed scroller replacement; Stop
@@ -169,6 +173,8 @@ Windows installers remain intentionally unsigned.
     `f4972b14db2014df8dcf315d6e0ec9a7d1396b704ea779b733e15f1debe7b864`
   - `insta-aio-companion-2.0.2.zip`:
     `a153991ffa2f82f0689c98de23dcd6e2d9d18fe0cf4bbc6a85c9f7034057088f`
+  - `insta-toolbox-web-2.0.2.zip`:
+    `52e73142841b87c3b43a19977cdbfd4caf2b72ba10c59ff68f9394e7fe325c89`
   - `Insta Toolbox Setup 2.0.2.exe`:
     `c7d5dfc53d671e6f1c17fa567cee29c4317fdae9bad36a544f2142c48c1534a8`
   - `Insta Toolbox Setup 2.0.2.exe.blockmap`:
@@ -232,6 +238,8 @@ and are not automated:
   routes, canceling at every exact destructive confirmation;
 - complete a human screen-reader walkthrough;
 - verify persistent-profile PWA pairing;
+- download and checksum the published Windows, macOS, web, extension, and
+  userscript assets;
 - sign and notarize macOS packages for public distribution;
 - if desired, authorize and observe a single real Instagram action against an
   explicitly selected target.

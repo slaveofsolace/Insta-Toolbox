@@ -212,7 +212,7 @@ synthetic clicks at zero reservations, runner starts, fixture clicks, and
 removals. Second, a replacement scroller could briefly expose a mounted row
 before the reviewed newest or oldest edge was restored. Traversal now invalidates
 that proof on replacement or shrinkage and re-establishes the requested edge
-before selecting another row. Focused regressions, 287/287 local tests, the
+before selecting another row. Focused regressions, 291/291 local tests, the
 extension/userscript acceptance matrix, 45 overlay states, and 11 PWA baselines
 pass. Exact-head GitHub CI and corrected-build authenticated acceptance remain
 release gates.
