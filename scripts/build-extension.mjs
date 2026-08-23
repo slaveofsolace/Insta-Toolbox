@@ -26,6 +26,7 @@ const libraryFiles = [
   'controlled-account-action.js',
   'controlled-dm-unsend.js',
 ];
+const legalFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md'];
 const liveSafetyTests = [
   'tests/content-instagram-dm-live.test.js',
   'tests/content-instagram-live.test.js',
@@ -211,6 +212,9 @@ async function validateSources() {
   for (const file of libraryFiles) {
     await readFile(path.join(repositoryRoot, 'src', 'core', file));
   }
+  for (const file of legalFiles) {
+    await readFile(path.join(repositoryRoot, file));
+  }
   return manifest;
 }
 
@@ -251,11 +255,15 @@ for (const file of libraryFiles) {
     path.join(resolvedOutput, 'lib', file),
   );
 }
+for (const file of legalFiles) {
+  await copyFile(path.join(repositoryRoot, file), path.join(resolvedOutput, file));
+}
 
 const artifactEntries = [];
 for (const file of [
   ...sourceFiles,
   ...libraryFiles.map((libraryFile) => `lib/${libraryFile}`),
+  ...legalFiles,
 ].sort()) {
   artifactEntries.push({
     name: file,

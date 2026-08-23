@@ -109,17 +109,17 @@ function inspectJpeg(relativePath, buffer) {
   }
 }
 
-const { stdout: trackedOutput } = await execFileAsync(
+const { stdout: candidateOutput } = await execFileAsync(
   process.env.GIT || 'git',
-  ['ls-files', '-z'],
+  ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
   { cwd: repositoryRoot, encoding: 'utf8', maxBuffer: 5 * 1024 * 1024 },
 );
-const trackedFiles = trackedOutput.split('\0').filter(Boolean).map((relativePath) => ({
+const candidateFiles = candidateOutput.split('\0').filter(Boolean).map((relativePath) => ({
   absolutePath: path.join(repositoryRoot, ...relativePath.split('/')),
   relativePath,
 }));
 
-for (const file of trackedFiles) {
+for (const file of candidateFiles) {
   const extension = path.extname(file.relativePath).toLowerCase();
   if (imageExtensions.has(extension)) {
     const buffer = await readFile(file.absolutePath);

@@ -1,6 +1,6 @@
 # Release status
 
-Current version: **2.0.1**
+Current version: **2.0.2 release candidate**
 
 ## Available tools
 
@@ -33,7 +33,7 @@ Current version: **2.0.1**
   unexpected profile state.
 - Extension live jobs are limited to one reviewed account, with signed intent,
   exact profile matching, independent reservations, and post-action checks.
-- Live execution is disabled by default.
+- No account action starts without its exact run confirmation.
 
 ### DM Unsend
 
@@ -41,13 +41,14 @@ Current version: **2.0.1**
 - Supports read-only inspection and no-click dry runs.
 - The signed extension path is limited to one reviewed message with stable
   thread and message identity.
-- The userscript and extension always show **Unsend DMs**. Its first click runs
-  the no-click conversation check when needed, then asks once for the exact
-  thread and eligible count. All messages is the default; newest/oldest finite
-  scopes remain under Advanced.
-- Each thread plan remains bound to the exact thread, scope, finite count,
-  reviewed digest, expiry, and pacing.
-- Live execution is disabled by default.
+- The userscript and extension always show **Unsend DMs**. It confirms the open
+  conversation once, then uses one streaming pass; it does not repeat a full
+  history scan before opening the first exact message menu.
+- All messages is the default. Newest/oldest finite scopes remain under Advanced.
+- Each thread plan remains bound to the exact thread, scope, reviewed digest,
+  expiry, and pacing. Optional checks report a detected minimum because
+  Instagram virtualizes rendered message rows.
+- No Unsend starts without its exact thread/scope confirmation.
 
 ## Delivery formats
 
@@ -83,8 +84,8 @@ The repository includes checks for:
   clean replacement of captures made by older fallback logic;
 - exact profile-total reconciliation, so a stable scroll boundary cannot be
   called complete when Instagram reports a different row count;
-- bounded DM-history convergence that ignores reversible DOM virtualization
-  churn while preserving the maximum proven eligible sent-message count;
+- one-pass DM traversal across virtualized rows without treating a mounted
+  window as the conversation total;
 - capture-confidence migration to schema 5, which preserves older local rows,
   records authenticated-web versus list-dialog provenance, and requires a new
   reconciled scan before stale rows can drive comparisons or reviewed runs;
@@ -93,9 +94,53 @@ The repository includes checks for:
 
 The final local Windows matrix count and artifact hashes are refreshed for each
 release candidate after the generated userscript and extension have been rebuilt.
-The Windows 2.0.0 installer remains intentionally unsigned.
+Windows installers remain intentionally unsigned.
 
-### Current 2.0.1 userscript hotfix evidence (2026-08-22)
+### 2.0.2 candidate status
+
+- Restores the source-audited single-pass DM traversal and 1–2 second default
+  pacing while retaining exact-thread, sent-by-me, menu, confirmation, Stop,
+  and postcondition checks.
+- Removes the virtualized mounted-row equality gate that could stop with zero
+  removals after confirmation.
+- Compacts the in-page header and replaces the old status footer with the
+  unobtrusive creator credit.
+- Updates MIT attribution, embeds the full MIT notice in the userscript, and
+  includes `LICENSE` plus `THIRD_PARTY_NOTICES.md` in the extension, desktop,
+  release archives, and offline PWA cache.
+- Removes the Mutual Checker's former 500-account reconciliation cutoff. One
+  bounded restart now also recovers a prematurely cursorless large-account
+  response; a 2,104-follower regression and exhausted-retry case cover the
+  reported failure without adding an unbounded loop.
+- Full local suite: **282/282** passing after the final finite-oldest boundary
+  repair, including dependency verification, repository hygiene, generated
+  parity, migrations, virtualized DM traversal, bounded capabilities, and safe
+  stops.
+- Extension/userscript acceptance: production Follow, Unfollow, and
+  one-message Unsend fixture chains; exact newest/oldest ordering; delayed
+  oldest-history growth; replaced virtual scrollers; Stop after one verified
+  removal; a six-message thread-wide run; keyboard and accessibility-tree
+  checks; and six responsive layouts all passed in isolated Chromium.
+- Visual and browser gates: **43/43** reviewed Windows overlay states, **9/9**
+  reviewed Windows PWA baselines, and real Chrome PWA installability plus
+  extension pairing passed.
+- Repository hygiene, dependency audit, generated-source checks, and
+  `git diff --check` passed. A complete source-level security diff review found
+  no reportable security finding; it did identify the finite `oldest N`
+  boundary defect that was repaired and regression-tested before this matrix.
+- Deterministic browser artifacts reproduced byte-for-byte across consecutive
+  builds:
+  - `userscripts/insta-aio-companion.user.js` SHA-256:
+    `94e192a42fb5a9d3d41cbadc2a37eae101ab54e19e673558713387bb42fcb3cd`
+  - `dist/insta-aio-companion-2.0.2.zip` SHA-256:
+    `7b0e6f3633b53bc515fc88671c7ba70685bc0dff111d628a6fe2d39225609008`
+- Exact-head GitHub CI, Node 22 Windows/macOS package lifecycle, commit-pinned
+  Tampermonkey installation, and authenticated disposable-message acceptance
+  remain pending. Local Node 24 stalled in electron-builder's dependency
+  collection before producing an installer, so this Windows host does not
+  supply package proof.
+
+### Published 2.0.1 userscript hotfix evidence (2026-08-22)
 
 - Full test matrix: **259/259** passing, including dependency verification,
   repository hygiene, extension reproducibility, userscript parity, migrations,

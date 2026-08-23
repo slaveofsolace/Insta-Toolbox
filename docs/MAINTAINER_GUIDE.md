@@ -3,13 +3,13 @@
 ## Invariants
 
 - Preserve the PWA, migrations, userscript, tests, and data contracts.
-- Keep live action settings disabled by default.
+- Keep every destructive path without authority until its exact confirmation.
 - Keep every dry-run route no-click; it must never reach `activateLiveControl()`.
 - Keep extension live account execution bound to one confirmed finite run, one
   short-lived tab capability, one background-owned reservation, and exact
   target revalidation before every page control.
-- Keep controlled extension DM execution bound to one confirmed finite plan,
-  the exact conversation, scope, count, digest, expiry, sent ownership,
+- Keep controlled extension DM execution bound to one confirmed plan, the exact
+  conversation, scope, optional finite limit, digest, expiry, sent ownership,
   structurally bound interactive menu/dialog controls, and same-thread verified
   removal.
 - Keep the extension DM dry-run resolver limited to allowlisted stable message
@@ -19,7 +19,11 @@
 - Keep Instagram-side pairing state sanitized; never expose bridge secrets, signatures, or nonces.
 - Preserve `insta-aio-visible-list` and `insta-aio-manual-queue` compatibility.
 - Never infer exact identity from a visually similar profile or message.
-- Reserve both the PWA ledger and the extension mirror before any destructive driver call.
+- For signed PWA one-item jobs, reserve both the PWA ledger and extension mirror
+  before the destructive driver call.
+- For thread-wide DM Unsend, reserve the transient capability before page
+  control and append ledger progress only after each verified removal. A
+  zero-click failure records zero removals.
 - Preserve every import disposition.
 - Keep state migrations additive.
 - Do not introduce credential collection, session export, bypass behavior,
@@ -64,7 +68,7 @@ runtime evidence, not an authenticated Instagram mutation.
 
 For controlled account-driver changes, also exercise `?mode=live-follow` and
 `?mode=live-unfollow`. Verify that inspection performs zero activations, the
-exact arm is required, suggested-account controls cannot impersonate the
+confirmed capability is required, suggested-account controls cannot impersonate the
 profile header, Follow activates one control, pre-existing dialogs stop before
 any click, Unfollow activates only a newly surfaced target-named confirmation,
 token replay performs nothing, and duplicate relationship controls safe-stop.
@@ -123,17 +127,25 @@ Before a live account action:
 11. Reinspect and verify the relationship change.
 12. Finalize the ledgers and checkpoint the item.
 
-Before DM removal:
+Before a signed one-message DM removal:
 
 1. Resolve the exact conversation.
 2. Resolve one message matching ID, timestamp, content digest, and sender ownership.
-3. Reinspect immediately before opening message actions.
-4. Resolve one exact localized Unsend option.
-5. Verify the confirmation identity.
-6. Reserve the attempt transactionally.
-7. Confirm once.
-8. Verify the message is absent.
-9. Finalize the ledger and checkpoint.
+3. Accept one ordinary confirmation naming that thread and message.
+4. Mint a short-lived capability and reinspect immediately before opening message actions.
+5. Reserve the attempt transactionally.
+6. Resolve one exact localized Unsend option and its matching confirmation.
+7. Verify the message is absent.
+8. Finalize the ledger and checkpoint.
+
+Before thread-wide DM Unsend:
+
+1. Resolve the exact open conversation and selected scope.
+2. Accept one ordinary confirmation naming that thread and scope.
+3. Create a versioned thread/scope/optional-limit/digest/expiry plan and mint its transient capability.
+4. Start one streaming traversal without a preliminary history count.
+5. Revalidate thread, expiry, sent ownership, menu, and confirmation before each removal.
+6. Append ledger progress only after verified removal; never record a mounted-row estimate as a result.
 
 Any uncertainty stops the job.
 

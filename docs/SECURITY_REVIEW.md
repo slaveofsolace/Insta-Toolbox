@@ -1,6 +1,6 @@
 # Security review
 
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-23
 
 ## Application boundaries
 
@@ -10,11 +10,11 @@ locally. The optional extension uses exact-origin permissions, signed
 short-lived requests, nonce replay protection, separate read/action
 permissions, and explicit rejection of credential-like payload fields.
 
-Live execution is locked by default. Reviewed account and message jobs use
-no-click dry runs by default, exact confirmation material, transactional
+There is no global live switch. Reviewed account and message jobs use no-click
+dry runs by default, exact action-specific confirmation material, transactional
 reservations, durable checkpoints, and safe stops for ambiguous state.
-Execution adapters revalidate the confirmed preview, current enable setting,
-and current batch limit before entering a live path.
+Execution adapters revalidate the confirmed preview, transient capability, and
+exact finite target list before entering an account live path.
 
 The local account toolbox also separates review from authority. A deterministic
 review signature freezes the selected source, action, limit, and exact target
@@ -31,19 +31,22 @@ That resumable run is stored through `GM_getTab`/`GM_saveTab`, not the shared GM
 record; a manager without tab storage leaves account batches disabled. The
 metadata explicitly selects the DOM sandbox so page code does not share
 the toolbox's API globals. DM runs are dropped on reload. The shared thread-wide
-Unsend runner independently requires a complete no-click history check and a
-finite plan bound to the exact thread, scope, eligible count, digest, and future
-expiry. It revalidates completeness and count before the first menu and checks
-expiry before every page control. The finite plan receives a one-use capability
-and uses the saved bounded delay range. It
+Unsend runner requires one confirmation for the exact thread and scope, then a
+versioned plan bound to the exact thread, scope, optional finite limit, digest,
+and future expiry. It begins one streaming traversal without a preliminary count
+scan and checks expiry before every page control. The plan receives a transient
+capability and uses one-to-two second successful-action pacing. It
 snapshots existing menu and dialog
 candidates and accepts exactly one newly surfaced control. The extension's
-thread tool requires one ordinary count-specific permanent-action confirmation.
+thread tool requires one ordinary permanent-action confirmation for the exact
+thread and scope. Verified removals are checkpointed as they happen; the
+optional read-only check is not an authorization count and there is no daily
+Unsend quota. Failed preflight and zero-click failures record zero removals.
 That DM patch added no host permission, remote dependency,
 credential field, private endpoint, or network request.
 
-The follower-checker next pass deliberately adds a narrow authenticated read
-client for the exact legacy checker behavior requested by the operator. It can
+Mutual Checker uses a narrow authenticated read client for the reviewed legacy
+checker behavior. It can
 call only `www.instagram.com/api/v1/web/search/topsearch/` and the exact
 `www.instagram.com/api/v1/friendships/<numeric-id>/(followers|following)/`
 GET routes. It uses browser-managed credentials without reading them, a fixed
@@ -73,11 +76,11 @@ mislabeling it as canceled.
 
 The distributed extension exposes controlled paths for exactly one reviewed
 account action or sent-message Unsend. Both require signed action permission, a
-fresh reviewed item, matching Instagram context, an exact Instagram-side
-phrase, and a tab-scoped 90-second arm. The PWA revalidates the arm before
-reserving its ledger. The background worker persists an independent
-reservation, then consumes the one-use arm and signed intent before sending the
-page-control request.
+fresh reviewed item, matching Instagram context, and one ordinary exact
+confirmation. That confirmation mints a short-lived tab capability. The PWA
+revalidates it before reserving its ledger. The background worker persists an
+independent reservation, then consumes the capability and signed intent before
+sending the page-control request.
 
 The account content driver requires a short-lived exact DOM token and one
 relationship control owned by a verified profile header. It stops before any
@@ -158,7 +161,8 @@ changed files plus two supporting safety-contract files. All twelve review
 receipts were closed and no plausible security candidate survived discovery.
 The 2026-08-20 usability correction received a complete diff-focused review of
 all six changed source-like files. It makes the DM plan discoverable and removes
-the unrelated global authorization phrase, while keeping the initial live lock,
+the unrelated global authorization phrase, while keeping the default
+no-authority state,
 exact action confirmation, finite plan, reservation, pacing, safe-stop, and
 postcondition boundaries. No plausible security candidate survived discovery.
 The 2026-08-22 follower-checker pass received route-allowlist, response-shape,
@@ -181,6 +185,15 @@ lifecycle and additional-platform gates remain release/CI requirements;
 extension packaging independently runs the executable controlled-live safety
 subset before creating artifacts.
 
+The 2026-08-23 2.0.2 review covered all changed source-like files across the
+userscript, extension, build, release, and fixture surfaces. Permissions and
+production dependencies did not expand. The review found one correctness defect
+in finite `oldest N`: a virtualized thread could expose the oldest mounted rows
+before the real oldest boundary had settled. The runner now requires a stable
+oldest edge before opening any message menu, including across delayed history
+growth and scroller replacement. Focused regressions and the complete test
+matrix pass; no reportable security finding remains.
+
 An authenticated Instagram Follow, Unfollow, or DM action has deliberately not
 been run. It remains a separate operator acceptance gate requiring an exact
 target, action, and explicit approval. The actual production content script now
@@ -192,14 +205,9 @@ rendered-message identity and user-selected mutation acceptance remain open.
 
 ## Dependency review
 
-`pnpm audit --prod --audit-level high` reports no known vulnerabilities.
-Runtime application code has no third-party production dependencies.
-
-The full development audit reports
-[GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg)
-through Electron Builder's packaging graph. The advisory range is expressed as
-`<=5.0.7`, so it also classifies the separately maintained 1.x and 2.x release
-lines as affected.
+`pnpm audit --json` reports zero known vulnerabilities across production,
+development, and optional dependencies. Runtime application code has no
+third-party production dependencies.
 
 The lockfile uses the latest major-compatible backports:
 
@@ -212,8 +220,7 @@ CVE-2026-14257 and enforce it at runtime. Replacing older-major consumers with
 5.x would break their CommonJS API contract, so the repository keeps the
 major-compatible releases. `pnpm run verify:dependencies`, which is also part of
 `pnpm test`, verifies the exact lockfile resolutions, source markers, exported
-API, and length-bound behavior. The full-audit alert remains documented until
-the advisory metadata recognizes the backports.
+API, and length-bound behavior.
 
 ## License review
 

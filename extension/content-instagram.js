@@ -45,7 +45,6 @@
   const RELATIONSHIP_MAX_DURATION_MS = 20 * 60 * 1_000;
   const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
   const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
-  const RELATIONSHIP_AUTO_RECONCILE_MAX_ACCOUNTS = 500;
   const RELATIONSHIP_RETRY_BASE_MS = 1_000;
 
   function normalizeUsername(value) {
@@ -404,7 +403,6 @@
       if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
         if (Number.isSafeInteger(expectedCount)
           && accounts.size < expectedCount
-          && expectedCount <= RELATIONSHIP_AUTO_RECONCILE_MAX_ACCOUNTS
           && reconciliationAttempts < 1) {
           reconciliationAttempts += 1;
           nextMaxId = '';

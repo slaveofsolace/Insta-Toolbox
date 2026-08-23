@@ -76,15 +76,16 @@ Every interactive element resolves to exactly one state.
 | `success` | Success text with a check |
 | `selected` | Accent underline, `aria-selected="true"` |
 | `disabled` | 45% opacity, `not-allowed`, `aria-disabled` |
-| `locked` | Muted with a lock, explains what unlocks it |
-| `armed` | Danger border with a live countdown |
+| `locked` | Muted with a lock, explains what is required |
+| `armed` | Legacy bridge state; never exposed as a user-facing unlock control |
 | `running` | Warning border with progress |
 | `paused` | Muted border, resume affordance |
 | `stopped` | Danger border, exact stop reason |
 | `uncertain` | Uncertain border, states what could not be proven |
 
-`locked`, `armed`, `stopped`, and `uncertain` are visual only. They report the
-authorization and safe-stop machinery; they never influence it.
+`locked`, `armed`, `stopped`, and `uncertain` are internal presentation classes.
+Current destructive flows expose an ordinary exact confirmation and a bounded
+running state; they do not expose an arm button, typed phrase, or global unlock.
 
 ## Typography
 
@@ -138,7 +139,7 @@ leaves font sizes and hit targets untouched — it must not shrink targets.
 | Breakpoint | Behaviour |
 |---|---|
 | `>= 900px` tall | Full panel |
-| `< 900px` tall | Short-laptop: header collapses, body scrolls |
+| `< 900px` tall | Short-laptop: compact single-row header stays fixed; body scrolls |
 | `< 768px` wide | Tablet: single column |
 | `< 600px` wide | Mobile: bottom sheet, drag and resize disabled |
 | 200% zoom | Treated as the narrow case |

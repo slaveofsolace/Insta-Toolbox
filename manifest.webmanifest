@@ -1,7 +1,7 @@
 {
   "name": "Insta Toolbox",
   "short_name": "Toolbox",
-  "description": "Local-first Instagram relationship, queue, and message-data manager.",
+  "description": "Local mutual checks, reviewed account actions, and DM tools.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#101114",

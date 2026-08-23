@@ -92,6 +92,7 @@
 
     const fixtureSearch = new URLSearchParams(location.search);
     const fixtureMode = fixtureSearch.get('mode');
+    const fixtureExtensionVersion = fixtureSearch.get('version') || '0.0.0';
     const fixtureTheme = fixtureSearch.get('theme') === 'dark' ? 'dark' : 'light';
     document.body.dataset.fixtureTheme = fixtureTheme;
     const fixtureLiveMode = fixtureMode === 'live-follow' || fixtureMode === 'live-unfollow';
@@ -390,7 +391,7 @@
     globalThis.chrome = {
       runtime: {
         lastError: null,
-        getManifest: () => ({ version: '2.0.0' }),
+        getManifest: () => ({ version: fixtureExtensionVersion }),
         onMessage: { addListener: (listener) => runtimeListeners.push(listener) },
         sendMessage: (request, callback) => {
           if (request.kind === 'insta-aio-overlay-state') {
@@ -398,7 +399,7 @@
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
               dmArm: null,
-              extensionVersion: '2.0.0',
+              extensionVersion: fixtureExtensionVersion,
               exactConfirmationRequired: true,
               liveExecutionEnabled: false,
               liveArm: null,
@@ -424,7 +425,7 @@
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
               dmArm: null,
-              extensionVersion: '2.0.0',
+              extensionVersion: fixtureExtensionVersion,
               exactConfirmationRequired: true,
               liveExecutionEnabled: false,
               liveArm: null,
@@ -442,7 +443,7 @@
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
               dmArm: null,
-              extensionVersion: '2.0.0',
+              extensionVersion: fixtureExtensionVersion,
               exactConfirmationRequired: true,
               liveExecutionEnabled: false,
               liveArm: null,

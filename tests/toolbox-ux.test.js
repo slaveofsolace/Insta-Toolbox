@@ -128,7 +128,7 @@ test('a run shows its targets and skip reasons before it starts', () => {
   assert.match(shell, /function reviewAccountRun\(\)/);
   assert.match(shell, /renderRunReview\(plan\.items, plan\)/);
   assert.match(shell, /data-action="review-accounts"/);
-  assert.match(shell, /duplicate or already-correct target/);
+  assert.match(shell, /Duplicates or already-correct targets removed/);
   // Review is read-only. The action-specific confirmation happens before the
   // finite capability is minted.
   const runBody = shell.slice(shell.indexOf("'run-accounts': async"), shell.indexOf("'run-unsend': ()"));
@@ -149,41 +149,45 @@ test('the open exact profile is the direct bounded Follow or Unfollow source', (
   assert.match(shell, /Open one Instagram profile first\. No target was reviewed\./);
 });
 
-test('read-only conversation resolution precedes the count-specific Unsend plan', () => {
+test('the primary Unsend action confirms once and starts without a history prescan', () => {
   const unsendButton = generated.match(/<button[^>]*class="button danger big"[^>]*data-action="run-unsend"[^>]*>Unsend DMs<\/button>/);
   assert.ok(unsendButton, 'Unsend DMs must remain the visible primary action');
   assert.doesNotMatch(unsendButton[0], /\shidden(?![-\w])/);
   const plan = generated.match(/<div[^>]*data-role="unsend-plan"[^>]*>/);
   assert.ok(plan, 'the DM action area must always be visible');
   assert.doesNotMatch(plan[0], /\shidden(?![-\w])/);
-  assert.match(generated, /data-action="scan-sent">Check conversation only/);
+  assert.match(generated, /data-action="scan-sent">Check conversation/);
   assert.match(shell, /async function runDmUnsend\(\)/);
-  assert.match(shell, /const scanned = await scanSentConversation\(\)/);
-  assert.match(shell, /let preview = dmThreadPreview\?\.threadId === currentDirectThreadId\(\)/);
+  assert.match(shell, /const inspection = dmRunner\.inspect\(\)/);
+  assert.doesNotMatch(
+    shell.slice(shell.indexOf('async function runDmUnsend()'), shell.indexOf('// --- Section 7:')),
+    /scanSentConversation\(|inspectAll\(/,
+  );
   assert.match(shell, /const plan = dmRunner\.createPlan\(\{/);
-  assert.match(shell, /Permanently unsend \$\{scopeLabel\} from thread \$\{plan\.threadId\}/);
+  assert.match(shell, /Permanently unsend \$\{scopeLabel\} in this conversation/);
   assert.match(shell, /await dmRunner\.start\(\{/);
   assert.match(labels, /function createPlan\(value = \{\}\)/);
   assert.doesNotMatch(labels, /phrase = `UNSEND|ENABLE LIVE ACTIONS/);
-  assert.match(shell, /The count is checked again before message menus open/);
-  assert.match(labels, /complete: quietRounds >= 10/);
-  assert.match(labels, /if \(!history\.complete \|\| resolvedCount > MAX_PLAN_MESSAGES\)/);
+  assert.match(labels, /countExact: false/);
+  assert.match(labels, /stableEmptyPasses < STABLE_EMPTY_PASSES/);
+  assert.match(labels, /plan\.limit === null \? MAX_PLAN_MESSAGES : plan\.limit/);
   assert.doesNotMatch(shell, /'unsend-all':/);
   assert.match(shell, /'run-unsend': \(\) => runDmUnsend\(\)/);
   // An empty result says nothing was touched rather than implying success.
   assert.match(shell, /No sent messages found/);
-  // A partial read is never reported as full coverage.
-  assert.match(shell, /check ended before the full conversation loaded/);
+  // The optional check stays advisory because Instagram virtualizes the thread.
+  assert.match(shell, /Read-only estimate\. Instagram may load more while Unsend runs/);
 });
 
 test('the userscript starts the confirmed Unsend plan and surfaces async failures', () => {
   const reservationBody = shell.slice(
     shell.indexOf('function reserveUnsendPlan(plan)'),
-    shell.indexOf('function sleep(ms)'),
+    shell.indexOf('function recordVerifiedUnsend(plan, outcome)'),
   );
-  assert.match(reservationBody, /const bounds = limits\(\);/);
-  assert.match(reservationBody, /minDelayMs: bounds\.minDelayMs/);
-  assert.match(reservationBody, /maxDelayMs: Math\.max\(bounds\.minDelayMs, bounds\.maxDelayMs\)/);
+  assert.match(reservationBody, /activeUnsendCapability = \{/);
+  assert.match(reservationBody, /minDelayMs: 1_000/);
+  assert.match(reservationBody, /maxDelayMs: 2_000/);
+  assert.doesNotMatch(reservationBody, /saveState\(\)/);
 
   const clickBody = shell.slice(
     shell.indexOf("shadow.addEventListener('click'"),
@@ -208,7 +212,8 @@ test('finite run confirmation replaces global unlock controls and phrases', () =
   assert.match(shell, /function confirmRun\(message\)/);
   assert.match(shell, /approvedTargets: \[\.\.\.queue\]/);
   assert.match(shell, /capabilityExpiresAt: Date\.now\(\) \+ RUN_CAPABILITY_MS/);
-  assert.match(labels, /currentEligibleCount !== plan\.eligibleCount/);
+  assert.doesNotMatch(labels, /currentEligibleCount !== plan\.eligibleCount/);
+  assert.match(labels, /Number\(value\?\.version\) !== PLAN_VERSION/);
   assert.doesNotMatch(labels, /liveAuthority\?\.enable|ARM UNSEND/);
 });
 
@@ -216,7 +221,7 @@ test('the extension keeps Stop available and labels read-only checks truthfully'
   const messages = await readFile(new URL('../extension/overlay/views/messages.js', import.meta.url), 'utf8');
   assert.match(messages, /const readOnlyCheck = state\.operation === 'check'/);
   assert.match(messages, /readOnlyCheck \? 'Stop check' : 'Stop unsending'/);
-  assert.match(messages, /button\.disabled = active\s*\? !state\.canStop/);
+  assert.match(messages, /button\.disabled = pendingReservation \|\| \(active\s*\? !state\.canStop/);
   assert.match(messages, /readOnlyCheck\s*\?\s*'Read-only check · nothing changed'/);
 });
 

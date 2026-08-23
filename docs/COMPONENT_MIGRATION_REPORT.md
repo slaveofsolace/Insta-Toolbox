@@ -19,10 +19,10 @@ Tampermonkey companion into the Manifest V3 Instagram sidecar. The migration
 retains the existing `insta-aio-visible-list`, `insta-aio-manual-queue`, and
 `insta-aio-companion-state` shapes. It adds repeated capture deduplication,
 current-page inspection, sanitized bridge dry-run history, and read-only DM
-evidence. The userscript remains available as a fallback; it was not removed or
-replaced.
+evidence. The userscript remains a first-class in-page delivery surface; it was
+not removed or replaced.
 
-The follower-checker runtime now also provides an independent, bounded client
+The Mutual Checker runtime also provides an independent, bounded client
 for the source's exact authenticated read behavior. It resolves one exact
 username, pages only the fixed Instagram Followers and Following GET routes,
 stores both lists atomically with schema-5 provenance, and retains the dialog
@@ -35,17 +35,24 @@ conversation-container and sent-layout observations, adds stable message ID,
 timestamp, and content-digest requirements, and never opens an action menu.
 
 The controlled one-message path separately migrates the source-backed hover,
-row action-control, and localized Unsend-label observations. It adds two fresh
-PWA confirmations, exact signed intent and 90-second tab arm, independent
-reservations, one-use token consumption, same-row revalidation, pre-existing
-surface rejection, structurally bound interactive controls, and same-thread
-stable-identity removal verification. The
+row action-control, and localized Unsend-label observations. It adds a reviewed
+PWA intent, one ordinary confirmation naming the exact thread and message, a
+short-lived tab capability, independent reservations, one-use token
+consumption, same-row revalidation, pre-existing-surface rejection,
+structurally bound interactive controls, and same-thread stable-identity
+removal verification. The
 localized allowlist is centralized in `extension/action-labels.js`, uses valid
 UTF-8 plus NFKC normalization, and issues no row capability when Web Crypto is
 unavailable. The
 source's mass loop, retry automation, stale-overlay dismissal, and generic
 dialog-button guess are excluded. This is deterministic fixture coverage, not
 authenticated live Unsend acceptance.
+
+The separate thread-wide tool uses a versioned thread/scope/optional-limit plan
+and one streaming traversal. It reserves only a transient capability before
+page control and records ledger progress after each verified removal. Its
+optional read-only check does not authorize by count, and zero-click failure
+records zero removals.
 
 The independently reviewed account-action boundary now has an optional
 production extension driver. It does not reuse SimpleInstaBot's Puppeteer,
@@ -106,7 +113,7 @@ Workspace schema version 3 adds:
 - `dmJobs`
 - `dmLedger`
 - `bridgePairing`
-- Default-off live settings and batch limits
+- Legacy live-setting and batch-limit fields with safe compatibility defaults
 
 Migration is additive. Previous snapshots, messages, queue items, activity, warnings, and settings remain intact.
 

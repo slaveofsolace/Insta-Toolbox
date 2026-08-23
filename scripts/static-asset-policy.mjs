@@ -1,4 +1,6 @@
 const EXACT_ASSETS = new Set([
+  'LICENSE',
+  'THIRD_PARTY_NOTICES.md',
   'index.html',
   'manifest.webmanifest',
   'sw.js',

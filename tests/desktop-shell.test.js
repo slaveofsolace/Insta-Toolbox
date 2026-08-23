@@ -34,3 +34,8 @@ test('desktop package retains local data and creates bounded startup backups', (
   assert.deepEqual(packageJson.build.win.target[0].arch, ['x64']);
   assert.deepEqual(packageJson.build.mac.target, ['dmg', 'zip']);
 });
+
+test('desktop packages retain the project and third-party notices', () => {
+  assert.ok(packageJson.build.files.includes('LICENSE'));
+  assert.ok(packageJson.build.files.includes('THIRD_PARTY_NOTICES.md'));
+});

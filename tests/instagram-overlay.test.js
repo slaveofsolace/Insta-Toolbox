@@ -67,7 +67,7 @@ test('Instagram loads the inspector before the visible sidecar', () => {
     'overlay/views/workspace.js',
     'instagram-overlay.js',
   ]);
-  assert.equal(manifest.version, '2.0.1');
+  assert.equal(manifest.version, '2.0.2');
 });
 
 test('sidecar migrates the visible capture and manual queue workflow', () => {
@@ -94,6 +94,17 @@ test('sidecar exposes every tool family and accessibility controls', () => {
   assert.match(overlay, /Alt \+ Shift \+ I/);
   assert.match(overlay, /data-ia-role="move-handle"/);
   assert.match(overlay, /data-ia-role="resize-handle"/);
+  assert.match(overlay, /\.ia-header \{[^}]*min-height: 52px/);
+  assert.match(overlay, /\.ia-move-handle \{[^}]*min-width: 44px/);
+  assert.match(overlay, /@container ia-body \(max-width: 340px\)/);
+  assert.match(overlay, /class="ia-operational-status" role="status" aria-live="polite" aria-atomic="true"/);
+  assert.equal((overlay.match(/aria-live=/g) || []).length, 1);
+  assert.match(overlay, /<h1 data-ia-role="view-title">Insta Toolbox<\/h1>/);
+  assert.match(overlay, /class="ia-credit"/);
+  assert.match(overlay, /href="https:\/\/github\.com\/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace<\/a>/);
+  assert.doesNotMatch(overlay, /data-ia-role="view-context"/);
+  assert.doesNotMatch(overlay, /data-ia-role="view-subtitle"/);
+  assert.doesNotMatch(overlay, />Local only</);
   assert.match(overlay, /data-ia-preference="opacity"/);
   assert.match(overlay, /Mutual Checker/);
   assert.match(overlay, /Follow \/ Unfollow/);
@@ -109,19 +120,19 @@ test('sidecar guides list capture, reviews account targets, and keeps one DM pri
   assert.match(overlay, /data-list-type="following"/);
   assert.match(overlay, /data-list-type="followers"/);
   assert.match(overlay, /data-ia-role="compare-step-badge"/);
-  assert.match(overlay, /comparisonComplete \? `Follower comparison complete/);
+  assert.match(overlay, /comparisonComplete \? `Mutual comparison complete/);
   assert.match(overlay, /data-ia-action="bot-review"/);
   assert.match(overlay, /function botPlan\(runtime\)/);
   assert.match(overlay, /reviewed\.signature !== current\.signature/);
   assert.match(overlay, /data-ia-role="bot-review-list"/);
   assert.match(overlay, /class="ia-primary-action" data-ia-role="unsend-disclosure"/);
   assert.match(overlay, /data-ia-action="mass-unsend">Unsend DMs/);
-  assert.match(overlay, /data-ia-action="scan-sent-dms">Check conversation only/);
+  assert.match(overlay, /data-ia-action="scan-sent-dms">Check conversation/);
   assert.match(overlay, /data-ia-role="unsend-plan">/);
   const dmPrimary = overlay.match(/<button[^>]*data-ia-action="mass-unsend"[^>]*>/);
   assert.ok(dmPrimary, 'the permanent Unsend DMs button must be in the static shell');
   assert.doesNotMatch(dmPrimary[0], /\sdisabled(?:\s|>|=)/);
-  assert.match(overlay, /Advanced: list fallback and export/);
+  assert.match(overlay, /Advanced: list-dialog fallback and export/);
   assert.match(overlay, /aria-labelledby="ia-bot-composer-title"/);
   assert.match(overlay, /<summary>Advanced message options<\/summary>/);
 });
@@ -206,8 +217,8 @@ test('visible DM evidence stays read-only while reviewed jobs require stable exa
   assert.match(inspector, /data-message-id/);
   assert.match(inspector, /data-timestamp-ms/);
   assert.match(inspector, /message-ownership-unavailable/);
-  assert.match(overlay, /Exact message ID, timestamp, digest, conversation, and sent-by-me ownership must all match/);
-  assert.match(overlay, /Visible text alone cannot authorize removal/);
+  assert.match(overlay, /Bulk runs touch only rows Instagram marks as yours/);
+  assert.match(overlay, /Imported jobs also require an exact thread and message match/);
 });
 
 test('background reveals only sanitized pairing, intent, confirmation, and run summaries to Instagram', () => {

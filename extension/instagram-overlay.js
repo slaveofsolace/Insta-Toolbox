@@ -74,10 +74,10 @@
   }
 
   function status(message, tone = 'neutral') {
-    const footer = query('[data-ia-role="status"]');
-    if (footer) footer.dataset.tone = tone;
+    const liveRegion = query('[data-ia-role="status"]');
+    if (liveRegion) liveRegion.dataset.tone = tone;
     setText('status-lead', tone === 'error' ? 'Stopped.' : tone === 'good' ? 'Ready.' : 'Note.');
-    setText('status-text', shared.safeText(message, 'Live actions remain locked.'));
+    setText('status-text', shared.safeText(message, 'Review the exact action before continuing.'));
   }
 
   function safeHttpOrigin(value) {
@@ -304,10 +304,6 @@
     for (const view of queryAll('[data-ia-view]')) {
       view.hidden = view.dataset.iaView !== section;
     }
-    const [title, subtitle] = shared.SECTION_COPY[section];
-    setText('view-context', `${section[0].toUpperCase()}${section.slice(1)} · Instagram`);
-    setText('view-title', title);
-    setText('view-subtitle', subtitle);
     renderSection(section);
     if (persist) void savePreference({ section });
     if (focus) requestAnimationFrame(() => query(`[data-ia-section="${section}"]`)?.focus());
@@ -778,7 +774,7 @@
       batchController.hydrate(runtime).catch(() => {}),
     ]);
     if (contextOk && bridgeOk) {
-      status('Inspection ready. Every destructive run waits for its exact target confirmation.', 'good');
+    status('Review the exact target before any change.', 'good');
     }
   }
 

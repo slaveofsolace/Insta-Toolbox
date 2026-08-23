@@ -37,6 +37,8 @@ const DEFAULT_BATCH_MIN_DELAY_MS = 4_000;
 const DEFAULT_BATCH_MAX_DELAY_MS = 11_000;
 const MIN_ALLOWED_BATCH_DELAY_MS = 1_500;
 const THREAD_UNSEND_PLAN_TTL_MS = 15 * 60 * 1000;
+const THREAD_UNSEND_MIN_DELAY_MS = 1_000;
+const THREAD_UNSEND_MAX_DELAY_MS = 2_000;
 // After this many consecutive items the runner takes a longer cooldown.
 const BATCH_REST_EVERY = 20;
 const BATCH_REST_MS = 90_000;
@@ -44,6 +46,7 @@ let requestTail = Promise.resolve();
 let activeBatchAbort = false;
 const accountCapabilities = new Map();
 const dmCapabilities = new Map();
+const threadUnsendCapabilities = new Map();
 
 function clampInteger(value, fallback, min, max) {
   const numeric = Number(value);
@@ -205,53 +208,210 @@ function validateThreadUnsendReservation(request, sender, now = Date.now()) {
   const plan = request?.plan;
   const threadId = String(plan?.threadId || '').trim();
   const observedThreadId = directThreadId(sender?.tab?.url || sender?.url);
-  const count = Number(plan?.limit);
+  const scope = ['all', 'newest', 'oldest'].includes(plan?.scope) ? plan.scope : '';
+  const count = scope === 'all' ? null : Number(plan?.limit);
   const expiresAt = Number(plan?.expiresAt);
   const reviewedDigest = String(plan?.reviewedDigest || '');
   if (
-    !/^[^/?#\\]{1,256}$/.test(threadId)
+    plan?.version !== 2
+    || !/^[^/?#\\]{1,256}$/.test(threadId)
     || threadId !== observedThreadId
-    || !Number.isInteger(count)
-    || count < 1
-    || count > 5_000
+    || !scope
+    || (scope !== 'all' && (!Number.isInteger(count) || count < 1 || count > 5_000))
     || !/^[0-9a-f]{8}$/.test(reviewedDigest)
     || !Number.isFinite(expiresAt)
     || expiresAt <= now
     || expiresAt > now + THREAD_UNSEND_PLAN_TTL_MS
   ) return { error: 'thread-unsend-plan-invalid' };
-  return { count, expiresAt, reviewedDigest, threadId };
+  return { count, expiresAt, reviewedDigest, scope, threadId, version: 2 };
 }
 
 async function reserveThreadUnsendPlan(request, sender, now = Date.now()) {
   const plan = validateThreadUnsendReservation(request, sender, now);
   if (plan.error) return plan;
-  const state = await loadBridgeState();
-  const limits = normalizeBatchLimits(state.batchLimits);
+  for (const [id, capability] of threadUnsendCapabilities) {
+    if (capability.expiresAt <= now) threadUnsendCapabilities.delete(id);
+  }
   const day = accountActionDay(now);
-  const counted = new Set(['reserved', 'succeeded', 'uncertain']);
-  const duplicate = state.threadUnsendLedger.find((entry) => (
-    entry.day === day
-    && entry.threadId === plan.threadId
+  const duplicate = [...threadUnsendCapabilities.values()].find((entry) => (
+    entry.threadId === plan.threadId
     && entry.reviewedDigest === plan.reviewedDigest
-    && counted.has(entry.status)
   ));
   if (duplicate) return { error: 'thread-unsend-plan-already-reserved' };
   const reservation = {
-    id: `thread-unsend-${now}-${plan.reviewedDigest}`,
+    id: `thread-unsend-${createBridgeHandshakeNonce()}`,
     day,
     threadId: plan.threadId,
     reviewedDigest: plan.reviewedDigest,
     count: plan.count,
+    scope: plan.scope,
     status: 'reserved',
     reservedAt: new Date(now).toISOString(),
-    expiresAt: new Date(plan.expiresAt).toISOString(),
+    expiresAt: plan.expiresAt,
+    processed: 0,
+    failed: 0,
   };
-  state.threadUnsendLedger.unshift(reservation);
-  await saveBridgeState(state);
+  threadUnsendCapabilities.set(reservation.id, reservation);
   return {
-    reservation: { ...reservation },
-    pacing: { minDelayMs: limits.minDelayMs, maxDelayMs: limits.maxDelayMs },
+    reservation: {
+      ...reservation,
+      expiresAt: new Date(reservation.expiresAt).toISOString(),
+    },
+    pacing: {
+      minDelayMs: THREAD_UNSEND_MIN_DELAY_MS,
+      maxDelayMs: THREAD_UNSEND_MAX_DELAY_MS,
+    },
   };
+}
+
+function validateThreadUnsendResultRequest(request, sender) {
+  const threadId = String(request?.threadId || '').trim();
+  const observedThreadId = directThreadId(sender?.tab?.url || sender?.url);
+  const reservationId = String(request?.reservationId || '');
+  const reviewedDigest = String(request?.reviewedDigest || '');
+  const processed = Number(request?.processed);
+  const failed = Number(request?.failed || 0);
+  if (
+    !/^thread-unsend-[A-Za-z0-9_-]{8,256}$/.test(reservationId)
+    || !/^[^/?#\\]{1,256}$/.test(threadId)
+    || threadId !== observedThreadId
+    || !/^[0-9a-f]{8}$/.test(reviewedDigest)
+    || !Number.isInteger(processed)
+    || processed < 0
+    || processed > 5_000
+    || !Number.isInteger(failed)
+    || failed < 0
+    || failed > 5_000
+  ) return { error: 'thread-unsend-result-invalid' };
+  return { failed, processed, reservationId, reviewedDigest, threadId };
+}
+
+function threadUnsendLedgerResult(reservation, patch, now) {
+  return {
+    ...reservation,
+    expiresAt: new Date(reservation.expiresAt).toISOString(),
+    processed: patch.processed,
+    failed: patch.failed,
+    status: patch.status,
+    finishedAt: patch.finishedAt || null,
+    lastVerifiedAt: patch.lastVerifiedAt || null,
+    recorded: patch.processed > 0,
+  };
+}
+
+async function writeThreadUnsendLedger(result, suppliedState = null) {
+  const state = suppliedState || await loadBridgeState();
+  const index = state.threadUnsendLedger.findIndex((entry) => entry?.id === result.id);
+  if (index >= 0) state.threadUnsendLedger[index] = result;
+  else state.threadUnsendLedger.unshift(result);
+  await saveBridgeState(state);
+}
+
+async function checkpointThreadUnsendPlan(request, sender, now = Date.now()) {
+  const resultRequest = validateThreadUnsendResultRequest(request, sender);
+  if (resultRequest.error || resultRequest.processed < 1) {
+    return { error: resultRequest.error || 'thread-unsend-result-invalid' };
+  }
+  let reservation = threadUnsendCapabilities.get(resultRequest.reservationId);
+  let state = null;
+  let recoveredAfterWorkerRestart = false;
+  if (!reservation) {
+    state = await loadBridgeState();
+    const prior = state.threadUnsendLedger.find((entry) => (
+      entry?.id === resultRequest.reservationId
+      && entry.threadId === resultRequest.threadId
+      && entry.reviewedDigest === resultRequest.reviewedDigest
+      && entry.status === 'running'
+    ));
+    if (prior) {
+      reservation = prior;
+    } else {
+      const recoveryPlan = validateThreadUnsendReservation({ plan: request?.plan }, sender, now);
+      if (recoveryPlan.error || resultRequest.processed !== 1) {
+        return { error: 'thread-unsend-reservation-missing' };
+      }
+      reservation = {
+        id: resultRequest.reservationId,
+        day: accountActionDay(now),
+        threadId: recoveryPlan.threadId,
+        reviewedDigest: recoveryPlan.reviewedDigest,
+        count: recoveryPlan.count,
+        scope: recoveryPlan.scope,
+        status: 'running',
+        reservedAt: null,
+        expiresAt: recoveryPlan.expiresAt,
+        processed: 0,
+        failed: 0,
+        recoveredAfterWorkerRestart: true,
+        authorityRestored: false,
+      };
+      recoveredAfterWorkerRestart = true;
+    }
+  }
+  if (
+    reservation.threadId !== resultRequest.threadId
+    || reservation.reviewedDigest !== resultRequest.reviewedDigest
+    || resultRequest.processed !== Number(reservation.processed || 0) + 1
+    || (reservation.count !== null && resultRequest.processed > reservation.count)
+  ) return { error: 'thread-unsend-reservation-missing' };
+  if (threadUnsendCapabilities.has(resultRequest.reservationId)) {
+    reservation.processed = resultRequest.processed;
+    reservation.failed = resultRequest.failed;
+  }
+  const checkpoint = threadUnsendLedgerResult(reservation, {
+    processed: resultRequest.processed,
+    failed: resultRequest.failed,
+    status: 'running',
+    lastVerifiedAt: new Date(now).toISOString(),
+  }, now);
+  if (recoveredAfterWorkerRestart) checkpoint.recoveredAfterWorkerRestart = true;
+  await writeThreadUnsendLedger(checkpoint, state);
+  return { reservation: checkpoint };
+}
+
+async function finalizeThreadUnsendPlan(request, sender, now = Date.now()) {
+  const resultRequest = validateThreadUnsendResultRequest(request, sender);
+  if (resultRequest.error) return resultRequest;
+  const {
+    failed, processed, reservationId, reviewedDigest, threadId,
+  } = resultRequest;
+  const resultStatus = ['completed', 'stopped', 'error'].includes(request?.status)
+    ? request.status
+    : 'error';
+  let reservation = threadUnsendCapabilities.get(reservationId);
+  let state = null;
+  const recoveredFromLedger = !reservation;
+  if (!reservation) {
+    state = await loadBridgeState();
+    reservation = state.threadUnsendLedger.find((entry) => (
+      entry?.id === reservationId
+      && entry.threadId === threadId
+      && entry.reviewedDigest === reviewedDigest
+      && entry.status === 'running'
+    ));
+  }
+  if (!reservation) return { error: 'thread-unsend-reservation-missing' };
+  if (
+    reservation.threadId !== threadId
+    || reservation.reviewedDigest !== reviewedDigest
+    || processed !== Number(reservation.processed || 0)
+    || (reservation.count !== null && processed > reservation.count)
+  ) return { error: 'thread-unsend-reservation-missing' };
+  if (!recoveredFromLedger) threadUnsendCapabilities.delete(reservationId);
+  const result = threadUnsendLedgerResult(reservation, {
+    processed,
+    failed,
+    status: resultStatus === 'completed'
+    ? 'succeeded'
+    : resultStatus === 'stopped'
+      ? 'stopped'
+      : processed > 0 ? 'uncertain' : 'failed',
+    finishedAt: new Date(now).toISOString(),
+    lastVerifiedAt: processed > 0 ? new Date(now).toISOString() : null,
+  }, now);
+  if (processed === 0) return { reservation: result };
+  await writeThreadUnsendLedger(result, state);
+  return { reservation: result };
 }
 
 function validateReviewedJob(job, expectedKind) {
@@ -1668,6 +1828,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const operation = requestTail.then(() => reserveThreadUnsendPlan(request, sender));
     requestTail = operation.catch(() => {});
     operation.then(sendResponse).catch(() => sendResponse({ error: 'thread-unsend-reservation-unavailable' }));
+    return true;
+  }
+  if (request?.kind === 'insta-aio-finalize-thread-unsend') {
+    if (!isInstagramSender(sender)) {
+      sendResponse({ error: 'instagram-origin-required' });
+      return false;
+    }
+    const operation = requestTail.then(() => finalizeThreadUnsendPlan(request, sender));
+    requestTail = operation.catch(() => {});
+    operation.then(sendResponse).catch(() => sendResponse({ error: 'thread-unsend-finalization-unavailable' }));
+    return true;
+  }
+  if (request?.kind === 'insta-aio-checkpoint-thread-unsend') {
+    if (!isInstagramSender(sender)) {
+      sendResponse({ error: 'instagram-origin-required' });
+      return false;
+    }
+    const operation = requestTail.then(() => checkpointThreadUnsendPlan(request, sender));
+    requestTail = operation.catch(() => {});
+    operation.then(sendResponse).catch(() => sendResponse({ error: 'thread-unsend-checkpoint-unavailable' }));
     return true;
   }
   if (request?.kind !== 'insta-aio-bridge-request') return false;

@@ -111,7 +111,7 @@ test('DM preview hard-blocks received messages and preserves exact sent-message 
   assert.equal(job.blockedItems[0].blockReason, 'received-message');
 });
 
-test('live DM jobs require review plus a second destructive confirmation', () => {
+test('live DM jobs require review plus one action-specific confirmation', () => {
   const source = message('sent-1');
   const job = createReviewedDmJob([source], [messageSelectionKey(source)]);
   const settings = {

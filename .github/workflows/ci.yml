@@ -11,6 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -27,6 +28,10 @@ jobs:
           find desktop extension scripts src tests userscripts -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
       - name: Core tests
         run: pnpm test
+      - name: Full dependency audit
+        run: pnpm audit --audit-level high
+      - name: Large import benchmark
+        run: pnpm run benchmark:zip
       - name: Production extension browser acceptance
         env:
           # The package-managed Electron sandbox is not root-owned on hosted runners.
@@ -46,7 +51,7 @@ jobs:
       - name: Upload tested browser companions
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: insta-aio-browser-companions-${{ github.event.pull_request.head.sha || github.sha }}
+          name: insta-toolbox-browser-companions-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             dist/insta-aio-companion-*.zip
             userscripts/insta-aio-companion.user.js
@@ -55,6 +60,7 @@ jobs:
 
   overlay-windows:
     runs-on: windows-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -69,19 +75,24 @@ jobs:
           # Native text/scrollbar rasterization differs slightly across Windows runner images.
           INSTA_AIO_OVERLAY_QA_CI_WINDOWS_RASTER_TOLERANCE: "1"
         run: pnpm run qa:overlay:check
-      - name: Upload failed overlay comparison evidence
+      - name: Verify reviewed Windows PWA baselines
+        run: pnpm run qa:browser:check
+      - name: Upload failed Windows rendering evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: overlay-windows-failure-${{ github.sha }}
+          name: rendering-windows-failure-${{ github.sha }}
           path: |
             test-results/overlay-qa/actual/win32
             test-results/overlay-qa/runner.log
+            test-results/browser-qa/actual/win32
+            test-results/browser-qa/runner.log
           if-no-files-found: warn
           retention-days: 3
 
   package-windows:
     runs-on: windows-latest
+    timeout-minutes: 35
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
@@ -95,24 +106,82 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build Windows NSIS installer
         run: pnpm run dist:win
+      - name: Verify packaged Windows archive contents
+        run: pnpm run verify:desktop-archive
+      - name: Smoke-test unpacked Windows application
+        shell: pwsh
+        run: |
+          $smokeParent = Join-Path ([System.IO.Path]::GetTempPath()) 'insta-aio-desktop-smoke-parent'
+          New-Item -ItemType Directory -Path $smokeParent -Force | Out-Null
+          $env:INSTA_AIO_DESKTOP_SMOKE_PARENT = (Resolve-Path -LiteralPath $smokeParent).Path
+          & 'dist/desktop/win-unpacked/Insta Toolbox.exe' --smoke-test
+          if ($LASTEXITCODE -ne 0) {
+            throw "Desktop smoke test exited with $LASTEXITCODE."
+          }
       - name: Verify Windows installer artifact
         shell: pwsh
         run: |
+          $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          $expectedInstaller = "Insta Toolbox Setup $version.exe"
+          $expectedBlockmap = "$expectedInstaller.blockmap"
           $installers = @(Get-ChildItem -Path dist/desktop -Filter *.exe -File)
-          if ($installers.Count -lt 1) {
-            throw "No Windows installer was produced."
+          $blockmaps = @(Get-ChildItem -Path dist/desktop -Filter *.blockmap -File)
+          if ($installers.Count -ne 1 -or $installers[0].Name -ne $expectedInstaller) {
+            throw "Expected exactly $expectedInstaller. Found: $($installers.Name -join ', ')"
           }
-          $installers | ForEach-Object { Write-Host $_.FullName }
+          if ($blockmaps.Count -ne 1 -or $blockmaps[0].Name -ne $expectedBlockmap) {
+            throw "Expected exactly $expectedBlockmap. Found: $($blockmaps.Name -join ', ')"
+          }
+          Write-Host $installers[0].FullName
+          Write-Host $blockmaps[0].FullName
+      - name: Verify NSIS install, launch, and uninstall lifecycle
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          $installer = Get-Item -LiteralPath "dist/desktop/Insta Toolbox Setup $version.exe"
+          $installRoot = Join-Path $env:RUNNER_TEMP "insta-toolbox-nsis-$version"
+          & $installer.FullName /S "/D=$installRoot"
+          if ($LASTEXITCODE -ne 0) {
+            throw "NSIS installation exited with $LASTEXITCODE."
+          }
+          $installedExecutable = Join-Path $installRoot 'Insta Toolbox.exe'
+          if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
+            throw "Installed application was not found at $installedExecutable."
+          }
+          $smokeParent = Join-Path ([System.IO.Path]::GetTempPath()) 'insta-aio-desktop-smoke-parent'
+          New-Item -ItemType Directory -Path $smokeParent -Force | Out-Null
+          $env:INSTA_AIO_DESKTOP_SMOKE_PARENT = (Resolve-Path -LiteralPath $smokeParent).Path
+          & $installedExecutable --smoke-test
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed application smoke test exited with $LASTEXITCODE."
+          }
+          $uninstallers = @(Get-ChildItem -LiteralPath $installRoot -Filter 'Uninstall*.exe' -File)
+          if ($uninstallers.Count -ne 1) {
+            throw "Expected one NSIS uninstaller. Found: $($uninstallers.Name -join ', ')"
+          }
+          & $uninstallers[0].FullName /S
+          if ($LASTEXITCODE -ne 0) {
+            throw "NSIS uninstall exited with $LASTEXITCODE."
+          }
+          for ($attempt = 0; $attempt -lt 30 -and (Test-Path -LiteralPath $installedExecutable); $attempt += 1) {
+            Start-Sleep -Seconds 1
+          }
+          if (Test-Path -LiteralPath $installedExecutable) {
+            throw 'NSIS uninstall left the installed application behind.'
+          }
       - name: Upload Windows installer
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: insta-aio-windows-${{ github.sha }}
-          path: dist/desktop/*.exe
+          name: insta-toolbox-windows-${{ github.sha }}
+          path: |
+            dist/desktop/*.exe
+            dist/desktop/*.blockmap
           if-no-files-found: error
           retention-days: 7
 
   package-macos:
     runs-on: macos-14
+    timeout-minutes: 45
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
@@ -128,14 +197,50 @@ jobs:
         run: pnpm run qa:extension
       - name: Build macOS DMG and ZIP
         run: pnpm run dist:mac
+      - name: Verify packaged macOS archive contents
+        run: pnpm run verify:desktop-archive
       - name: Verify macOS package lifecycle
         run: pnpm run qa:mac-package
       - name: Upload verified macOS packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: insta-aio-macos-${{ github.sha }}
+          name: insta-toolbox-macos-${{ github.sha }}
           path: |
             dist/desktop/*.dmg
             dist/desktop/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  release-checksums:
+    needs: [test, package-windows, package-macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Download tested browser companions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: insta-toolbox-browser-companions-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .
+      - name: Download verified Windows packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: insta-toolbox-windows-${{ github.sha }}
+          path: dist/desktop
+      - name: Download verified macOS packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: insta-toolbox-macos-${{ github.sha }}
+          path: dist/desktop
+      - name: Verify release archives and generate checksums
+        run: node scripts/generate-release-checksums.mjs
+      - name: Upload combined release checksums
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: insta-toolbox-checksums-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7

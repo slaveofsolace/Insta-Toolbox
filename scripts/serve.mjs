@@ -12,12 +12,14 @@ const modulePath = fileURLToPath(import.meta.url);
 const repositoryRoot = path.resolve(path.dirname(modulePath), '..');
 
 function contentType(filePath) {
+  if (path.basename(filePath) === 'LICENSE') return 'text/plain; charset=utf-8';
   return {
     '.css': 'text/css; charset=utf-8',
     '.html': 'text/html; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',
     '.jsfrag': 'text/plain; charset=utf-8',
     '.json': 'application/json; charset=utf-8',
+    '.md': 'text/markdown; charset=utf-8',
     '.png': 'image/png',
     '.svg': 'image/svg+xml',
     '.webmanifest': 'application/manifest+json; charset=utf-8',

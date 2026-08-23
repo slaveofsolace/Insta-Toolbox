@@ -5,15 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Insta Toolbox userscript runtime fixture</title>
   <style>
-    body { margin: 0; background: #fafafa; color: #111; font: 14px/1.4 system-ui, sans-serif; }
+    :root {
+      --ig-primary-background: 255 255 255;
+      --ig-elevated-background: 255 255 255;
+      --ig-secondary-background: 250 250 250;
+      --ig-primary-text: 0 0 0;
+      --ig-secondary-text: 115 115 115;
+      --ig-separator: 219 219 219;
+      --ig-primary-button: 0 149 246;
+      color-scheme: light;
+    }
+    body { margin: 0; background: rgb(var(--ig-secondary-background)); color: rgb(var(--ig-primary-text)); font: 14px/1.4 system-ui, sans-serif; }
     main { width: min(760px, calc(100vw - 40px)); margin: 40px auto; }
-    header { padding: 24px; border: 1px solid #ddd; background: #fff; }
+    header { padding: 24px; border: 1px solid rgb(var(--ig-separator)); background: rgb(var(--ig-elevated-background)); }
     header h1 { display: inline; margin-right: 18px; font-size: 20px; }
     button { padding: 8px 14px; }
-    [role="dialog"] { width: 320px; margin-top: 20px; padding: 16px; border: 1px solid #ddd; background: #fff; }
+    [role="dialog"] { width: 320px; margin-top: 20px; padding: 16px; border: 1px solid rgb(var(--ig-separator)); background: rgb(var(--ig-elevated-background)); }
     [role="dialog"] a { display: block; padding: 7px 0; color: inherit; }
     [role="row"] { max-width: 70%; margin: 14px 0; padding: 10px; border-radius: 12px; background: #eee; }
     [data-sent-by-me="true"] { margin-left: auto; background: #2884e8; color: #fff; }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ig-primary-background: 0 0 0;
+        --ig-elevated-background: 38 38 38;
+        --ig-secondary-background: 18 18 18;
+        --ig-primary-text: 245 245 245;
+        --ig-secondary-text: 168 168 168;
+        --ig-separator: 54 54 54;
+        color-scheme: dark;
+      }
+    }
   </style>
 </head>
 <body>

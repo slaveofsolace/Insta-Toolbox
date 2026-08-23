@@ -293,7 +293,7 @@
     setText('bot-review-title', `${draft.selected.length} target${draft.selected.length === 1 ? '' : 's'} ready to confirm`);
     setText(
       'bot-review-detail',
-      `${draft.removed} duplicate${draft.removed === 1 ? '' : 's'} removed; ${draft.omitted} valid target${draft.omitted === 1 ? '' : 's'} remain outside this finite run; ${draft.skipped.reduce((total, entry) => total + entry.count, 0)} protected, incompatible, or already-correct target${draft.skipped.reduce((total, entry) => total + entry.count, 0) === 1 ? '' : 's'} skipped. Every profile is rechecked before action.`,
+      `Duplicates removed: ${draft.removed}. Outside this run: ${draft.omitted}. Skipped: ${draft.skipped.reduce((total, entry) => total + entry.count, 0)}. Every profile is rechecked before action.`,
     );
     const list = query('[data-ia-role="bot-review-list"]');
     if (!list) return;

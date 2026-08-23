@@ -12,11 +12,11 @@ import { app, BrowserWindow, nativeImage, session } from 'electron';
 import { overlayQaScenarios, viewports } from './overlay-qa-scenarios.mjs';
 
 const viewTitles = Object.freeze({
-  capture: 'Mutual Checker',
-  messages: 'DM Unsend',
-  now: 'Instagram tools',
-  queue: 'Follow / Unfollow',
-  workspace: 'Workspace',
+  capture: 'Insta Toolbox',
+  messages: 'Insta Toolbox',
+  now: 'Insta Toolbox',
+  queue: 'Insta Toolbox',
+  workspace: 'Insta Toolbox',
 });
 
 const update = process.argv.includes('--update');
@@ -253,6 +253,7 @@ function scenarioUrl(baseUrl, scenario) {
     section: scenario.section,
     shadow: 'open',
     theme: scenario.theme,
+    version: builtManifest.version,
     width: scenario.width,
   });
   if (scenario.layout === 'floating') {
@@ -279,7 +280,7 @@ async function applyAfterState(webContents, scenario) {
     })()`, true);
     await waitForValue(
       webContents,
-      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="capture-state-title"]')?.textContent === 'Follower comparison complete for @demo_creator'`,
+      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="capture-state-title"]')?.textContent === 'Mutual comparison complete for @demo_creator'`,
       `${scenario.id}: authenticated follower comparison`,
     );
   }
@@ -356,7 +357,8 @@ async function inspectScenario(webContents, scenario) {
     const header = shadow.querySelector('.ia-header');
     const headerActions = shadow.querySelector('.ia-header-actions');
     const headerCopy = shadow.querySelector('.ia-header-copy');
-    const footer = shadow.querySelector('[data-ia-role="status"]');
+    const footer = shadow.querySelector('.ia-credit');
+    const statusRegion = shadow.querySelector('[data-ia-role="status"]');
     const target = ${JSON.stringify(scenario.targetSelector)}
       ? document.querySelector(${JSON.stringify(scenario.targetSelector)})
       : null;
@@ -446,6 +448,12 @@ async function inspectScenario(webContents, scenario) {
       bodyWidth: document.body.scrollWidth,
       collision: host.dataset.collision,
       collisionPlacement: host.dataset.collisionPlacement || null,
+      credit: {
+        href: shadow.querySelector('.ia-credit-link')?.getAttribute('href') || '',
+        rel: shadow.querySelector('.ia-credit-link')?.getAttribute('rel') || '',
+        target: shadow.querySelector('.ia-credit-link')?.getAttribute('target') || '',
+        text: shadow.querySelector('.ia-credit-link')?.textContent || '',
+      },
       documentWidth: document.documentElement.scrollWidth,
       dock: host.dataset.dock,
       footer: rect(footer),
@@ -480,7 +488,13 @@ async function inspectScenario(webContents, scenario) {
       selectedHidden: selected?.hidden ?? true,
       selectedHorizontalOverflow: selected ? selected.scrollWidth - selected.clientWidth : 0,
       semantics,
-      status: footer?.textContent.trim() || '',
+      status: statusRegion?.textContent.trim() || '',
+      statusRegion: rect(statusRegion),
+      statusSemantics: {
+        atomic: statusRegion?.getAttribute('aria-atomic') || '',
+        live: statusRegion?.getAttribute('aria-live') || '',
+      },
+      workspaceExtensionVersion: shadow.querySelector('[data-ia-role="bridge-facts"] div:nth-child(3) dd')?.textContent.trim() || '',
       strip: rect(strip),
       target: targetRect,
       theme: host.dataset.theme,
@@ -524,12 +538,28 @@ function assertScenario(metrics, scenario) {
   if (scenario.targetSelector) assert.ok(metrics.target, `${scenario.id}: target fixture is missing`);
   if (scenario.presentation === 'panel') {
     assert.equal(metrics.selectedHidden, false, `${scenario.id}: requested tool view is hidden`);
-    assert.ok(metrics.header && metrics.footer, `${scenario.id}: panel chrome is incomplete`);
+    assert.ok(metrics.header && metrics.footer && metrics.statusRegion, `${scenario.id}: panel chrome is incomplete`);
+    assert.ok(Math.abs(metrics.header.height - 52) <= 1, `${scenario.id}: compact header height changed (${metrics.header.height}px)`);
+    assert.ok(metrics.footer.height >= 26 && metrics.footer.height <= 28, `${scenario.id}: credit line height changed (${metrics.footer.height}px)`);
+    assert.deepEqual(metrics.credit, {
+      href: 'https://github.com/slaveofsolace',
+      rel: 'noopener noreferrer',
+      target: '_blank',
+      text: 'created by @slaveofsolace',
+    }, `${scenario.id}: creator credit changed`);
+    assert.deepEqual(metrics.statusSemantics, { atomic: 'true', live: 'polite' }, `${scenario.id}: live status semantics changed`);
     assert.ok(metrics.panelAreaShare <= 0.86, `${scenario.id}: panel consumes too much viewport area`);
     for (const target of metrics.touchTargets) {
       assert.ok(target.height >= 43, `${scenario.id}: short touch target ${target.label} (${target.height}px)`);
       assert.ok(target.width >= 43, `${scenario.id}: narrow touch target ${target.label} (${target.width}px)`);
     }
+  }
+  if (scenario.section === 'workspace') {
+    assert.equal(
+      metrics.workspaceExtensionVersion,
+      builtManifest.version,
+      `${scenario.id}: fixture extension version does not match the built extension`,
+    );
   }
   if (scenario.layout === 'floating') {
     assert.equal(metrics.layout, 'floating', `${scenario.id}: floating layout was not applied`);
@@ -664,7 +694,7 @@ async function captureScenario(browserWindow, baseUrl, scenario, expectedManifes
   await waitForValue(
     webContents,
     `Boolean(document.querySelector('#insta-aio-sidecar-root')?.shadowRoot
-      && document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Inspection ready'))`,
+        && document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Review the exact target'))`,
     `${scenario.id}: production overlay initialization`,
   );
   await applyAfterState(webContents, scenario);
@@ -902,7 +932,7 @@ async function run() {
     );
     await waitForValue(
       browserWindow.webContents,
-      `document.querySelector('#insta-aio-sidecar-root')?.shadowRoot?.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Inspection ready')`,
+      `document.querySelector('#insta-aio-sidecar-root')?.shadowRoot?.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Review the exact target')`,
       'performance overlay initialization',
     );
     const performance = await performanceMetrics(browserWindow.webContents);

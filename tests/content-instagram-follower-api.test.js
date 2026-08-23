@@ -199,7 +199,47 @@ test('Mutual Checker finishes partial instead of hanging when Instagram keeps on
   assert.equal(result.reasons.followers, 'count-mismatch');
 });
 
-test('Mutual Checker does not repeat a large list after Instagram ends below the profile count', async () => {
+test('Mutual Checker recovers a prematurely cursorless 2,104-follower response', async () => {
+  const inspector = createInspector();
+  const followers = Array.from({ length: 2_104 }, (_, index) => ({ username: `follower.${index}` }));
+  let followerCalls = 0;
+  const progress = [];
+  const result = await inspector.fetchFollowerComparison({
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname.includes('topsearch')) {
+        return response({ users: [{ user: {
+          pk: '77', username: 'target_name', follower_count: 2_104, following_count: 1,
+        } }] });
+      }
+      if (url.pathname.includes('/followers/')) {
+        followerCalls += 1;
+        if (followerCalls === 1) return response({ users: followers.slice(0, 27) });
+        const offset = Number(String(url.searchParams.get('max_id') || 'offset-0').replace('offset-', ''));
+        const end = Math.min(followers.length, offset + 50);
+        return response({
+          users: followers.slice(offset, end),
+          ...(end < followers.length ? { next_max_id: `offset-${end}` } : {}),
+        });
+      }
+      return response({ users: [{ username: 'following.one' }] });
+    },
+    onProgress: (entry) => progress.push(entry),
+    sleepImpl: async () => {},
+    username: 'target_name',
+  });
+
+  assert.equal(followerCalls, 44);
+  assert.equal(result.followers.length, 2_104);
+  assert.equal(result.complete.followers, true);
+  assert.equal(result.reasons.followers, 'pagination-complete');
+  assert.ok(progress.some((entry) => entry.phase === 'reconciling'
+    && entry.listType === 'followers'
+    && entry.found === 27
+    && entry.expectedCount === 2_104));
+});
+
+test('Mutual Checker retries a large cursorless list once, then finishes partial', async () => {
   const inspector = createInspector();
   const followers = Array.from({ length: 2_070 }, (_, index) => ({ username: `follower.${index}` }));
   let followerCalls = 0;
@@ -223,12 +263,12 @@ test('Mutual Checker does not repeat a large list after Instagram ends below the
     username: 'target_name',
   });
 
-  assert.equal(followerCalls, 1);
+  assert.equal(followerCalls, 2);
   assert.equal(result.followers.length, 2_070);
   assert.equal(result.expectedCounts.followers, 2_104);
   assert.equal(result.complete.followers, false);
   assert.equal(result.reasons.followers, 'count-mismatch');
-  assert.equal(progress.some((entry) => entry.phase === 'reconciling' && entry.listType === 'followers'), false);
+  assert.equal(progress.some((entry) => entry.phase === 'reconciling' && entry.listType === 'followers'), true);
 });
 
 test('authenticated follower check stops on rate limits before requesting another list', async () => {

@@ -1,0 +1,78 @@
+{
+  "version": "2.0.2",
+  "screenshots": [
+    {
+      "label": "short laptop light",
+      "width": 1280,
+      "height": 620,
+      "zoom": 1,
+      "theme": "light",
+      "filename": "short-laptop-light.png",
+      "cssViewport": {
+        "width": 1280,
+        "height": 620
+      }
+    },
+    {
+      "label": "480px light",
+      "width": 480,
+      "height": 800,
+      "zoom": 1,
+      "theme": "light",
+      "filename": "480px-light.png",
+      "cssViewport": {
+        "width": 480,
+        "height": 800
+      }
+    },
+    {
+      "label": "narrow custom panel dark",
+      "width": 900,
+      "height": 700,
+      "zoom": 1,
+      "theme": "dark",
+      "panelWidth": 320,
+      "filename": "narrow-custom-panel-dark.png",
+      "cssViewport": {
+        "width": 900,
+        "height": 700
+      }
+    },
+    {
+      "label": "mobile portrait dark",
+      "width": 390,
+      "height": 780,
+      "zoom": 1,
+      "theme": "dark",
+      "filename": "mobile-portrait-dark.png",
+      "cssViewport": {
+        "width": 390,
+        "height": 780
+      }
+    },
+    {
+      "label": "mobile landscape light",
+      "width": 780,
+      "height": 390,
+      "zoom": 1,
+      "theme": "light",
+      "filename": "mobile-landscape-light.png",
+      "cssViewport": {
+        "width": 780,
+        "height": 390
+      }
+    },
+    {
+      "label": "true 200% zoom dark",
+      "width": 1280,
+      "height": 800,
+      "zoom": 2,
+      "theme": "dark",
+      "filename": "true-200-zoom-dark.png",
+      "cssViewport": {
+        "width": 640,
+        "height": 400
+      }
+    }
+  ]
+}

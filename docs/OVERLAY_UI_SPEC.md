@@ -1,29 +1,23 @@
 # Overlay UI specification
 
-The overlay is a quiet operator panel that stays subordinate to Instagram. It
-keeps the PWA, pairing, exact-intent, reservation, one-item, and page-driver
+The overlay is a compact operator panel that stays subordinate to Instagram. It
+keeps the PWA, pairing, exact-request, reservation, one-item, and page-driver
 architecture unchanged.
 
 The default view is collapsed. When open, the exact target, current safety
 state, and next available action take priority over explanatory copy. Desktop
 placement is movable and resizable; narrow layouts use a fitted bottom sheet.
 
-## Design direction
-
-- Profile: app-component/dashboard.
-- Aesthetic: restrained Swiss grid with quiet utilitarian instrumentation.
-- Signature detail: a small lime **signal pin**—a 6–8 px state dot and a 3 px
-selected-edge mark—used only when state warrants attention.
-
-Defining moves:
+## Layout and visual rules
 
 - System UI typography with real weight and spacing hierarchy; no remote fonts.
 - Neutral adaptive surfaces; no black branding slab or cream dashboard shell.
-- A 48 px tool rail with consistent inline SVG icons and accessible labels.
+- Compact navigation with visible tool names and accessible labels.
 - Exact target, state, and next safe action above protocol explanation.
 - Motion limited to one short open/close transition and collision-mode change.
 - Safety detail, imports, downloads, and history behind disclosures when they are
   not the current task.
+- Small state dots appear only when their adjacent label identifies the state.
 
 ## Tokens
 
@@ -77,8 +71,8 @@ addition to color. Final tokens must pass WCAG AA at their actual text size.
 - 44 × 44 px neutral button with the IT mark and an accessible `Open Insta Toolbox`
   name.
 - Safe-area inset plus 12–16 px viewport inset.
-- Optional signal pin only for exact ready intent, armed countdown, attention,
-  or safe stop; no ordinary pulse or continuous animation.
+- Optional state dot only for a ready request, active run, attention, or safe
+  stop; no ordinary pulse or continuous animation.
 - Dock preference moves the launcher and panel together.
 
 ### Desktop panel
@@ -89,7 +83,8 @@ addition to color. Final tokens must pass WCAG AA at their actual text size.
 - Dense views may grow only to `calc(100dvh - safe insets)` and then scroll their
   content region.
 - No minimum height may exceed the available viewport.
-- Header, tool rail, and critical footer remain fixed while the view scrolls.
+- The 52 px single-row header, tool navigation, and creator credit remain fixed
+  while the view scrolls.
 - Left and right docking use the same DOM; only logical inset properties change.
 
 ### Tool rail
@@ -114,28 +109,32 @@ addition to color. Final tokens must pass WCAG AA at their actual text size.
 - At 200% zoom, CSS viewport breakpoints naturally select the narrow layout; no
   required action may need horizontal scrolling.
 
-## Preferences V2
+## Preferences V3
 
-Storage key: `instaAioOverlayPreferencesV2`
+Storage key: `instaAioOverlayPreferencesV3`
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "open": false,
   "section": "now",
   "dock": "right",
   "width": "standard",
   "theme": "auto",
   "density": "comfortable",
-  "firstRunComplete": false
+  "firstRunComplete": false,
+  "position": null,
+  "panelWidth": null,
+  "panelHeight": null,
+  "opacity": 0.88
 }
 ```
 
 Migration rules:
 
-1. A valid V2 record is normalized field by field.
-2. If only `instaAioOverlayPreferencesV1` exists, preserve its valid `open` and
-   `section`, apply safe defaults for new fields, and mark the record as migrated.
+1. A valid V3 record is normalized field by field.
+2. A V2 record is migrated additively. If only V1 exists, preserve its valid
+   `open` and `section`, apply safe defaults, and mark the record as migrated.
 3. A fresh install receives `open: false` regardless of desktop width.
 4. Invalid values fall back independently; one bad field does not erase valid
    preferences.
@@ -167,23 +166,24 @@ routes show a short neutral state, not an empty ledger.
 
 ### Capture
 
-Preserve explicit, rendered-row-only capture and manual scrolling. Show detected
-list, current batch, unique total, duplicates ignored, last capture, bounded
-preview, maximum state, and storage failure. Render at most a small preview even
-for 2,000 stored accounts.
+Use the fixed same-origin read-only friendship routes for the authenticated
+Mutual Checker. Show the requested list, pages loaded, unique total, retry state,
+completeness, and storage failure. Use the verified Followers/Following dialog
+as a fallback, and render only a bounded local preview.
 
 ### Queue
 
 The current username/action/status is focal. Open, Complete, and Skip remain the
-primary loop. Import/export and signed history are disclosures. The live gate is
-one compact state row while locked and expands only for a relevant exact intent,
-arming phrase, armed countdown, execution, completed result, or safe stop.
+primary loop. Import/export and signed history are disclosures. A destructive
+run appears only after an exact finite review and one ordinary confirmation; its
+transient capability expires or is revoked on completion, Stop, or safe stop.
 
 ### Messages
 
-Render a compact evidence thread. Sent, received, and unknown ownership labels
-appear only when supported. Exact ID, ownership, time, and digest are a
-disclosure. The controlled gate remains secondary until a matching intent exists.
+Keep **Unsend DMs** visible. Its confirmation names the exact open thread and
+scope, then starts one streaming traversal without a preliminary history count.
+Advanced controls hold the read-only diagnostic and finite newest/oldest scopes.
+Report only verified removals and stop reasons.
 
 ### Workspace
 
@@ -195,22 +195,19 @@ disclosures; remove feature-marketing cards.
 
 Primary state vocabulary is fixed:
 
-- `locked`
 - `waiting for target`
 - `ready`
-- `arming`
-- `armed` with a countdown derived from immutable `expiresAt`
-- `executing in PWA`
+- `confirming`
+- `running`
 - `completed`
 - `expired`
 - `canceled`
 - `safe stop`
 - `uncertain`
 
-Countdown updates do not extend the arm and do not announce every second.
-`aria-live` announces only major state transitions. Every destructive state shows
-the absolute username or exact message identity beside it. Arming copy always
-states that arming alone does not perform the action.
+Expiry updates never extend the capability and are not announced every second.
+`aria-live` announces only major state transitions. Every destructive state
+shows the exact username or conversation identity beside it.
 
 ## Collision and execution-safe mode
 
@@ -274,10 +271,10 @@ Boundaries:
 ## Performance budgets
 
 - Collapsed idle: no recurring timer; zero context inspection without a pending
-  exact intent; mutation callbacks only compare route/theme/surface signals.
+  exact request; mutation callbacks only compare route/theme/surface signals.
 - Open idle: no full rerender on unrelated Instagram mutations.
 - Route transition: one debounced context refresh, target under 50 ms in fixture.
-- Countdown: update one text node at most once per second and stop at expiry.
+- Active-run expiry: update at most one text node per second and stop at expiry.
 - 2,000-item queue: bounded normalization and no more than the current item plus
   a small history/preview window in the DOM.
 - Teardown: remove listeners/observers/timers and revoke every object URL.

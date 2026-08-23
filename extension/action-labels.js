@@ -82,16 +82,23 @@
 
   const ACTIVE_ATTRIBUTE = 'data-insta-aio-unsend-active';
   const DONE_ATTRIBUTE = 'data-insta-aio-unsent';
-  const DEFAULT_MIN_DELAY_MS = 4_000;
-  const DEFAULT_MAX_DELAY_MS = 11_000;
+  const DEFAULT_MIN_DELAY_MS = 1_000;
+  const DEFAULT_MAX_DELAY_MS = 2_000;
   const DEFAULT_MAX_FAILURES = 5;
   const MIN_USABLE_VISIBLE_PX = 24;
   const MAX_HOVER_DEPTH = 8;
   const MAX_HISTORY_CHECK_MS = 90_000;
   const MAX_SCAN_PASSES = 3;
   const MAX_PLAN_MESSAGES = 5_000;
+  const MAX_EMPTY_GROWTH_ROUNDS = 600;
+  const MAX_SCROLL_STEPS_PER_SEARCH = 2_000;
+  const OLDEST_BOUNDARY_POLL_MS = 120;
+  const OLDEST_BOUNDARY_STABLE_MS = 2_000;
+  const STABLE_EMPTY_PASSES = 3;
+  const PLAN_VERSION = 2;
   const PLAN_SCOPES = new Set(['all', 'newest', 'oldest']);
   const listeners = new Set();
+  const consumedPlanDigests = new Map();
 
   let activeController = null;
   let currentState = Object.freeze({
@@ -99,6 +106,7 @@
     operation: null,
     processed: 0,
     failed: 0,
+    retryAttempts: 0,
     consecutiveFailures: 0,
     current: null,
     message: 'Ready',
@@ -145,7 +153,7 @@
   }
 
   function randomDelay(minimum, maximum) {
-    const min = Math.max(1_500, Number(minimum) || DEFAULT_MIN_DELAY_MS);
+    const min = Math.max(1_000, Number(minimum) || DEFAULT_MIN_DELAY_MS);
     const max = Math.max(min, Number(maximum) || DEFAULT_MAX_DELAY_MS);
     return min + Math.floor(Math.random() * (max - min + 1));
   }
@@ -160,34 +168,52 @@
     return (hash >>> 0).toString(16).padStart(8, '0');
   }
 
-  function planDigest({ threadId, scope, limit, eligibleCount, expiresAt }) {
+  function planDigest({ version, threadId, scope, limit, detectedCount, expiresAt }) {
     return digestText(JSON.stringify({
+      version: Number(version),
       threadId: String(threadId || ''),
       scope: String(scope || ''),
-      limit: Number(limit),
-      eligibleCount: Number(eligibleCount),
+      limit: limit === null ? null : Number(limit),
+      detectedCount: detectedCount === null ? null : Number(detectedCount),
       expiresAt: Number(expiresAt),
     }));
   }
 
   function createPlan(value = {}) {
     const threadId = String(value.threadId || '').trim();
-    const scope = PLAN_SCOPES.has(value.scope) ? value.scope : 'all';
-    const eligibleCount = Math.min(
-      MAX_PLAN_MESSAGES,
-      Math.max(0, Math.floor(Number(value.eligibleCount) || 0)),
-    );
+    const requestedScope = value.scope === null || value.scope === undefined || value.scope === ''
+      ? 'all'
+      : String(value.scope);
+    if (!PLAN_SCOPES.has(requestedScope)) return null;
+    const scope = requestedScope;
     const requestedLimit = Math.floor(Number(value.limit));
     const limit = scope === 'all'
-      ? eligibleCount
-      : Math.min(eligibleCount, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 1));
+      ? null
+      : Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(MAX_PLAN_MESSAGES, requestedLimit)
+        : null;
+    const hasDetectedCount = value.detectedCount !== null
+      && value.detectedCount !== undefined
+      && value.detectedCount !== '';
+    const requestedDetectedCount = hasDetectedCount ? Number(value.detectedCount) : Number.NaN;
+    const detectedCount = Number.isFinite(requestedDetectedCount) && requestedDetectedCount >= 0
+      ? Math.min(MAX_PLAN_MESSAGES, Math.floor(requestedDetectedCount))
+      : null;
     const expiresAt = Math.floor(Number(value.expiresAt) || 0);
-    if (!threadId || eligibleCount < 1 || limit < 1 || expiresAt <= Date.now()) return null;
-    const plan = { threadId, scope, limit, eligibleCount, expiresAt };
+    if (!threadId || (scope !== 'all' && !(limit > 0)) || expiresAt <= Date.now()) return null;
+    const plan = {
+      version: PLAN_VERSION,
+      threadId,
+      scope,
+      limit,
+      detectedCount,
+      expiresAt,
+    };
     return Object.freeze({ ...plan, reviewedDigest: planDigest(plan) });
   }
 
   function validatePlan(value) {
+    if (Number(value?.version) !== PLAN_VERSION) return null;
     const normalized = createPlan(value);
     return normalized && normalized.reviewedDigest === String(value?.reviewedDigest || '')
       ? normalized
@@ -373,26 +399,121 @@
     return false;
   }
 
-  function candidateRows(scroller) {
+  function stableMessageKey(row) {
+    // Only identifiers whose attribute names explicitly describe a message are
+    // safe across Instagram's recycled virtual-list nodes. Generic `id` and
+    // `data-id` values often identify the physical slot, not the logical DM.
+    for (const attribute of ['data-message-id', 'data-item-id']) {
+      const value = String(row?.getAttribute?.(attribute) || '').trim();
+      if (value) return `${attribute}:${value}`;
+    }
+    for (const element of row?.querySelectorAll?.('[data-message-id], [data-item-id]') || []) {
+      for (const attribute of ['data-message-id', 'data-item-id']) {
+        const value = String(element?.getAttribute?.(attribute) || '').trim();
+        if (value) return `${attribute}:${value}`;
+      }
+    }
+    return null;
+  }
+
+  function messagePositionFingerprint(row, traversal = null) {
+    const scroller = traversal?.scroller || row?.parentElement;
+    const rowRect = row?.getBoundingClientRect?.();
+    const scrollerRect = scroller?.getBoundingClientRect?.();
+    const siblings = [...(row?.parentElement?.children || [])];
+    const ordinal = siblings.indexOf(row);
+    const scrollTop = Number(scroller?.scrollTop);
+    const relativeTop = Number(rowRect?.top) - Number(scrollerRect?.top);
+    return [
+      Number.isFinite(scrollTop) ? Math.round(scrollTop) : '',
+      Number.isFinite(relativeTop) ? Math.round(relativeTop) : '',
+      ordinal >= 0 ? ordinal : '',
+    ].join(':');
+  }
+
+  function genericMessageHint(row) {
+    for (const attribute of ['data-id', 'id']) {
+      const value = String(row?.getAttribute?.(attribute) || '').trim();
+      if (value) return `${attribute}:${value}`;
+    }
+    return '';
+  }
+
+  function messageFingerprint(row, traversal = null) {
+    const timestamp = String(
+      row?.querySelector?.('time[datetime]')?.getAttribute?.('datetime')
+      || row?.querySelector?.('[data-timestamp]')?.getAttribute?.('data-timestamp')
+      || '',
+    );
+    return digestText(JSON.stringify({
+      key: stableMessageKey(row),
+      genericHint: genericMessageHint(row),
+      position: messagePositionFingerprint(row, traversal),
+      timestamp,
+      text: preview(row),
+    }));
+  }
+
+  function processedMarkerMatches(row, traversal = null) {
+    const key = stableMessageKey(row);
+    if (key && traversal?.processedKeys?.has(key)) return true;
+    if (!row?.hasAttribute?.(DONE_ATTRIBUTE)) return false;
+    const marker = String(row.getAttribute?.(DONE_ATTRIBUTE) || '');
+    if (marker && marker === messageFingerprint(row, traversal)) return true;
+    // Instagram can recycle a virtualized row node for another message. A
+    // marker tied to the old content must not hide the newly mounted message.
+    row.removeAttribute?.(DONE_ATTRIBUTE);
+    return false;
+  }
+
+  function candidateRows(scroller, traversal = null) {
     const container = deepestMessageContainer(scroller);
     let rows = [...(container?.children || [])];
     if (!rows.length) {
       rows = [...(scroller?.querySelectorAll?.('[role="row"], [role="listitem"]') || [])];
     }
     return rows
-      .filter((row) => !row.hasAttribute?.(DONE_ATTRIBUTE))
+      .filter((row) => !processedMarkerMatches(row, traversal))
       .filter((row) => !row.hasAttribute?.(ACTIVE_ATTRIBUTE))
       .filter(hasMessageContent)
       .filter((row) => sentByCurrentUser(row, row.ownerDocument.defaultView));
   }
 
-  function orderedCandidates(scroller, order = 'oldest') {
-    const rows = candidateRows(scroller);
-    return order === 'newest' ? rows : rows.reverse();
+  function orderedCandidates(scroller, order = 'oldest', traversal = null) {
+    const rows = candidateRows(scroller, traversal);
+    const positioned = rows.map((row, index) => {
+      const rect = row?.getBoundingClientRect?.();
+      const top = Number(rect?.top);
+      const bottom = Number(rect?.bottom);
+      return {
+        index,
+        position: Number.isFinite(top) && Number.isFinite(bottom)
+          ? (top + bottom) / 2
+          : Number.NaN,
+        row,
+      };
+    });
+    const distinctPositions = new Set(
+      positioned.filter(({ position }) => Number.isFinite(position)).map(({ position }) => position),
+    );
+    if (distinctPositions.size > 1) {
+      const direction = order === 'newest' ? -1 : 1;
+      return positioned
+        .sort((left, right) => {
+          if (!Number.isFinite(left.position)) return 1;
+          if (!Number.isFinite(right.position)) return -1;
+          return ((left.position - right.position) * direction) || (left.index - right.index);
+        })
+        .map(({ row }) => row);
+    }
+    // Geometry can be unavailable in detached/unit-test DOM. Fall back to the
+    // visual ordering implied by the container's flex direction.
+    const newestFirst = reversedLayout(scroller) ? rows : [...rows].reverse();
+    return order === 'newest' ? newestFirst : newestFirst.reverse();
   }
 
-  function firstVisibleCandidate(scroller, order = 'oldest') {
-    const rows = orderedCandidates(scroller, order);
+  function firstVisibleCandidate(scroller, order = 'oldest', traversal = null) {
+    const rows = orderedCandidates(scroller, order, traversal);
     return rows.find(isVisible) || null;
   }
 
@@ -666,7 +787,6 @@
         authorizationExpiresAt,
       );
       if (!success) throw new Error('The message was not confirmed as removed.');
-      row.setAttribute(DONE_ATTRIBUTE, '');
       return true;
     } finally {
       row.removeAttribute(ACTIVE_ATTRIBUTE);
@@ -713,7 +833,7 @@
   async function loadAllHistory(context, signal) {
     const { root, scroller } = context;
     if (!scroller || scroller.scrollHeight <= scroller.clientHeight + 50) {
-      return { complete: true, eligibleCount: candidateRows(scroller || root).length, pagesChecked: 0 };
+      return { complete: true, detectedCount: candidateRows(scroller || root).length, pagesChecked: 0 };
     }
     const reversed = reversedLayout(scroller);
     const startedAt = Date.now();
@@ -785,7 +905,9 @@
     );
     return {
       complete: quietRounds >= 10,
-      eligibleCount: progress.maxRows,
+      // Instagram virtualizes long conversations. This is only the largest
+      // simultaneously mounted sent-message window, never a proven total.
+      detectedCount: progress.maxRows,
       pagesChecked,
     };
   }
@@ -808,33 +930,230 @@
     return isVisible(row);
   }
 
-  async function nextSentRow(context, signal, order = 'oldest') {
-    const { scroller } = context;
-    // Leave a comfortably visible row in place. Re-centering every message made
-    // the processing phase continually fight the thread position. Partially
-    // clipped rows are still exposed before hover so their menu affordance is
-    // reachable on other platforms and font stacks.
-    const visible = firstVisibleCandidate(scroller, order);
-    if (visible) {
-      if (await exposeRow(visible, scroller, signal)) return visible;
+  function createTraversal(order = 'newest') {
+    return {
+      order: order === 'oldest' ? 'oldest' : 'newest',
+      scroller: null,
+      lastScrollTop: null,
+      lastScrollHeight: 0,
+      lastSearchGrew: false,
+      lastSearchIncomplete: false,
+      lastSearchSteps: 0,
+      processedKeys: new Set(),
+    };
+  }
+
+  function traversalContext(context, traversal) {
+    if (!context?.threadId) return context;
+    const current = threadContext();
+    if (!current.ok || current.threadId !== context.threadId) {
+      throw new Error(current.reason || 'The reviewed conversation changed.');
     }
+    if (traversal.scroller !== current.scroller) {
+      traversal.scroller = current.scroller;
+      traversal.lastScrollTop = null;
+      traversal.lastScrollHeight = Number(current.scroller?.scrollHeight) || 0;
+    }
+    return current;
+  }
+
+  function traversalBounds(scroller, order) {
+    const reversed = reversedLayout(scroller);
+    const oldest = oldestOffset(scroller, reversed);
+    const newest = newestOffset(scroller, reversed);
+    const start = order === 'oldest' ? oldest : newest;
+    const end = order === 'oldest' ? newest : oldest;
+    return { start, end, direction: end >= start ? 1 : -1 };
+  }
+
+  function oldestBoundarySnapshot(context) {
+    const scroller = context?.scroller;
+    const rows = [...(deepestMessageContainer(scroller)?.children || [])];
+    const rowEvidence = rows.map((row, index) => ({
+      genericHint: genericMessageHint(row),
+      index,
+      key: stableMessageKey(row),
+      text: visibleText(row).slice(0, 120),
+      timestamp: String(
+        row?.querySelector?.('time[datetime]')?.getAttribute?.('datetime')
+        || row?.querySelector?.('[data-timestamp]')?.getAttribute?.('data-timestamp')
+        || '',
+      ),
+    }));
+    return {
+      height: Number(scroller?.scrollHeight) || 0,
+      loaderVisible: Boolean(visibleLoader(context?.root)),
+      oldest: traversalBounds(scroller, 'oldest').start,
+      rowCount: rows.length,
+      rowSignature: digestText(JSON.stringify(rowEvidence)),
+      scroller,
+    };
+  }
+
+  async function proveStableOldestBoundary(
+    context,
+    traversal,
+    signal,
+    authorizationExpiresAt,
+  ) {
+    const startedAt = Date.now();
+    let stableKey = '';
+    let stableSince = 0;
+
+    while (Date.now() - startedAt < MAX_HISTORY_CHECK_MS) {
+      requireAuthorization(context.threadId, authorizationExpiresAt);
+      const current = traversalContext(context, traversal);
+      const before = oldestBoundarySnapshot(current);
+      current.scroller.scrollTop = before.oldest;
+      dispatch(current.scroller, new Event('scroll', { bubbles: true }));
+      await delay(OLDEST_BOUNDARY_POLL_MS, signal);
+
+      requireAuthorization(context.threadId, authorizationExpiresAt);
+      const refreshed = traversalContext(context, traversal);
+      const after = oldestBoundarySnapshot(refreshed);
+      const atOldest = Math.abs(Number(after.scroller?.scrollTop) - after.oldest) <= 1;
+      const replaced = before.scroller !== after.scroller;
+      const changed = replaced
+        || before.height !== after.height
+        || before.rowCount !== after.rowCount
+        || before.rowSignature !== after.rowSignature;
+      const nextKey = [
+        after.height,
+        after.oldest,
+        after.rowCount,
+        after.rowSignature,
+      ].join(':');
+
+      if (!atOldest || after.loaderVisible || changed) {
+        stableKey = '';
+        stableSince = 0;
+        continue;
+      }
+      if (stableKey !== nextKey) {
+        stableKey = nextKey;
+        stableSince = Date.now();
+        continue;
+      }
+      if (Date.now() - stableSince >= OLDEST_BOUNDARY_STABLE_MS) {
+        traversal.scroller = after.scroller;
+        traversal.lastScrollTop = after.oldest;
+        traversal.lastScrollHeight = after.height;
+        traversal.lastSearchGrew = false;
+        traversal.lastSearchIncomplete = false;
+        traversal.lastSearchSteps = 0;
+        return refreshed;
+      }
+    }
+
+    throw new Error('The oldest conversation boundary could not be proven before the safety timeout.');
+  }
+
+  function markProcessedRow(row, traversal, keyBeforeRemoval) {
+    if (keyBeforeRemoval) traversal.processedKeys.add(keyBeforeRemoval);
+    // Tie the marker to the postcondition DOM, not merely the physical node.
+    // If Instagram recycles the node for a different message, the fingerprint
+    // changes and candidateRows removes the stale marker.
+    row.setAttribute?.(DONE_ATTRIBUTE, messageFingerprint(row, traversal));
+  }
+
+  function resetTraversalAfterRemoval(traversal, scroller, before = {}) {
+    const scrollerChanged = Boolean(before.scroller && before.scroller !== scroller);
+    const height = Number(scroller?.scrollHeight) || 0;
+    const previousHeight = Number(before.scrollHeight);
+    const shrank = Number.isFinite(previousHeight) && height + 1 < previousHeight;
+    traversal.scroller = scroller;
+    traversal.lastScrollTop = scrollerChanged || shrank
+      ? null
+      : Number.isFinite(Number(scroller?.scrollTop))
+        ? Number(scroller.scrollTop)
+        : traversal.lastScrollTop;
+    traversal.lastScrollHeight = height;
+    traversal.lastSearchGrew = false;
+    traversal.lastSearchIncomplete = false;
+    traversal.lastSearchSteps = 0;
+  }
+
+  async function nextSentRow(context, signal, order = 'newest', traversal = createTraversal(order)) {
+    traversal.order = order === 'oldest' ? 'oldest' : 'newest';
+    traversal.lastSearchGrew = false;
+    traversal.lastSearchIncomplete = false;
+    traversal.lastSearchSteps = 0;
+
+    let current = traversalContext(context, traversal);
+    let scroller = current.scroller;
+    if (traversal.scroller !== scroller) {
+      traversal.scroller = scroller;
+      traversal.lastScrollTop = null;
+      traversal.lastScrollHeight = Number(scroller?.scrollHeight) || 0;
+    }
+    const startingHeight = Number(scroller?.scrollHeight) || 0;
+    if (traversal.lastScrollHeight && startingHeight + 1 < traversal.lastScrollHeight) {
+      // A successful Unsend can shrink the scroll range. Resume from the
+      // requested edge instead of retaining an offset outside the new range.
+      traversal.lastScrollTop = null;
+    }
+    traversal.lastScrollHeight = startingHeight;
+
+    // Leave a comfortably visible row in place. This handles short threads and
+    // the next mounted message after Instagram replaces a virtualized window.
+    const visible = firstVisibleCandidate(scroller, traversal.order, traversal);
+    if (visible && await exposeRow(visible, scroller, signal)) return visible;
+    const [mounted] = orderedCandidates(scroller, traversal.order, traversal);
+    if (mounted && await exposeRow(mounted, scroller, signal)) return mounted;
 
     for (let pass = 0; pass < MAX_SCAN_PASSES; pass += 1) {
       if (signal.aborted) return null;
-      const [row] = orderedCandidates(scroller, order);
-      if (row) {
-        if (await exposeRow(row, scroller, signal)) return row;
-        // Still hidden: hand it back anyway on the final pass so a row that
-        // simply cannot be scrolled into view is attempted rather than skipped.
-        if (pass === MAX_SCAN_PASSES - 1) return row;
+      const stop = context.threadId ? sessionStop(context.threadId) : null;
+      if (stop) throw new Error(stop);
+      current = traversalContext(context, traversal);
+      scroller = current.scroller;
+      const heightBeforePass = Number(scroller?.scrollHeight) || 0;
+      const { start, end, direction } = traversalBounds(scroller, traversal.order);
+      const range = Math.abs(end - start);
+      // Never jump farther than one third of the mounted viewport. Instagram's
+      // virtual list can recycle every row between scroll events; overlapping
+      // windows prevent sparse sent messages from falling between coarse steps.
+      const viewportStep = Math.floor((Number(scroller?.clientHeight) || 90) / 3);
+      const step = range < 500 ? 30 : Math.max(30, Math.min(150, viewportStep));
+      let position = pass === 0 && Number.isFinite(traversal.lastScrollTop)
+        ? Math.max(Math.min(traversal.lastScrollTop, Math.max(start, end)), Math.min(start, end))
+        : start;
+
+      while (traversal.lastSearchSteps < MAX_SCROLL_STEPS_PER_SEARCH) {
+        if (signal.aborted) return null;
+        const stepStop = context.threadId ? sessionStop(context.threadId) : null;
+        if (stepStop) throw new Error(stepStop);
+        traversal.lastScrollTop = position;
+        scroller.scrollTop = position;
+        dispatch(scroller, new Event('scroll', { bubbles: true }));
+        traversal.lastSearchSteps += 1;
+        await delay(5, signal);
+
+        const row = firstVisibleCandidate(scroller, traversal.order, traversal);
+        if (row && await exposeRow(row, scroller, signal)) {
+          traversal.lastScrollHeight = Number(scroller?.scrollHeight) || heightBeforePass;
+          return row;
+        }
+        if (position === end) break;
+        position = direction > 0
+          ? Math.min(end, position + step)
+          : Math.max(end, position - step);
       }
-      // Nothing actionable is visible here; return to the reviewed edge.
-      const reversed = reversedLayout(scroller);
-      scroller.scrollTop = order === 'newest'
-        ? newestOffset(scroller, reversed)
-        : oldestOffset(scroller, reversed);
-      dispatch(scroller, new Event('scroll', { bubbles: true }));
-      await delay(120, signal);
+
+      const heightAfterPass = Number(scroller?.scrollHeight) || 0;
+      if (heightAfterPass > heightBeforePass + 1) traversal.lastSearchGrew = true;
+      if (heightAfterPass + 1 < heightBeforePass) traversal.lastScrollTop = null;
+      traversal.lastScrollHeight = heightAfterPass;
+      if (traversal.lastSearchSteps >= MAX_SCROLL_STEPS_PER_SEARCH && position !== end) {
+        // Resume here on the next bounded search instead of repeatedly scanning
+        // only the first 300k pixels of an unusually tall conversation.
+        traversal.lastSearchIncomplete = true;
+        return null;
+      }
+      // A new pass begins at the requested edge. This is intentional: the DOM
+      // can shrink, grow, or swap nodes after any edge-triggered page load.
+      traversal.lastScrollTop = null;
+      await delay(30, signal);
     }
     return null;
   }
@@ -880,29 +1199,22 @@
     });
     try {
       const history = await loadAllHistory(context, controller.signal);
-      const resolvedCount = history.eligibleCount;
-      const capped = resolvedCount > MAX_PLAN_MESSAGES;
-      const eligibleCount = Math.min(MAX_PLAN_MESSAGES, resolvedCount);
-      const complete = history.complete && !capped;
+      const detectedCount = Math.min(MAX_PLAN_MESSAGES, history.detectedCount);
       const result = Object.freeze({
         ready: true,
         threadId: context.threadId,
-        eligibleCount,
-        complete,
-        capped,
+        detectedCount,
+        countExact: false,
+        complete: history.complete,
         pagesChecked: history.pagesChecked,
-        reason: complete
-          ? 'Full conversation check complete.'
-          : capped
-            ? `More than ${MAX_PLAN_MESSAGES} eligible sent messages were found. No destructive plan was created.`
-            : 'The bounded history check reached its page limit before completeness could be proven.',
+        reason: history.complete
+          ? `At least ${detectedCount} sent message${detectedCount === 1 ? '' : 's'} detected. Instagram may keep other messages outside the mounted window.`
+          : 'The bounded read-only check ended before the oldest history boundary was proven.',
         checkedAt: new Date().toISOString(),
       });
       publish({
         status: 'reviewed',
-        message: complete
-          ? `${eligibleCount} sent message${eligibleCount === 1 ? '' : 's'} found.`
-          : result.reason,
+        message: result.reason,
         current: null,
         canStop: false,
         finishedAt: result.checkedAt,
@@ -931,7 +1243,7 @@
     if (!plan) {
       publish({
         status: 'error',
-        message: 'A fresh, count-specific reviewed plan is required before Unsend can start.',
+        message: 'A fresh, thread-specific reviewed plan is required before Unsend can start.',
         canStop: false,
         finishedAt: new Date().toISOString(),
       });
@@ -953,46 +1265,78 @@
       return snapshot();
     }
 
+    const now = Date.now();
+    for (const [digest, expiresAt] of consumedPlanDigests) {
+      if (expiresAt <= now) consumedPlanDigests.delete(digest);
+    }
+    if (consumedPlanDigests.has(plan.reviewedDigest)) {
+      publish({
+        status: 'error',
+        message: 'This reviewed Unsend plan was already used.',
+        canStop: false,
+        finishedAt: new Date().toISOString(),
+      });
+      return snapshot();
+    }
+    consumedPlanDigests.set(plan.reviewedDigest, plan.expiresAt);
+    while (consumedPlanDigests.size > 128) {
+      consumedPlanDigests.delete(consumedPlanDigests.keys().next().value);
+    }
+
     const controller = new AbortController();
     activeController = controller;
     const signal = controller.signal;
     const maxFailures = Math.max(1, Math.min(10, Number(options.maxConsecutiveFailures) || DEFAULT_MAX_FAILURES));
     const authorizationExpiresAt = plan.expiresAt;
-    const maxMessages = plan.limit;
+    // "all" is intentionally not bound to a virtual-DOM count. This ceiling
+    // is only a catastrophic-loop guard, not a daily or user-facing quota.
+    const maxMessages = plan.limit === null ? MAX_PLAN_MESSAGES : plan.limit;
+    const order = plan.scope === 'oldest' ? 'oldest' : 'newest';
+    const traversal = createTraversal(order);
     let processed = 0;
     let failed = 0;
+    let retryAttempts = 0;
     let consecutiveFailures = 0;
     let lastUnsendAt = 0;
+    let stableEmptyPasses = 0;
+    let emptyGrowthRounds = 0;
+    let exhausted = false;
 
     publish({
       status: 'preparing',
       operation: 'unsend',
       processed: 0,
       failed: 0,
+      retryAttempts: 0,
       consecutiveFailures: 0,
       current: null,
-      message: 'Loading the conversation…',
+      message: 'Finding sent messages…',
       startedAt: new Date().toISOString(),
       finishedAt: null,
       canStop: true,
     });
 
     try {
-      const history = await loadAllHistory(context, signal);
-      const resolvedCount = history.eligibleCount;
-      if (!history.complete || resolvedCount > MAX_PLAN_MESSAGES) {
-        throw new Error('The full conversation could not be revalidated within the bounded history check.');
+      let initialContext = traversalContext(context, traversal);
+      if (plan.scope === 'oldest') {
+        publish({
+          status: 'preparing',
+          current: null,
+          message: 'Finding the oldest message boundary…',
+        });
+        initialContext = await proveStableOldestBoundary(
+          context,
+          traversal,
+          signal,
+          authorizationExpiresAt,
+        );
+      } else {
+        const initialBounds = traversalBounds(initialContext.scroller, order);
+        initialContext.scroller.scrollTop = initialBounds.start;
+        dispatch(initialContext.scroller, new Event('scroll', { bubbles: true }));
+        await delay(80, signal);
       }
-      const currentEligibleCount = resolvedCount;
-      if (currentEligibleCount !== plan.eligibleCount) {
-        throw new Error('The eligible sent-message count changed after review. Check the conversation again.');
-      }
-      if (plan.scope === 'newest') {
-        const reversed = reversedLayout(context.scroller);
-        context.scroller.scrollTop = newestOffset(context.scroller, reversed);
-        dispatch(context.scroller, new Event('scroll', { bubbles: true }));
-        await delay(100, signal);
-      }
+
       while (!signal.aborted && processed < maxMessages && consecutiveFailures < maxFailures) {
         if (authorizationExpiresAt <= Date.now()) {
           throw new Error('Live authorization expired before the next message.');
@@ -1009,12 +1353,45 @@
         const row = await nextSentRow(
           currentContext,
           signal,
-          plan.scope === 'newest' ? 'newest' : 'oldest',
+          order,
+          traversal,
         );
         if (!row) {
-          throw new Error('Instagram refreshed the conversation before the next reviewed message could be found. Check the conversation again.');
+          if (traversal.lastSearchGrew || traversal.lastSearchIncomplete) {
+            emptyGrowthRounds += 1;
+            if (emptyGrowthRounds > MAX_EMPTY_GROWTH_ROUNDS) {
+              throw new Error('The conversation kept changing before a stable end could be reached.');
+            }
+            stableEmptyPasses = 0;
+            publish({
+              status: 'preparing',
+              current: null,
+              message: 'Checking newly loaded messages…',
+            });
+            await delay(120, signal);
+            continue;
+          }
+          stableEmptyPasses += 1;
+          if (stableEmptyPasses < STABLE_EMPTY_PASSES) {
+            publish({
+              status: 'preparing',
+              current: null,
+              message: 'Checking for more sent messages…',
+            });
+            await delay(160, signal);
+            continue;
+          }
+          exhausted = true;
+          break;
         }
+        stableEmptyPasses = 0;
+        emptyGrowthRounds = 0;
         const label = preview(row);
+        const keyBeforeRemoval = stableMessageKey(row);
+        const traversalBeforeRemoval = {
+          scroller: currentContext.scroller,
+          scrollHeight: Number(currentContext.scroller?.scrollHeight) || 0,
+        };
         const elapsed = Date.now() - lastUnsendAt;
         const wait = lastUnsendAt
           ? Math.max(0, randomDelay(options.minDelayMs, options.maxDelayMs) - elapsed)
@@ -1032,36 +1409,62 @@
         }
 
         publish({ status: 'running', current: label, message: `Unsending message ${processed + 1}…` });
+        let removalVerified = false;
         try {
           // unsendRow already proves the removal: the confirmation dialog
           // closed and the row either went away or lost its content and menu.
           // Re-checking isConnected here rejected every success, because
           // Instagram leaves an "unsent" placeholder row in the thread.
           await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+          removalVerified = true;
+        } catch (error) {
+          if (signal.aborted) throw error;
+          retryAttempts += 1;
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= maxFailures) failed += 1;
+          const backoff = Math.min(15_000, 1_000 * (2 ** (consecutiveFailures - 1)));
+          publish({
+            status: 'waiting',
+            failed,
+            retryAttempts,
+            consecutiveFailures,
+            current: label,
+            message: consecutiveFailures >= maxFailures
+              ? `Could not remove this message after ${consecutiveFailures} attempts.`
+              : `Could not remove this message. Retrying in ${Math.round(backoff / 1_000)}s (${consecutiveFailures}/${maxFailures})…`,
+          });
+          if (consecutiveFailures >= maxFailures) break;
+          await delay(backoff, signal);
+          continue;
+        }
+        if (removalVerified) {
           processed += 1;
           consecutiveFailures = 0;
           lastUnsendAt = Date.now();
+          markProcessedRow(row, traversal, keyBeforeRemoval);
+          const afterRemovalContext = threadContext();
+          if (!afterRemovalContext.ok || afterRemovalContext.threadId !== expectedThreadId) {
+            throw new Error(afterRemovalContext.reason || 'The reviewed conversation changed.');
+          }
+          resetTraversalAfterRemoval(traversal, afterRemovalContext.scroller, traversalBeforeRemoval);
+          if (typeof options.onVerifiedRemoval === 'function') {
+            await options.onVerifiedRemoval(Object.freeze({
+              processed,
+              failed,
+              retryAttempts,
+              threadId: expectedThreadId,
+              reviewedDigest: plan.reviewedDigest,
+            }));
+          }
           publish({
             status: 'running',
             processed,
             failed,
+            retryAttempts,
             consecutiveFailures,
             current: null,
             message: `${processed} message${processed === 1 ? '' : 's'} unsent`,
           });
-        } catch (error) {
-          if (signal.aborted) throw error;
-          failed += 1;
-          consecutiveFailures += 1;
-          const backoff = Math.min(60_000, 3_000 * (2 ** (consecutiveFailures - 1)));
-          publish({
-            status: 'waiting',
-            failed,
-            consecutiveFailures,
-            current: label,
-            message: `Message could not be removed. Retrying after ${Math.round(backoff / 1_000)}s (${consecutiveFailures}/${maxFailures})…`,
-          });
-          await delay(backoff, signal);
         }
       }
 
@@ -1085,10 +1488,23 @@
           canStop: false,
           finishedAt: new Date().toISOString(),
         });
+      } else if (plan.limit === null && processed >= MAX_PLAN_MESSAGES && !exhausted) {
+        publish({
+          status: 'error',
+          message: `Safety stop after ${processed} verified removals. Start a fresh run to continue.`,
+          processed,
+          failed,
+          current: null,
+          canStop: false,
+          finishedAt: new Date().toISOString(),
+        });
       } else {
+        const shortfall = plan.limit !== null && processed < plan.limit && exhausted;
         publish({
           status: 'completed',
-          message: `Done. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
+          message: shortfall
+            ? `Done. ${processed} message${processed === 1 ? '' : 's'} unsent; no more sent messages were found.`
+            : `Done. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
           processed,
           failed,
           current: null,
@@ -1147,18 +1563,29 @@
   const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe };
   if (globalThis.__instaAioTestHooks === true) {
     publicApi.__test = Object.freeze({
+      candidateRows,
+      createTraversal,
       deepestMessageContainer,
       advanceHistoryProgress,
       actionButton,
       currentThreadId,
       hasMessageContent,
       isVisible,
+      markProcessedRow,
+      messageFingerprint,
       nextSentRow,
+      oldestBoundarySnapshot,
+      orderedCandidates,
+      proveStableOldestBoundary,
       removalEvidence,
       removalProven,
       reversedLayout,
       rowNeedsReposition,
+      resetTraversalAfterRemoval,
       sentByCurrentUser,
+      stableMessageKey,
+      traversalBounds,
+      validatePlan,
     });
   }
   Object.defineProperty(globalThis, 'InstaAioDmThreadUnsender', {

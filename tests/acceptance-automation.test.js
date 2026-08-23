@@ -112,7 +112,7 @@ test('Chrome acceptance loads and pairs the real extension through the restricte
   assert.match(workflow, /Upload tested browser companions/);
   assert.match(
     workflow,
-    /insta-aio-browser-companions-\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
+    /insta-toolbox-browser-companions-\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
   );
   assert.match(workflow, /dist\/insta-aio-companion-\*\.zip/);
   assert.match(workflow, /userscripts\/insta-aio-companion\.user\.js/);
@@ -127,7 +127,10 @@ test('CI checks reviewed overlay baselines on their native Windows platform', ()
   assert.match(workflow, /runs-on: windows-latest/);
   assert.match(workflow, /pnpm run qa:overlay:check/);
   assert.match(workflow, /INSTA_AIO_OVERLAY_QA_CI_WINDOWS_RASTER_TOLERANCE: "1"/);
-  assert.match(workflow, /Upload failed overlay comparison evidence/);
+  assert.match(workflow, /Upload failed Windows rendering evidence/);
+  assert.match(workflow, /pnpm run qa:browser:check/);
+  assert.match(workflow, /release-checksums:/);
+  assert.match(workflow, /node scripts\/generate-release-checksums\.mjs/);
   assert.match(workflow, /if: failure\(\)/);
   assert.doesNotMatch(workflow, /qa:overlay:update/);
 });

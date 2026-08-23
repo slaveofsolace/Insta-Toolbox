@@ -26,29 +26,82 @@
   <div id="portal" class="hidden"></div>
 
   <script>
-    // Minimal stand-in for Instagram's thread: column-reverse layout, sent
-    // messages right-aligned, a menu button revealed on hover, a menu rendered
-    // into a portal without role="menu", a confirmation dialog, and rows that
-    // remain in place as an "unsent" tombstone after removal.
-    const thread = document.getElementById('thread');
+    // Instagram mounts only a small moving window of a long conversation. This
+    // fixture deliberately replaces those row nodes as scrollTop changes, so a
+    // mounted-row high-water mark cannot masquerade as the conversation total.
+    let thread = document.getElementById('thread');
     const portal = document.getElementById('portal');
+    const virtualRange = 900;
+    const windowSize = 4;
+    let virtualScrollTop = 0;
+    let delayedWindowUsed = false;
+    let newMessageInjected = false;
+    let oldestGrowthScheduled = false;
+    const sentMessageIndexes = new Set([2, 9, 17, 24, 32, 40]);
+    const logicalMessages = Array.from({ length: 42 }, (_, offset) => {
+      const index = 42 - offset;
+      return {
+        id: `fixture-message-${index}`,
+        index,
+        mine: sentMessageIndexes.has(index),
+        unsent: false,
+      };
+    });
+    // Begin with messages 42..10 loaded. Reaching that provisional oldest edge
+    // asynchronously loads messages 9..1 and replaces the scroller, matching
+    // Instagram's paginated history behavior.
+    let loadedCount = 33;
     globalThis.fixtureUnsentCount = 0;
+    globalThis.fixtureLogicalMessageCount = logicalMessages.length;
     globalThis.fixtureCancelClicks = 0;
     globalThis.fixtureDecoyUnsendClicks = 0;
+    globalThis.fixtureRenderedWindows = 0;
+    globalThis.fixtureScrollerReplacements = 0;
+    globalThis.fixtureDelayedWindows = 0;
+    globalThis.fixtureNewMessages = 0;
+    globalThis.fixtureInitialScrollHeight = virtualRange + 220;
+    globalThis.fixtureMountedSentHighWater = 0;
+    globalThis.fixtureOpenedIds = [];
+    globalThis.fixtureConfirmedIds = [];
+    globalThis.fixtureOldestBoundaryExpandedAt = null;
+    globalThis.fixtureFirstMenuOpenedAt = null;
+    globalThis.fixtureMenuOpenedBeforeOldestExpansion = false;
+    globalThis.fixtureRemainingSentIds = () => logicalMessages
+      .filter((message) => message.mine && !message.unsent)
+      .map((message) => message.id);
     document.getElementById('stale-unsend-decoy').addEventListener('click', () => {
       globalThis.fixtureDecoyUnsendClicks += 1;
     });
 
-    function makeRow(index, mine) {
+    function currentRange() {
+      return Math.max(
+        620,
+        virtualRange
+          - ((logicalMessages.length - loadedCount) * 30)
+          + (globalThis.fixtureNewMessages * 30)
+          - (globalThis.fixtureUnsentCount * 25),
+      );
+    }
+
+    function loadedMessages() {
+      return logicalMessages.slice(0, Math.min(loadedCount, logicalMessages.length));
+    }
+
+    function makeRow(message) {
       const row = document.createElement('div');
-      row.className = `row ${mine ? 'mine' : 'theirs'}`;
+      const sentByMe = message.mine && !message.unsent;
+      row.className = `row ${sentByMe ? 'mine' : 'theirs'}`;
       row.setAttribute('role', 'row');
+      row.setAttribute('data-message-id', message.id);
+      row.setAttribute('data-sent-by-me', String(sentByMe));
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
       bubble.setAttribute('dir', 'auto');
-      bubble.textContent = `${mine ? 'Sent' : 'Received'} message ${index}`;
+      bubble.textContent = message.unsent
+        ? 'You unsent a message'
+        : `${message.mine ? 'Sent' : 'Received'} message ${message.index}`;
       row.append(bubble);
-      if (mine) {
+      if (sentByMe) {
         const button = document.createElement('div');
         button.className = 'menu-btn';
         button.setAttribute('role', 'button');
@@ -56,7 +109,7 @@
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('aria-label', 'See more options for message');
         button.append(svg);
-        button.addEventListener('click', () => openMenu(row));
+        button.addEventListener('click', () => openMenu(row, message.id));
         row.append(button);
       }
       row.addEventListener('pointerover', () => row.classList.add('hovered'));
@@ -65,12 +118,76 @@
       return row;
     }
 
-    // Newest first, matching column-reverse rendering.
-    for (let index = 12; index >= 1; index -= 1) {
-      thread.append(makeRow(index, index % 2 === 1));
+    function renderWindow() {
+      const range = currentRange();
+      const ratio = Math.min(1, Math.abs(virtualScrollTop) / range);
+      const available = loadedMessages();
+      const start = Math.min(
+        available.length - windowSize,
+        Math.floor(ratio * (available.length - windowSize)),
+      );
+      const mounted = available.slice(start, start + windowSize);
+      thread.replaceChildren(...mounted.map(makeRow));
+      globalThis.fixtureRenderedWindows += 1;
+      globalThis.fixtureMountedSentHighWater = Math.max(
+        globalThis.fixtureMountedSentHighWater,
+        mounted.filter((message) => message.mine && !message.unsent).length,
+      );
     }
 
-    function openMenu(row) {
+    function bindScroller(element) {
+      Object.defineProperties(element, {
+        clientHeight: { configurable: true, get: () => 220 },
+        scrollHeight: {
+          configurable: true,
+          get: () => currentRange() + 220,
+        },
+        scrollTop: {
+          configurable: true,
+          get: () => virtualScrollTop,
+          set(value) {
+            const range = currentRange();
+            virtualScrollTop = Math.max(-range, Math.min(0, Number(value) || 0));
+            const ratio = Math.abs(virtualScrollTop) / range;
+            if (!oldestGrowthScheduled && loadedCount < logicalMessages.length && ratio >= 0.98) {
+              oldestGrowthScheduled = true;
+              setTimeout(() => {
+                loadedCount = logicalMessages.length;
+                globalThis.fixtureOldestBoundaryExpandedAt = performance.now();
+                replaceScroller();
+              }, 260);
+            }
+            if (!delayedWindowUsed && ratio > 0.45 && ratio < 0.7) {
+              delayedWindowUsed = true;
+              globalThis.fixtureDelayedWindows += 1;
+              setTimeout(renderWindow, 20);
+            } else {
+              renderWindow();
+            }
+          },
+        },
+      });
+    }
+
+    function replaceScroller() {
+      const replacement = document.createElement('div');
+      replacement.id = 'thread';
+      thread.replaceWith(replacement);
+      thread = replacement;
+      bindScroller(thread);
+      globalThis.fixtureScrollerReplacements += 1;
+      renderWindow();
+    }
+
+    bindScroller(thread);
+    renderWindow();
+
+    function openMenu(row, messageId) {
+      if (globalThis.fixtureFirstMenuOpenedAt === null) {
+        globalThis.fixtureFirstMenuOpenedAt = performance.now();
+        globalThis.fixtureMenuOpenedBeforeOldestExpansion = loadedCount < logicalMessages.length;
+      }
+      globalThis.fixtureOpenedIds.push(messageId);
       portal.classList.remove('hidden');
       portal.replaceChildren();
       for (const label of ['Reply', 'Forward', 'Unsend']) {
@@ -79,12 +196,12 @@
         const span = document.createElement('span');
         span.textContent = label;
         item.append(span);
-        if (label === 'Unsend') item.addEventListener('click', () => openDialog(row));
+        if (label === 'Unsend') item.addEventListener('click', () => openDialog(row, messageId));
         portal.append(item);
       }
     }
 
-    function openDialog(row) {
+    function openDialog(row, messageId) {
       portal.classList.add('hidden');
       const dialog = document.createElement('div');
       dialog.setAttribute('role', 'dialog');
@@ -99,14 +216,29 @@
       confirm.textContent = 'Unsend';
       confirm.addEventListener('click', () => {
         dialog.remove();
-        // Instagram leaves the row in place and replaces its content.
-        row.replaceChildren();
-        const note = document.createElement('div');
-        note.setAttribute('dir', 'auto');
-        note.textContent = 'You unsent a message';
-        row.append(note);
-        row.classList.remove('mine');
+        const message = logicalMessages.find((candidate) => candidate.id === messageId);
+        if (!message || message.unsent) return;
+        message.unsent = true;
         globalThis.fixtureUnsentCount += 1;
+        globalThis.fixtureConfirmedIds.push(messageId);
+        // A received message arriving during the run grows the virtual range
+        // but must not reset progress or be mistaken for a sent target.
+        if (!newMessageInjected) {
+          newMessageInjected = true;
+          logicalMessages.unshift({
+            id: 'fixture-new-received',
+            index: 43,
+            mine: false,
+            unsent: false,
+          });
+          loadedCount = Math.min(logicalMessages.length, loadedCount + 1);
+          globalThis.fixtureNewMessages += 1;
+          globalThis.fixtureLogicalMessageCount = logicalMessages.length;
+        }
+        // Replace mounted rows every time, and replace the scroller itself once
+        // to prove the runner reacquires Instagram's live virtual-list root.
+        if (globalThis.fixtureUnsentCount === 2) replaceScroller();
+        else renderWindow();
       });
       dialog.append(cancel, confirm);
       document.body.append(dialog);

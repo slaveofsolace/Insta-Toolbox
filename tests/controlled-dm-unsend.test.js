@@ -52,7 +52,7 @@ function liveJob(createdAt = 1_700_000_000_000) {
   });
 }
 
-test('prepares only one fresh, twice-confirmed, unchanged DM intent', () => {
+test('prepares only one fresh, reviewed, exactly confirmed DM request', () => {
   const job = liveJob();
   const state = { pendingDmIntent: null, dmArm: null };
   const prepared = prepareControlledDmIntent(job, pairing, state, 1_700_000_001_000);

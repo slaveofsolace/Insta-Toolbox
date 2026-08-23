@@ -90,7 +90,7 @@ test('clears legacy persisted authority even when the signed intent is unchanged
   assert.equal(state.pendingLiveIntent.username, 'other_target');
 });
 
-test('expired intent and arm state fail closed', () => {
+test('expired request and transient capability fail closed', () => {
   const state = {
     pendingLiveIntent: {
       jobId: 'job-1',

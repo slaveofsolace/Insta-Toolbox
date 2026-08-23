@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lockfile = await readFile(path.join(projectRoot, "pnpm-lock.yaml"), "utf8");
+const workspaceConfig = await readFile(path.join(projectRoot, "pnpm-workspace.yaml"), "utf8");
+const requireFromProject = createRequire(path.join(projectRoot, "package.json"));
 const expectedVersions = ["1.1.18", "2.1.4", "5.0.9"];
 
 for (const version of expectedVersions) {
@@ -23,7 +25,6 @@ for (const version of expectedVersions) {
     "node_modules",
     "brace-expansion",
   );
-  const requireFromProject = createRequire(path.join(projectRoot, "package.json"));
   const packageMetadata = requireFromProject(path.join(packageRoot, "package.json"));
   const moduleExports = requireFromProject(packageRoot);
   const expand = typeof moduleExports === "function" ? moduleExports : moduleExports.expand;
@@ -45,6 +46,43 @@ for (const version of expectedVersions) {
   assert.match(source, /EXPANSION_MAX_LENGTH/);
 }
 
+const patchedBuildDependencies = [
+  {
+    name: "fast-uri",
+    version: "3.1.5",
+    override: '"fast-uri@<3.1.5": 3.1.5',
+  },
+  {
+    name: "js-yaml",
+    version: "4.3.1",
+    override: '"js-yaml@<4.3.1": 4.3.1',
+  },
+];
+
+for (const dependency of patchedBuildDependencies) {
+  const escapedVersion = dependency.version.replaceAll(".", "\\.");
+  assert.match(
+    lockfile,
+    new RegExp(`^  ${dependency.name}@${escapedVersion}:$`, "m"),
+    `pnpm-lock.yaml must resolve ${dependency.name} ${dependency.version}`,
+  );
+  assert.ok(
+    workspaceConfig.includes(dependency.override),
+    `pnpm-workspace.yaml must retain the ${dependency.name} security override`,
+  );
+
+  const packageMetadata = requireFromProject(path.join(
+    projectRoot,
+    "node_modules",
+    ".pnpm",
+    `${dependency.name}@${dependency.version}`,
+    "node_modules",
+    dependency.name,
+    "package.json",
+  ));
+  assert.equal(packageMetadata.version, dependency.version);
+}
+
 console.log(
-  `Dependency verification passed: brace-expansion ${expectedVersions.join(", ")} enforce the CVE-2026-14257 length bound.`,
+  `Dependency verification passed: brace-expansion ${expectedVersions.join(", ")} enforce the CVE-2026-14257 length bound; fast-uri 3.1.5 and js-yaml 4.3.1 are patched.`,
 );

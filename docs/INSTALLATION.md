@@ -52,14 +52,14 @@ opens each profile when its turn comes and resolves the exact relationship
 control again before acting.
 
 **DM Unsend** — open a conversation and choose the always-visible **Unsend DMs**.
-Its first click performs the no-click history check when needed, then asks once
-for the exact thread and eligible count. All eligible sent messages is the
-default; `newest N` and `oldest N` are under Advanced. The runner processes only
-rows proven sent by the current account and uses the source-audited menu and
-confirmation sequence. The finite plan receives a one-use capability and uses
-the saved delay range. Incomplete or capped checks cannot
-create a live plan. Cancel preserves the check and changes nothing. This cannot
-be undone.
+It asks once for the exact open thread and selected scope, then starts one
+streaming traversal. All messages you sent is the default; `newest N` and
+`oldest N` are under Advanced. The runner processes only rows proven sent by the
+current account and uses the source-audited menu and confirmation sequence. The
+thread-bound capability is transient, checked before every message, and each
+verified removal is recorded immediately. **Check conversation** remains an
+optional read-only diagnostic; its estimate is not an authorization count.
+Cancel changes nothing. This cannot be undone.
 
 **Starting a finite action** — review the exact target list or conversation,
 then use the ordinary confirmation naming its action, targets or thread, and
@@ -68,9 +68,10 @@ phrase. The resulting non-persistent capability cannot be widened or replayed
 and is checked before every later item; expiry stops the run. Scanning,
 comparison, evidence reading, and no-click checks require no confirmation.
 
-Pacing lives under the gear icon: per-day caps and the delay range. Runs pause
+Pacing lives under the gear icon. Account runs pause
 longer every 20 items, stop on any rate limit or security check, skip targets
-that changed, and end immediately on **Stop**. A DM run is discarded on reload.
+that changed, and end immediately on **Stop**. DM Unsend uses adaptive one-to-two
+second action pacing and has no daily usage quota. A DM run is discarded on reload.
 An already-confirmed account run may continue across the profile navigations it
 causes in the same manager tab, but only while its original finite capability
 remains valid. Thread-wide Unsend is bound to the open thread and
@@ -79,10 +80,10 @@ accepts only the newly surfaced menu and confirmation controls for each item.
 Updates are automatic. Tampermonkey re-checks the same address and offers new
 versions as they are published.
 
-Confirm the Tampermonkey dashboard shows **2.0.0 or later** after updating. A
+Confirm the Tampermonkey dashboard shows **2.0.2 or later** after updating. A
 panel that asks you to enable live actions, arm a run, or type an authorization
-phrase is an older build. The current idle label is **Userscript mode · local
-controls**.
+phrase is an older build. The current panel has a compact **Insta Toolbox**
+header and a creator credit at the bottom.
 
 ### Using the exact CI-tested review bundle
 
@@ -96,8 +97,8 @@ reviewing an unmerged commit. It contains:
 - `insta-aio-companion.user.js` for Tampermonkey
 
 Use the artifact whose commit matches the reviewed pull-request head. After
-installation, reload Instagram and verify **Userscript mode · local controls**
-or the extension's equivalent live-off state before any read-only
+installation, reload Instagram and verify the compact **Insta Toolbox** header
+before any read-only
 walkthrough. The artifact proves which bytes passed CI; it does not replace the
 persistent-profile, authenticated, or human acceptance checks.
 
@@ -143,7 +144,7 @@ shared code into `dist/extension/lib/`, and the extension will not start without
 
 After rebuilding, reload the extension in the extension manager **and** reload
 any open Instagram tabs, or you will keep running the previous version.
-The extension manager should show **2.0.0 or later**.
+The extension manager should show **2.0.2 or later**.
 
 On a fresh install Instagram shows only a small launcher; opening it reveals the
 tools. On desktop, drag the header to move the panel and use the marked
@@ -172,12 +173,12 @@ appears only while the review remains current. Each account is opened, re-checke
 and acted on individually.
 
 **DM Unsend.** Open a conversation and choose **Unsend DMs**. The first click
-loads history without opening a message menu. After it proves a complete finite
-count, it defaults to all eligible sent messages and asks once for the exact
-thread and count. Choose `newest N` or `oldest N` under Advanced when needed.
-The 15-minute finite plan is checked before each message, protected against
-replay, and paced with the saved delay range. Incomplete or capped checks do not
-create a plan.
+asks once for the exact thread and selected scope, then starts one traversal
+without a preliminary count scan. It defaults to all messages you sent; choose
+`newest N` or `oldest N` under Advanced when needed. The 15-minute plan is
+checked before each message, protected against replay, and paced at one to two
+seconds after successful actions. The optional read-only check reports only a
+detected minimum and never gates the run.
 **Unsending cannot be undone.**
 
 ### Batch runs, pacing, and stopping

@@ -1,23 +1,21 @@
 # Overlay QA
 
-Last updated: 2026-08-08
+Last updated: 2026-08-23
 
 ## Current status
 
-The production-script overlay matrix is green on Windows. An explicit update
-generated 42 baselines, including fresh-install and filtered-checker proof, a
-centered/resized 62%-opacity proof, and the
-new review-before-start account-run state. The changed floating, Messages,
-checker, account-run, and DM states were inspected at full resolution after regeneration,
-and a subsequent non-updating check reproduced all semantic, geometry,
-collision, accessibility-tree, performance, and screenshot expectations. The
-ordinary CI workflow now runs `qa:overlay:check` on `windows-latest`; CI never
-updates baselines.
+The production-script overlay matrix is green on Windows. The 2.0.2 update
+generated and reviewed 43 baselines, including the compact header and credit,
+the immediate thread-bound Unsend action, authenticated Mutual Checker state,
+floating translucency, mobile layouts, forced colors, and 200% zoom. A
+subsequent non-updating check reproduced every semantic, geometry, collision,
+accessibility-tree, performance, and screenshot expectation. Ordinary CI runs
+`qa:overlay:check` on `windows-latest`; CI never updates baselines.
 
 The baseline set lives under
 `docs/evidence/overlay-ui-2026-08-02/after/win32`. Its manifest SHA-256 at the
 time of the reviewed update is
-`de314e261dc598a58b42afb7423ef6ce7438820b6deb9ee6a124d13354834da5`.
+`d431772bd8b08050a6050fb0ed2fab8b78323f4149a06556d28e6246fb1e7e46`.
 This establishes synthetic-fixture and Windows-rendering evidence only. It does
 not establish human visual or screen-reader acceptance, cross-platform pixel
 parity, persistent-profile acceptance, or authenticated Instagram selector
@@ -36,11 +34,11 @@ Harness interactions are limited to overlay controls in the synthetic fixture:
 - inspect visible fixture-message evidence;
 - open or collapse the overlay launcher for performance measurement.
 
-It does not arm an intent, invoke the content script's one-use page-control
-activator, open a destructive Instagram menu, or execute Follow, Unfollow, or
+It does not confirm a run, invoke the content script's one-use page-control
+capability, open a destructive Instagram menu, or execute Follow, Unfollow, or
 Unsend. The fixture contains controlled-action states only so the overlay can
-prove that `locked`, `ready`, `armed`, `expired`, and safe-stop presentations
-are accurate.
+prove that ready, exact-confirmation, collision, running-review, and safe-stop
+presentations are accurate.
 
 ## Commands
 
@@ -70,7 +68,7 @@ process-name kill.
 | `scripts/overlay-qa-scenarios.mjs` | Immutable viewport and state matrix plus state-specific semantic expectations. |
 | `scripts/run-overlay-qa.mjs` | Bounded Electron child lifecycle and disposable-profile cleanup. |
 | `scripts/overlay-qa.mjs` | Loopback server, production-script loading, state settlement, semantic/geometry/accessibility checks, screenshots, performance measurements, and baseline comparison. |
-| `tests/fixtures/overlay-preview.html` | Deterministic synthetic Instagram routes, dialogs, lists, messages, pairing modes, intents, and arms. |
+| `tests/fixtures/overlay-preview.html` | Deterministic synthetic Instagram routes, dialogs, lists, messages, pairing modes, confirmations, and transient capabilities. |
 
 The harness reads `dist/extension/manifest.json` after `build:extension` and
 loads its Instagram content scripts in manifest order. A separate mock overlay
@@ -78,29 +76,32 @@ component is not used.
 
 ## Required state coverage
 
-The 20 required states carry state-specific semantic expectations that run
+The 24 workflow states carry state-specific semantic expectations that run
 before any screenshot can be accepted:
 
 | Area | Scenarios |
 | --- | --- |
+| First use | `first-run-walkthrough` |
 | Profile | `profile-not-following-no-match`, `profile-following-queue-match`, `profile-ambiguous-safe-stop` |
-| Capture | `followers-first-capture`, `following-repeated-capture` |
-| Queue | `queue-locked`, `queue-exact-target-ready`, `queue-armed-countdown`, `queue-arm-expired` |
-| Messages | `messages-evidence-only`, `messages-exact-target-ready`, `messages-wrong-conversation`, `messages-armed-countdown` |
+| Mutual Checker | `followers-first-capture`, `following-repeated-capture`, `checker-filtered-results`, `checker-authenticated-read` |
+| Follow / Unfollow | `queue-action-first`, `queue-exact-target-review`, `queue-confirmation-collision`, `queue-compatible-source-options` |
+| DM Unsend | `messages-evidence-only`, `messages-permanent-primary`, `messages-thread-bound-primary`, `messages-confirmation-collision` |
 | Workspace | `workspace-unpaired`, `workspace-read-only`, `workspace-action-permission` |
 | Collision | `native-dialog-coexistence` |
 | Session safe stops | `session-expired`, `session-challenge`, `session-rate-limited` |
+| Floating panel | `toolbox-floating-translucent` |
 
 The semantic layer checks the exact selected view title and, by scenario:
 
 - target and relationship copy;
 - queue match or mismatch;
 - capture type, total, additions, and duplicate count;
-- live-gate title, badge, tone, control-disabled state, and immutable expiry;
-- message identity readiness, wrong-conversation lockout, and countdown state;
+- action, source, exact-target review, and collision state;
+- message identity readiness, permanent primary action, exact-thread guidance,
+  and confirmation collision state;
 - paired origin permission level and unpaired link state;
 - session/challenge/rate-limit safe-stop copy;
-- collision target and whether the strip reports an armed state or a visible
+- collision target and whether the strip reports a confirmed run or a visible
   native Instagram action surface.
 
 A screenshot with the wrong state is therefore a failure even if its geometry
@@ -108,12 +109,11 @@ and hash happen to match a previously captured image.
 
 ## Viewport and presentation matrix
 
-The full matrix contains 40 unique scenarios: the 20 required states above plus
-20 presentation and workflow variants.
+The full matrix contains 43 unique scenarios: the 24 workflow states above plus
+19 presentation variants.
 
 | Coverage | Scenario IDs |
 | --- | --- |
-| Floating layout and translucency | `toolbox-floating-translucent` |
 | Dark desktop | `profile-dark-desktop`, `queue-dark-desktop` |
 | Short laptop | `profile-short-laptop`, `queue-short-laptop-dark` |
 | Narrow tablet | `profile-narrow-tablet`, `messages-narrow-tablet-dark` |
@@ -143,9 +143,9 @@ After screenshot scenarios, the harness measures:
 The current thresholds are under 100 ms for each sampled idle task window,
 under 500 ms for the route transition, under 1,000 ms for the 2,000-item queue
 update, exactly one rendered current item, and fewer than 400 overlay nodes. The
-2026-08-08 Windows update measured 2.945 ms collapsed idle task time, 2.777 ms
-open idle task time, an 85.4 ms route transition, and a 23.2 ms 2,000-item queue
-update that rendered one current item with 380 overlay nodes.
+2026-08-23 Windows update measured 5.049 ms collapsed idle task time, 2.337 ms
+open idle task time, a 100.7 ms route transition, and a 37.3 ms 2,000-item queue
+update that rendered one current item with 357 overlay nodes.
 
 ## Evidence layout
 
@@ -189,20 +189,20 @@ log for review.
    placement, or a screenshot that does not show the named scenario.
 4. Review `fidelity-ledger.json` against the current quiet-operator
    specification and named scenario.
-5. Record the reviewer and platform in the release notes.
+5. Record the review date and platform in the release notes.
 6. Run `pnpm run qa:overlay:check` without changing the baseline and require an
    exact pass.
 7. Only after the reviewed platform baseline is committed, add the corresponding
    non-updating CI check. Do not generate or accept baselines in ordinary CI.
 
-The original Windows procedure was completed on 2026-08-03. On 2026-08-08 the
-matrix was regenerated for the guided checker, account-run review phase,
-simplified DM hierarchy, responsive header, lower opacity bound, floating
-scenario, and truthful live-lock copy. The centered translucent desktop state,
-Messages live-lock state, and account-run review state were inspected at full
-resolution; mobile overflow, semantics, collision, accessibility-tree, and
-geometry were also enforced by the harness across all 40 scenarios. No human visual or
-screen-reader acceptance is claimed.
+The original Windows procedure was completed on 2026-08-03. The 2.0.2 matrix
+was regenerated on 2026-08-23 for the compact header and credit, immediate
+thread-bound Unsend path, current extension version, authenticated checker,
+floating translucency, and responsive layouts. Key light, dark, DM, workspace,
+floating, mobile, and 200% zoom captures were inspected at full resolution;
+semantics, collision, accessibility-tree, and geometry checks ran across all
+43 scenarios. No human screen-reader or authenticated Instagram acceptance is
+claimed.
 
 ## Required runtime matrix before acceptance
 
@@ -228,7 +228,7 @@ test suite.
 
 Automated coverage includes:
 
-- generated 42 Windows baselines and visually reviewed the changed key states;
+- generated 43 Windows baselines and visually reviewed the changed key states;
 - reproduced them with the non-updating check and added the Windows CI gate;
 - passed deterministic assembly, the repository test suite, production extension
   fixture acceptance, real disposable-Chrome pairing, all nine PWA baselines,
@@ -244,7 +244,7 @@ Remaining:
 - Perform a human screen-reader walkthrough before making a human accessibility
   claim.
 - Install and inspect the sidecar in the operator's intended persistent Chrome
-  profile without arming an intent.
+  profile without confirming a live run.
 - Repeat read-only selector acceptance against the intended authenticated
   Instagram account before any operator-selected live action.
 

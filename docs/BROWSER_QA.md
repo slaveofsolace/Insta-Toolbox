@@ -1,6 +1,6 @@
 # Browser QA
 
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-23
 
 ## Scope and safety boundary
 
@@ -11,14 +11,14 @@ Instagram session was inspected read-only against the public `@instagram`
 profile. Only empty or synthetic local workspace data was used by local app and
 extension automation.
 
-No Instagram action was armed or executed, no message menu was opened, and no
+No Instagram action was confirmed or executed, no message menu was opened, and no
 network-backed account mutation was attempted. The responsive harness navigates
-only local PWA controls, denies browser permissions, and asserts that both live
-settings remain unchecked.
+only local PWA controls, denies browser permissions, and asserts that no global
+live toggle is present.
 
 The authenticated Instagram diagnostic found one verified profile header and
 exactly one owned `Follow` relationship control. It did not inject the extension,
-arm an intent, or click the control. The real extension pairing gate instead
+confirm a run, or click the control. The real extension pairing gate instead
 uses a disposable Chrome-for-Testing profile and the local PWA; it does not reuse
 the authenticated Instagram session.
 
@@ -33,12 +33,12 @@ the authenticated Instagram session.
 | Desktop viewport | Pass | Chrome content viewport measured 1134 by 569 CSS pixels. |
 | Responsive PWA layouts | Pass on Windows Chromium | Every primary view passed at 1134x700, 820x900, and 390x844 CSS pixels with no document/body horizontal overflow and visible bounded navigation/main regions. |
 | Screenshot regression | Pass on Windows Chromium | Overview, Messages, and Settings were captured at all three sizes. A second run reproduced all nine SHA-256 hashes exactly. |
-| Fresh service-worker origin | Pass | The final source was reassembled and loaded from a fresh loopback origin using cache generation `insta-aio-v10`. |
-| No-click safety | Pass | The walkthrough used local PWA state only; live settings stayed disabled and no extension action path was available. |
+| Fresh service-worker origin | Pass | The final source was reassembled and loaded from a fresh loopback origin using cache generation `insta-toolbox-v202`. |
+| No-click safety | Pass | The walkthrough used local PWA state only; no global live toggle was present and no extension action path was available. |
 | Production account DOM chains | Pass in isolated Chromium | The actual content script resolved and executed bounded local Follow (one control) and Unfollow (relationship plus newly bound confirmation), then rejected token replay without another activation. |
 | Production one-message DOM chain | Pass in isolated Chromium | The actual content script used one exact row action, one bound Unsend menu item, and one bound confirmation, proved retained row/identity disconnection plus exact absence, then rejected replay. |
 | Sidecar accessibility | Pass in Chromium automation | Collapse/reopen focus restoration and named controls were verified in the full accessibility tree. This remains distinct from a human screen-reader result. |
-| PWA installability and pairing defaults | Pass in isolated Chromium | Manifest, icon set, active service worker, and a read-only pairing-code flow were verified while both live settings and action permission remained off. |
+| PWA installability and pairing defaults | Pass in isolated Chromium | Manifest, icon set, active service worker, and a read-only pairing-code flow were verified while action permission remained off. |
 | Authenticated Instagram profile selector | Pass, read-only | Current Instagram rendered one verified `@instagram` profile header with one owned `Follow` control. No action or extension injection occurred. |
 
 ## Defects found and closed
@@ -77,7 +77,7 @@ the authenticated Instagram session.
 
 Focused regressions live in `tests/app-shell-safety.test.js`,
 `tests/static-asset-policy.test.js`, and `tests/browser-qa-harness.test.js`. The
-complete repository suite passes 232 of 232 tests.
+complete repository suite passes 282 of 282 tests.
 
 ## Representative screenshots
 
@@ -96,6 +96,11 @@ The deterministic Windows Chromium baseline is tracked under
 - [Tablet Messages](../tests/baselines/pwa/win32/tablet-messages.png)
 - [Mobile Settings](../tests/baselines/pwa/win32/mobile-settings.png)
 
+The six reviewed extension/userscript layouts for 2.0.2 are tracked under
+[`docs/evidence/userscript-ui-2.0.2`](./evidence/userscript-ui-2.0.2/README.md).
+They cover desktop, dark, mobile-landscape, short-laptop, narrow-panel, and
+true 200% Chromium zoom presentations.
+
 Run `pnpm run qa:extension` for production-script DOM and accessibility checks,
 `pnpm run qa:chrome` with Chrome for Testing for real unpacked-extension pairing,
 and `pnpm run qa:browser:check` to reproduce and hash-check all nine captures.
@@ -112,36 +117,34 @@ not alter production extension permissions.
 
 ## Overlay-specific QA
 
-The Instagram overlay has a separate 42-scenario harness that
+The Instagram overlay has a separate 43-scenario harness that
 loads the production-built content-script graph and checks state semantics,
 geometry, target intersection, responsive presentations, accessibility-tree
 names, and bounded performance before comparing screenshots. Its commands are
 `pnpm run qa:overlay:update` and `pnpm run qa:overlay:check`.
 
-All 42 Windows scenarios passed their semantic, geometry, collision,
-accessibility-tree, and performance checks. The translucent, layout, and
-live-lock states were inspected at full resolution; the reviewed baseline reproduced through
+All 43 Windows scenarios passed their semantic, geometry, collision,
+accessibility-tree, and performance checks. The translucent, compact DM,
+workspace-version, mobile, dark, and 200% zoom states were inspected at full
+resolution; the reviewed baseline reproduced through
 `qa:overlay:check`, and the non-updating Windows check is wired into CI. That is
 runtime evidence for the synthetic fixture—not human screen-reader acceptance,
 cross-platform visual proof, persistent-profile acceptance, or authenticated
 Instagram selector acceptance. See [Overlay QA](./OVERLAY_QA.md) for the
 matrix, evidence layout, measured results, and manual acceptance limits.
 
-## Design judgment
+## Design review
 
-The PWA now leads with a task-oriented three-tool overview instead of a uniform
-metric-card wall. A warm neutral workspace, dark navigation rail, restrained
-rose action signal, and compact status strip align it with the in-page tools
-while preserving every existing page and local data function. The review also
-covered rendering correctness, truthful state copy, focus behavior, and cache
-delivery.
+The PWA leads with the three available tasks and retains every existing page and
+local data function. The review covered rendering, state copy, focus behavior,
+responsive layout, and cache delivery.
 
 ## Remaining target-environment acceptance
 
 - Install the PWA and pair the unpacked extension in the operator's intended
   persistent Chrome profile; CI pairing uses a disposable profile.
 - Repeat the authenticated Instagram walkthrough with the real sidecar loaded,
-  without arming an action.
+  without confirming an action.
 - Perform a human screen-reader walkthrough.
 - Establish and visually accept native baselines on any additional release
   platform where screenshot hashes will be gated.
