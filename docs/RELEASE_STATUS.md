@@ -133,23 +133,24 @@ Windows installers remain intentionally unsigned.
   synthetic-click authorization path and a post-replacement finite-ordering
   defect. Both were repaired and regression-tested before this matrix; no
   reportable finding remains in the corrected local patch.
-- The prior pushed candidate passed all five GitHub CI jobs at
-  `0b2cd3a9a12d5b8ce8734e2cd152e570cb5029a8`: tests, Chrome pairing,
+- The corrected code candidate passed all five GitHub CI jobs at
+  [run 32671168068](https://github.com/slaveofsolace/Insta-AIO-Tool/actions/runs/32671168068),
+  for `fb9e4fcb18cf2871e2305d3841bc8314f73f179d`: tests, Chrome pairing,
   reviewed Windows rendering, Windows NSIS lifecycle, macOS DMG/ZIP lifecycle,
-  and combined release checksums. Those results predate the confirmation and
-  traversal repairs. Exact-head CI must pass again after the corrected patch is
-  committed and pushed.
-- Prior candidate CI artifact SHA-256 values, retained only for provenance:
+  and combined release checksums.
+- Corrected CI artifact SHA-256 values:
   - `insta-aio-companion.user.js`:
-    `94e192a42fb5a9d3d41cbadc2a37eae101ab54e19e673558713387bb42fcb3cd`
+    `f4972b14db2014df8dcf315d6e0ec9a7d1396b704ea779b733e15f1debe7b864`
   - `insta-aio-companion-2.0.2.zip`:
-    `de0a36917a6d0a0d6fe43d85170cf8e8b2291ed046ca541ed8abaa47be05333a`
+    `17e330958b166b5f4f6010b6c997fa0af5f5fc02c4ad4f985bf7dbbffeb01535`
   - `Insta Toolbox Setup 2.0.2.exe`:
-    `df8ef945e13ba5dfe5259d096bba91fb9bc93964299409ccb07ec3a435b3f88c`
+    `2a0a1dcf43350758f87f5c283b88df01078d1e3675365191544e694bfa0ce310`
+  - `Insta Toolbox Setup 2.0.2.exe.blockmap`:
+    `8bbfda0446500e13b8618b21a4964b4bd85f9c49a166bbd0e3d8bf2eeebfeb66`
   - `Insta Toolbox-2.0.2-arm64-mac.zip`:
-    `51527d0510b839e9fa526a454f9b0de71f3946bf98c25ab8c21eb542e27b8698`
+    `6fa7706ff399a0d09f0f002796ab312964b2b9254d1322390a26107222596d67`
   - `Insta Toolbox-2.0.2-arm64.dmg`:
-    `6393056eac306864f8445e716e9b1d3e361b6586cf0e78a57b31e014836e1b57`
+    `d85d5af1880e417841c9fe4ab91aa0b2fa8c5bc1c8cf14e999016298d777fda8`
 - The commit-pinned Tampermonkey build was installed in authenticated Chrome.
   The live overlay showed the compact header and credit line with the old mode
   pill and status footer absent.
