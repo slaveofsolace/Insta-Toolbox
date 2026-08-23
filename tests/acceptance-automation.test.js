@@ -167,7 +167,11 @@ test('desktop CI builds and exercises confined packaged lifecycles without relea
   assert.match(desktop, /process\.env\.INSTA_AIO_DESKTOP_SMOKE_PARENT/);
   assert.match(desktop, /realpathSync\.native\(path\.resolve\(app\.getPath\('temp'\)\)\)/);
   assert.match(desktop, /path\.relative\(temporaryRoot, configuredParent\)/);
-  assert.match(desktop, /relativeParent !== 'insta-aio-desktop-smoke-parent'/);
+  assert.match(desktop, /!relativeParent/);
+  assert.match(desktop, /relativeParent === '\.\.'/);
+  assert.match(desktop, /relativeParent\.startsWith\(`\.\.\$\{path\.sep\}`\)/);
+  assert.match(desktop, /path\.isAbsolute\(relativeParent\)/);
+  assert.match(desktop, /path\.basename\(configuredParent\) !== 'insta-aio-desktop-smoke-parent'/);
   assert.match(desktop, /desktop smoke setup failed/);
   assert.match(desktop, /process\.exit\(1\)/);
   assert.match(desktop, /mkdtempSync\(path\.join\(configuredParent, 'insta-aio-desktop-smoke-'\)\)/);

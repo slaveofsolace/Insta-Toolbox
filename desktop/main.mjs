@@ -49,8 +49,11 @@ function createDesktopSmokeDataRoot() {
   ));
   const relativeParent = path.relative(temporaryRoot, configuredParent);
   if (
-    relativeParent !== 'insta-aio-desktop-smoke-parent'
+    !relativeParent
+    || relativeParent === '..'
+    || relativeParent.startsWith(`..${path.sep}`)
     || path.isAbsolute(relativeParent)
+    || path.basename(configuredParent) !== 'insta-aio-desktop-smoke-parent'
   ) {
     throw new Error('Desktop smoke mode requires a confined disposable parent directory.');
   }
