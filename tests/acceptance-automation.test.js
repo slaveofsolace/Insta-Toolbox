@@ -159,13 +159,17 @@ test('overlay QA is loopback-confined and has bounded child-process cleanup', ()
   assert.doesNotMatch(overlayQaRunner, /taskkill|killall|Stop-Process/i);
 });
 
-test('macOS CI builds and exercises the packaged lifecycle without release credentials', () => {
+test('desktop CI builds and exercises confined packaged lifecycles without release credentials', () => {
   assert.equal(packageJson.scripts['qa:mac-package'], 'node scripts/verify-macos-package.mjs');
   assert.match(desktop, /DESKTOP_SMOKE_TEST/);
   assert.match(desktop, /process\.argv\.includes\('--smoke-test'\)/);
   assert.match(desktop, /process\.env\.INSTA_AIO_DESKTOP_SMOKE_TEST === '1'/);
   assert.match(desktop, /process\.env\.INSTA_AIO_DESKTOP_SMOKE_PARENT/);
-  assert.match(desktop, /path\.basename\(configuredParent\) !== 'insta-aio-desktop-smoke-parent'/);
+  assert.match(desktop, /realpathSync\.native\(path\.resolve\(app\.getPath\('temp'\)\)\)/);
+  assert.match(desktop, /path\.relative\(temporaryRoot, configuredParent\)/);
+  assert.match(desktop, /relativeParent !== 'insta-aio-desktop-smoke-parent'/);
+  assert.match(desktop, /desktop smoke setup failed/);
+  assert.match(desktop, /process\.exit\(1\)/);
   assert.match(desktop, /mkdtempSync\(path\.join\(configuredParent, 'insta-aio-desktop-smoke-'\)\)/);
   assert.doesNotMatch(desktop, /insta-aio-desktop-smoke-\$\{process\.pid\}/);
   assert.match(desktop, /if \(!DESKTOP_SMOKE_TEST && process\.platform !== 'darwin'\) app\.quit\(\)/);

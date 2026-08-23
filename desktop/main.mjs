@@ -4,7 +4,7 @@ import {
   protocol,
   shell,
 } from 'electron';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import {
   cp,
   mkdir,
@@ -43,22 +43,31 @@ protocol.registerSchemesAsPrivileged([{
 }]);
 
 function createDesktopSmokeDataRoot() {
-  const temporaryRoot = path.resolve(app.getPath('temp'));
-  const configuredParent = path.resolve(
+  const temporaryRoot = realpathSync.native(path.resolve(app.getPath('temp')));
+  const configuredParent = realpathSync.native(path.resolve(
     process.env.INSTA_AIO_DESKTOP_SMOKE_PARENT || '',
-  );
+  ));
+  const relativeParent = path.relative(temporaryRoot, configuredParent);
   if (
-    !configuredParent.startsWith(`${temporaryRoot}${path.sep}`)
-    || path.basename(configuredParent) !== 'insta-aio-desktop-smoke-parent'
+    relativeParent !== 'insta-aio-desktop-smoke-parent'
+    || path.isAbsolute(relativeParent)
   ) {
     throw new Error('Desktop smoke mode requires a confined disposable parent directory.');
   }
   return mkdtempSync(path.join(configuredParent, 'insta-aio-desktop-smoke-'));
 }
 
-const appDataRoot = DESKTOP_SMOKE_TEST
-  ? createDesktopSmokeDataRoot()
-  : app.getPath('appData');
+function resolveAppDataRoot() {
+  if (!DESKTOP_SMOKE_TEST) return app.getPath('appData');
+  try {
+    return createDesktopSmokeDataRoot();
+  } catch (error) {
+    console.error(`Insta Toolbox desktop smoke setup failed: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+const appDataRoot = resolveAppDataRoot();
 const userDataRoot = path.join(appDataRoot, PRODUCT_DATA_DIRECTORY);
 const backupRoot = path.join(appDataRoot, BACKUP_DIRECTORY);
 app.setPath('userData', userDataRoot);
