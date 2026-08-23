@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const shell = await readFile(new URL('../userscripts/src/toolbox-shell.js', import.meta.url), 'utf8');
 const labels = await readFile(new URL('../extension/action-labels.js', import.meta.url), 'utf8');
+const confirmation = await readFile(new URL('../extension/action-confirmation.js', import.meta.url), 'utf8');
 const generated = await readFile(new URL('../userscripts/insta-aio-companion.user.js', import.meta.url), 'utf8');
 
 test('first use explains the tools, local storage, and the read-only boundary', () => {
@@ -132,9 +133,9 @@ test('a run shows its targets and skip reasons before it starts', () => {
   // Review is read-only. The action-specific confirmation happens before the
   // finite capability is minted.
   const runBody = shell.slice(shell.indexOf("'run-accounts': async"), shell.indexOf("'run-unsend': ()"));
-  assert.ok(runBody.indexOf('accountRunDraft.signature !== current.signature') < runBody.indexOf('confirmRun('));
-  assert.ok(runBody.indexOf('confirmRun(') < runBody.indexOf('startAccountRun('));
-  const startBody = shell.slice(shell.indexOf('async function startAccountRun'), shell.indexOf('function confirmRun'));
+  assert.ok(runBody.indexOf('accountRunDraft.signature !== current.signature') < runBody.indexOf('await confirmRun({'));
+  assert.ok(runBody.indexOf('await confirmRun({') < runBody.indexOf('startAccountRun('));
+  const startBody = shell.slice(shell.indexOf('async function startAccountRun'), shell.indexOf('// --- Section 2:'));
   assert.ok(startBody.indexOf('const capabilityId') < startBody.indexOf("status: 'running'"));
   assert.ok(startBody.indexOf('approvedTargets: [...queue]') < startBody.indexOf('await continueAccountRun()'));
 });
@@ -149,7 +150,7 @@ test('the open exact profile is the direct bounded Follow or Unfollow source', (
   assert.match(shell, /Open one Instagram profile first\. No target was reviewed\./);
 });
 
-test('the primary Unsend action confirms once and starts without a history prescan', () => {
+test('the primary Unsend action requires an explicit in-overlay second click without a history prescan', () => {
   const unsendButton = generated.match(/<button[^>]*class="button danger big"[^>]*data-action="run-unsend"[^>]*>Unsend DMs<\/button>/);
   assert.ok(unsendButton, 'Unsend DMs must remain the visible primary action');
   assert.doesNotMatch(unsendButton[0], /\shidden(?![-\w])/);
@@ -165,6 +166,13 @@ test('the primary Unsend action confirms once and starts without a history presc
   );
   assert.match(shell, /const plan = dmRunner\.createPlan\(\{/);
   assert.match(shell, /Permanently unsend \$\{scopeLabel\} in this conversation/);
+  assert.match(generated, /<dialog[^>]*data-role="action-confirmation"/);
+  assert.match(generated, /data-action="confirm-cancel"/);
+  assert.match(generated, /data-action="confirm-accept"/);
+  assert.match(shell, /const confirmation = await confirmRun\(\{/);
+  assert.match(shell, /confirmation\.reviewedDigest !== plan\.reviewedDigest/);
+  assert.match(shell, /const confirmedInspection = dmRunner\.inspect\(\)/);
+  assert.doesNotMatch(shell, /globalThis\.confirm|window\.confirm/);
   assert.match(shell, /await dmRunner\.start\(\{/);
   assert.match(labels, /function createPlan\(value = \{\}\)/);
   assert.doesNotMatch(labels, /phrase = `UNSEND|ENABLE LIVE ACTIONS/);
@@ -201,7 +209,8 @@ test('the userscript starts the confirmed Unsend plan and surfaces async failure
     shell.indexOf('async function runDmUnsend()'),
     shell.indexOf('// --- Section 7:'),
   );
-  assert.ok(runBody.indexOf('confirmRun(') < runBody.indexOf('reserveUnsendPlan(plan)'));
+  assert.ok(runBody.indexOf('await confirmRun({') < runBody.indexOf('reserveUnsendPlan(plan)'));
+  assert.ok(runBody.indexOf('confirmedInspection.threadId !== plan.threadId') < runBody.indexOf('reserveUnsendPlan(plan)'));
   assert.ok(runBody.indexOf('reserveUnsendPlan(plan)') < runBody.indexOf('await dmRunner.start({'));
 });
 
@@ -209,7 +218,12 @@ test('finite run confirmation replaces global unlock controls and phrases', () =
   assert.doesNotMatch(shell, /ENABLE LIVE ACTIONS|LIVE_AUTHORIZATION_PHRASE/);
   assert.doesNotMatch(shell, /Type .*unlock Follow, Unfollow, and Unsend/);
   assert.doesNotMatch(shell, /setLiveActionsUnlocked|InstaAioUserscriptLiveAuthority|data-role="live-actions"/);
-  assert.match(shell, /function confirmRun\(message\)/);
+  assert.match(shell, /InstaToolboxActionConfirmation\?\.createController/);
+  assert.match(confirmation, /function createController\(/);
+  assert.match(confirmation, /dialog\.showModal\(\)/);
+  assert.match(confirmation, /cancelButton\.focus\(\)/);
+  assert.match(confirmation, /immutableCopy\(request\.binding \|\| \{\}\)/);
+  assert.doesNotMatch(shell, /globalThis\.confirm|window\.confirm/);
   assert.match(shell, /approvedTargets: \[\.\.\.queue\]/);
   assert.match(shell, /capabilityExpiresAt: Date\.now\(\) \+ RUN_CAPABILITY_MS/);
   assert.doesNotMatch(labels, /currentEligibleCount !== plan\.eligibleCount/);
@@ -221,7 +235,8 @@ test('the extension keeps Stop available and labels read-only checks truthfully'
   const messages = await readFile(new URL('../extension/overlay/views/messages.js', import.meta.url), 'utf8');
   assert.match(messages, /const readOnlyCheck = state\.operation === 'check'/);
   assert.match(messages, /readOnlyCheck \? 'Stop check' : 'Stop unsending'/);
-  assert.match(messages, /button\.disabled = pendingReservation \|\| \(active\s*\? !state\.canStop/);
+  assert.match(messages, /button\.textContent = pendingReservation\s*\? 'Stop unsending'/);
+  assert.match(messages, /if \(pendingReservation\) button\.disabled = false/);
   assert.match(messages, /readOnlyCheck\s*\?\s*'Read-only check · nothing changed'/);
 });
 

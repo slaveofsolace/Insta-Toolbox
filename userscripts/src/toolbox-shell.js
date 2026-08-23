@@ -700,9 +700,19 @@
       .button.primary:hover { filter: brightness(1.08); }
       .button.big { width: 100%; padding: 10px 12px; font-size: var(--system-14-font-size, 14px); line-height: var(--system-14-line-height, 18px); border-radius: 8px; }
       .button:disabled { cursor: not-allowed; filter: none; opacity: .48; }
+      .confirm-dialog { width: min(420px, calc(100vw - 28px)); max-height: min(620px, calc(100vh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--aio-bg-raised, #fff); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel); }
+      .confirm-dialog::backdrop { background: rgba(0, 0, 0, .62); }
+      .confirm-dialog form { display: grid; gap: 12px; margin: 0; padding: 18px; }
+      .confirm-dialog h2 { margin: 0; font-size: 18px; line-height: 24px; overflow-wrap: break-word; }
+      .confirm-dialog p { margin: 0; color: var(--aio-text-muted, #687068); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; white-space: pre-line; }
+      .confirm-dialog dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 13px; line-height: 19px; }
+      .confirm-dialog dt { color: var(--aio-text-muted, #687068); font-weight: 600; }
+      .confirm-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+      .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
+      .confirm-dialog .toolbar { justify-content: flex-end; }
       @keyframes aio-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
-      @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel { background:Canvas; } .panel,.card,.tool,.metric { border:2px solid CanvasText; } }
+      @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog { border:2px solid CanvasText; } }
     </style>
     <button class="launcher" type="button" data-action="open" aria-label="Open Insta Toolbox" aria-expanded="false">IT</button>
     <aside class="panel" aria-label="Insta Toolbox" hidden>
@@ -764,7 +774,17 @@
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
       <button class="resize" type="button" data-role="resize" aria-label="Resize toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
-    </aside>`;
+    </aside>
+    <dialog class="confirm-dialog" data-role="action-confirmation" aria-labelledby="aio-confirm-title" aria-describedby="aio-confirm-message aio-confirm-detail">
+      <form>
+        <h2 id="aio-confirm-title" data-role="confirm-title">Confirm action</h2>
+        <p id="aio-confirm-message" data-role="confirm-message"></p>
+        <dl data-role="confirm-facts" hidden></dl>
+        <ul data-role="confirm-items" aria-label="Reviewed targets" hidden></ul>
+        <p id="aio-confirm-detail" data-role="confirm-detail"></p>
+        <div class="toolbar"><button class="button quiet" type="button" data-action="confirm-cancel" data-role="confirm-cancel">Cancel</button><button class="button danger" type="button" data-action="confirm-accept" data-role="confirm-accept">Confirm</button></div>
+      </form>
+    </dialog>`;
 
   const query = (selector) => shadow.querySelector(selector);
   const queryAll = (selector) => [...shadow.querySelectorAll(selector)];
@@ -793,6 +813,14 @@
     }
     renderContext();
   };
+
+  const confirmationController = globalThis.InstaToolboxActionConfirmation?.createController({
+    root: shadow,
+    attribute: 'data-role',
+    status,
+    unavailableTone: 'blocked',
+  });
+  const confirmRun = (request) => confirmationController?.confirm(request) ?? Promise.resolve(null);
 
   function panelSize() {
     return {
@@ -1458,12 +1486,6 @@
     await continueAccountRun();
   }
 
-  function confirmRun(message) {
-    // eslint-disable-next-line no-alert
-    return globalThis.confirm(message);
-  }
-
-
   // --- Section 2: current Instagram context -------------------------------
   //
   // A first-time user cannot tell why a button is inert. Reading the route and
@@ -1968,6 +1990,7 @@
 
   async function runDmUnsend() {
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
+    if (confirmationController?.isPending()) return;
     const snapshot = dmRunner.snapshot();
     if (snapshot.canStop || ['preparing', 'running', 'waiting', 'stopping'].includes(snapshot.status)) {
       dmRunner.stop();
@@ -1989,11 +2012,47 @@
     const scopeLabel = scope === 'all'
       ? 'every message you sent'
       : `the ${scope} ${limit} message${limit === 1 ? '' : 's'} you sent`;
-    if (!confirmRun(
-      `Permanently unsend ${scopeLabel} in this conversation?\n\n`
-      + `Thread ${plan.threadId}. This cannot be undone. Stop stays available while it runs.`,
-    )) {
+    const confirmation = await confirmRun({
+      title: 'Unsend DMs?',
+      message: `Permanently unsend ${scopeLabel} in this conversation?`,
+      detail: 'This cannot be undone. Stop stays available while it runs.',
+      confirmLabel: scope === 'all' ? 'Unsend all my messages' : `Unsend ${limit} message${limit === 1 ? '' : 's'}`,
+      facts: [
+        { label: 'Action', value: 'Permanently unsend messages' },
+        { label: 'Conversation', value: `Thread ${plan.threadId}` },
+        { label: 'Scope', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
+      ],
+      binding: {
+        action: 'unsend',
+        expiresAt: plan.expiresAt,
+        limit: plan.limit,
+        reviewedDigest: plan.reviewedDigest,
+        scope: plan.scope,
+        threadId: plan.threadId,
+      },
+    });
+    if (!confirmation) {
       status('Canceled. Nothing was removed.');
+      return;
+    }
+    const confirmedInspection = dmRunner.inspect();
+    const confirmedScope = query('[data-role="unsend-scope"]')?.value || 'all';
+    const confirmedRequested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
+    const confirmedLimit = confirmedScope === 'all' ? null : Math.max(1, confirmedRequested);
+    if (
+      !confirmedInspection?.ready
+      || confirmedInspection.threadId !== plan.threadId
+      || confirmation.action !== 'unsend'
+      || confirmation.threadId !== plan.threadId
+      || confirmation.scope !== plan.scope
+      || confirmation.limit !== plan.limit
+      || confirmation.reviewedDigest !== plan.reviewedDigest
+      || Number(confirmation.expiresAt) !== plan.expiresAt
+      || plan.expiresAt <= Date.now()
+      || confirmedScope !== plan.scope
+      || confirmedLimit !== plan.limit
+    ) {
+      status('The conversation or Unsend scope changed after review. Nothing was removed.', 'blocked');
       return;
     }
     const reservation = reserveUnsendPlan(plan);
@@ -2052,6 +2111,7 @@
   }
 
   const actions = {
+    'confirm-cancel': () => confirmationController?.cancel(),
     'check-account-relationships': () => checkAccountRelationships(),
     'scan-following': () => scanInto('following'),
     'scan-followers': () => scanInto('followers'),
@@ -2071,7 +2131,10 @@
     },
     'review-accounts': () => reviewAccountRun(),
     open: () => savePreferences({ open: true }),
-    close: () => savePreferences({ open: false }),
+    close: () => {
+      confirmationController?.cancel();
+      savePreferences({ open: false });
+    },
     'stop-run': () => {
       if (dmRunner?.stop?.()) {
         status('Stopping DM Unsend after the current step.');
@@ -2130,18 +2193,53 @@
     },
     'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
+      if (confirmationController?.isPending()) return;
       const current = accountRunPlan();
       if (!accountRunDraft || accountRunDraft.signature !== current.signature) {
         clearAccountRunDraft();
         status('Targets changed. Review the run again before starting.');
         return;
       }
-      const targetList = accountRunDraft.items.map((item) => `@${item.username}`).join('\n');
-      if (!confirmRun(
-        `${accountRunDraft.action === 'follow' ? 'Follow' : 'Unfollow'} ${accountRunDraft.items.length} reviewed account${accountRunDraft.items.length === 1 ? '' : 's'}?\n\n`
-        + `${targetList}\n\nThis tab will move between these exact profiles. Each account is revalidated before the action.`,
-      )) return;
-      const approved = accountRunDraft;
+      const reviewed = accountRunDraft;
+      const actionLabel = reviewed.action === 'follow' ? 'Follow' : 'Unfollow';
+      const expiresAt = Date.now() + RUN_CAPABILITY_MS;
+      const confirmation = await confirmRun({
+        title: `${actionLabel} ${reviewed.items.length} reviewed account${reviewed.items.length === 1 ? '' : 's'}?`,
+        message: 'Review the exact accounts before starting.',
+        detail: 'This tab will move between these exact profiles. Each account is revalidated before the action.',
+        confirmLabel: `Start ${actionLabel}`,
+        items: reviewed.items.map((item) => `@${item.username}`),
+        facts: [
+          { label: 'Action', value: actionLabel },
+          { label: 'Accounts', value: String(reviewed.items.length) },
+        ],
+        binding: {
+          action: reviewed.action,
+          count: reviewed.items.length,
+          expiresAt,
+          targetDigest: reviewed.signature,
+        },
+      });
+      if (!confirmation) {
+        status('Canceled. The reviewed targets were kept. Nothing was changed.');
+        return;
+      }
+      const refreshed = accountRunPlan();
+      if (
+        !accountRunDraft
+        || accountRunDraft.signature !== reviewed.signature
+        || refreshed.signature !== reviewed.signature
+        || confirmation.action !== reviewed.action
+        || confirmation.count !== reviewed.items.length
+        || confirmation.targetDigest !== reviewed.signature
+        || Number(confirmation.expiresAt) !== expiresAt
+        || expiresAt <= Date.now()
+      ) {
+        clearAccountRunDraft();
+        status('Targets changed after review. Review the run again. Nothing was changed.');
+        return;
+      }
+      const approved = reviewed;
       clearAccountRunDraft();
       await startAccountRun({ action: approved.action, usernames: approved.items.map((item) => item.username) });
     },
@@ -2406,6 +2504,7 @@
 
   function toggleToolboxShortcut(event) {
     if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey || event.key.toLowerCase() !== 'i') return;
+    if (preferences.open) confirmationController?.cancel();
     savePreferences({ open: !preferences.open });
     event.preventDefault();
   }
@@ -2416,6 +2515,7 @@
     const currentHref = location.href;
     if (currentHref !== lastLocationHref) {
       lastLocationHref = currentHref;
+      confirmationController?.cancel();
       contextStatus = null;
       dmThreadPreview = null;
       state.messageEvidence = null;
@@ -2434,6 +2534,7 @@
     if (!document.getElementById(EXTENSION_ROOT_ID)) return;
     duplicateObserver.disconnect();
     window.removeEventListener('keydown', toggleToolboxShortcut, true);
+    confirmationController?.destroy();
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });

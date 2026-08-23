@@ -13,7 +13,10 @@ const inspector = await readFile(
 const instagramEntry = manifest.content_scripts.find((entry) => (
   entry.matches.includes('https://www.instagram.com/*')
 ));
-const overlayFiles = instagramEntry.js.slice(2);
+const overlayFiles = instagramEntry.js.filter((file) => ![
+  'action-labels.js',
+  'content-instagram.js',
+].includes(file));
 const overlay = (await Promise.all(overlayFiles.map((file) => readFile(
   new URL(`../extension/${file}`, import.meta.url),
   'utf8',
@@ -45,6 +48,7 @@ const popupCss = await readFile(
 
 test('Instagram loads the inspector before the visible sidecar', () => {
   assert.deepEqual(instagramEntry.js, [
+    'action-confirmation.js',
     'action-labels.js',
     'content-instagram.js',
     'overlay/tokens.js',
@@ -196,10 +200,17 @@ test('dry runs remain no-click while the one live activator is token-bound and o
   assert.match(overlay, /Inspection is no-click/);
 });
 
-test('sidecar uses one exact finite confirmation without global arm controls', () => {
+test('sidecar uses one exact in-overlay finite confirmation without global arm controls', () => {
   assert.doesNotMatch(overlay, /account-live-disclosure|dm-live-disclosure|arm-dm-live|Arm for 90 seconds|ARM UNSEND/);
   assert.doesNotMatch(background, /insta-aio-arm-account-action|insta-aio-arm-dm-unsend|expectedPhrase/);
-  assert.match(overlay, /window\.confirm/);
+  assert.doesNotMatch(overlay, /window\.confirm|globalThis\.confirm/);
+  assert.match(overlay, /data-ia-role="action-confirmation"/);
+  assert.match(overlay, /data-ia-action="confirm-cancel"/);
+  assert.match(overlay, /data-ia-action="confirm-accept"/);
+  assert.match(overlay, /function createController\(\{ root, attribute, status, unavailableTone = 'error' \}\)/);
+  assert.match(overlay, /cancelButton\.focus\(\)/);
+  assert.match(overlay, /current\.resolve\(confirmed === true && !expired \? current\.binding : null\)/);
+  assert.match(overlay, /await runtime\.confirmAction\(\{/);
   assert.match(background, /function accountConfirmationMatches\(confirmation, intent\)/);
   assert.match(background, /function dmConfirmationMatches\(confirmation, intent\)/);
   assert.match(background, /consumeTransientCapability\(accountCapabilities/);

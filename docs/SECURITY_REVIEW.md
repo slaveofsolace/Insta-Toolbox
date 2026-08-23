@@ -45,6 +45,19 @@ Unsend quota. Failed preflight and zero-click failures record zero removals.
 That DM patch added no host permission, remote dependency,
 credential field, private endpoint, or network request.
 
+The extension and userscript now share an in-overlay confirmation controller.
+It copies and freezes the reviewed binding, checks its expiry at settlement,
+focuses Cancel first, and cancels pending authority on route changes, panel
+closure, or teardown. Affirmative settlement accepts only a browser-generated
+trusted click on the exact Confirm button; synthetic `.click()` and dispatched
+events are ignored. The controller exposes no raw affirmative-settlement API.
+After approval, account runs revalidate action, kind, count, target digest, and
+expiry. DM runs revalidate thread, scope, optional limit, reviewed digest, and
+expiry before reservation. The PWA uses its own first-party dialog and rereads
+job, item, preview, status, and current state after approval; workspace clearing
+also requires the same state object and active Settings view. All rendered facts
+use text nodes rather than HTML interpolation.
+
 Mutual Checker uses a narrow authenticated read client for the reviewed legacy
 checker behavior. It can
 call only `www.instagram.com/api/v1/web/search/topsearch/` and the exact
@@ -186,22 +199,33 @@ extension packaging independently runs the executable controlled-live safety
 subset before creating artifacts.
 
 The 2026-08-23 2.0.2 review covered all changed source-like files across the
-userscript, extension, build, release, and fixture surfaces. Permissions and
-production dependencies did not expand. The review found one correctness defect
-in finite `oldest N`: a virtualized thread could expose the oldest mounted rows
-before the real oldest boundary had settled. The runner now requires a stable
-oldest edge before opening any message menu, including across delayed history
-growth and scroller replacement. Focused regressions and the complete test
-matrix pass; no reportable security finding remains.
+userscript, extension, PWA, build, release, and fixture surfaces. Permissions,
+production dependencies, and network access did not expand. The initial review
+found a finite `oldest N` boundary defect; the runner now proves a stable oldest
+edge before opening any message menu and reproves it after delayed history,
+scroll-height shrinkage, or scroller replacement in normal and reversed layouts.
 
-An authenticated Instagram Follow, Unfollow, or DM action has deliberately not
-been run. It remains a separate operator acceptance gate requiring an exact
-target, action, and explicit approval. The actual production content script now
-passes bounded Follow, Unfollow, and one-message Unsend DOM chains in isolated
-Chromium, including accessibility-tree and replay checks. A current authenticated
-Instagram diagnostic found one verified `@instagram` profile header and one owned
-Follow control without injecting the extension or clicking. Authenticated
-rendered-message identity and user-selected mutation acceptance remain open.
+The final review then found two additional release-blocking defects. First, the
+open userscript surface allowed page code to dispatch a synthetic affirmative
+click. Trusted-event enforcement and removal of the raw settlement API now keep
+synthetic clicks at zero reservations, runner starts, fixture clicks, and
+removals. Second, a replacement scroller could briefly expose a mounted row
+before the reviewed newest or oldest edge was restored. Traversal now invalidates
+that proof on replacement or shrinkage and re-establishes the requested edge
+before selecting another row. Focused regressions, 287/287 local tests, the
+extension/userscript acceptance matrix, 45 overlay states, and 11 PWA baselines
+pass. Exact-head GitHub CI and corrected-build authenticated acceptance remain
+release gates.
+
+An authenticated DM acceptance attempt did perform an unintended action before
+these repairs: a native `window.confirm` was accepted outside the requested
+browser-control flow, and Stop ended the run after 72 verified removals. This is
+irreversible and is retained here as incident evidence. All Instagram automation
+was stopped immediately; no further authenticated action has been performed.
+The corrected build has only fixture/browser proof so far. Authenticated
+Follow/Unfollow compatibility, corrected-build disposable-message Unsend, and
+human screen-reader acceptance remain unproven and require fresh action-specific
+authorization where a mutation is involved.
 
 ## Dependency review
 

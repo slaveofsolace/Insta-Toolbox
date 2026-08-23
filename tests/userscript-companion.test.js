@@ -14,6 +14,10 @@ const engine = await readFile(
   new URL('../extension/content-instagram.js', import.meta.url),
   'utf8',
 );
+const confirmation = await readFile(
+  new URL('../extension/action-confirmation.js', import.meta.url),
+  'utf8',
+);
 
 test('the userscript carries the metadata Tampermonkey needs to install and auto-update from GitHub', () => {
   const rawUrl = 'https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js';
@@ -82,7 +86,13 @@ test('each mutation uses one exact transient capability without a global unlock'
   assert.match(shell, /function accountCapabilityDigest\(action, usernames\)/);
   assert.match(shell, /capabilityExpiresAt: Date\.now\(\) \+ RUN_CAPABILITY_MS/);
   assert.match(shell, /approvedTargets: \[\.\.\.queue\]/);
-  assert.match(shell, /if \(!confirmRun\(/);
+  assert.match(shell, /const confirmation = await confirmRun\(\{/);
+  assert.match(source, /data-role="action-confirmation"/);
+  assert.match(source, /data-action="confirm-cancel"/);
+  assert.match(source, /data-action="confirm-accept"/);
+  assert.doesNotMatch(source, /globalThis\.confirm|window\.confirm/);
+  assert.match(confirmation, /cancelButton\.focus\(\)/);
+  assert.match(confirmation, /current\.binding/);
   assert.match(shell, /normalizeResumableAccountRun\(tabState\?\.\[TAB_RUN_FIELD\]\)/);
   assert.match(shell, /GM_setValue\(STATE_KEY, \{ \.\.\.state, run: null \}\)/);
   assert.match(shell, /if \(!runCapabilityValid\(run\)\)/);
@@ -189,7 +199,7 @@ test('DM evidence and saved Unsend candidates stay bound to the active conversat
   assert.match(source, /if \(!expectedThreadId \|\| context\.threadId !== expectedThreadId\)/);
   assert.doesNotMatch(source, /currentEligibleCount !== plan\.eligibleCount/);
   assert.match(shell, /if \(currentHref !== lastLocationHref\)/);
-  assert.match(shell, /lastLocationHref = currentHref;\s+contextStatus = null;\s+dmThreadPreview = null;\s+state\.messageEvidence = null;/);
+  assert.match(shell, /lastLocationHref = currentHref;\s+confirmationController\?\.cancel\(\);\s+contextStatus = null;\s+dmThreadPreview = null;\s+state\.messageEvidence = null;/);
   assert.match(shell, /state\.dmCheck = null;\s+state\.sentDms = \[\];/);
   // Clearing must persist and re-render. Additional fields may be reset in the
   // same block, so match the intent rather than an exact three-line sequence.

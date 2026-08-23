@@ -287,8 +287,13 @@
     .ia-dialog::backdrop { background: rgba(0, 0, 0, .58); }
     .ia-dialog form { display: grid; gap: 14px; padding: 18px; }
     .ia-dialog h2 { margin: 0; font-size: 20px; }
-    .ia-dialog p { margin: 0; color: var(--ia-muted); font-size: 13px; }
+    .ia-dialog p { margin: 0; color: var(--ia-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; white-space: pre-line; }
+    .ia-dialog dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 13px; line-height: 19px; }
+    .ia-dialog dt { color: var(--ia-muted); font-weight: 700; }
+    .ia-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+    .ia-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--ia-line); border-radius: 8px; font-size: 13px; line-height: 19px; }
     .ia-dialog code { display: block; padding: 10px; border: 1px solid var(--ia-line); border-radius: 8px; background: var(--ia-surface); color: var(--ia-ink); overflow-wrap: anywhere; font-size: 13px; }
+    .ia-dialog .ia-toolbar { justify-content: flex-end; }
 
     .ia-collision-strip { position: fixed; z-index: 2147483000; display: flex; min-height: 52px; width: min(320px, calc(100vw - 28px)); align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--ia-line); border-radius: 12px; background: var(--ia-surface-raised); color: var(--ia-ink); box-shadow: var(--ia-shadow); font-size: 12px; }
     .ia-collision-copy { min-width: 0; }
@@ -517,6 +522,16 @@
       <div class="ia-collision-strip" data-ia-role="collision-strip" hidden>
         <span class="ia-state-dot"></span><div class="ia-collision-copy"><strong data-ia-role="collision-target">Exact target</strong><span data-ia-role="collision-state">Native action surface is visible</span></div>
       </div>
+      <dialog class="ia-dialog" data-ia-role="action-confirmation" aria-labelledby="ia-confirm-title" aria-describedby="ia-confirm-message ia-confirm-detail">
+        <form>
+          <h2 id="ia-confirm-title" data-ia-role="confirm-title">Confirm action</h2>
+          <p id="ia-confirm-message" data-ia-role="confirm-message"></p>
+          <dl data-ia-role="confirm-facts" hidden></dl>
+          <ul data-ia-role="confirm-items" aria-label="Reviewed targets" hidden></ul>
+          <p id="ia-confirm-detail" data-ia-role="confirm-detail"></p>
+          <div class="ia-toolbar"><button class="ia-button ia-button--quiet" type="button" data-ia-action="confirm-cancel" data-ia-role="confirm-cancel">Cancel</button><button class="ia-button ia-button--danger" type="button" data-ia-action="confirm-accept" data-ia-role="confirm-accept">Confirm</button></div>
+        </form>
+      </dialog>
       <template data-ia-template="advanced-settings"><strong>Batch pacing</strong><div class="ia-field"><label for="ia-limit-min-delay">Min delay (seconds)</label><input class="ia-text-input" id="ia-limit-min-delay" type="number" min="2" max="600" data-ia-role="limit-min-delay"></div><div class="ia-field"><label for="ia-limit-max-delay">Max delay (seconds)</label><input class="ia-text-input" id="ia-limit-max-delay" type="number" min="2" max="900" data-ia-role="limit-max-delay"></div><button class="ia-button ia-button--quiet" type="button" data-ia-action="save-limits">Save pacing</button></template>
       <template data-ia-template="first-run"><section class="ia-first-run" data-ia-role="first-run" aria-labelledby="ia-first-run-title"><h2 id="ia-first-run-title">Start with a read-only check</h2><p>Insta Toolbox adds three tools to Instagram.</p><ol><li><strong>Mutual Checker</strong><span>Compare Followers and Following.</span></li><li><strong>Follow / Unfollow</strong><span>Review exact targets, then confirm once.</span></li><li><strong>DM Unsend</strong><span>Confirm the open conversation once.</span></li></ol><div class="ia-toolbar"><button class="ia-button" type="button" data-ia-action="first-run-start">Open Mutual Checker</button><button class="ia-button ia-button--quiet" type="button" data-ia-action="first-run-dismiss">Not now</button></div></section></template>
       <template data-ia-template="checker-browser"><section class="ia-checker-browser" data-ia-role="checker-browser" aria-label="Mutual Checker results"><div class="ia-filter-grid"><div class="ia-field"><label for="ia-checker-category">Show accounts</label><select class="ia-select" id="ia-checker-category" data-ia-role="checker-category"><option value="not-following-me-back">Not following me back</option><option value="i-do-not-follow-back">I do not follow back</option><option value="mutuals">Mutuals</option></select></div><div class="ia-field"><label for="ia-checker-search">Find a username</label><input class="ia-text-input" id="ia-checker-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-ia-role="checker-search"></div></div><div class="ia-count"><strong data-ia-role="checker-filter-count">0</strong><span data-ia-role="checker-filter-detail">accounts</span></div><ul class="ia-list" data-ia-role="checker-filtered-list"></ul></section></template>

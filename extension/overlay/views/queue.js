@@ -359,13 +359,13 @@
       username,
     }));
 
-    await modules.batch.start(runtime, {
+    const started = await modules.batch.start(runtime, {
       kind: 'account',
       action: reviewed.action,
       items,
       description: `This opens and ${reviewed.action}s ${items.length} reviewed account${items.length === 1 ? '' : 's'}, one at a time, with randomised pacing. Each profile is verified before the action runs. This tab will navigate between profiles.`,
     });
-    invalidateBotReview(runtime);
+    if (started) invalidateBotReview(runtime);
   }
 
   shared.install('queueView', {

@@ -33,7 +33,9 @@ const instagramContent = await readFile(
 const instagramEntry = manifest.content_scripts.find((entry) => (
   entry.matches.includes('https://www.instagram.com/*')
 ));
-const instagramOverlay = (await Promise.all(instagramEntry.js.slice(2).map((file) => readFile(
+const instagramOverlay = (await Promise.all(instagramEntry.js
+  .filter((file) => !['action-labels.js', 'content-instagram.js'].includes(file))
+  .map((file) => readFile(
   new URL(`../extension/${file}`, import.meta.url),
   'utf8',
 )))).join('\n');
@@ -99,7 +101,8 @@ test('extension uses Manifest V3 without cookie or request interception permissi
   assert.equal(permissions.includes('webRequest'), false);
   assert.equal(permissions.includes('webRequestBlocking'), false);
   assert.deepEqual(manifest.host_permissions, ['https://www.instagram.com/*']);
-  assert.deepEqual(instagramEntry.js.slice(0, 2), [
+  assert.deepEqual(instagramEntry.js.slice(0, 3), [
+    'action-confirmation.js',
     'action-labels.js',
     'content-instagram.js',
   ]);

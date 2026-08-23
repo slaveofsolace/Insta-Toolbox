@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-08-23T20:29:20.914Z",
+  "capturedAt": "2026-08-23T22:10:25.979Z",
   "platform": "win32",
   "builtExtensionVersion": "2.0.2",
   "screenshots": [
@@ -7498,6 +7498,428 @@
       }
     },
     {
+      "id": "messages-confirmation-open-narrow",
+      "sha256": "6f9c9a6d9b714bf1e25de45e862a3c4fb76bb40dc6545ba6e9d01bd4a1744c4f",
+      "scenario": {
+        "after": "open-dm-confirmation",
+        "captureListType": null,
+        "density": "comfortable",
+        "dock": "right",
+        "forcedColors": false,
+        "firstRun": true,
+        "layout": "docked",
+        "mode": "messages-exact",
+        "opacity": null,
+        "open": true,
+        "pairing": "action",
+        "panelHeight": null,
+        "panelWidth": null,
+        "position": null,
+        "presentation": "panel",
+        "queue": "loaded",
+        "section": "messages",
+        "targetSelector": "[data-message-id=\"sent-1\"]",
+        "theme": "dark",
+        "viewport": "tablet",
+        "width": "standard",
+        "zoom": 1,
+        "confirmationOpen": true,
+        "semantics": [
+          {
+            "attributes": {
+              "aria-describedby": "ia-confirm-message ia-confirm-detail",
+              "aria-labelledby": "ia-confirm-title"
+            },
+            "visible": true,
+            "selector": "[data-ia-role=\"action-confirmation\"]"
+          },
+          {
+            "equals": "Unsend DMs?",
+            "selector": "[data-ia-role=\"confirm-title\"]"
+          },
+          {
+            "equals": "Permanently unsend every message you sent in this conversation?",
+            "selector": "[data-ia-role=\"confirm-message\"]"
+          },
+          {
+            "includes": [
+              "Action",
+              "Permanently unsend messages",
+              "Conversation",
+              "Thread 123",
+              "Scope",
+              "All messages you sent"
+            ],
+            "selector": "[data-ia-role=\"confirm-facts\"]"
+          },
+          {
+            "attributes": {
+              "type": "button"
+            },
+            "equals": "Cancel",
+            "selector": "[data-ia-role=\"confirm-cancel\"]"
+          },
+          {
+            "attributes": {
+              "type": "button"
+            },
+            "equals": "Unsend all my messages",
+            "selector": "[data-ia-role=\"confirm-accept\"]"
+          }
+        ],
+        "metrics": {
+          "activeElementSection": null,
+          "adaptiveDock": null,
+          "adaptiveWidth": null,
+          "bodyWidth": 820,
+          "collision": "inactive",
+          "collisionPlacement": null,
+          "activeElementRole": "confirm-cancel",
+          "confirmation": {
+            "accept": {
+              "bottom": 572,
+              "height": 44,
+              "left": 420.09375,
+              "right": 601,
+              "top": 528,
+              "width": 180.90625
+            },
+            "acceptLabel": "Unsend all my messages",
+            "cancel": {
+              "bottom": 572,
+              "height": 44,
+              "left": 344.234375,
+              "right": 412.09375,
+              "top": 528,
+              "width": 67.859375
+            },
+            "cancelLabel": "Cancel",
+            "controlOrder": [
+              "confirm-cancel",
+              "confirm-accept"
+            ],
+            "detail": "This cannot be undone. Stop stays available while it runs.",
+            "dialog": {
+              "bottom": 591,
+              "height": 282,
+              "left": 200,
+              "right": 620,
+              "top": 309,
+              "width": 420
+            },
+            "facts": [
+              [
+                "Action",
+                "Permanently unsend messages"
+              ],
+              [
+                "Conversation",
+                "Thread 123"
+              ],
+              [
+                "Scope",
+                "All messages you sent"
+              ]
+            ],
+            "horizontalOverflow": 0,
+            "message": "Permanently unsend every message you sent in this conversation?",
+            "open": true,
+            "title": "Unsend DMs?"
+          },
+          "destructiveActivity": {
+            "dmClicks": 0,
+            "reservations": 0,
+            "runnerStatus": "idle",
+            "unsent": 0
+          },
+          "credit": {
+            "href": "https://github.com/slaveofsolace",
+            "rel": "noopener noreferrer",
+            "target": "_blank",
+            "text": "created by @slaveofsolace"
+          },
+          "documentWidth": 820,
+          "dock": "right",
+          "footer": {
+            "bottom": 838,
+            "height": 27,
+            "left": 1,
+            "right": 819,
+            "top": 811,
+            "width": 818
+          },
+          "header": {
+            "bottom": 308.203125,
+            "height": 53,
+            "left": 1,
+            "right": 819,
+            "top": 255.203125,
+            "width": 818
+          },
+          "headerSizing": {
+            "actions": {
+              "client": 90,
+              "rect": {
+                "bottom": 303.203125,
+                "height": 44,
+                "left": 721,
+                "right": 811,
+                "top": 259.203125,
+                "width": 90
+              },
+              "scroll": 90
+            },
+            "copy": {
+              "client": 706,
+              "rect": {
+                "bottom": 290.796875,
+                "height": 19.1875,
+                "left": 9,
+                "right": 715,
+                "top": 271.609375,
+                "width": 706
+              },
+              "scroll": 706
+            },
+            "header": {
+              "client": 818,
+              "scroll": 818
+            }
+          },
+          "innerHeight": 900,
+          "innerWidth": 820,
+          "layout": "docked",
+          "launcher": null,
+          "opacity": "88%",
+          "overflowing": [],
+          "panel": {
+            "bottom": 900,
+            "height": 645.796875,
+            "left": 0,
+            "right": 820,
+            "top": 254.203125,
+            "width": 820
+          },
+          "panelAreaShare": 0.7175520833333333,
+          "panelHorizontalOverflow": 0,
+          "presentation": {
+            "bottom": 900,
+            "height": 645.796875,
+            "left": 0,
+            "right": 820,
+            "top": 254.203125,
+            "width": 820
+          },
+          "presentationIntersectsTarget": false,
+          "scrollerHorizontalOverflow": 0,
+          "selectedHidden": false,
+          "selectedHorizontalOverflow": 0,
+          "semantics": {
+            "[data-ia-role=\"action-confirmation\"]": {
+              "attributes": {
+                "class": "ia-dialog",
+                "data-ia-role": "action-confirmation",
+                "aria-labelledby": "ia-confirm-title",
+                "aria-describedby": "ia-confirm-message ia-confirm-detail",
+                "open": ""
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(28, 31, 27)",
+              "color": "rgb(243, 245, 239)",
+              "textContrast": 15.15886175647789,
+              "textFillColor": "rgb(243, 245, 239)",
+              "text": "Unsend DMs? Permanently unsend every message you sent in this conversation? ActionPermanently unsend messagesConversationThread 123ScopeAll messages you sent This cannot be undone. Stop stays available while it runs. CancelUnsend all my messages",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-title\"]": {
+              "attributes": {
+                "id": "ia-confirm-title",
+                "data-ia-role": "confirm-title"
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgba(0, 0, 0, 0)",
+              "color": "rgb(243, 245, 239)",
+              "textContrast": null,
+              "textFillColor": "rgb(243, 245, 239)",
+              "text": "Unsend DMs?",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-message\"]": {
+              "attributes": {
+                "id": "ia-confirm-message",
+                "data-ia-role": "confirm-message"
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgba(0, 0, 0, 0)",
+              "color": "rgb(169, 175, 163)",
+              "textContrast": null,
+              "textFillColor": "rgb(169, 175, 163)",
+              "text": "Permanently unsend every message you sent in this conversation?",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-facts\"]": {
+              "attributes": {
+                "data-ia-role": "confirm-facts"
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgba(0, 0, 0, 0)",
+              "color": "rgb(243, 245, 239)",
+              "textContrast": null,
+              "textFillColor": "rgb(243, 245, 239)",
+              "text": "ActionPermanently unsend messagesConversationThread 123ScopeAll messages you sent",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-cancel\"]": {
+              "attributes": {
+                "class": "ia-button ia-button--quiet",
+                "type": "button",
+                "data-ia-action": "confirm-cancel",
+                "data-ia-role": "confirm-cancel"
+              },
+              "disabled": false,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(16, 18, 15)",
+              "color": "rgb(243, 245, 239)",
+              "textContrast": 17.139505198835234,
+              "textFillColor": "rgb(243, 245, 239)",
+              "text": "Cancel",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-accept\"]": {
+              "attributes": {
+                "class": "ia-button ia-button--danger",
+                "type": "button",
+                "data-ia-action": "confirm-accept",
+                "data-ia-role": "confirm-accept"
+              },
+              "disabled": false,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(255, 150, 138)",
+              "color": "rgb(255, 255, 255)",
+              "textContrast": 2.1038849993953423,
+              "textFillColor": "rgb(255, 255, 255)",
+              "text": "Unsend all my messages",
+              "tone": null,
+              "visible": true
+            }
+          },
+          "status": "Ready. Review the exact target before any change.",
+          "statusRegion": {
+            "bottom": 811,
+            "height": 28,
+            "left": 9,
+            "right": 811,
+            "top": 783,
+            "width": 802
+          },
+          "statusSemantics": {
+            "atomic": "true",
+            "live": "polite"
+          },
+          "workspaceExtensionVersion": "2.0.2",
+          "strip": null,
+          "target": {
+            "bottom": 237.578125,
+            "height": 41.59375,
+            "left": 415,
+            "right": 739,
+            "top": 195.984375,
+            "width": 324
+          },
+          "theme": "dark",
+          "touchTargets": [
+            {
+              "height": 52,
+              "label": "Toolbox",
+              "width": 160.390625
+            },
+            {
+              "height": 52,
+              "label": "Mutual Checker",
+              "width": 160.40625
+            },
+            {
+              "height": 52,
+              "label": "Follow / Unfollow",
+              "width": 160.390625
+            },
+            {
+              "height": 52,
+              "label": "DM Unsend",
+              "width": 160.40625
+            },
+            {
+              "height": 52,
+              "label": "Workspace",
+              "width": 160.390625
+            },
+            {
+              "height": 44,
+              "label": "Overlay preferences",
+              "width": 44
+            },
+            {
+              "height": 44,
+              "label": "Collapse Insta Toolbox",
+              "width": 44
+            },
+            {
+              "height": 44,
+              "label": "Unsend DMs",
+              "width": 756
+            },
+            {
+              "height": 44,
+              "label": "All messages you sentNewest NOldest N",
+              "width": 786
+            },
+            {
+              "height": 44,
+              "label": "Check conversation",
+              "width": 149.46875
+            },
+            {
+              "height": 44,
+              "label": "Read visible thread",
+              "width": 146.65625
+            },
+            {
+              "height": 44,
+              "label": "Download evidence",
+              "width": 150.875
+            },
+            {
+              "height": 44,
+              "label": "Cancel",
+              "width": 67.859375
+            },
+            {
+              "height": 44,
+              "label": "Unsend all my messages",
+              "width": 180.90625
+            }
+          ],
+          "viewTitle": "Insta Toolbox",
+          "width": "standard"
+        }
+      }
+    },
+    {
       "id": "profile-mobile-portrait",
       "sha256": "153b157929d64d12508bebf94d666e3f8bebc9b95632b7416a2e15312cdf4b87",
       "scenario": {
@@ -9149,6 +9571,421 @@
       }
     },
     {
+      "id": "messages-confirmation-open-zoom-200",
+      "sha256": "a3799ece2239318e0358a5b45ee94b284616b86863058e4b94a56608f6da47fb",
+      "scenario": {
+        "after": "open-dm-confirmation",
+        "captureListType": null,
+        "density": "comfortable",
+        "dock": "right",
+        "forcedColors": false,
+        "firstRun": true,
+        "layout": "docked",
+        "mode": "messages-exact",
+        "opacity": null,
+        "open": true,
+        "pairing": "action",
+        "panelHeight": null,
+        "panelWidth": null,
+        "position": null,
+        "presentation": "panel",
+        "queue": "loaded",
+        "section": "messages",
+        "targetSelector": null,
+        "theme": "dark",
+        "viewport": "desktop",
+        "width": "standard",
+        "zoom": 2,
+        "confirmationOpen": true,
+        "semantics": [
+          {
+            "attributes": {
+              "aria-describedby": "ia-confirm-message ia-confirm-detail",
+              "aria-labelledby": "ia-confirm-title"
+            },
+            "visible": true,
+            "selector": "[data-ia-role=\"action-confirmation\"]"
+          },
+          {
+            "equals": "Unsend DMs?",
+            "selector": "[data-ia-role=\"confirm-title\"]"
+          },
+          {
+            "equals": "Permanently unsend every message you sent in this conversation?",
+            "selector": "[data-ia-role=\"confirm-message\"]"
+          },
+          {
+            "includes": [
+              "Action",
+              "Permanently unsend messages",
+              "Conversation",
+              "Thread 123",
+              "Scope",
+              "All messages you sent"
+            ],
+            "selector": "[data-ia-role=\"confirm-facts\"]"
+          },
+          {
+            "attributes": {
+              "type": "button"
+            },
+            "equals": "Cancel",
+            "selector": "[data-ia-role=\"confirm-cancel\"]"
+          },
+          {
+            "attributes": {
+              "type": "button"
+            },
+            "equals": "Unsend all my messages",
+            "selector": "[data-ia-role=\"confirm-accept\"]"
+          }
+        ],
+        "metrics": {
+          "activeElementSection": null,
+          "adaptiveDock": "reviewed-target",
+          "adaptiveWidth": "reviewed-target",
+          "bodyWidth": 720,
+          "collision": "inactive",
+          "collisionPlacement": null,
+          "activeElementRole": "confirm-cancel",
+          "confirmation": {
+            "accept": {
+              "bottom": 346.75,
+              "height": 44,
+              "left": 370.09375,
+              "right": 551,
+              "top": 302.75,
+              "width": 180.90625
+            },
+            "acceptLabel": "Unsend all my messages",
+            "cancel": {
+              "bottom": 346.75,
+              "height": 44,
+              "left": 294.2421875,
+              "right": 362.09375,
+              "top": 302.75,
+              "width": 67.8515625
+            },
+            "cancelLabel": "Cancel",
+            "controlOrder": [
+              "confirm-cancel",
+              "confirm-accept"
+            ],
+            "detail": "This cannot be undone. Stop stays available while it runs.",
+            "dialog": {
+              "bottom": 365.75,
+              "height": 281.5,
+              "left": 150,
+              "right": 570,
+              "top": 84.25,
+              "width": 420
+            },
+            "facts": [
+              [
+                "Action",
+                "Permanently unsend messages"
+              ],
+              [
+                "Conversation",
+                "Thread 123"
+              ],
+              [
+                "Scope",
+                "All messages you sent"
+              ]
+            ],
+            "horizontalOverflow": 0,
+            "message": "Permanently unsend every message you sent in this conversation?",
+            "open": true,
+            "title": "Unsend DMs?"
+          },
+          "destructiveActivity": {
+            "dmClicks": 0,
+            "reservations": 0,
+            "runnerStatus": "idle",
+            "unsent": 0
+          },
+          "credit": {
+            "href": "https://github.com/slaveofsolace",
+            "rel": "noopener noreferrer",
+            "target": "_blank",
+            "text": "created by @slaveofsolace"
+          },
+          "documentWidth": 720,
+          "dock": "left",
+          "footer": {
+            "bottom": 390,
+            "height": 27,
+            "left": 1,
+            "right": 719,
+            "top": 363,
+            "width": 718
+          },
+          "header": {
+            "bottom": 153,
+            "height": 53,
+            "left": 1,
+            "right": 719,
+            "top": 100,
+            "width": 718
+          },
+          "headerSizing": {
+            "actions": {
+              "client": 90,
+              "rect": {
+                "bottom": 148,
+                "height": 44,
+                "left": 621,
+                "right": 711,
+                "top": 104,
+                "width": 90
+              },
+              "scroll": 90
+            },
+            "copy": {
+              "client": 606,
+              "rect": {
+                "bottom": 135.59375,
+                "height": 19.1953125,
+                "left": 9,
+                "right": 615,
+                "top": 116.3984375,
+                "width": 606
+              },
+              "scroll": 606
+            },
+            "header": {
+              "client": 718,
+              "scroll": 718
+            }
+          },
+          "innerHeight": 450,
+          "innerWidth": 720,
+          "layout": "docked",
+          "launcher": null,
+          "opacity": "88%",
+          "overflowing": [],
+          "panel": {
+            "bottom": 450,
+            "height": 351,
+            "left": 0,
+            "right": 720,
+            "top": 99,
+            "width": 720
+          },
+          "panelAreaShare": 0.78,
+          "panelHorizontalOverflow": 0,
+          "presentation": {
+            "bottom": 450,
+            "height": 351,
+            "left": 0,
+            "right": 720,
+            "top": 99,
+            "width": 720
+          },
+          "presentationIntersectsTarget": false,
+          "scrollerHorizontalOverflow": 0,
+          "selectedHidden": false,
+          "selectedHorizontalOverflow": 0,
+          "semantics": {
+            "[data-ia-role=\"action-confirmation\"]": {
+              "attributes": {
+                "class": "ia-dialog",
+                "data-ia-role": "action-confirmation",
+                "aria-labelledby": "ia-confirm-title",
+                "aria-describedby": "ia-confirm-message ia-confirm-detail",
+                "open": ""
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(28, 31, 27)",
+              "color": "rgb(243, 245, 239)",
+              "textContrast": 15.15886175647789,
+              "textFillColor": "rgb(243, 245, 239)",
+              "text": "Unsend DMs? Permanently unsend every message you sent in this conversation? ActionPermanently unsend messagesConversationThread 123ScopeAll messages you sent This cannot be undone. Stop stays available while it runs. CancelUnsend all my messages",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-title\"]": {
+              "attributes": {
+                "id": "ia-confirm-title",
+                "data-ia-role": "confirm-title"
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgba(0, 0, 0, 0)",
+              "color": "rgb(243, 245, 239)",
+              "textContrast": null,
+              "textFillColor": "rgb(243, 245, 239)",
+              "text": "Unsend DMs?",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-message\"]": {
+              "attributes": {
+                "id": "ia-confirm-message",
+                "data-ia-role": "confirm-message"
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgba(0, 0, 0, 0)",
+              "color": "rgb(169, 175, 163)",
+              "textContrast": null,
+              "textFillColor": "rgb(169, 175, 163)",
+              "text": "Permanently unsend every message you sent in this conversation?",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-facts\"]": {
+              "attributes": {
+                "data-ia-role": "confirm-facts"
+              },
+              "disabled": null,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgba(0, 0, 0, 0)",
+              "color": "rgb(243, 245, 239)",
+              "textContrast": null,
+              "textFillColor": "rgb(243, 245, 239)",
+              "text": "ActionPermanently unsend messagesConversationThread 123ScopeAll messages you sent",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-cancel\"]": {
+              "attributes": {
+                "class": "ia-button ia-button--quiet",
+                "type": "button",
+                "data-ia-action": "confirm-cancel",
+                "data-ia-role": "confirm-cancel"
+              },
+              "disabled": false,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(16, 18, 15)",
+              "color": "rgb(243, 245, 239)",
+              "textContrast": 17.139505198835234,
+              "textFillColor": "rgb(243, 245, 239)",
+              "text": "Cancel",
+              "tone": null,
+              "visible": true
+            },
+            "[data-ia-role=\"confirm-accept\"]": {
+              "attributes": {
+                "class": "ia-button ia-button--danger",
+                "type": "button",
+                "data-ia-action": "confirm-accept",
+                "data-ia-role": "confirm-accept"
+              },
+              "disabled": false,
+              "exists": true,
+              "hidden": false,
+              "backgroundColor": "rgb(255, 150, 138)",
+              "color": "rgb(255, 255, 255)",
+              "textContrast": 2.1038849993953423,
+              "textFillColor": "rgb(255, 255, 255)",
+              "text": "Unsend all my messages",
+              "tone": null,
+              "visible": true
+            }
+          },
+          "status": "Ready. Review the exact target before any change.",
+          "statusRegion": {
+            "bottom": 363,
+            "height": 28,
+            "left": 9,
+            "right": 711,
+            "top": 335,
+            "width": 702
+          },
+          "statusSemantics": {
+            "atomic": "true",
+            "live": "polite"
+          },
+          "workspaceExtensionVersion": "2.0.2",
+          "strip": null,
+          "target": null,
+          "theme": "dark",
+          "touchTargets": [
+            {
+              "height": 52,
+              "label": "Toolbox",
+              "width": 140.3984375
+            },
+            {
+              "height": 52,
+              "label": "Mutual Checker",
+              "width": 140.3984375
+            },
+            {
+              "height": 52,
+              "label": "Follow / Unfollow",
+              "width": 140.3984375
+            },
+            {
+              "height": 52,
+              "label": "DM Unsend",
+              "width": 140.3984375
+            },
+            {
+              "height": 52,
+              "label": "Workspace",
+              "width": 140.3984375
+            },
+            {
+              "height": 44,
+              "label": "Overlay preferences",
+              "width": 44
+            },
+            {
+              "height": 44,
+              "label": "Collapse Insta Toolbox",
+              "width": 44
+            },
+            {
+              "height": 44,
+              "label": "Unsend DMs",
+              "width": 648.5
+            },
+            {
+              "height": 44,
+              "label": "All messages you sentNewest NOldest N",
+              "width": 678.5
+            },
+            {
+              "height": 44,
+              "label": "Check conversation",
+              "width": 149.46875
+            },
+            {
+              "height": 44,
+              "label": "Read visible thread",
+              "width": 146.65625
+            },
+            {
+              "height": 44,
+              "label": "Download evidence",
+              "width": 150.8671875
+            },
+            {
+              "height": 44,
+              "label": "Cancel",
+              "width": 67.8515625
+            },
+            {
+              "height": 44,
+              "label": "Unsend all my messages",
+              "width": 180.90625
+            }
+          ],
+          "viewTitle": "Insta Toolbox",
+          "width": "compact"
+        }
+      }
+    },
+    {
       "id": "profile-forced-colors",
       "sha256": "8ff87356d635c719237811bddfd74ad6527e19cef8f8d5656b7c7cd92e34730d",
       "scenario": {
@@ -10178,13 +11015,13 @@
     }
   ],
   "performance": {
-    "collapsedTaskMs": 5.0489999999999995,
-    "openTaskMs": 2.336999999999999,
+    "collapsedTaskMs": 4.482000000000001,
+    "openTaskMs": 2.794999999999999,
     "queue": {
-      "durationMs": 37.29999999701977,
+      "durationMs": 20,
       "renderedItems": 1,
-      "totalOverlayNodes": 357
+      "totalOverlayNodes": 367
     },
-    "routeTransitionMs": 100.70000000298023
+    "routeTransitionMs": 97
   }
 }

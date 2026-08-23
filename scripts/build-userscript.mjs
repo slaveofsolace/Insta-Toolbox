@@ -18,6 +18,7 @@ const licenseFile = path.join(repositoryRoot, 'LICENSE');
 const parts = [
   path.join(repositoryRoot, 'userscripts', 'src', 'metadata.txt'),
   path.join(repositoryRoot, 'extension', 'overlay', 'tokens.js'),
+  path.join(repositoryRoot, 'extension', 'action-confirmation.js'),
   path.join(repositoryRoot, 'extension', 'action-labels.js'),
   path.join(repositoryRoot, 'extension', 'content-instagram.js'),
   path.join(repositoryRoot, 'userscripts', 'src', 'toolbox-shell.js'),
@@ -28,6 +29,7 @@ const banner = `
 // Generated file. Do not edit.
 //
 // Built by scripts/build-userscript.mjs from:
+//   extension/action-confirmation.js     <- shared destructive-action dialog
 //   extension/action-labels.js           <- labels and thread-wide DM runner
 //   extension/content-instagram.js       <- shared exact-target engine
 //   userscripts/src/toolbox-shell.js     <- userscript UI and batch runner

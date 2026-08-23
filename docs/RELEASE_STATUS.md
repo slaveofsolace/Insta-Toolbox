@@ -112,35 +112,68 @@ Windows installers remain intentionally unsigned.
   bounded restart now also recovers a prematurely cursorless large-account
   response; a 2,104-follower regression and exhausted-retry case cover the
   reported failure without adding an unbounded loop.
-- Full local suite: **282/282** passing after the final finite-oldest boundary
-  repair, including dependency verification, repository hygiene, generated
+- Full local suite: **287/287** passing after the confirmation and finite-oldest
+  repairs, including dependency verification, repository hygiene, generated
   parity, migrations, virtualized DM traversal, bounded capabilities, and safe
   stops.
 - Extension/userscript acceptance: production Follow, Unfollow, and
   one-message Unsend fixture chains; exact newest/oldest ordering; delayed
-  oldest-history growth; replaced virtual scrollers; Stop after one verified
-  removal; a six-message thread-wide run; keyboard and accessibility-tree
-  checks; and six responsive layouts all passed in isolated Chromium.
-- Visual and browser gates: **43/43** reviewed Windows overlay states, **9/9**
+  oldest-history growth after normal and reversed scroller replacement; Stop
+  after one verified removal; a six-message thread-wide run; keyboard and
+  accessibility-tree checks; and six responsive layouts all passed in isolated
+  Chromium. Synthetic confirmation clicks produced zero reservations, runner
+  starts, Instagram fixture clicks, or removals; trusted browser input was
+  required for the affirmative path.
+- Visual and browser gates: **45/45** reviewed Windows overlay states, **11/11**
   reviewed Windows PWA baselines, and real Chrome PWA installability plus
-  extension pairing passed.
+  extension pairing passed. Confirmation-open coverage includes narrow panels,
+  mobile, and true 200-percent Chromium zoom with Cancel focused first.
 - Repository hygiene, dependency audit, generated-source checks, and
-  `git diff --check` passed. A complete source-level security diff review found
-  no reportable security finding; it did identify the finite `oldest N`
-  boundary defect that was repaired and regression-tested before this matrix.
-- Deterministic browser artifacts reproduced byte-for-byte across consecutive
-  builds:
-  - `userscripts/insta-aio-companion.user.js` SHA-256:
+  `git diff --check` passed. The final source-level security audit found a
+  synthetic-click authorization path and a post-replacement finite-ordering
+  defect. Both were repaired and regression-tested before this matrix; no
+  reportable finding remains in the corrected local patch.
+- The prior pushed candidate passed all five GitHub CI jobs at
+  `0b2cd3a9a12d5b8ce8734e2cd152e570cb5029a8`: tests, Chrome pairing,
+  reviewed Windows rendering, Windows NSIS lifecycle, macOS DMG/ZIP lifecycle,
+  and combined release checksums. Those results predate the confirmation and
+  traversal repairs. Exact-head CI must pass again after the corrected patch is
+  committed and pushed.
+- Prior candidate CI artifact SHA-256 values, retained only for provenance:
+  - `insta-aio-companion.user.js`:
     `94e192a42fb5a9d3d41cbadc2a37eae101ab54e19e673558713387bb42fcb3cd`
-  - `dist/insta-aio-companion-2.0.2.zip` SHA-256:
-    `7b0e6f3633b53bc515fc88671c7ba70685bc0dff111d628a6fe2d39225609008`
-- Exact-head GitHub CI, Node 22 Windows/macOS package lifecycle, commit-pinned
-  Tampermonkey installation, and authenticated disposable-message acceptance
-  remain pending. Local Node 24 stalled in electron-builder's dependency
-  collection before producing an installer, so this Windows host does not
-  supply package proof.
+  - `insta-aio-companion-2.0.2.zip`:
+    `de0a36917a6d0a0d6fe43d85170cf8e8b2291ed046ca541ed8abaa47be05333a`
+  - `Insta Toolbox Setup 2.0.2.exe`:
+    `df8ef945e13ba5dfe5259d096bba91fb9bc93964299409ccb07ec3a435b3f88c`
+  - `Insta Toolbox-2.0.2-arm64-mac.zip`:
+    `51527d0510b839e9fa526a454f9b0de71f3946bf98c25ab8c21eb542e27b8698`
+  - `Insta Toolbox-2.0.2-arm64.dmg`:
+    `6393056eac306864f8445e716e9b1d3e361b6586cf0e78a57b31e014836e1b57`
+- The commit-pinned Tampermonkey build was installed in authenticated Chrome.
+  The live overlay showed the compact header and credit line with the old mode
+  pill and status footer absent.
+- Authenticated acceptance exposed a release-blocking native-dialog hazard: a
+  browser-control click timed out at `window.confirm`, but the dialog was then
+  accepted outside the requested flow and Unsend started. Stop ended the run
+  after 72 verified removals. All Instagram automation was stopped afterward.
+- The replacement in-overlay confirmation is implemented and passes local
+  trusted-input, synthetic-click rejection, accessibility, zoom, and fixture
+  action coverage. Release still requires exact-head CI, installation of the
+  corrected commit-pinned userscript, and separately authorized
+  disposable-message reacceptance. No further authenticated action has been
+  performed.
+- Final corrected local artifact SHA-256 values:
+  - `insta-aio-companion.user.js`:
+    `f4972b14db2014df8dcf315d6e0ec9a7d1396b704ea779b733e15f1debe7b864`
+  - `insta-aio-companion-2.0.2.zip`:
+    `a153991ffa2f82f0689c98de23dcd6e2d9d18fe0cf4bbc6a85c9f7034057088f`
+  - `Insta Toolbox Setup 2.0.2.exe`:
+    `c7d5dfc53d671e6f1c17fa567cee29c4317fdae9bad36a544f2142c48c1534a8`
+  - `Insta Toolbox Setup 2.0.2.exe.blockmap`:
+    `f1b7c15dcf0e34c9f9542663ff0d7e8b16b6c64e8829d776c8883d81a340e97d`
 
-### Published 2.0.1 userscript hotfix evidence (2026-08-22)
+### Prior 2.0.1 main-branch userscript hotfix evidence (2026-08-22)
 
 - Full test matrix: **259/259** passing, including dependency verification,
   repository hygiene, extension reproducibility, userscript parity, migrations,

@@ -85,7 +85,10 @@ test('thread runner carries the proven 0.7.2 interaction model', () => {
   assert.match(labelsSource, /function dialogUnsendCandidates\(existing = new Set\(\)\)/);
   assert.match(labelsSource, /filter\(dialogControlHasUnsendLabel\)/);
   assert.match(labelsSource, /function loadAllHistory\(context, signal\)/);
-  assert.match(labelsSource, /function nextSentRow\(context, signal, order = 'newest'/);
+  assert.match(
+    labelsSource,
+    /function nextSentRow\(\s*context,\s*signal,\s*order = 'newest'/,
+  );
   assert.match(labelsSource, /function createPlan\(value = \{\}\)/);
   assert.match(labelsSource, /function createTraversal\(order = 'newest'\)/);
   assert.match(labelsSource, /function stableMessageKey\(row\)/);
@@ -171,14 +174,13 @@ test('DM button makes zero clicks for malformed or stalled reservation proof', a
       setText() {},
       shadow: { append() {} },
       status(message, tone) { statuses.push({ message, tone }); },
-      window: {
-        confirm() {
-          confirmations += 1;
-          return true;
-        },
+      async confirmAction(request) {
+        confirmations += 1;
+        return request.binding;
       },
     };
     const first = messagesView.massUnsend(runtime);
+    await Promise.resolve();
     const duplicate = messagesView.massUnsend(runtime);
     await Promise.all([first, duplicate]);
     return { bridgeCalls, confirmations, messagesView, runtime, starts, statuses };
@@ -628,6 +630,318 @@ test('streaming traversal keeps its position unless the scroller shrinks or is r
   assert.equal(traversal.lastScrollTop, null, 'a replaced virtual scroller restarts safely');
 });
 
+test('finite traversal re-establishes its requested edge after virtual replacement or shrink', async () => {
+  const runner = loadRunner();
+  const signal = { aborted: false, addEventListener: () => {} };
+
+  async function exercise(order, reversed, resetKind) {
+    const documentElement = { parentElement: null };
+    const view = {
+      getComputedStyle: (element) => element.style || {},
+      innerHeight: 800,
+      innerWidth: 1_280,
+    };
+    const ownerDocument = { defaultView: view, documentElement };
+    let logicalMessages = Array.from({ length: 6 }, (_, index) => ({ id: `message-${index}` }));
+    let edgeDispatches = 0;
+
+    function makeScroller(scrollHeight = 1_200) {
+      const scroller = Object.assign(new EventTarget(), {
+        children: [],
+        clientHeight: 200,
+        getBoundingClientRect: () => ({ bottom: 400, height: 300, left: 0, right: 600, top: 100, width: 600 }),
+        ownerDocument,
+        parentElement: documentElement,
+        querySelectorAll: () => [],
+        scrollHeight,
+        scrollTop: 0,
+        style: {
+          flexDirection: reversed ? 'column-reverse' : 'column',
+          overflowX: 'hidden',
+          overflowY: 'auto',
+        },
+      });
+
+      function mountedRow(message, slot) {
+        const top = 150 + (slot * 70);
+        const leaf = {
+          getAttribute: () => '',
+          getBoundingClientRect: () => ({ bottom: top + 28, height: 28, left: 30, right: 320, top, width: 290 }),
+          ownerDocument,
+          parentElement: null,
+          querySelector: () => null,
+          textContent: message.id,
+        };
+        const row = {
+          children: [],
+          getAttribute(name) {
+            if (name === 'data-message-id') return message.id;
+            if (name === 'data-sent-by-me') return 'true';
+            return '';
+          },
+          getBoundingClientRect: () => ({ bottom: top + 40, height: 40, left: 20, right: 330, top, width: 310 }),
+          hasAttribute: () => false,
+          isConnected: true,
+          ownerDocument,
+          parentElement: scroller,
+          querySelector: (selector) => (selector.includes('[role="none"]') ? leaf : null),
+          querySelectorAll: (selector) => (selector === '[dir="auto"]' ? [leaf] : []),
+          removeAttribute: () => {},
+          scrollIntoView: () => {},
+        };
+        leaf.parentElement = row;
+        return row;
+      }
+
+      function renderWindow() {
+        const range = Math.max(1, scroller.scrollHeight - scroller.clientHeight);
+        const progress = reversed
+          ? (Number(scroller.scrollTop) + range) / range
+          : Number(scroller.scrollTop) / range;
+        const clamped = Math.max(0, Math.min(1, progress));
+        const start = Math.round(clamped * Math.max(0, logicalMessages.length - 2));
+        scroller.children = logicalMessages.slice(start, start + 2).map(mountedRow);
+      }
+
+      scroller.mountAt = (edge) => {
+        const range = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        scroller.scrollTop = edge === 'oldest'
+          ? (reversed ? -range : 0)
+          : (reversed ? 0 : range);
+        renderWindow();
+      };
+      scroller.addEventListener('scroll', () => {
+        edgeDispatches += 1;
+        renderWindow();
+      });
+      return scroller;
+    }
+
+    const firstScroller = makeScroller();
+    firstScroller.mountAt(order);
+    const traversal = runner.__test.createTraversal(order);
+    traversal.scroller = firstScroller;
+    traversal.lastScrollTop = runner.__test.traversalBounds(firstScroller, order).start;
+    traversal.lastScrollHeight = firstScroller.scrollHeight;
+    if (order === 'oldest') traversal.oldestBoundaryProven = true;
+
+    const first = await runner.__test.nextSentRow(
+      { scroller: firstScroller },
+      signal,
+      order,
+      traversal,
+    );
+    const firstExpected = order === 'newest' ? 'message-5' : 'message-0';
+    assert.equal(first.getAttribute('data-message-id'), firstExpected);
+    logicalMessages = logicalMessages.filter((message) => message.id !== firstExpected);
+
+    const before = { scroller: firstScroller, scrollHeight: firstScroller.scrollHeight };
+    const nextScroller = resetKind === 'replacement' ? makeScroller() : firstScroller;
+    if (resetKind === 'shrink') nextScroller.scrollHeight -= 200;
+    nextScroller.mountAt(order === 'newest' ? 'oldest' : 'newest');
+    runner.__test.resetTraversalAfterRemoval(traversal, nextScroller, before);
+    if (order === 'oldest') {
+      assert.equal(traversal.oldestBoundaryProven, false, 'replacement or shrink invalidates the oldest-edge proof');
+      // This matrix isolates edge repositioning. The delayed-history regression
+      // below exercises the real bounded proof before a second row is returned.
+      traversal.oldestBoundaryProven = true;
+    }
+
+    const secondExpected = order === 'newest' ? 'message-4' : 'message-1';
+    assert.equal(
+      nextScroller.children.some((row) => row.getAttribute('data-message-id') === secondExpected),
+      false,
+      'the deliberately wrong mounted window must not contain the next authorized message',
+    );
+    const dispatchesBeforeSelection = edgeDispatches;
+    const second = await runner.__test.nextSentRow(
+      { scroller: nextScroller },
+      signal,
+      order,
+      traversal,
+    );
+    assert.equal(
+      second.getAttribute('data-message-id'),
+      secondExpected,
+      `${order} ${reversed ? 'reversed' : 'normal'} ${resetKind} traversal must return to its authorized edge`,
+    );
+    assert.ok(edgeDispatches > dispatchesBeforeSelection, 'edge reset must happen before selecting a mounted row');
+  }
+
+  for (const order of ['newest', 'oldest']) {
+    for (const reversed of [false, true]) {
+      await exercise(order, reversed, 'replacement');
+      await exercise(order, reversed, 'shrink');
+    }
+  }
+});
+
+test('oldest traversal waits for delayed history after virtual scroller replacement', async () => {
+  for (const reversed of [false, true]) {
+    const documentElement = { parentElement: null };
+    const view = {
+      getComputedStyle: (element) => element.style || {},
+      innerHeight: 800,
+      innerWidth: 1_280,
+    };
+    const ownerDocument = { defaultView: view, documentElement };
+    const root = {
+      children: [],
+      getBoundingClientRect: () => ({ bottom: 500, height: 450, left: 0, right: 700, top: 50, width: 700 }),
+      isConnected: true,
+      ownerDocument,
+      parentElement: documentElement,
+      querySelectorAll: () => [],
+      style: {},
+    };
+    const document = {
+      documentElement,
+      querySelectorAll(selector) {
+        return selector === "[data-pagelet='IGDMessagesList']" ? [root] : [];
+      },
+    };
+    const runner = loadRunner({ document, location: { pathname: '/direct/t/thread-delayed/' } });
+    const signal = { aborted: false, addEventListener: () => {} };
+
+    function makeScroller(initialMessages, { loadOlder = false } = {}) {
+      let logicalMessages = [...initialMessages];
+      let loadScheduled = false;
+      const scroller = Object.assign(new EventTarget(), {
+        children: [],
+        clientHeight: 200,
+        getBoundingClientRect: () => ({ bottom: 400, height: 300, left: 0, right: 600, top: 100, width: 600 }),
+        isConnected: true,
+        ownerDocument,
+        parentElement: root,
+        querySelectorAll: () => [],
+        scrollHeight: 1_200,
+        scrollTop: 0,
+        style: {
+          flexDirection: reversed ? 'column-reverse' : 'column',
+          overflowX: 'hidden',
+          overflowY: 'auto',
+        },
+      });
+
+      function mountedRow(id, slot) {
+        const top = 150 + (slot * 70);
+        const leaf = {
+          getAttribute: () => '',
+          getBoundingClientRect: () => ({ bottom: top + 28, height: 28, left: 30, right: 320, top, width: 290 }),
+          isConnected: true,
+          ownerDocument,
+          parentElement: null,
+          querySelector: () => null,
+          textContent: id,
+        };
+        const row = {
+          children: [],
+          getAttribute(name) {
+            if (name === 'data-message-id') return id;
+            if (name === 'data-sent-by-me') return 'true';
+            return '';
+          },
+          getBoundingClientRect: () => ({ bottom: top + 40, height: 40, left: 20, right: 330, top, width: 310 }),
+          hasAttribute: () => false,
+          isConnected: true,
+          ownerDocument,
+          parentElement: scroller,
+          querySelector: (selector) => (selector.includes('[role="none"]') ? leaf : null),
+          querySelectorAll: (selector) => (selector === '[dir="auto"]' ? [leaf] : []),
+          removeAttribute: () => {},
+          scrollIntoView: () => {},
+        };
+        leaf.parentElement = row;
+        return row;
+      }
+
+      function renderWindow() {
+        const range = Math.max(1, scroller.scrollHeight - scroller.clientHeight);
+        const progress = reversed
+          ? (Number(scroller.scrollTop) + range) / range
+          : Number(scroller.scrollTop) / range;
+        const start = Math.round(Math.max(0, Math.min(1, progress)) * Math.max(0, logicalMessages.length - 2));
+        scroller.children = logicalMessages.slice(start, start + 2).map(mountedRow);
+      }
+
+      scroller.mountOldest = () => {
+        const range = scroller.scrollHeight - scroller.clientHeight;
+        scroller.scrollTop = reversed ? -range : 0;
+        renderWindow();
+      };
+      scroller.addEventListener('scroll', () => {
+        renderWindow();
+        if (!loadOlder || loadScheduled) return;
+        loadScheduled = true;
+        setTimeout(() => {
+          logicalMessages = ['message-1', ...logicalMessages];
+          scroller.scrollHeight += 240;
+          renderWindow();
+        }, 40);
+      });
+      scroller.mountOldest();
+      return scroller;
+    }
+
+    const firstScroller = makeScroller([
+      'message-0', 'message-1', 'message-2', 'message-3', 'message-4', 'message-5',
+    ]);
+    root.children = [firstScroller];
+    const traversal = runner.__test.createTraversal('oldest');
+    traversal.scroller = firstScroller;
+    traversal.lastScrollTop = runner.__test.traversalBounds(firstScroller, 'oldest').start;
+    traversal.lastScrollHeight = firstScroller.scrollHeight;
+    traversal.oldestBoundaryProven = true;
+
+    const first = await runner.__test.nextSentRow(
+      { root, scroller: firstScroller, threadId: 'thread-delayed' },
+      signal,
+      'oldest',
+      traversal,
+      Date.now() + 30_000,
+    );
+    assert.equal(first.getAttribute('data-message-id'), 'message-0');
+
+    const replacement = makeScroller(
+      ['message-2', 'message-3', 'message-4', 'message-5'],
+      { loadOlder: true },
+    );
+    root.children = [replacement];
+    runner.__test.resetTraversalAfterRemoval(
+      traversal,
+      replacement,
+      { scroller: firstScroller, scrollHeight: firstScroller.scrollHeight },
+    );
+    assert.equal(traversal.oldestBoundaryProven, false);
+
+    let callerCanOpenMenu = false;
+    const selection = runner.__test.nextSentRow(
+      { root, scroller: replacement, threadId: 'thread-delayed' },
+      signal,
+      'oldest',
+      traversal,
+      Date.now() + 30_000,
+    ).then((row) => {
+      callerCanOpenMenu = true;
+      return row;
+    });
+    await new Promise((resolve) => { setTimeout(resolve, 250); });
+    assert.equal(
+      callerCanOpenMenu,
+      false,
+      'the next menu cannot open while delayed oldest history is still stabilizing',
+    );
+
+    const second = await selection;
+    assert.equal(
+      second.getAttribute('data-message-id'),
+      'message-1',
+      `${reversed ? 'reversed' : 'normal'} traversal must select the true next oldest message`,
+    );
+    assert.equal(traversal.oldestBoundaryProven, true);
+  }
+});
+
 test('the next comfortably visible message row is not repositioned before hover', async () => {
   const runner = loadRunner();
   const documentElement = { parentElement: null };
@@ -639,10 +953,13 @@ test('the next comfortably visible message row is not repositioned before hover'
   const ownerDocument = { defaultView: view, documentElement };
   let scrollCalls = 0;
   const scroller = Object.assign(new EventTarget(), {
+    clientHeight: 200,
     children: [],
     getBoundingClientRect: () => ({ bottom: 300, height: 200, left: 0, right: 600, top: 100, width: 600 }),
     ownerDocument,
     parentElement: documentElement,
+    scrollHeight: 200,
+    scrollTop: 0,
     style: { overflowX: 'hidden', overflowY: 'auto' },
   });
   const row = {
@@ -682,10 +999,13 @@ test('a clipped sent-message row is centered once before hover', async () => {
   let scrollCalls = 0;
   let exposed = false;
   const scroller = Object.assign(new EventTarget(), {
+    clientHeight: 200,
     children: [],
     getBoundingClientRect: () => ({ bottom: 300, height: 200, left: 0, right: 600, top: 100, width: 600 }),
     ownerDocument,
     parentElement: documentElement,
+    scrollHeight: 200,
+    scrollTop: 0,
     style: { overflowX: 'hidden', overflowY: 'auto' },
   });
   const row = {
@@ -940,6 +1260,9 @@ test('extension message view uses the shared runner and Instagram design tokens'
   assert.match(messagesSource, /'Unsend DMs'/);
   assert.match(messagesSource, /Permanently unsend \$\{scopeLabel\} in this conversation/);
   assert.match(messagesSource, /Thread \$\{plan\.threadId\}/);
+  assert.match(messagesSource, /await runtime\.confirmAction\(\{/);
+  assert.match(messagesSource, /confirmedInspection\.threadId !== plan\.threadId/);
+  assert.doesNotMatch(messagesSource, /runtime\.window\.confirm|globalThis\.confirm/);
   assert.match(messagesSource, /Canceled\. Nothing was removed\./);
   assert.match(messagesSource, /--ig-primary-background/);
   assert.match(messagesSource, /--ig-primary-button/);

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-08-23T20:29:20.921Z",
+  "capturedAt": "2026-08-23T22:10:25.985Z",
   "platform": "win32",
   "source": {
     "current": "docs/evidence/overlay-ui-2026-08-02/after/win32"
@@ -62,14 +62,14 @@
     }
   ],
   "performance": {
-    "collapsedTaskMs": 5.0489999999999995,
-    "openTaskMs": 2.336999999999999,
+    "collapsedTaskMs": 4.482000000000001,
+    "openTaskMs": 2.794999999999999,
     "queue": {
-      "durationMs": 37.29999999701977,
+      "durationMs": 20,
       "renderedItems": 1,
-      "totalOverlayNodes": 357
+      "totalOverlayNodes": 367
     },
-    "routeTransitionMs": 100.70000000298023
+    "routeTransitionMs": 97
   },
   "limitations": [
     "Platform screenshot hashes are not cross-platform visual proof.",

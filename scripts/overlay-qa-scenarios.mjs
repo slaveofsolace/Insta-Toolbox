@@ -360,6 +360,46 @@ const matrixStates = [
     theme: 'dark',
     viewport: 'tablet',
   }),
+  scenario('messages-confirmation-open-narrow', {
+    after: 'open-dm-confirmation',
+    confirmationOpen: true,
+    mode: 'messages-exact',
+    section: 'messages',
+    semantics: [
+      semantic('[data-ia-role="action-confirmation"]', {
+        attributes: {
+          'aria-describedby': 'ia-confirm-message ia-confirm-detail',
+          'aria-labelledby': 'ia-confirm-title',
+        },
+        visible: true,
+      }),
+      semantic('[data-ia-role="confirm-title"]', { equals: 'Unsend DMs?' }),
+      semantic('[data-ia-role="confirm-message"]', {
+        equals: 'Permanently unsend every message you sent in this conversation?',
+      }),
+      semantic('[data-ia-role="confirm-facts"]', {
+        includes: [
+          'Action',
+          'Permanently unsend messages',
+          'Conversation',
+          'Thread 123',
+          'Scope',
+          'All messages you sent',
+        ],
+      }),
+      semantic('[data-ia-role="confirm-cancel"]', {
+        attributes: { type: 'button' },
+        equals: 'Cancel',
+      }),
+      semantic('[data-ia-role="confirm-accept"]', {
+        attributes: { type: 'button' },
+        equals: 'Unsend all my messages',
+      }),
+    ],
+    targetSelector: '[data-message-id="sent-1"]',
+    theme: 'dark',
+    viewport: 'tablet',
+  }),
   scenario('profile-mobile-portrait', { viewport: 'mobile' }),
   scenario('queue-mobile-portrait-dark', { section: 'queue', theme: 'dark', viewport: 'mobile' }),
   scenario('profile-mobile-landscape', { viewport: 'landscape' }),
@@ -376,6 +416,46 @@ const matrixStates = [
         visible: true,
       }),
     ],
+    theme: 'dark',
+    zoom: 2,
+  }),
+  scenario('messages-confirmation-open-zoom-200', {
+    after: 'open-dm-confirmation',
+    confirmationOpen: true,
+    mode: 'messages-exact',
+    section: 'messages',
+    semantics: [
+      semantic('[data-ia-role="action-confirmation"]', {
+        attributes: {
+          'aria-describedby': 'ia-confirm-message ia-confirm-detail',
+          'aria-labelledby': 'ia-confirm-title',
+        },
+        visible: true,
+      }),
+      semantic('[data-ia-role="confirm-title"]', { equals: 'Unsend DMs?' }),
+      semantic('[data-ia-role="confirm-message"]', {
+        equals: 'Permanently unsend every message you sent in this conversation?',
+      }),
+      semantic('[data-ia-role="confirm-facts"]', {
+        includes: [
+          'Action',
+          'Permanently unsend messages',
+          'Conversation',
+          'Thread 123',
+          'Scope',
+          'All messages you sent',
+        ],
+      }),
+      semantic('[data-ia-role="confirm-cancel"]', {
+        attributes: { type: 'button' },
+        equals: 'Cancel',
+      }),
+      semantic('[data-ia-role="confirm-accept"]', {
+        attributes: { type: 'button' },
+        equals: 'Unsend all my messages',
+      }),
+    ],
+    targetSelector: null,
     theme: 'dark',
     zoom: 2,
   }),

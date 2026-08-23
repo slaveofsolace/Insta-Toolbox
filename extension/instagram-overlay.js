@@ -80,6 +80,14 @@
     setText('status-text', shared.safeText(message, 'Review the exact action before continuing.'));
   }
 
+  const confirmationController = globalThis.InstaToolboxActionConfirmation?.createController({
+    root: shadow,
+    attribute: 'data-ia-role',
+    status,
+    unavailableTone: 'error',
+  });
+  const confirmAction = (request) => confirmationController?.confirm(request) ?? Promise.resolve(null);
+
   function safeHttpOrigin(value) {
     try {
       const parsed = new URL(String(value || ''));
@@ -245,6 +253,7 @@
     restoreFocus = true,
     } = {}) {
     const shouldOpen = Boolean(open);
+    if (!shouldOpen) confirmationController?.cancel();
     const opening = shouldOpen && !model.open;
     const focusBeforeOpen = opening
       ? opener || shadow.activeElement || document.activeElement
@@ -466,6 +475,8 @@
   const runtime = {
     applyBridgeState,
     bridgeLastContactAt,
+    confirmAction,
+    confirmationPending: () => confirmationController?.isPending() === true,
     document,
     downloads: downloadManager,
     inspector,
@@ -491,6 +502,7 @@
     'bot-start': () => queueView.botStart(runtime),
     'capture-visible': () => captureView.captureVisible(runtime),
     'check-account-relationships': () => captureView.checkAccount(runtime),
+    'confirm-cancel': () => confirmationController?.cancel(),
     close: () => setOpen(false),
     'first-run-dismiss': () => completeFirstRun(),
     'first-run-start': () => completeFirstRun('capture'),
@@ -607,6 +619,7 @@
   }
 
   function onDocumentKeydown(event) {
+    if (event.key === 'Escape' && confirmationController?.isPending()) return;
     if (event.altKey && event.shiftKey && event.key.toLowerCase() === 'i') {
       event.preventDefault();
       setOpen(!model.open);
@@ -663,6 +676,8 @@
   }
 
   function onRouteChange() {
+    confirmationController?.cancel();
+    messagesView.cancelPending?.(runtime);
     model.context = null;
     model.messages = null;
     renderAll();
@@ -675,6 +690,8 @@
   function teardown() {
     if (!active) return;
     active = false;
+    confirmationController?.destroy();
+    messagesView.cancelPending?.(runtime);
     collisionController?.teardown();
     layoutController?.teardown();
     routeController?.teardown();

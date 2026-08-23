@@ -939,17 +939,23 @@
       lastSearchGrew: false,
       lastSearchIncomplete: false,
       lastSearchSteps: 0,
+      oldestBoundaryProven: order !== 'oldest',
       processedKeys: new Set(),
     };
   }
 
   function traversalContext(context, traversal) {
-    if (!context?.threadId) return context;
-    const current = threadContext();
-    if (!current.ok || current.threadId !== context.threadId) {
-      throw new Error(current.reason || 'The reviewed conversation changed.');
+    let current = context;
+    if (context?.threadId) {
+      current = threadContext();
+      if (!current.ok || current.threadId !== context.threadId) {
+        throw new Error(current.reason || 'The reviewed conversation changed.');
+      }
     }
-    if (traversal.scroller !== current.scroller) {
+    if (traversal.scroller !== current?.scroller) {
+      if (traversal.order === 'oldest' && traversal.scroller) {
+        traversal.oldestBoundaryProven = false;
+      }
       traversal.scroller = current.scroller;
       traversal.lastScrollTop = null;
       traversal.lastScrollHeight = Number(current.scroller?.scrollHeight) || 0;
@@ -1041,6 +1047,7 @@
         traversal.lastSearchGrew = false;
         traversal.lastSearchIncomplete = false;
         traversal.lastSearchSteps = 0;
+        traversal.oldestBoundaryProven = true;
         return refreshed;
       }
     }
@@ -1062,6 +1069,9 @@
     const previousHeight = Number(before.scrollHeight);
     const shrank = Number.isFinite(previousHeight) && height + 1 < previousHeight;
     traversal.scroller = scroller;
+    if (traversal.order === 'oldest' && (scrollerChanged || shrank)) {
+      traversal.oldestBoundaryProven = false;
+    }
     traversal.lastScrollTop = scrollerChanged || shrank
       ? null
       : Number.isFinite(Number(scroller?.scrollTop))
@@ -1073,7 +1083,43 @@
     traversal.lastSearchSteps = 0;
   }
 
-  async function nextSentRow(context, signal, order = 'newest', traversal = createTraversal(order)) {
+  async function reestablishTraversalEdge(context, traversal, signal) {
+    for (let attempt = 0; attempt < MAX_SCAN_PASSES; attempt += 1) {
+      if (signal.aborted) return null;
+      const current = traversalContext(context, traversal);
+      const scroller = current.scroller;
+      const previousHeight = Number(traversal.lastScrollHeight) || 0;
+      const { start } = traversalBounds(scroller, traversal.order);
+      scroller.scrollTop = start;
+      dispatch(scroller, new Event('scroll', { bubbles: true }));
+      await delay(5, signal);
+
+      const refreshed = traversalContext(context, traversal);
+      if (refreshed.scroller !== scroller) continue;
+      const refreshedStart = traversalBounds(scroller, traversal.order).start;
+      const actualPosition = Number(scroller.scrollTop);
+      const currentHeight = Number(scroller.scrollHeight) || 0;
+      if (!Number.isFinite(actualPosition) || Math.abs(actualPosition - refreshedStart) > 1) {
+        traversal.lastScrollTop = null;
+        traversal.lastScrollHeight = currentHeight;
+        continue;
+      }
+      if (currentHeight > previousHeight + 1) traversal.lastSearchGrew = true;
+      traversal.lastScrollTop = actualPosition;
+      traversal.lastScrollHeight = currentHeight;
+      return refreshed;
+    }
+    traversal.lastSearchIncomplete = true;
+    return null;
+  }
+
+  async function nextSentRow(
+    context,
+    signal,
+    order = 'newest',
+    traversal = createTraversal(order),
+    authorizationExpiresAt = null,
+  ) {
     traversal.order = order === 'oldest' ? 'oldest' : 'newest';
     traversal.lastSearchGrew = false;
     traversal.lastSearchIncomplete = false;
@@ -1081,18 +1127,42 @@
 
     let current = traversalContext(context, traversal);
     let scroller = current.scroller;
-    if (traversal.scroller !== scroller) {
-      traversal.scroller = scroller;
-      traversal.lastScrollTop = null;
-      traversal.lastScrollHeight = Number(scroller?.scrollHeight) || 0;
-    }
     const startingHeight = Number(scroller?.scrollHeight) || 0;
     if (traversal.lastScrollHeight && startingHeight + 1 < traversal.lastScrollHeight) {
       // A successful Unsend can shrink the scroll range. Resume from the
       // requested edge instead of retaining an offset outside the new range.
       traversal.lastScrollTop = null;
+      if (traversal.order === 'oldest') traversal.oldestBoundaryProven = false;
     }
     traversal.lastScrollHeight = startingHeight;
+
+    if (traversal.order === 'oldest' && !traversal.oldestBoundaryProven) {
+      // Instagram can replace or shrink its virtual scroller after a removal.
+      // Do not expose another oldest candidate until that new edge has remained
+      // stable under the same bounded proof used before the first action.
+      let provenContext = null;
+      for (let attempt = 0; attempt < MAX_SCAN_PASSES; attempt += 1) {
+        provenContext = await proveStableOldestBoundary(
+          context,
+          traversal,
+          signal,
+          authorizationExpiresAt,
+        );
+        const verifiedContext = traversalContext(provenContext, traversal);
+        if (traversal.oldestBoundaryProven) {
+          current = verifiedContext;
+          scroller = verifiedContext.scroller;
+          break;
+        }
+      }
+      if (!traversal.oldestBoundaryProven || !provenContext) {
+        throw new Error('The oldest conversation boundary changed before the next message could be selected.');
+      }
+    } else if (!Number.isFinite(traversal.lastScrollTop)) {
+      current = await reestablishTraversalEdge(context, traversal, signal);
+      if (!current) return null;
+      scroller = current.scroller;
+    }
 
     // Leave a comfortably visible row in place. This handles short threads and
     // the next mounted message after Instagram replaces a virtualized window.
@@ -1142,7 +1212,10 @@
 
       const heightAfterPass = Number(scroller?.scrollHeight) || 0;
       if (heightAfterPass > heightBeforePass + 1) traversal.lastSearchGrew = true;
-      if (heightAfterPass + 1 < heightBeforePass) traversal.lastScrollTop = null;
+      if (heightAfterPass + 1 < heightBeforePass) {
+        traversal.lastScrollTop = null;
+        if (traversal.order === 'oldest') traversal.oldestBoundaryProven = false;
+      }
       traversal.lastScrollHeight = heightAfterPass;
       if (traversal.lastSearchSteps >= MAX_SCROLL_STEPS_PER_SEARCH && position !== end) {
         // Resume here on the next bounded search instead of repeatedly scanning
@@ -1355,6 +1428,7 @@
           signal,
           order,
           traversal,
+          authorizationExpiresAt,
         );
         if (!row) {
           if (traversal.lastSearchGrew || traversal.lastSearchIncomplete) {
@@ -1582,6 +1656,7 @@
       reversedLayout,
       rowNeedsReposition,
       resetTraversalAfterRemoval,
+      reestablishTraversalEdge,
       sentByCurrentUser,
       stableMessageKey,
       traversalBounds,

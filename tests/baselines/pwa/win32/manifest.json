@@ -47,6 +47,18 @@
       "sha256": "f55900f231fba058cc714fd3971dc71c981bcffe5a5f82d1053c7d0273716bb9"
     },
     {
+      "file": "zoom-200-settings-clear-confirmation.png",
+      "viewport": "desktop",
+      "width": 1134,
+      "height": 700,
+      "view": "settings",
+      "state": "clear-workspace-confirmation",
+      "zoomFactor": 2,
+      "cssWidth": 567,
+      "cssHeight": 350,
+      "sha256": "c04e04930a19b359fdb179ced88d171e16efc33e728efb231020a0cb13ec6322"
+    },
+    {
       "file": "tablet-overview.png",
       "viewport": "tablet",
       "width": 820,
@@ -93,6 +105,18 @@
       "height": 844,
       "view": "settings",
       "sha256": "989af8b97143e802260fd4faa448b7abfc0c82090af3b8fbafa1a98a064eaab3"
+    },
+    {
+      "file": "mobile-settings-clear-confirmation.png",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "view": "settings",
+      "state": "clear-workspace-confirmation",
+      "zoomFactor": 1,
+      "cssWidth": 390,
+      "cssHeight": 844,
+      "sha256": "11b83f522147e5f63804c9aa096261b873b0650fdebc39bdad60246de5b1bf82"
     }
   ]
 }

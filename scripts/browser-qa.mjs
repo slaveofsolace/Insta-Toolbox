@@ -146,6 +146,204 @@ function recordConsoleProblem(problems, detailsOrLevel, legacyMessage) {
   }
 }
 
+async function waitForDialogState(webContents, expectedOpen, label) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const open = await webContents.executeJavaScript(
+      `Boolean(document.querySelector('[data-role="action-confirmation"]')?.open)`,
+      true,
+    );
+    if (open === expectedOpen) return;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+  throw new Error(`${label}: confirmation dialog did not become ${expectedOpen ? 'open' : 'closed'}.`);
+}
+
+async function readWorkspace(webContents) {
+  return webContents.executeJavaScript(`(async () => {
+    const { loadState } = await import('./src/core/storage.js');
+    return JSON.stringify(await loadState());
+  })()`, true);
+}
+
+async function seedWorkspace(webContents, marker) {
+  return webContents.executeJavaScript(`(async () => {
+    const { loadState, saveState } = await import('./src/core/storage.js');
+    const state = await loadState();
+    state.settings.waitingDays = 13;
+    state.activity = [{
+      id: ${JSON.stringify(marker)},
+      timestamp: '2026-01-01T00:00:00.000Z',
+      kind: 'browser-qa',
+      message: 'Confirmation cancellation sentinel.',
+      details: { marker: ${JSON.stringify(marker)} },
+    }, ...state.activity.filter((entry) => entry.id !== ${JSON.stringify(marker)})];
+    await saveState(state);
+    return JSON.stringify(await loadState());
+  })()`, true);
+}
+
+async function inspectConfirmationAccessibility(webContents) {
+  const client = webContents.debugger;
+  const attachedHere = !client.isAttached();
+  if (attachedHere) client.attach('1.3');
+  try {
+    await client.sendCommand('Accessibility.enable');
+    const tree = await client.sendCommand('Accessibility.getFullAXTree');
+    const nodes = tree.nodes || [];
+    const dialog = nodes.find((node) => (
+      node.role?.value === 'dialog'
+      && node.name?.value === 'Clear local workspace?'
+      && node.ignored !== true
+    ));
+    const buttonNames = nodes
+      .filter((node) => node.role?.value === 'button' && node.ignored !== true)
+      .map((node) => node.name?.value)
+      .filter(Boolean);
+    return { dialogFound: Boolean(dialog), buttonNames };
+  } finally {
+    if (attachedHere && client.isAttached()) client.detach();
+  }
+}
+
+async function captureClearWorkspaceConfirmation(browserWindow, viewport, {
+  id,
+  zoomFactor,
+  captureImage,
+}) {
+  const { webContents } = browserWindow;
+  webContents.setZoomFactor(zoomFactor);
+  await waitForPaint(webContents, `${id}: zoom`);
+  assert.equal(webContents.getZoomFactor(), zoomFactor, `${id}: Chromium zoom factor mismatch`);
+
+  const marker = `browser-qa-${id}`;
+  const beforeWorkspace = await seedWorkspace(webContents, marker);
+  const settingsSelector = '[data-action="navigate"][data-view="settings"]';
+  await webContents.executeJavaScript(
+    `document.querySelector(${JSON.stringify(settingsSelector)}).click()`,
+    true,
+  );
+  await waitForHeading(webContents, 'Settings');
+  await webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector('[data-action="reset-workspace"]');
+    trigger.focus();
+    trigger.click();
+  })()`, true);
+  await waitForDialogState(webContents, true, id);
+  await waitForPaint(webContents, `${id}: dialog open`);
+
+  const metrics = await webContents.executeJavaScript(`(() => {
+    const dialog = document.querySelector('[data-role="action-confirmation"]');
+    const cancel = dialog?.querySelector('[data-confirmation-decision="cancel"]');
+    const confirm = dialog?.querySelector('[data-confirmation-decision="confirm"]');
+    const title = document.getElementById(dialog?.getAttribute('aria-labelledby') || '');
+    const describedIds = (dialog?.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds ? {
+        top: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom,
+        left: bounds.left,
+        width: bounds.width,
+        height: bounds.height,
+      } : null;
+    };
+    return {
+      innerWidth,
+      innerHeight,
+      dialogTag: dialog?.tagName || '',
+      dialogOpen: dialog?.open === true,
+      dialogModal: dialog?.matches(':modal') === true,
+      dialogName: title?.textContent?.trim() || '',
+      describedIds,
+      describedText: describedIds.map((id) => document.getElementById(id)?.textContent?.trim() || ''),
+      cancelName: cancel?.textContent?.trim() || '',
+      confirmName: confirm?.textContent?.trim() || '',
+      cancelType: cancel?.getAttribute('type') || '',
+      confirmType: confirm?.getAttribute('type') || '',
+      cancelFocused: document.activeElement === cancel,
+      dialog: rect(dialog),
+      cancel: rect(cancel),
+      confirm: rect(confirm),
+    };
+  })()`, true);
+
+  assert.equal(metrics.dialogTag, 'DIALOG', `${id}: semantic dialog element is missing`);
+  assert.equal(metrics.dialogOpen, true, `${id}: dialog is not open`);
+  assert.equal(metrics.dialogModal, true, `${id}: dialog is not modal`);
+  assert.equal(metrics.dialogName, 'Clear local workspace?', `${id}: accessible dialog name mismatch`);
+  assert.deepEqual(
+    metrics.describedIds,
+    ['action-confirmation-message', 'action-confirmation-facts'],
+    `${id}: dialog description references changed`,
+  );
+  assert.equal(metrics.describedText.every(Boolean), true, `${id}: dialog description is empty`);
+  assert.equal(metrics.cancelName, 'Cancel', `${id}: Cancel button name mismatch`);
+  assert.equal(metrics.confirmName, 'Clear local data', `${id}: confirm button name mismatch`);
+  assert.equal(metrics.cancelType, 'button', `${id}: Cancel must not submit a form`);
+  assert.equal(metrics.confirmType, 'button', `${id}: confirm must not submit a form`);
+  assert.equal(metrics.cancelFocused, true, `${id}: Cancel was not initially focused`);
+  assert.ok(metrics.dialog.top >= -1, `${id}: dialog starts above the viewport`);
+  assert.ok(metrics.dialog.left >= -1, `${id}: dialog starts left of the viewport`);
+  assert.ok(metrics.dialog.right <= metrics.innerWidth + 1, `${id}: dialog exceeds viewport width`);
+  assert.ok(metrics.dialog.bottom <= metrics.innerHeight + 1, `${id}: dialog exceeds viewport height`);
+  for (const [name, bounds] of [['Cancel', metrics.cancel], ['Confirm', metrics.confirm]]) {
+    assert.ok(bounds.width >= 44, `${id}: ${name} is narrower than 44px`);
+    assert.ok(bounds.height >= 44, `${id}: ${name} is shorter than 44px`);
+  }
+  assert.equal(
+    metrics.cancel.top < metrics.confirm.top
+      || (Math.abs(metrics.cancel.top - metrics.confirm.top) <= 1 && metrics.cancel.left < metrics.confirm.left),
+    true,
+    `${id}: Cancel must precede the destructive button visually`,
+  );
+
+  const accessibility = await inspectConfirmationAccessibility(webContents);
+  assert.equal(accessibility.dialogFound, true, `${id}: accessibility tree has no named dialog`);
+  assert.ok(accessibility.buttonNames.includes('Cancel'), `${id}: accessibility tree has no Cancel button`);
+  assert.ok(
+    accessibility.buttonNames.includes('Clear local data'),
+    `${id}: accessibility tree has no named destructive button`,
+  );
+
+  const captures = [];
+  if (captureImage) {
+    const image = await webContents.capturePage();
+    const png = image.toPNG();
+    const file = `${id}.png`;
+    await mkdir(actualRoot, { recursive: true });
+    await writeFile(path.join(actualRoot, file), png);
+    captures.push({
+      file,
+      viewport: viewport.id,
+      width: viewport.width,
+      height: viewport.height,
+      view: 'settings',
+      state: 'clear-workspace-confirmation',
+      zoomFactor,
+      cssWidth: metrics.innerWidth,
+      cssHeight: metrics.innerHeight,
+      sha256: sha256(png),
+    });
+  }
+
+  await webContents.executeJavaScript(
+    `document.querySelector('[data-confirmation-decision="cancel"]').click()`,
+    true,
+  );
+  await waitForDialogState(webContents, false, id);
+  const afterWorkspace = await readWorkspace(webContents);
+  const cancellation = await webContents.executeJavaScript(`(() => ({
+    heading: document.querySelector('[data-page-heading]')?.textContent || '',
+    resetFocused: document.activeElement?.matches('[data-action="reset-workspace"]') === true,
+  }))()`, true);
+  assert.equal(afterWorkspace, beforeWorkspace, `${id}: cancel changed the local workspace`);
+  assert.equal(cancellation.heading, 'Settings', `${id}: cancel left the Settings view`);
+  assert.equal(cancellation.resetFocused, true, `${id}: cancel did not restore trigger focus`);
+  return captures;
+}
+
 async function inspectView(webContents, viewId, expectedHeading, viewport) {
   const selector = `[data-action="navigate"][data-view="${viewId}"]`;
   const found = await webContents.executeJavaScript(
@@ -287,6 +485,21 @@ async function captureViewport(baseUrl, viewport) {
       });
     }
 
+    if (viewport.id === 'desktop') {
+      captures.push(...await captureClearWorkspaceConfirmation(browserWindow, viewport, {
+        id: 'zoom-200-settings-clear-confirmation',
+        zoomFactor: 2,
+        captureImage: !baselineVariant,
+      }));
+    }
+    if (viewport.id === 'mobile') {
+      captures.push(...await captureClearWorkspaceConfirmation(browserWindow, viewport, {
+        id: 'mobile-settings-clear-confirmation',
+        zoomFactor: 1,
+        captureImage: !baselineVariant,
+      }));
+    }
+
     assert.deepEqual(problems, [], `${viewport.id}: browser console or renderer problems`);
     return captures;
   } finally {
@@ -335,8 +548,12 @@ async function checkBaselines(captures, manifest) {
   assert.equal(expected.variant || '', manifest.variant || '', 'baseline renderer variant changed');
   assert.deepEqual(expected.viewports, manifest.viewports, 'baseline viewport contract changed');
   assert.deepEqual(
-    expected.captures.map(({ file, viewport, width, height, view }) => ({ file, viewport, width, height, view })),
-    manifest.captures.map(({ file, viewport, width, height, view }) => ({ file, viewport, width, height, view })),
+    expected.captures.map(({ file, viewport, width, height, view, state, zoomFactor, cssWidth, cssHeight }) => ({
+      file, viewport, width, height, view, state, zoomFactor, cssWidth, cssHeight,
+    })),
+    manifest.captures.map(({ file, viewport, width, height, view, state, zoomFactor, cssWidth, cssHeight }) => ({
+      file, viewport, width, height, view, state, zoomFactor, cssWidth, cssHeight,
+    })),
     'baseline capture contract changed',
   );
 

@@ -73,6 +73,33 @@
         "width": 640,
         "height": 400
       }
+    },
+    {
+      "filename": "confirmation-narrow-custom-panel-dark.png",
+      "height": 700,
+      "label": "confirmation narrow custom panel dark",
+      "panelWidth": 320,
+      "theme": "dark",
+      "width": 900,
+      "zoom": 1,
+      "cssViewport": {
+        "height": 700,
+        "width": 900
+      },
+      "state": "dm-confirmation-open"
+    },
+    {
+      "filename": "confirmation-true-200-zoom-dark.png",
+      "height": 800,
+      "label": "confirmation true 200% zoom dark",
+      "theme": "dark",
+      "width": 1280,
+      "zoom": 2,
+      "cssViewport": {
+        "height": 400,
+        "width": 640
+      },
+      "state": "dm-confirmation-open"
     }
   ]
 }

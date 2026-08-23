@@ -72,6 +72,84 @@ let actionExecutionController = null;
 let actionExecutionJobId = null;
 let dmExecutionController = null;
 let dmExecutionJobId = null;
+let pendingActionConfirmation = null;
+
+function settleActionConfirmation(confirmed) {
+  if (!pendingActionConfirmation) return;
+  const pending = pendingActionConfirmation;
+  pendingActionConfirmation = null;
+  if (pending.dialog.open) pending.dialog.close();
+  pending.resolve(Boolean(confirmed));
+  pending.restoreFocus?.focus?.({ preventScroll: true });
+}
+
+function actionConfirmationDialog() {
+  let dialog = document.querySelector('[data-role="action-confirmation"]');
+  if (dialog) return dialog;
+  dialog = document.createElement('dialog');
+  dialog.className = 'action-confirmation';
+  dialog.dataset.role = 'action-confirmation';
+  dialog.setAttribute('aria-labelledby', 'action-confirmation-title');
+  dialog.setAttribute('aria-describedby', 'action-confirmation-message action-confirmation-facts');
+  dialog.innerHTML = `
+    <section class="confirmation-card">
+      <div class="confirmation-heading">
+        <span class="confirmation-eyebrow">Confirm action</span>
+        <h2 id="action-confirmation-title"></h2>
+      </div>
+      <p id="action-confirmation-message"></p>
+      <dl id="action-confirmation-facts" class="confirmation-facts"></dl>
+      <div class="toolbar confirmation-actions">
+        <button type="button" data-confirmation-decision="cancel">Cancel</button>
+        <button type="button" class="danger" data-confirmation-decision="confirm"></button>
+      </div>
+    </section>
+  `;
+  dialog.addEventListener('click', (event) => {
+    const decision = event.target.closest('[data-confirmation-decision]')?.dataset.confirmationDecision;
+    if (decision === 'cancel') settleActionConfirmation(false);
+    if (decision === 'confirm') settleActionConfirmation(true);
+  });
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    settleActionConfirmation(false);
+  });
+  dialog.addEventListener('close', () => settleActionConfirmation(false));
+  document.body.append(dialog);
+  return dialog;
+}
+
+function confirmAction({ title, message, facts, confirmLabel }) {
+  if (pendingActionConfirmation) return Promise.resolve(false);
+  const dialog = actionConfirmationDialog();
+  if (typeof dialog.showModal !== 'function') return Promise.resolve(false);
+  dialog.querySelector('#action-confirmation-title').textContent = title;
+  dialog.querySelector('#action-confirmation-message').textContent = message;
+  const factList = dialog.querySelector('#action-confirmation-facts');
+  factList.replaceChildren();
+  for (const { label, value } of facts) {
+    const row = document.createElement('div');
+    const term = document.createElement('dt');
+    const description = document.createElement('dd');
+    term.textContent = label;
+    description.textContent = value;
+    row.append(term, description);
+    factList.append(row);
+  }
+  dialog.querySelector('[data-confirmation-decision="confirm"]').textContent = confirmLabel;
+  const restoreFocus = document.activeElement;
+  return new Promise((resolve) => {
+    pendingActionConfirmation = { dialog, resolve, restoreFocus };
+    try {
+      dialog.showModal();
+      dialog.querySelector('[data-confirmation-decision="cancel"]').focus({ preventScroll: true });
+    } catch {
+      pendingActionConfirmation = null;
+      resolve(false);
+      restoreFocus?.focus?.({ preventScroll: true });
+    }
+  });
+}
 
 function assertCurrentActionExecution(controller, job) {
   const current = state.actionJobs?.[0];

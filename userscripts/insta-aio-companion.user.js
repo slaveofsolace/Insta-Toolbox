@@ -22,6 +22,7 @@
 // Generated file. Do not edit.
 //
 // Built by scripts/build-userscript.mjs from:
+//   extension/action-confirmation.js     <- shared destructive-action dialog
 //   extension/action-labels.js           <- labels and thread-wide DM runner
 //   extension/content-instagram.js       <- shared exact-target engine
 //   userscripts/src/toolbox-shell.js     <- userscript UI and batch runner
@@ -193,6 +194,166 @@
     configurable: false,
     enumerable: false,
     value: api,
+    writable: false,
+  });
+})();
+
+(() => {
+  'use strict';
+
+  const namespace = 'InstaToolboxActionConfirmation';
+  if (globalThis[namespace]) return;
+
+  function immutableCopy(value) {
+    if (Array.isArray(value)) return Object.freeze(value.map(immutableCopy));
+    if (value && typeof value === 'object') {
+      return Object.freeze(Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [key, immutableCopy(entry)]),
+      ));
+    }
+    return value;
+  }
+
+  function cleanText(value, fallback = '') {
+    const text = String(value ?? '').trim();
+    return (text || fallback).slice(0, 1_000);
+  }
+
+  function createController({ root, attribute, status, unavailableTone = 'error' }) {
+    if (!root?.querySelector || !attribute) throw new TypeError('A confirmation root and role attribute are required.');
+
+    const query = (role) => root.querySelector(`[${attribute}="${role}"]`);
+    const dialog = query('action-confirmation');
+    const cancelButton = query('confirm-cancel');
+    const confirmButton = query('confirm-accept');
+    let pending = null;
+
+    function renderList(role, values) {
+      const list = query(role);
+      if (!list) return;
+      const items = (Array.isArray(values) ? values : [])
+        .map((value) => cleanText(value))
+        .filter(Boolean)
+        .slice(0, 250);
+      list.replaceChildren(...items.map((value) => {
+        const item = root.ownerDocument.createElement('li');
+        item.textContent = value;
+        return item;
+      }));
+      list.hidden = items.length === 0;
+    }
+
+    function renderFacts(values) {
+      const list = query('confirm-facts');
+      if (!list) return;
+      const facts = (Array.isArray(values) ? values : [])
+        .map((entry) => ({
+          label: cleanText(entry?.label),
+          value: cleanText(entry?.value),
+        }))
+        .filter((entry) => entry.label && entry.value)
+        .slice(0, 12);
+      const nodes = [];
+      for (const fact of facts) {
+        const term = root.ownerDocument.createElement('dt');
+        const description = root.ownerDocument.createElement('dd');
+        term.textContent = fact.label;
+        description.textContent = fact.value;
+        nodes.push(term, description);
+      }
+      list.replaceChildren(...nodes);
+      list.hidden = facts.length === 0;
+    }
+
+    function settle(confirmed) {
+      const current = pending;
+      if (!current) return false;
+      pending = null;
+      if (dialog?.open) dialog.close();
+      if (current.restoreFocus?.isConnected) current.restoreFocus.focus();
+      const expired = Number(current.binding?.expiresAt) > 0
+        && Number(current.binding.expiresAt) <= Date.now();
+      if (confirmed === true && expired) {
+        status?.('This review expired. Review the action again. Nothing was changed.', unavailableTone);
+      }
+      current.resolve(confirmed === true && !expired ? current.binding : null);
+      return true;
+    }
+
+    function confirm(request = {}) {
+      if (pending) return Promise.resolve(null);
+      if (!dialog?.showModal || !cancelButton || !confirmButton) {
+        status?.('The confirmation panel is unavailable. Nothing was changed.', unavailableTone);
+        return Promise.resolve(null);
+      }
+
+      const title = query('confirm-title');
+      const message = query('confirm-message');
+      const detail = query('confirm-detail');
+      if (title) title.textContent = cleanText(request.title, 'Confirm action');
+      if (message) message.textContent = cleanText(request.message, 'Review this action.');
+      if (detail) detail.textContent = cleanText(request.detail, 'This cannot be undone.');
+      confirmButton.textContent = cleanText(request.confirmLabel, 'Confirm');
+      renderFacts(request.facts);
+      renderList('confirm-items', request.items);
+
+      const binding = immutableCopy(request.binding || {});
+      return new Promise((resolve) => {
+        pending = {
+          binding,
+          resolve,
+          restoreFocus: root.activeElement || root.ownerDocument.activeElement,
+        };
+        try {
+          dialog.showModal();
+          cancelButton.focus();
+        } catch {
+          pending = null;
+          resolve(null);
+          status?.('The confirmation panel could not open. Nothing was changed.', unavailableTone);
+        }
+      });
+    }
+
+    function onCancel(event) {
+      event.preventDefault();
+      settle(false);
+    }
+
+    function onAccept(event) {
+      if (event?.isTrusted !== true) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        return;
+      }
+      settle(true);
+    }
+
+    function onClose() {
+      if (pending) settle(false);
+    }
+
+    dialog?.addEventListener('cancel', onCancel);
+    dialog?.addEventListener('close', onClose);
+    confirmButton?.addEventListener('click', onAccept);
+
+    return Object.freeze({
+      cancel: () => settle(false),
+      confirm,
+      destroy() {
+        settle(false);
+        dialog?.removeEventListener('cancel', onCancel);
+        dialog?.removeEventListener('close', onClose);
+        confirmButton?.removeEventListener('click', onAccept);
+      },
+      isPending: () => Boolean(pending),
+    });
+  }
+
+  Object.defineProperty(globalThis, namespace, {
+    configurable: false,
+    enumerable: false,
+    value: Object.freeze({ createController }),
     writable: false,
   });
 })();
@@ -1138,17 +1299,23 @@
       lastSearchGrew: false,
       lastSearchIncomplete: false,
       lastSearchSteps: 0,
+      oldestBoundaryProven: order !== 'oldest',
       processedKeys: new Set(),
     };
   }
 
   function traversalContext(context, traversal) {
-    if (!context?.threadId) return context;
-    const current = threadContext();
-    if (!current.ok || current.threadId !== context.threadId) {
-      throw new Error(current.reason || 'The reviewed conversation changed.');
+    let current = context;
+    if (context?.threadId) {
+      current = threadContext();
+      if (!current.ok || current.threadId !== context.threadId) {
+        throw new Error(current.reason || 'The reviewed conversation changed.');
+      }
     }
-    if (traversal.scroller !== current.scroller) {
+    if (traversal.scroller !== current?.scroller) {
+      if (traversal.order === 'oldest' && traversal.scroller) {
+        traversal.oldestBoundaryProven = false;
+      }
       traversal.scroller = current.scroller;
       traversal.lastScrollTop = null;
       traversal.lastScrollHeight = Number(current.scroller?.scrollHeight) || 0;
@@ -1240,6 +1407,7 @@
         traversal.lastSearchGrew = false;
         traversal.lastSearchIncomplete = false;
         traversal.lastSearchSteps = 0;
+        traversal.oldestBoundaryProven = true;
         return refreshed;
       }
     }
@@ -1261,6 +1429,9 @@
     const previousHeight = Number(before.scrollHeight);
     const shrank = Number.isFinite(previousHeight) && height + 1 < previousHeight;
     traversal.scroller = scroller;
+    if (traversal.order === 'oldest' && (scrollerChanged || shrank)) {
+      traversal.oldestBoundaryProven = false;
+    }
     traversal.lastScrollTop = scrollerChanged || shrank
       ? null
       : Number.isFinite(Number(scroller?.scrollTop))
@@ -1272,7 +1443,43 @@
     traversal.lastSearchSteps = 0;
   }
 
-  async function nextSentRow(context, signal, order = 'newest', traversal = createTraversal(order)) {
+  async function reestablishTraversalEdge(context, traversal, signal) {
+    for (let attempt = 0; attempt < MAX_SCAN_PASSES; attempt += 1) {
+      if (signal.aborted) return null;
+      const current = traversalContext(context, traversal);
+      const scroller = current.scroller;
+      const previousHeight = Number(traversal.lastScrollHeight) || 0;
+      const { start } = traversalBounds(scroller, traversal.order);
+      scroller.scrollTop = start;
+      dispatch(scroller, new Event('scroll', { bubbles: true }));
+      await delay(5, signal);
+
+      const refreshed = traversalContext(context, traversal);
+      if (refreshed.scroller !== scroller) continue;
+      const refreshedStart = traversalBounds(scroller, traversal.order).start;
+      const actualPosition = Number(scroller.scrollTop);
+      const currentHeight = Number(scroller.scrollHeight) || 0;
+      if (!Number.isFinite(actualPosition) || Math.abs(actualPosition - refreshedStart) > 1) {
+        traversal.lastScrollTop = null;
+        traversal.lastScrollHeight = currentHeight;
+        continue;
+      }
+      if (currentHeight > previousHeight + 1) traversal.lastSearchGrew = true;
+      traversal.lastScrollTop = actualPosition;
+      traversal.lastScrollHeight = currentHeight;
+      return refreshed;
+    }
+    traversal.lastSearchIncomplete = true;
+    return null;
+  }
+
+  async function nextSentRow(
+    context,
+    signal,
+    order = 'newest',
+    traversal = createTraversal(order),
+    authorizationExpiresAt = null,
+  ) {
     traversal.order = order === 'oldest' ? 'oldest' : 'newest';
     traversal.lastSearchGrew = false;
     traversal.lastSearchIncomplete = false;
@@ -1280,18 +1487,42 @@
 
     let current = traversalContext(context, traversal);
     let scroller = current.scroller;
-    if (traversal.scroller !== scroller) {
-      traversal.scroller = scroller;
-      traversal.lastScrollTop = null;
-      traversal.lastScrollHeight = Number(scroller?.scrollHeight) || 0;
-    }
     const startingHeight = Number(scroller?.scrollHeight) || 0;
     if (traversal.lastScrollHeight && startingHeight + 1 < traversal.lastScrollHeight) {
       // A successful Unsend can shrink the scroll range. Resume from the
       // requested edge instead of retaining an offset outside the new range.
       traversal.lastScrollTop = null;
+      if (traversal.order === 'oldest') traversal.oldestBoundaryProven = false;
     }
     traversal.lastScrollHeight = startingHeight;
+
+    if (traversal.order === 'oldest' && !traversal.oldestBoundaryProven) {
+      // Instagram can replace or shrink its virtual scroller after a removal.
+      // Do not expose another oldest candidate until that new edge has remained
+      // stable under the same bounded proof used before the first action.
+      let provenContext = null;
+      for (let attempt = 0; attempt < MAX_SCAN_PASSES; attempt += 1) {
+        provenContext = await proveStableOldestBoundary(
+          context,
+          traversal,
+          signal,
+          authorizationExpiresAt,
+        );
+        const verifiedContext = traversalContext(provenContext, traversal);
+        if (traversal.oldestBoundaryProven) {
+          current = verifiedContext;
+          scroller = verifiedContext.scroller;
+          break;
+        }
+      }
+      if (!traversal.oldestBoundaryProven || !provenContext) {
+        throw new Error('The oldest conversation boundary changed before the next message could be selected.');
+      }
+    } else if (!Number.isFinite(traversal.lastScrollTop)) {
+      current = await reestablishTraversalEdge(context, traversal, signal);
+      if (!current) return null;
+      scroller = current.scroller;
+    }
 
     // Leave a comfortably visible row in place. This handles short threads and
     // the next mounted message after Instagram replaces a virtualized window.
@@ -1341,7 +1572,10 @@
 
       const heightAfterPass = Number(scroller?.scrollHeight) || 0;
       if (heightAfterPass > heightBeforePass + 1) traversal.lastSearchGrew = true;
-      if (heightAfterPass + 1 < heightBeforePass) traversal.lastScrollTop = null;
+      if (heightAfterPass + 1 < heightBeforePass) {
+        traversal.lastScrollTop = null;
+        if (traversal.order === 'oldest') traversal.oldestBoundaryProven = false;
+      }
       traversal.lastScrollHeight = heightAfterPass;
       if (traversal.lastSearchSteps >= MAX_SCROLL_STEPS_PER_SEARCH && position !== end) {
         // Resume here on the next bounded search instead of repeatedly scanning
@@ -1554,6 +1788,7 @@
           signal,
           order,
           traversal,
+          authorizationExpiresAt,
         );
         if (!row) {
           if (traversal.lastSearchGrew || traversal.lastSearchIncomplete) {
@@ -1781,6 +2016,7 @@
       reversedLayout,
       rowNeedsReposition,
       resetTraversalAfterRemoval,
+      reestablishTraversalEdge,
       sentByCurrentUser,
       stableMessageKey,
       traversalBounds,
@@ -4474,9 +4710,19 @@
       .button.primary:hover { filter: brightness(1.08); }
       .button.big { width: 100%; padding: 10px 12px; font-size: var(--system-14-font-size, 14px); line-height: var(--system-14-line-height, 18px); border-radius: 8px; }
       .button:disabled { cursor: not-allowed; filter: none; opacity: .48; }
+      .confirm-dialog { width: min(420px, calc(100vw - 28px)); max-height: min(620px, calc(100vh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--aio-bg-raised, #fff); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel); }
+      .confirm-dialog::backdrop { background: rgba(0, 0, 0, .62); }
+      .confirm-dialog form { display: grid; gap: 12px; margin: 0; padding: 18px; }
+      .confirm-dialog h2 { margin: 0; font-size: 18px; line-height: 24px; overflow-wrap: break-word; }
+      .confirm-dialog p { margin: 0; color: var(--aio-text-muted, #687068); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; white-space: pre-line; }
+      .confirm-dialog dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 13px; line-height: 19px; }
+      .confirm-dialog dt { color: var(--aio-text-muted, #687068); font-weight: 600; }
+      .confirm-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+      .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
+      .confirm-dialog .toolbar { justify-content: flex-end; }
       @keyframes aio-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
-      @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel { background:Canvas; } .panel,.card,.tool,.metric { border:2px solid CanvasText; } }
+      @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog { border:2px solid CanvasText; } }
     </style>
     <button class="launcher" type="button" data-action="open" aria-label="Open Insta Toolbox" aria-expanded="false">IT</button>
     <aside class="panel" aria-label="Insta Toolbox" hidden>
@@ -4538,7 +4784,17 @@
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
       <button class="resize" type="button" data-role="resize" aria-label="Resize toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
-    </aside>`;
+    </aside>
+    <dialog class="confirm-dialog" data-role="action-confirmation" aria-labelledby="aio-confirm-title" aria-describedby="aio-confirm-message aio-confirm-detail">
+      <form>
+        <h2 id="aio-confirm-title" data-role="confirm-title">Confirm action</h2>
+        <p id="aio-confirm-message" data-role="confirm-message"></p>
+        <dl data-role="confirm-facts" hidden></dl>
+        <ul data-role="confirm-items" aria-label="Reviewed targets" hidden></ul>
+        <p id="aio-confirm-detail" data-role="confirm-detail"></p>
+        <div class="toolbar"><button class="button quiet" type="button" data-action="confirm-cancel" data-role="confirm-cancel">Cancel</button><button class="button danger" type="button" data-action="confirm-accept" data-role="confirm-accept">Confirm</button></div>
+      </form>
+    </dialog>`;
 
   const query = (selector) => shadow.querySelector(selector);
   const queryAll = (selector) => [...shadow.querySelectorAll(selector)];
@@ -4567,6 +4823,14 @@
     }
     renderContext();
   };
+
+  const confirmationController = globalThis.InstaToolboxActionConfirmation?.createController({
+    root: shadow,
+    attribute: 'data-role',
+    status,
+    unavailableTone: 'blocked',
+  });
+  const confirmRun = (request) => confirmationController?.confirm(request) ?? Promise.resolve(null);
 
   function panelSize() {
     return {
@@ -5232,12 +5496,6 @@
     await continueAccountRun();
   }
 
-  function confirmRun(message) {
-    // eslint-disable-next-line no-alert
-    return globalThis.confirm(message);
-  }
-
-
   // --- Section 2: current Instagram context -------------------------------
   //
   // A first-time user cannot tell why a button is inert. Reading the route and
@@ -5742,6 +6000,7 @@
 
   async function runDmUnsend() {
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
+    if (confirmationController?.isPending()) return;
     const snapshot = dmRunner.snapshot();
     if (snapshot.canStop || ['preparing', 'running', 'waiting', 'stopping'].includes(snapshot.status)) {
       dmRunner.stop();
@@ -5763,11 +6022,47 @@
     const scopeLabel = scope === 'all'
       ? 'every message you sent'
       : `the ${scope} ${limit} message${limit === 1 ? '' : 's'} you sent`;
-    if (!confirmRun(
-      `Permanently unsend ${scopeLabel} in this conversation?\n\n`
-      + `Thread ${plan.threadId}. This cannot be undone. Stop stays available while it runs.`,
-    )) {
+    const confirmation = await confirmRun({
+      title: 'Unsend DMs?',
+      message: `Permanently unsend ${scopeLabel} in this conversation?`,
+      detail: 'This cannot be undone. Stop stays available while it runs.',
+      confirmLabel: scope === 'all' ? 'Unsend all my messages' : `Unsend ${limit} message${limit === 1 ? '' : 's'}`,
+      facts: [
+        { label: 'Action', value: 'Permanently unsend messages' },
+        { label: 'Conversation', value: `Thread ${plan.threadId}` },
+        { label: 'Scope', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
+      ],
+      binding: {
+        action: 'unsend',
+        expiresAt: plan.expiresAt,
+        limit: plan.limit,
+        reviewedDigest: plan.reviewedDigest,
+        scope: plan.scope,
+        threadId: plan.threadId,
+      },
+    });
+    if (!confirmation) {
       status('Canceled. Nothing was removed.');
+      return;
+    }
+    const confirmedInspection = dmRunner.inspect();
+    const confirmedScope = query('[data-role="unsend-scope"]')?.value || 'all';
+    const confirmedRequested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
+    const confirmedLimit = confirmedScope === 'all' ? null : Math.max(1, confirmedRequested);
+    if (
+      !confirmedInspection?.ready
+      || confirmedInspection.threadId !== plan.threadId
+      || confirmation.action !== 'unsend'
+      || confirmation.threadId !== plan.threadId
+      || confirmation.scope !== plan.scope
+      || confirmation.limit !== plan.limit
+      || confirmation.reviewedDigest !== plan.reviewedDigest
+      || Number(confirmation.expiresAt) !== plan.expiresAt
+      || plan.expiresAt <= Date.now()
+      || confirmedScope !== plan.scope
+      || confirmedLimit !== plan.limit
+    ) {
+      status('The conversation or Unsend scope changed after review. Nothing was removed.', 'blocked');
       return;
     }
     const reservation = reserveUnsendPlan(plan);
@@ -5826,6 +6121,7 @@
   }
 
   const actions = {
+    'confirm-cancel': () => confirmationController?.cancel(),
     'check-account-relationships': () => checkAccountRelationships(),
     'scan-following': () => scanInto('following'),
     'scan-followers': () => scanInto('followers'),
@@ -5845,7 +6141,10 @@
     },
     'review-accounts': () => reviewAccountRun(),
     open: () => savePreferences({ open: true }),
-    close: () => savePreferences({ open: false }),
+    close: () => {
+      confirmationController?.cancel();
+      savePreferences({ open: false });
+    },
     'stop-run': () => {
       if (dmRunner?.stop?.()) {
         status('Stopping DM Unsend after the current step.');
@@ -5904,18 +6203,53 @@
     },
     'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
+      if (confirmationController?.isPending()) return;
       const current = accountRunPlan();
       if (!accountRunDraft || accountRunDraft.signature !== current.signature) {
         clearAccountRunDraft();
         status('Targets changed. Review the run again before starting.');
         return;
       }
-      const targetList = accountRunDraft.items.map((item) => `@${item.username}`).join('\n');
-      if (!confirmRun(
-        `${accountRunDraft.action === 'follow' ? 'Follow' : 'Unfollow'} ${accountRunDraft.items.length} reviewed account${accountRunDraft.items.length === 1 ? '' : 's'}?\n\n`
-        + `${targetList}\n\nThis tab will move between these exact profiles. Each account is revalidated before the action.`,
-      )) return;
-      const approved = accountRunDraft;
+      const reviewed = accountRunDraft;
+      const actionLabel = reviewed.action === 'follow' ? 'Follow' : 'Unfollow';
+      const expiresAt = Date.now() + RUN_CAPABILITY_MS;
+      const confirmation = await confirmRun({
+        title: `${actionLabel} ${reviewed.items.length} reviewed account${reviewed.items.length === 1 ? '' : 's'}?`,
+        message: 'Review the exact accounts before starting.',
+        detail: 'This tab will move between these exact profiles. Each account is revalidated before the action.',
+        confirmLabel: `Start ${actionLabel}`,
+        items: reviewed.items.map((item) => `@${item.username}`),
+        facts: [
+          { label: 'Action', value: actionLabel },
+          { label: 'Accounts', value: String(reviewed.items.length) },
+        ],
+        binding: {
+          action: reviewed.action,
+          count: reviewed.items.length,
+          expiresAt,
+          targetDigest: reviewed.signature,
+        },
+      });
+      if (!confirmation) {
+        status('Canceled. The reviewed targets were kept. Nothing was changed.');
+        return;
+      }
+      const refreshed = accountRunPlan();
+      if (
+        !accountRunDraft
+        || accountRunDraft.signature !== reviewed.signature
+        || refreshed.signature !== reviewed.signature
+        || confirmation.action !== reviewed.action
+        || confirmation.count !== reviewed.items.length
+        || confirmation.targetDigest !== reviewed.signature
+        || Number(confirmation.expiresAt) !== expiresAt
+        || expiresAt <= Date.now()
+      ) {
+        clearAccountRunDraft();
+        status('Targets changed after review. Review the run again. Nothing was changed.');
+        return;
+      }
+      const approved = reviewed;
       clearAccountRunDraft();
       await startAccountRun({ action: approved.action, usernames: approved.items.map((item) => item.username) });
     },
@@ -6180,6 +6514,7 @@
 
   function toggleToolboxShortcut(event) {
     if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey || event.key.toLowerCase() !== 'i') return;
+    if (preferences.open) confirmationController?.cancel();
     savePreferences({ open: !preferences.open });
     event.preventDefault();
   }
@@ -6190,6 +6525,7 @@
     const currentHref = location.href;
     if (currentHref !== lastLocationHref) {
       lastLocationHref = currentHref;
+      confirmationController?.cancel();
       contextStatus = null;
       dmThreadPreview = null;
       state.messageEvidence = null;
@@ -6208,6 +6544,7 @@
     if (!document.getElementById(EXTENSION_ROOT_ID)) return;
     duplicateObserver.disconnect();
     window.removeEventListener('keydown', toggleToolboxShortcut, true);
+    confirmationController?.destroy();
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });

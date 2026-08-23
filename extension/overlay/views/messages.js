@@ -8,7 +8,8 @@
   const runner = globalThis.InstaAioDmThreadUnsender;
   const subscriptions = new WeakMap();
   const styledShadows = new WeakSet();
-  const pendingReservations = new WeakSet();
+  const pendingReservations = new WeakMap();
+  const pendingReviews = new WeakSet();
   const DM_PLAN_TTL_MS = 15 * 60 * 1_000;
   const DM_WRITE_TIMEOUT_MS = 8_000;
 
@@ -288,13 +289,14 @@
     }
     if (button) {
       button.textContent = pendingReservation
-        ? 'Preparing…'
+        ? 'Stop unsending'
         : active
         ? readOnlyCheck ? 'Stop check' : 'Stop unsending'
         : 'Unsend DMs';
-      button.disabled = pendingReservation || (active
+      button.disabled = active
         ? !state.canStop
-        : !activeConversationId());
+        : !activeConversationId();
+      if (pendingReservation) button.disabled = false;
     }
     if (progress) {
       progress.hidden = !active && !['completed', 'stopped', 'error'].includes(state.status);
@@ -417,37 +419,114 @@
 
   async function massUnsend(runtime) {
     if (!runner) throw new Error('Reload Instagram to load the current message runner.');
-    if (pendingReservations.has(runtime.model)) return;
+    const pendingReservation = pendingReservations.get(runtime.model);
+    if (pendingReservation) {
+      pendingReservation.cancelled = true;
+      renderDirect(runtime);
+      runtime.status('Stopping before Unsend starts…', 'neutral');
+      return;
+    }
     const current = runner.snapshot();
     if (current.canStop || ['preparing', 'running', 'waiting', 'stopping'].includes(current.status)) {
       runner.stop();
       return;
     }
-    const inspection = runner.inspect();
-    if (!inspection.ready) throw new Error(inspection.reason);
+    if (pendingReviews.has(runtime.model)) return;
+    pendingReviews.add(runtime.model);
+    let inspection;
+    try {
+      inspection = runner.inspect();
+    } catch (error) {
+      pendingReviews.delete(runtime.model);
+      throw error;
+    }
+    if (!inspection.ready) {
+      pendingReviews.delete(runtime.model);
+      throw new Error(inspection.reason);
+    }
     const scope = runtime.query('[data-ia-role="unsend-scope"]')?.value || 'all';
     const requested = Math.floor(Number(runtime.query('[data-ia-role="unsend-count"]')?.value) || 1);
     const limit = scope === 'all' ? null : Math.max(1, requested);
-    const plan = runner.createPlan({
-      threadId: inspection.threadId,
-      scope,
-      limit,
-      detectedCount: Number(currentPreview(runtime)?.detectedCount ?? currentPreview(runtime)?.eligibleCount) || null,
-      expiresAt: Date.now() + DM_PLAN_TTL_MS,
-    });
-    if (!plan) throw new Error('The Unsend plan could not be created. Keep this conversation open and try again.');
+    let plan;
+    try {
+      plan = runner.createPlan({
+        threadId: inspection.threadId,
+        scope,
+        limit,
+        detectedCount: Number(currentPreview(runtime)?.detectedCount ?? currentPreview(runtime)?.eligibleCount) || null,
+        expiresAt: Date.now() + DM_PLAN_TTL_MS,
+      });
+    } catch (error) {
+      pendingReviews.delete(runtime.model);
+      throw error;
+    }
+    if (!plan) {
+      pendingReviews.delete(runtime.model);
+      throw new Error('The Unsend plan could not be created. Keep this conversation open and try again.');
+    }
     const scopeLabel = scope === 'all'
       ? 'every message you sent'
       : `the ${scope} ${limit} message${limit === 1 ? '' : 's'} you sent`;
-    const confirmed = runtime.window.confirm(
-      `Permanently unsend ${scopeLabel} in this conversation?\n\n`
-      + `Thread ${plan.threadId}. This cannot be undone. Stop stays available while it runs.`,
-    );
-    if (!confirmed) {
+    let confirmation;
+    try {
+      confirmation = await runtime.confirmAction({
+        title: 'Unsend DMs?',
+        message: `Permanently unsend ${scopeLabel} in this conversation?`,
+        detail: 'This cannot be undone. Stop stays available while it runs.',
+        confirmLabel: scope === 'all' ? 'Unsend all my messages' : `Unsend ${limit} message${limit === 1 ? '' : 's'}`,
+        facts: [
+          { label: 'Action', value: 'Permanently unsend messages' },
+          { label: 'Conversation', value: `Thread ${plan.threadId}` },
+          { label: 'Scope', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
+        ],
+        binding: {
+          action: 'unsend',
+          expiresAt: plan.expiresAt,
+          limit: plan.limit,
+          reviewedDigest: plan.reviewedDigest,
+          scope: plan.scope,
+          threadId: plan.threadId,
+        },
+      });
+    } catch (error) {
+      pendingReviews.delete(runtime.model);
+      throw error;
+    }
+    if (!confirmation) {
+      pendingReviews.delete(runtime.model);
       runtime.status('Canceled. Nothing was removed.', 'neutral');
       return;
     }
-    pendingReservations.add(runtime.model);
+    let confirmedInspection;
+    try {
+      confirmedInspection = runner.inspect();
+    } catch (error) {
+      pendingReviews.delete(runtime.model);
+      throw error;
+    }
+    const confirmedScope = runtime.query('[data-ia-role="unsend-scope"]')?.value || 'all';
+    const confirmedRequested = Math.floor(Number(runtime.query('[data-ia-role="unsend-count"]')?.value) || 1);
+    const confirmedLimit = confirmedScope === 'all' ? null : Math.max(1, confirmedRequested);
+    if (
+      !confirmedInspection?.ready
+      || confirmedInspection.threadId !== plan.threadId
+      || confirmation.action !== 'unsend'
+      || confirmation.threadId !== plan.threadId
+      || confirmation.scope !== plan.scope
+      || confirmation.limit !== plan.limit
+      || confirmation.reviewedDigest !== plan.reviewedDigest
+      || Number(confirmation.expiresAt) !== plan.expiresAt
+      || plan.expiresAt <= Date.now()
+      || confirmedScope !== plan.scope
+      || confirmedLimit !== plan.limit
+    ) {
+      pendingReviews.delete(runtime.model);
+      runtime.status('The conversation or Unsend scope changed after review. Nothing was removed.', 'error');
+      return;
+    }
+    pendingReviews.delete(runtime.model);
+    const reservationState = { cancelled: false };
+    pendingReservations.set(runtime.model, reservationState);
     renderDirect(runtime);
     runtime.status('Preparing this conversation…', 'neutral');
     let reservation;
@@ -458,6 +537,22 @@
       });
     } finally {
       pendingReservations.delete(runtime.model);
+    }
+    if (reservationState.cancelled) {
+      if (reservationMatchesPlan(reservation, plan)) {
+        await bridgeRequest(runtime, {
+          kind: 'insta-aio-finalize-thread-unsend',
+          reservationId: reservation.reservation?.id,
+          reviewedDigest: plan.reviewedDigest,
+          threadId: plan.threadId,
+          processed: 0,
+          failed: 0,
+          status: 'stopped',
+        });
+      }
+      renderDirect(runtime);
+      runtime.status('Stopped before Unsend began. Nothing was removed.', 'good');
+      return;
     }
     if (!reservationMatchesPlan(reservation, plan)) {
       renderDirect(runtime);
@@ -505,8 +600,17 @@
     if (runError) throw runError;
   }
 
+  function cancelPending(runtime) {
+    const pending = pendingReservations.get(runtime.model);
+    if (!pending) return false;
+    pending.cancelled = true;
+    renderDirect(runtime);
+    return true;
+  }
+
   shared.install('messagesView', {
     bridgeRequest,
+    cancelPending,
     inspect,
     inspectIntent,
     massUnsend,

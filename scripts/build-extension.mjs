@@ -114,7 +114,9 @@ async function validateSources() {
   const instagramSource = await readFile(path.join(sourceRoot, 'content-instagram.js'), 'utf8');
   const actionLabelsSource = await readFile(path.join(sourceRoot, 'action-labels.js'), 'utf8');
   const overlaySource = (await Promise.all(
-    instagramScriptOrder.slice(2).map((file) => readFile(path.join(sourceRoot, file), 'utf8')),
+    instagramScriptOrder
+      .filter((file) => !['action-labels.js', 'content-instagram.js'].includes(file))
+      .map((file) => readFile(path.join(sourceRoot, file), 'utf8')),
   )).join('\n');
   const allowedLiveActivator = `function activateLiveControl(control) {
     control.click();

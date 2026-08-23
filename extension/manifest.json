@@ -29,6 +29,7 @@
         "https://www.instagram.com/*"
       ],
       "js": [
+        "action-confirmation.js",
         "action-labels.js",
         "content-instagram.js",
         "overlay/tokens.js",

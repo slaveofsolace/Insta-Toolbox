@@ -231,21 +231,49 @@ app.addEventListener('click', async (event) => {
       render();
       return;
     }
-    const item = job.items[0];
+    let item = job.items[0];
     const actionLabel = item.action === 'follow' ? 'Follow' : 'Unfollow';
-    const confirmed = window.confirm([
-      `Start ${actionLabel} on 1 account?`,
-      '',
-      `Target: @${item.username}`,
-      `Action: ${actionLabel}`,
-      '',
-      'The extension will re-check this exact profile before it acts.',
-    ].join('\n'));
+    const reviewedJob = {
+      id: job.id,
+      previewDigest: job.previewDigest,
+      status: job.status,
+      itemId: item.id,
+      action: item.action,
+      username: item.username,
+    };
+    const confirmed = await confirmAction({
+      title: `${actionLabel} 1 account?`,
+      message: 'The extension will re-check this exact profile before it acts.',
+      facts: [
+        { label: 'Target', value: `@${item.username}` },
+        { label: 'Action', value: actionLabel },
+        { label: 'Count', value: '1 account' },
+      ],
+      confirmLabel: `${actionLabel} @${item.username}`,
+    });
     if (!confirmed) {
       bridgeStatus = `${actionLabel} canceled. Nothing changed.`;
+      render({ focusSelector: '[data-action="run-action-extension-live"]' });
+      return;
+    }
+    const currentJob = state.actionJobs?.[0];
+    const currentItem = currentJob?.items?.[0];
+    if (
+      activeView !== 'queue'
+      || currentJob?.id !== reviewedJob.id
+      || currentJob?.previewDigest !== reviewedJob.previewDigest
+      || currentJob?.status !== reviewedJob.status
+      || currentJob?.items?.length !== 1
+      || currentItem?.id !== reviewedJob.itemId
+      || currentItem?.action !== reviewedJob.action
+      || currentItem?.username !== reviewedJob.username
+    ) {
+      bridgeStatus = `${actionLabel} canceled because the reviewed target changed. Nothing changed.`;
       render();
       return;
     }
+    job = currentJob;
+    item = currentItem;
     if (canPrepare) {
       try {
         job = confirmReviewedActionJob(job, {
@@ -457,22 +485,49 @@ app.addEventListener('click', async (event) => {
       render();
       return;
     }
-    const item = job.items[0];
+    let item = job.items[0];
     const conversationLabel = item.conversationName || item.conversationId;
-    const confirmed = window.confirm([
-      'Unsend 1 DM?',
-      '',
-      `Thread: ${conversationLabel}`,
-      `Message: ${item.messageId}`,
-      'Action: Unsend',
-      '',
-      'The extension will re-check this exact thread and sent message before it acts.',
-    ].join('\n'));
+    const reviewedJob = {
+      id: job.id,
+      previewDigest: job.previewDigest,
+      status: job.status,
+      itemId: item.id,
+      conversationId: item.conversationId,
+      messageId: item.messageId,
+    };
+    const confirmed = await confirmAction({
+      title: 'Unsend 1 DM?',
+      message: 'The extension will re-check this exact thread and sent message before it acts.',
+      facts: [
+        { label: 'Thread', value: conversationLabel },
+        { label: 'Message', value: item.messageId },
+        { label: 'Action', value: 'Unsend' },
+      ],
+      confirmLabel: 'Unsend this DM',
+    });
     if (!confirmed) {
       bridgeStatus = 'DM Unsend canceled. Nothing changed.';
+      render({ focusSelector: '[data-action="run-dm-extension-live"]' });
+      return;
+    }
+    const currentJob = state.dmJobs?.[0];
+    const currentItem = currentJob?.items?.[0];
+    if (
+      activeView !== 'messages'
+      || currentJob?.id !== reviewedJob.id
+      || currentJob?.previewDigest !== reviewedJob.previewDigest
+      || currentJob?.status !== reviewedJob.status
+      || currentJob?.items?.length !== 1
+      || currentItem?.id !== reviewedJob.itemId
+      || currentItem?.conversationId !== reviewedJob.conversationId
+      || currentItem?.messageId !== reviewedJob.messageId
+    ) {
+      bridgeStatus = 'DM Unsend canceled because the reviewed message changed. Nothing changed.';
       render();
       return;
     }
+    job = currentJob;
+    item = currentItem;
     try {
       if (canReview) {
         job = confirmDmJobReview(job, {
@@ -730,7 +785,22 @@ app.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'reset-workspace') {
-    if (!window.confirm('Clear all local Insta Toolbox data in this browser?')) return;
+    const reviewedState = state;
+    const confirmed = await confirmAction({
+      title: 'Clear local workspace?',
+      message: 'This permanently removes this browser\'s local Insta Toolbox workspace.',
+      facts: [
+        { label: 'Location', value: 'This browser' },
+        { label: 'Data', value: 'Snapshots, queues, messages, pairings, settings, and activity' },
+      ],
+      confirmLabel: 'Clear local data',
+    });
+    if (!confirmed) return;
+    if (activeView !== 'settings' || state !== reviewedState) {
+      bridgeStatus = 'Clear canceled because the workspace changed. Nothing was removed.';
+      render();
+      return;
+    }
     await clearState();
     state = await loadState();
     activeView = 'overview';
