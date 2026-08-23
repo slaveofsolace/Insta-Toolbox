@@ -117,14 +117,19 @@ jobs:
           $smokeParent = Join-Path ([System.IO.Path]::GetTempPath()) 'insta-aio-desktop-smoke-parent'
           New-Item -ItemType Directory -Path $smokeParent -Force | Out-Null
           $env:INSTA_AIO_DESKTOP_SMOKE_PARENT = (Resolve-Path -LiteralPath $smokeParent).Path
-          $smokeExecutable = (Resolve-Path -LiteralPath 'dist/desktop/win-unpacked/Insta Toolbox.exe').Path
-          $smokeProcess = Start-Process -FilePath $smokeExecutable -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
-          if (-not $smokeProcess.WaitForExit(30000)) {
-            try { $smokeProcess.Kill($true) } catch {}
-            throw 'Desktop smoke test timed out after 30 seconds.'
-          }
-          if ($smokeProcess.ExitCode -ne 0) {
-            throw "Desktop smoke test exited with $($smokeProcess.ExitCode)."
+          $env:INSTA_AIO_DESKTOP_SMOKE_TEST = '1'
+          try {
+            $smokeExecutable = (Resolve-Path -LiteralPath 'dist/desktop/win-unpacked/Insta Toolbox.exe').Path
+            $smokeProcess = Start-Process -FilePath $smokeExecutable -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+            if (-not $smokeProcess.WaitForExit(30000)) {
+              try { $smokeProcess.Kill($true) } catch {}
+              throw 'Desktop smoke test timed out after 30 seconds.'
+            }
+            if ($smokeProcess.ExitCode -ne 0) {
+              throw "Desktop smoke test exited with $($smokeProcess.ExitCode)."
+            }
+          } finally {
+            Remove-Item Env:INSTA_AIO_DESKTOP_SMOKE_TEST -ErrorAction SilentlyContinue
           }
       - name: Verify Windows installer artifact
         shell: pwsh
@@ -163,13 +168,18 @@ jobs:
           $smokeParent = Join-Path ([System.IO.Path]::GetTempPath()) 'insta-aio-desktop-smoke-parent'
           New-Item -ItemType Directory -Path $smokeParent -Force | Out-Null
           $env:INSTA_AIO_DESKTOP_SMOKE_PARENT = (Resolve-Path -LiteralPath $smokeParent).Path
-          $smokeProcess = Start-Process -FilePath $installedExecutable -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
-          if (-not $smokeProcess.WaitForExit(30000)) {
-            try { $smokeProcess.Kill($true) } catch {}
-            throw 'Installed application smoke test timed out after 30 seconds.'
-          }
-          if ($smokeProcess.ExitCode -ne 0) {
-            throw "Installed application smoke test exited with $($smokeProcess.ExitCode)."
+          $env:INSTA_AIO_DESKTOP_SMOKE_TEST = '1'
+          try {
+            $smokeProcess = Start-Process -FilePath $installedExecutable -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+            if (-not $smokeProcess.WaitForExit(30000)) {
+              try { $smokeProcess.Kill($true) } catch {}
+              throw 'Installed application smoke test timed out after 30 seconds.'
+            }
+            if ($smokeProcess.ExitCode -ne 0) {
+              throw "Installed application smoke test exited with $($smokeProcess.ExitCode)."
+            }
+          } finally {
+            Remove-Item Env:INSTA_AIO_DESKTOP_SMOKE_TEST -ErrorAction SilentlyContinue
           }
           $uninstallers = @(Get-ChildItem -LiteralPath $installRoot -Filter 'Uninstall*.exe' -File)
           if ($uninstallers.Count -ne 1) {

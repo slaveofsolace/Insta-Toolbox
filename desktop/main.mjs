@@ -21,7 +21,8 @@ const HOST = 'app';
 const PRODUCT_DATA_DIRECTORY = 'Insta AIO Tool';
 const BACKUP_DIRECTORY = 'Insta AIO Tool Backups';
 const BACKUP_RETENTION = 5;
-const DESKTOP_SMOKE_TEST = process.argv.includes('--smoke-test');
+const DESKTOP_SMOKE_TEST = process.argv.includes('--smoke-test')
+  || process.env.INSTA_AIO_DESKTOP_SMOKE_TEST === '1';
 const BACKUP_PATHS = [
   'IndexedDB',
   'Local Storage',
@@ -219,7 +220,7 @@ function createWindow() {
   window.once('ready-to-show', () => {
     if (!DESKTOP_SMOKE_TEST) window.show();
   });
-  void window.loadURL(`${SCHEME}://${HOST}/`);
+  if (!DESKTOP_SMOKE_TEST) void window.loadURL(`${SCHEME}://${HOST}/`);
   return window;
 }
 
@@ -229,16 +230,18 @@ async function runDesktopSmokeTest(window) {
   let exitCode = 0;
   let loadedUrl = null;
   try {
+    const load = new Promise((resolve, reject) => {
+      window.webContents.once('did-finish-load', resolve);
+      window.webContents.once('did-fail-load', (_event, code, description, url) => {
+        reject(new Error(`Desktop smoke renderer failed ${code}: ${description} (${url})`));
+      });
+      window.webContents.once('render-process-gone', (_event, details) => {
+        reject(new Error(`Desktop smoke renderer exited: ${details.reason}`));
+      });
+      void window.loadURL(`${SCHEME}://${HOST}/`).catch(reject);
+    });
     await Promise.race([
-      new Promise((resolve, reject) => {
-        window.webContents.once('did-finish-load', resolve);
-        window.webContents.once('did-fail-load', (_event, code, description, url) => {
-          reject(new Error(`Desktop smoke renderer failed ${code}: ${description} (${url})`));
-        });
-        window.webContents.once('render-process-gone', (_event, details) => {
-          reject(new Error(`Desktop smoke renderer exited: ${details.reason}`));
-        });
-      }),
+      load,
       new Promise((_resolve, reject) => {
         timer = setTimeout(() => reject(new Error(
           `Desktop smoke renderer timed out after ${timeoutMs}ms.`,
@@ -270,7 +273,7 @@ if (hasSingleInstanceLock) {
     window.focus();
   });
 
-  app.whenReady().then(async () => {
+  void app.whenReady().then(async () => {
     protocol.handle(SCHEME, assetResponse);
     const session = (await import('electron')).session.defaultSession;
     session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -288,6 +291,10 @@ if (hasSingleInstanceLock) {
     app.on('activate', () => {
       if (!BrowserWindow.getAllWindows().length) createWindow();
     });
+  }).catch((error) => {
+    if (!DESKTOP_SMOKE_TEST) throw error;
+    console.error(`Insta Toolbox desktop startup failed: ${error.message}`);
+    app.exit(1);
   });
 }
 
