@@ -4,7 +4,7 @@
 
 Insta Toolbox is a local-first PWA with three optional delivery surfaces:
 
-1. A self-contained Tampermonkey toolbox with follower comparison, no-click review, and explicitly unlocked paced actions
+1. A self-contained Tampermonkey toolbox with Mutual Checker, no-click review, and exact-confirmed paced actions
 2. A Manifest V3 extension with a movable Instagram overlay, local toolbox runs, signed inspection requests, and controlled one-item PWA boundaries
 3. A hardened Electron shell for Windows and macOS packaging
 
@@ -43,7 +43,8 @@ The PWA owns:
 
 ### Reviewed account actions
 
-`src/core/action-jobs.js` creates immutable previews with exact usernames, actions, and a digest-bound confirmation phrase.
+`src/core/action-jobs.js` creates immutable previews with exact usernames,
+actions, and a digest-bound confirmation record.
 
 `src/adapters/reviewed-action-adapter.js` implements:
 
@@ -60,11 +61,19 @@ The PWA owns:
 - Pause, resume, stop, and durable per-item checkpoints
 - Safe stops for ambiguous or blocked states
 
-`src/core/action-ledger.js` and `src/adapters/indexeddb-action-ledger.js` enforce duplicate and finite daily-limit rules. Restored limits are normalized before use. A checkpoint can update only an existing reviewed job; a callback arriving after discard fails closed instead of recreating the job. The extension background also keeps a bounded, independent reservation mirror with a conservative per-action daily ceiling so the privileged page-control boundary never depends only on a cooperative PWA caller.
+`src/core/action-ledger.js` and `src/adapters/indexeddb-action-ledger.js`
+enforce transactional duplicate prevention and checkpoint integrity. Legacy
+daily-limit fields are normalized only for migration compatibility and are not
+enforced. A checkpoint can update only an existing reviewed job; a callback
+arriving after discard fails closed instead of recreating the job. The extension
+background keeps an independent reservation mirror so privileged page control
+never depends only on a cooperative PWA caller.
 
 ### Reviewed DM actions
 
-`src/core/dm-jobs.js` preserves exact conversation ID, message ID, timestamp, ownership, and content digest for each selected message. Live jobs require both review and destructive confirmations.
+`src/core/dm-jobs.js` preserves exact conversation ID, message ID, timestamp,
+ownership, and content digest for each selected message. A live job requires
+completed review plus one ordinary action-specific confirmation.
 
 `src/adapters/reviewed-dm-adapter.js` resolves the conversation and message immediately before a driver call, reserves the attempt transactionally, checkpoints after every item, and verifies removal. Matching discard cancellation is rechecked after every awaited pre-Unsend boundary. A post-reservation cancellation is finalized as `canceled` before any driver call; cancellation after dispatch retains the postcheck and real outcome semantics because Unsend cannot be recalled.
 
@@ -164,7 +173,7 @@ userscript-specific shell. It has no remote `@require`, `@resource`, `@connect`,
 third-party connector, or cloud path. The shared checker engine can issue only
 its fixed same-origin Instagram relationship GET requests with browser-managed
 credentials. The shell stores follower/following drafts, queue state,
-pacing limits, and layout preferences in userscript-local storage. The metadata
+pacing settings, and layout preferences in userscript-local storage. The metadata
 explicitly selects the userscript manager's isolated DOM sandbox.
 
 The injected toolbox exposes the follower scanner and comparison, no-click
@@ -217,7 +226,10 @@ activity
 importWarnings
 ```
 
-Migrations are additive. Missing collections receive safe defaults, unknown extra fields remain available through object spread, and live settings default to disabled with batch limits of one.
+Migrations are additive. Missing collections receive safe defaults and unknown
+extra fields remain available through object spread. Legacy live-setting and
+limit fields receive compatibility defaults, but they neither grant action
+authority nor impose a DM quota.
 
 IndexedDB is the primary store. LocalStorage is a fallback for environments without usable IndexedDB. Atomic ledger updates use one IndexedDB read/write transaction or a serialized LocalStorage fallback. Reviewed-job checkpoint updates are update-only transactions and reject missing jobs, preventing stale asynchronous writers from undoing discard.
 

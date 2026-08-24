@@ -6,6 +6,7 @@
   if (!shared || modules.batch) return;
 
   const POLL_MS = 1_000;
+  const CONFIRMATION_TTL_MS = 5 * 60 * 1_000;
   let pollTimer = null;
   let lastRun = null;
 
@@ -151,28 +152,63 @@
     items,
     description,
   }) {
+    if (runtime.confirmationPending?.()) return false;
     if (!Array.isArray(items) || !items.length) {
       runtime.status('Nothing to run. Scan a list first.', 'error');
-      return;
+      return false;
     }
     const current = await refresh(runtime, { announceEnd: false });
     if (running(current)) {
       runtime.status('A batch is already running. Stop it before starting another.', 'error');
-      return;
+      return false;
     }
 
-    const count = items.length;
+    const reviewedItems = items.map((item) => Object.freeze({ ...item }));
+    const count = reviewedItems.length;
     const actionLabel = kind === 'dm' ? 'Unsend' : action === 'follow' ? 'Follow' : 'Unfollow';
-    const targetLines = items.map((item) => (
+    const targetLines = reviewedItems.map((item) => (
       kind === 'account' ? `@${item.username}` : `message ${item.messageId || item.id}`
     ));
-    const confirmed = runtime.window.confirm(
-      `${actionLabel} ${count} ${kind === 'dm' ? `message${count === 1 ? '' : 's'}` : `account${count === 1 ? '' : 's'}`}?\n\n`
-      + `${targetLines.join('\n')}\n\n${description}`,
-    );
-    if (!confirmed) {
+    const digest = targetDigest(kind, action, reviewedItems);
+    const expiresAt = Date.now() + CONFIRMATION_TTL_MS;
+    const confirmation = await runtime.confirmAction({
+      title: `${actionLabel} ${count} ${kind === 'dm' ? `message${count === 1 ? '' : 's'}` : `account${count === 1 ? '' : 's'}`}?`,
+      message: 'Review the exact targets before starting.',
+      detail: description,
+      confirmLabel: `Start ${actionLabel}`,
+      items: targetLines,
+      facts: [
+        { label: 'Action', value: actionLabel },
+        { label: kind === 'dm' ? 'Messages' : 'Accounts', value: String(count) },
+      ],
+      binding: {
+        action,
+        count,
+        expiresAt,
+        kind,
+        targetDigest: digest,
+      },
+    });
+    if (!confirmation) {
       runtime.status('Canceled. No Instagram action was performed.', 'neutral');
-      return;
+      return false;
+    }
+    if (
+      confirmation.action !== action
+      || confirmation.count !== count
+      || confirmation.kind !== kind
+      || confirmation.targetDigest !== digest
+      || Number(confirmation.expiresAt) !== expiresAt
+      || expiresAt <= Date.now()
+      || targetDigest(kind, action, reviewedItems) !== digest
+    ) {
+      runtime.status('The reviewed targets changed or expired. Review them again.', 'error');
+      return false;
+    }
+    const refreshed = await refresh(runtime, { announceEnd: false });
+    if (running(refreshed)) {
+      runtime.status('Another batch started while this review was open. Nothing else was started.', 'error');
+      return false;
     }
 
     const started = await runtime.sendBridge({
@@ -183,9 +219,9 @@
       confirmation: {
         action,
         count,
-        targetDigest: targetDigest(kind, action, items),
+        targetDigest: digest,
       },
-      items,
+      items: reviewedItems,
       jobId: `batch-${Date.now()}`,
     });
     if (started?.error) {
@@ -198,6 +234,7 @@
       'warning',
     );
     poll(runtime);
+    return true;
   }
 
   async function abort(runtime) {

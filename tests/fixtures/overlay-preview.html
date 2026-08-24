@@ -92,6 +92,7 @@
 
     const fixtureSearch = new URLSearchParams(location.search);
     const fixtureMode = fixtureSearch.get('mode');
+    const fixtureExtensionVersion = fixtureSearch.get('version') || '0.0.0';
     const fixtureTheme = fixtureSearch.get('theme') === 'dark' ? 'dark' : 'light';
     document.body.dataset.fixtureTheme = fixtureTheme;
     const fixtureLiveMode = fixtureMode === 'live-follow' || fixtureMode === 'live-unfollow';
@@ -172,6 +173,7 @@
       }, { once: true });
     }
     globalThis.fixtureDmClickCount = 0;
+    globalThis.fixtureUnsentCount = 0;
     if (fixtureLiveDmMode) {
       const targetRow = document.querySelector('[data-message-id="sent-1"]');
       const actionControl = document.querySelector('#fixture-dm-action');
@@ -193,6 +195,7 @@
           dialog.querySelector('button').addEventListener('click', () => {
             globalThis.fixtureDmClickCount += 1;
             targetRow.remove();
+            globalThis.fixtureUnsentCount += 1;
             menu.remove();
             dialog.remove();
           }, { once: true });
@@ -384,21 +387,61 @@
     }
     const storageListeners = [];
     const runtimeListeners = [];
+    globalThis.fixtureBridgeRequests = [];
+    globalThis.fixtureHoldThreadUnsendReservation = false;
+    const pendingThreadUnsendReservations = [];
+    const threadUnsendReservationResponse = (plan) => ({
+      reservation: {
+        id: 'thread-unsend-fixture001',
+        threadId: plan.threadId,
+        reviewedDigest: plan.reviewedDigest,
+        scope: plan.scope,
+        count: plan.scope === 'all' ? null : plan.limit,
+        status: 'reserved',
+        processed: 0,
+        failed: 0,
+        reservedAt: new Date().toISOString(),
+        expiresAt: new Date(plan.expiresAt).toISOString(),
+      },
+      pacing: { minDelayMs: 1000, maxDelayMs: 1000 },
+    });
+    globalThis.fixtureReleaseThreadUnsendReservations = () => {
+      globalThis.fixtureHoldThreadUnsendReservation = false;
+      for (const release of pendingThreadUnsendReservations.splice(0)) release();
+    };
     if (fixtureSearch.get('shadow') !== 'closed') {
       globalThis.__instaAioOverlayTestOpenShadow = true;
     }
     globalThis.chrome = {
       runtime: {
         lastError: null,
-        getManifest: () => ({ version: '2.0.0' }),
+        getManifest: () => ({ version: fixtureExtensionVersion }),
         onMessage: { addListener: (listener) => runtimeListeners.push(listener) },
         sendMessage: (request, callback) => {
+          globalThis.fixtureBridgeRequests.push(structuredClone(request));
+          if (request.kind === 'insta-aio-reserve-thread-unsend') {
+            const respond = () => callback(threadUnsendReservationResponse(request.plan));
+            if (globalThis.fixtureHoldThreadUnsendReservation) {
+              pendingThreadUnsendReservations.push(respond);
+            } else {
+              respond();
+            }
+            return;
+          }
+          if (request.kind === 'insta-aio-checkpoint-thread-unsend') {
+            callback({ checkpoint: { processed: request.processed, failed: request.failed } });
+            return;
+          }
+          if (request.kind === 'insta-aio-finalize-thread-unsend') {
+            callback({ run: { status: request.status, processed: request.processed, failed: request.failed } });
+            return;
+          }
           if (request.kind === 'insta-aio-overlay-state') {
             callback({ state: {
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
               dmArm: null,
-              extensionVersion: '2.0.0',
+              extensionVersion: fixtureExtensionVersion,
               exactConfirmationRequired: true,
               liveExecutionEnabled: false,
               liveArm: null,
@@ -424,7 +467,7 @@
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
               dmArm: null,
-              extensionVersion: '2.0.0',
+              extensionVersion: fixtureExtensionVersion,
               exactConfirmationRequired: true,
               liveExecutionEnabled: false,
               liveArm: null,
@@ -442,7 +485,7 @@
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
               dmArm: null,
-              extensionVersion: '2.0.0',
+              extensionVersion: fixtureExtensionVersion,
               exactConfirmationRequired: true,
               liveExecutionEnabled: false,
               liveArm: null,
@@ -568,6 +611,7 @@
       if (!waiting) queueMicrotask(() => resolve(undefined));
     });
   </script>
+  <script src="/extension/action-confirmation.js"></script>
   <script src="/extension/action-labels.js"></script>
   <script src="/extension/content-instagram.js"></script>
   <script nonce="insta-aio-overlay-qa">

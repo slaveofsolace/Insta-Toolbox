@@ -222,6 +222,23 @@
       };
     }
     const workspace = runtime.model.capture || shared.captureWorkspaceDefaults();
+    const requiredLists = source === 'scanned-followers'
+      ? ['followers']
+      : source === 'scanned-following'
+        ? ['following']
+        : ['followers', 'following'];
+    const captureReady = requiredLists.every((listType) => (
+      workspace.verified?.[listType] === true && workspace.complete?.[listType] === true
+    ));
+    if (!captureReady) {
+      return {
+        pool: [],
+        skipped: [{
+          count: 0,
+          reason: 'Mutual Checker data is partial. Run Mutual Checker again before creating account actions.',
+        }],
+      };
+    }
     const comparison = shared.compareCaptureWorkspace(workspace);
     const list = source === 'i-do-not-follow-back'
       ? comparison.iDoNotFollowBack
@@ -293,7 +310,7 @@
     setText('bot-review-title', `${draft.selected.length} target${draft.selected.length === 1 ? '' : 's'} ready to confirm`);
     setText(
       'bot-review-detail',
-      `${draft.removed} duplicate${draft.removed === 1 ? '' : 's'} removed; ${draft.omitted} valid target${draft.omitted === 1 ? '' : 's'} remain outside this finite run; ${draft.skipped.reduce((total, entry) => total + entry.count, 0)} protected, incompatible, or already-correct target${draft.skipped.reduce((total, entry) => total + entry.count, 0) === 1 ? '' : 's'} skipped. Every profile is rechecked before action.`,
+      `Duplicates removed: ${draft.removed}. Outside this run: ${draft.omitted}. Skipped: ${draft.skipped.reduce((total, entry) => total + entry.count, 0)}. Every profile is rechecked before action.`,
     );
     const list = query('[data-ia-role="bot-review-list"]');
     if (!list) return;
@@ -359,13 +376,13 @@
       username,
     }));
 
-    await modules.batch.start(runtime, {
+    const started = await modules.batch.start(runtime, {
       kind: 'account',
       action: reviewed.action,
       items,
       description: `This opens and ${reviewed.action}s ${items.length} reviewed account${items.length === 1 ? '' : 's'}, one at a time, with randomised pacing. Each profile is verified before the action runs. This tab will navigate between profiles.`,
     });
-    invalidateBotReview(runtime);
+    if (started) invalidateBotReview(runtime);
   }
 
   shared.install('queueView', {

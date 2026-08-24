@@ -89,7 +89,7 @@
     const runButton = query('[data-ia-role="checker-run"]');
     if (runButton) {
       runButton.textContent = relationshipController
-        ? 'Stop follower check'
+        ? 'Stop mutual check'
         : 'Check Followers + Following';
       runButton.classList.toggle('ia-button--danger', Boolean(relationshipController));
     }
@@ -155,15 +155,15 @@
     if (relationshipController) {
       setState(
         runtime,
-        'Follower check running',
-        'Instagram relationship pages are being read. Use Stop follower check to cancel safely.',
+        'Mutual check running',
+        'Instagram relationship pages are being read. Use Stop mutual check to cancel safely.',
         'warning',
       );
     } else if (comparisonReady) {
       setState(
         runtime,
-        comparisonComplete ? `Follower comparison complete${workspace.subjectUsername ? ` for @${workspace.subjectUsername}` : ''}` : 'Partial follower comparison ready',
-        `${formatCount(workspace.followers.length)} followers; ${formatCount(workspace.following.length)} following; ${formatCount(comparison.notFollowingMeBack.length)} not following you back.`,
+        comparisonComplete ? `Mutual comparison complete${workspace.subjectUsername ? ` for @${workspace.subjectUsername}` : ''}` : 'Partial mutual comparison ready',
+        `Followers ${formatCount(workspace.followers.length)} · Following ${formatCount(workspace.following.length)} · Not following you back ${formatCount(comparison.notFollowingMeBack.length)}.`,
         comparisonComplete ? 'good' : 'warning',
       );
     } else {
@@ -213,7 +213,7 @@
       setState(
         runtime,
         `${accounts.length} unique ${listType} account${accounts.length === 1 ? '' : 's'} captured`,
-        `${batch.visible} rendered; ${batch.added} added; ${batch.duplicates} duplicate${batch.duplicates === 1 ? '' : 's'} ignored.`,
+        `Rendered ${batch.visible} · Added ${batch.added} · Duplicates ignored ${batch.duplicates}.`,
         'good',
       );
     }
@@ -379,7 +379,7 @@
     } = runtime;
     if (relationshipController) {
       relationshipController.abort();
-      status('Stopping the follower check. Saved comparison data was not changed.', 'neutral');
+      status('Stopping the mutual check. Saved comparison data was not changed.', 'neutral');
       return;
     }
     if (typeof inspector.fetchFollowerComparison !== 'function') {
@@ -408,6 +408,14 @@
           if (relationshipController !== controller) return;
           if (progress.phase === 'resolving') {
             setState(runtime, `Resolving @${username}`, 'Finding the exact Instagram account.', 'warning');
+            return;
+          }
+          if (progress.phase === 'verifying-profile') {
+            setState(runtime, `Checking @${username}`, 'Reading the exact profile totals before pagination.', 'warning');
+            return;
+          }
+          if (progress.phase === 'revalidating-profile') {
+            setState(runtime, `Finishing @${username}`, 'Confirming the profile totals did not change.', 'warning');
             return;
           }
           if (progress.phase === 'retrying') {
@@ -463,11 +471,28 @@
       await runtime.persistCapture(nextCapture);
       model.capture = nextCapture;
       model.captureMeta = null;
-      const mismatch = result.reasons.followers === 'count-mismatch'
-        ? ` Instagram returned ${result.followers.length.toLocaleString('en-US')} accessible followers; the profile shows ${result.expectedCounts.followers.toLocaleString('en-US')}. ${(result.expectedCounts.followers - result.followers.length).toLocaleString('en-US')} accounts were not returned.`
-        : result.reasons.following === 'count-mismatch'
-          ? ` Instagram returned ${result.following.length.toLocaleString('en-US')} accessible following; the profile shows ${result.expectedCounts.following.toLocaleString('en-US')}. ${(result.expectedCounts.following - result.following.length).toLocaleString('en-US')} accounts were not returned.`
-          : ' A bounded read limit was reached.';
+      const reasons = result.reasons || {};
+      const expectedCounts = result.expectedCounts || {};
+      const partialDetails = [];
+      for (const [listType, accounts] of [
+        ['followers', result.followers],
+        ['following', result.following],
+      ]) {
+        const label = listType === 'followers' ? 'Followers' : 'Following';
+        const reason = reasons[listType];
+        const expected = expectedCounts[listType];
+        if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
+          const difference = expected - accounts.length;
+          partialDetails.push(difference > 0
+            ? `${label}: Instagram returned ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')}; ${difference.toLocaleString('en-US')} were not returned.`
+            : `${label}: the API returned ${accounts.length.toLocaleString('en-US')} unique accounts while the profile shows ${expected.toLocaleString('en-US')}.`);
+        } else if (reason === 'count-changed') {
+          partialDetails.push(`${label}: the profile total changed during the check.`);
+        } else if (reason === 'profile-count-disagreement') {
+          partialDetails.push(`${label}: Instagram's profile counters disagreed.`);
+        }
+      }
+      const mismatch = ` ${partialDetails.join(' ') || 'A bounded read limit was reached.'}`;
       status(
         `Checked @${result.username}: ${result.followers.length.toLocaleString('en-US')} followers and ${result.following.length.toLocaleString('en-US')} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
         result.complete.followers && result.complete.following ? 'good' : 'warning',
@@ -475,8 +500,8 @@
     } catch (error) {
       status(
         error?.code === 'stopped'
-          ? 'Follower check stopped. The previous saved comparison is unchanged.'
-          : `Follower check stopped: ${error?.message || 'Instagram did not return readable relationship data.'}`,
+          ? 'Mutual check stopped. The previous saved comparison is unchanged.'
+          : `Mutual check stopped: ${error?.message || 'Instagram did not return readable relationship data.'}`,
         error?.code === 'stopped' ? 'neutral' : 'error',
       );
     } finally {

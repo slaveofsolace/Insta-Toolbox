@@ -13,10 +13,12 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const checkOnly = process.argv.includes('--check');
 const output = path.join(repositoryRoot, 'userscripts', 'insta-aio-companion.user.js');
+const licenseFile = path.join(repositoryRoot, 'LICENSE');
 
 const parts = [
   path.join(repositoryRoot, 'userscripts', 'src', 'metadata.txt'),
   path.join(repositoryRoot, 'extension', 'overlay', 'tokens.js'),
+  path.join(repositoryRoot, 'extension', 'action-confirmation.js'),
   path.join(repositoryRoot, 'extension', 'action-labels.js'),
   path.join(repositoryRoot, 'extension', 'content-instagram.js'),
   path.join(repositoryRoot, 'userscripts', 'src', 'toolbox-shell.js'),
@@ -27,6 +29,7 @@ const banner = `
 // Generated file. Do not edit.
 //
 // Built by scripts/build-userscript.mjs from:
+//   extension/action-confirmation.js     <- shared destructive-action dialog
 //   extension/action-labels.js           <- labels and thread-wide DM runner
 //   extension/content-instagram.js       <- shared exact-target engine
 //   userscripts/src/toolbox-shell.js     <- userscript UI and batch runner
@@ -35,7 +38,13 @@ const banner = `
 // ---------------------------------------------------------------------------
 `.trimStart();
 
-const [metadata, ...sources] = await Promise.all(parts.map((file) => readFile(file, 'utf8')));
+const [metadata, license, ...sources] = await Promise.all([
+  readFile(parts[0], 'utf8'),
+  readFile(licenseFile, 'utf8'),
+  ...parts.slice(1).map((file) => readFile(file, 'utf8')),
+]);
+
+const licenseBanner = `/*\n${license.trim().split(/\r?\n/).map((line) => (line ? ` * ${line}` : ' *')).join('\n')}\n */\n`;
 
 const engine = sources.join('\n');
 if (!engine.includes('performReviewedProfileAction')
@@ -67,7 +76,7 @@ for (const grant of ['GM_getTab', 'GM_getValue', 'GM_saveTab', 'GM_setValue']) {
 // fresh bundle as stale on Windows purely because of line endings, so both
 // sides of the check are normalised and the file is written with LF.
 const normalize = (value) => value.replaceAll('\r\n', '\n');
-const assembled = normalize(`${metadata}${banner}${engine}`);
+const assembled = normalize(`${metadata}${banner}${licenseBanner}${engine}`);
 
 if (checkOnly) {
   const current = normalize(await readFile(output, 'utf8').catch(() => ''));

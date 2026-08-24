@@ -1,6 +1,6 @@
 # Component integration audit
 
-Audit date: 2026-08-08
+Audit date: 2026-08-23
 
 Integration means that a source was reviewed, its applicable data was mapped, source-specific code was implemented, fixtures were tested, and behavior was documented. A source's historical browser executor is not considered integrated merely because its data migration is supported.
 
@@ -11,7 +11,7 @@ Integration means that a source was reviewed, its applicable data was mapped, so
 | Instagram Helper | Revision `5853d856a18a395aab7c8b8c7e3633175e23ddaf` | Message-data migration | Valid, duplicate, malformed, and incomplete records | Message migration integrated |
 | SimpleInstaBot | Revision `5eed7e4ac7ac7db6922eb9e5ed6db36ad9f18fca` | Follow/unfollow history migration | Success, failure, no-action, duplicate, malformed, unsupported photo history | History migration integrated |
 | Mutual Checker | Revision `3876d9a67bc8255a79990a1616c20cae296d7194` | Read-only partial relationship report | Duplicate, invalid, and incomplete metadata | Partial-report migration integrated |
-| instagram-dm-unsender | Tag `v0.7.2`, revision `a8d7b4d9b76967f54cd9890fc3b1e0bb9c1b8d6a`, supplied SHA-256 `2DC5D357B6C3BBFE1F9E10E8D2F9252E7446C490FB3C16DF1B59719CB1D1FE2C` | Exact-candidate adapter, stateless migration report, and independently bounded thread runner using the reviewed rendered-menu interaction model | Exact, missing, ambiguous, received, confirmation mismatch, no-click complete/incomplete history, plan tampering, daily reservation, pacing, stop, and portalled-menu fixtures | Exact adapter and bounded interaction model integrated; original unbounded executor excluded |
+| instagram-dm-unsender | Tag `v0.7.2`, revision `a8d7b4d9b76967f54cd9890fc3b1e0bb9c1b8d6a`, supplied SHA-256 `2DC5D357B6C3BBFE1F9E10E8D2F9252E7446C490FB3C16DF1B59719CB1D1FE2C` | Exact-candidate adapter, stateless migration report, and independently bounded thread runner using the reviewed rendered-menu interaction model | Exact, missing, ambiguous, received, confirmation mismatch, virtualized one-pass traversal, plan replay/expiry, per-removal checkpoints, pacing, Stop, and portalled-menu fixtures | Exact adapter and bounded interaction model integrated; original unbounded executor excluded |
 
 ## Instagram Helper
 
@@ -123,14 +123,24 @@ The source is one dependency-free script designed for execution in an authentica
 ### Session and network behavior
 
 The script relies on the existing browser session, a fixed application header,
-private search and relationship GET routes, and pagination tokens. Version
-2.0.0's checker independently implements that narrow read flow after
-the operator supplied and requested it: exact username matching, a fixed
-Instagram-origin route allowlist, 50-row pages, bounded iteration, 800–1499 ms
+private search and relationship GET routes, and pagination tokens. The current
+Mutual Checker independently implements that narrow read flow with exact
+username matching, a fixed Instagram-origin route allowlist, exact
+profile-identity and counter verification, 50-row pages, bounded iteration, 800–1499 ms
 page pacing, a 20-second per-attempt watchdog, two bounded stalled-page retries,
 stop support, schema validation, and immediate session/challenge/
 block/rate-limit stops. It never reads or exports the session and exposes no
 relationship mutation route. The older exact-dialog reader remains a fallback.
+
+Search-result counters are treated only as untrusted discovery metadata. Before
+pagination begins, the reader verifies the exact username and numeric user ID
+through the fixed `web_profile_info` route and uses those profile totals for
+reconciliation. A cursorless result that falls short retries once, then remains
+partial instead of being labeled complete. Completion requires exact count
+equality, a second profile-total read after both traversals, and no disagreement
+with counters visible on the exact open profile. Rows use Instagram's numeric
+account ID for deduplication when supplied, with username-only fallback for
+legacy responses.
 
 ### Output contract
 
@@ -199,17 +209,19 @@ Missing, duplicate, received, changed, or ambiguous candidates safe-stop. The ma
 
 The in-page thread-wide runner is a separate implementation that retains only
 the audited rendered-DOM interaction sequence. It does not reuse the source's
-unbounded start control or authorization model. A no-click history pass must
-prove completeness and a finite eligible count before the UI exposes `all`,
-`newest N`, or `oldest N`. The exact thread, scope, count, digest, and expiry are
-frozen into the reviewed plan; one exact thread/count confirmation follows. The
-runner revalidates the full count before opening a message menu,
-reserves the finite plan against replay, uses the saved
-bounded delay range, selects only one newly surfaced menu and confirmation
+unbounded start control or authorization model. One confirmation names the exact
+thread and selected `all`, `newest N`, or `oldest N` scope. The exact thread,
+scope, optional finite limit, digest, and expiry are frozen into the reviewed
+plan. The runner begins one streaming traversal without a preliminary count
+scan, rejects replay, uses one-to-two second successful-action pacing, selects
+only one newly surfaced menu and confirmation
 control for its active sent row, verifies removal, and stops on expiry,
 challenge, block, rate limit, wrong thread, ambiguity, or repeated failure. The
-legacy generic userscript Unsend executor and the source's unbounded loop are
-not present.
+optional read-only check reports only a detected minimum. The legacy generic
+userscript Unsend executor and the source's unbounded loop are not present.
+The extension reservation records no removal; its ledger count advances only
+after each verified postcondition. Failed preflight and zero-click failure leave
+that count at zero.
 
 The extension implements a no-click DOM boundary for signed reviewed DM jobs.
 It borrows the source's conversation-container and sent-layout observations but
@@ -218,7 +230,7 @@ attribute, exact timestamp, exact content digest, and one sent candidate. Dry
 run never invokes hover, menu, dialog, loop, or Unsend paths. Fixture coverage
 proves exact, missing, changed, received, wrong-thread, and ambiguous outcomes.
 
-Extension 2.0.0 preserves the independently migrated source-audited one-message UI
+The extension preserves the independently migrated source-audited one-message UI
 sequence behind a stronger capability boundary. It retains the exact row's
 source-backed hover and action-control patterns plus exact localized Unsend
 labels. Those labels now live in one frozen UTF-8 module, normalize with NFKC,
@@ -267,7 +279,7 @@ The reviewed sources do not supply a safe live executor that satisfies current
 contracts. The independent action and DM adapters implement transaction
 ordering, durable checkpoints, no-click dry runs, and safe stops.
 
-Extension 2.0.0 includes independently implemented controlled account and DM
+The extension includes independently implemented controlled account and DM
 drivers;
 it does not copy the SimpleInstaBot executor. A fresh signed job of exactly one
 item creates a sanitized intent. The Instagram sidecar requires the matching
@@ -280,6 +292,6 @@ This is implementation and deterministic fixture coverage, not authenticated
 live acceptance. Account live acceptance cannot be claimed until the operator
 selects a batch of one and exact before/after plus durable ledger evidence is
 captured in the intended authenticated environment. DM live acceptance also
-cannot be claimed until the operator selects exactly one twice-confirmed sent
-message and exact row-removal plus both durable-ledger records are captured in
-the intended authenticated environment.
+cannot be claimed until the operator selects one reviewed sent message, accepts
+its ordinary exact confirmation, and captures exact row-removal plus both
+durable-ledger records in the intended authenticated environment.

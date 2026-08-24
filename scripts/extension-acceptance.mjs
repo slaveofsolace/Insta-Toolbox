@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ import { instagramScriptOrder } from './instagram-script-order.mjs';
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(moduleDirectory, '..');
+const releaseVersion = JSON.parse(await readFile(path.join(repositoryRoot, 'package.json'), 'utf8')).version;
 const resultsRoot = path.resolve(repositoryRoot, 'test-results', 'extension-acceptance');
 const userDataRoot = path.resolve(
   process.env.INSTA_AIO_EXTENSION_ACCEPTANCE_USER_DATA
@@ -151,6 +152,30 @@ async function waitForPageValue(webContents, expression, label, timeoutMs = 10_0
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`Timed out waiting for ${label}.`);
+}
+
+async function trustedClick(webContents, elementExpression, label) {
+  const point = await webContents.executeJavaScript(`(() => {
+    const target = ${elementExpression};
+    if (!(target instanceof HTMLElement) || target.hidden || target.disabled) return null;
+    target.scrollIntoView({ block: 'center', inline: 'center' });
+    const rectangle = target.getBoundingClientRect();
+    if (rectangle.width <= 0 || rectangle.height <= 0) return null;
+    return {
+      x: Math.round(rectangle.left + (rectangle.width / 2)),
+      y: Math.round(rectangle.top + (rectangle.height / 2)),
+    };
+  })()`, true);
+  assert.ok(point, `${label} is not available for trusted browser input`);
+  webContents.focus();
+  webContents.sendInputEvent({ type: 'mouseMove', x: point.x, y: point.y });
+  webContents.sendInputEvent({
+    type: 'mouseDown', x: point.x, y: point.y, button: 'left', clickCount: 1,
+  });
+  webContents.sendInputEvent({
+    type: 'mouseUp', x: point.x, y: point.y, button: 'left', clickCount: 1,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
 async function resizeViewport(webContents, viewport) {
@@ -312,6 +337,21 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
       })),
       panelLabel: shadow.querySelector('.ia-panel')?.getAttribute('aria-label'),
       statusLive: shadow.querySelector('[data-ia-role="status"]')?.getAttribute('aria-live'),
+      statusAtomic: shadow.querySelector('[data-ia-role="status"]')?.getAttribute('aria-atomic'),
+      headerHeight: shadow.querySelector('.ia-header')?.getBoundingClientRect().height,
+      headerText: shadow.querySelector('.ia-header-copy')?.textContent.trim(),
+      removedHeaderCopy: shadow.querySelectorAll('[data-ia-role="view-context"], [data-ia-role="view-subtitle"]').length,
+      credit: {
+        text: shadow.querySelector('.ia-credit-link')?.textContent,
+        href: shadow.querySelector('.ia-credit-link')?.getAttribute('href'),
+        target: shadow.querySelector('.ia-credit-link')?.getAttribute('target'),
+        rel: shadow.querySelector('.ia-credit-link')?.getAttribute('rel'),
+        height: shadow.querySelector('.ia-credit')?.getBoundingClientRect().height,
+      },
+      moveSize: (() => {
+        const rectangle = shadow.querySelector('[data-ia-role="move-handle"]')?.getBoundingClientRect();
+        return rectangle ? { height: rectangle.height, width: rectangle.width } : null;
+      })(),
       closeLabel: shadow.querySelector('[data-ia-action="close"]')?.getAttribute('aria-label'),
       moveLabel: shadow.querySelector('[data-ia-role="move-handle"]')?.getAttribute('aria-label'),
       resizeLabel: shadow.querySelector('[data-ia-role="resize-handle"]')?.getAttribute('aria-label'),
@@ -325,9 +365,27 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
   assert.equal(metrics.nav[0].selected, 'true');
   assert.equal(metrics.panelLabel, 'Insta Toolbox');
   assert.equal(metrics.statusLive, 'polite');
+  assert.equal(metrics.statusAtomic, 'true');
+  assert.ok(Math.abs(metrics.headerHeight - 52) <= 1, `compact header height changed: ${metrics.headerHeight}px`);
+  assert.equal(metrics.headerText, 'Insta Toolbox');
+  assert.equal(metrics.removedHeaderCopy, 0);
+  assert.deepEqual({
+    text: metrics.credit.text,
+    href: metrics.credit.href,
+    target: metrics.credit.target,
+    rel: metrics.credit.rel,
+  }, {
+    text: 'created by @slaveofsolace',
+    href: 'https://github.com/slaveofsolace',
+    target: '_blank',
+    rel: 'noopener noreferrer',
+  });
+  assert.ok(metrics.credit.height >= 26 && metrics.credit.height <= 28, `credit line height changed: ${metrics.credit.height}px`);
+  assert.ok(Math.abs(metrics.moveSize.height - 44) <= 1, `move target height changed: ${metrics.moveSize.height}px`);
+  assert.ok(Math.abs(metrics.moveSize.width - 44) <= 1, `move target width changed: ${metrics.moveSize.width}px`);
   assert.equal(metrics.closeLabel, 'Collapse Insta Toolbox');
-  assert.match(metrics.moveLabel, /Move sidecar/);
-  assert.match(metrics.resizeLabel, /Resize sidecar/);
+  assert.match(metrics.moveLabel, /Move Insta Toolbox/);
+  assert.match(metrics.resizeLabel, /Resize Insta Toolbox/);
   assert.equal(metrics.opacity, '88');
   assert.match(metrics.panelBackground, /(rgba\(|color\()/);
 
@@ -389,7 +447,7 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
       const shadow = document.querySelector('#insta-aio-sidecar-root')?.shadowRoot;
       const plan = shadow?.querySelector('[data-ia-role="unsend-plan"]');
       const badge = shadow?.querySelector('[data-ia-role="unsend-badge"]')?.textContent;
-      if (!plan || plan.hidden || !/\\d+ ready/.test(badge || '')) return null;
+      if (!plan || plan.hidden || badge !== 'checked') return null;
       return {
         badge,
         button: shadow.querySelector('[data-ia-action="mass-unsend"]')?.textContent,
@@ -402,7 +460,7 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
   );
   assert.equal(dmPreview.button, 'Unsend DMs');
   assert.equal(dmPreview.disabled, false);
-  assert.match(dmPreview.eligible, /^\d+ sent messages? eligible$/);
+  assert.match(dmPreview.eligible, /^At least \d+ sent messages? detected$/);
   assert.equal(dmPreview.clicks, 0, 'checking the conversation opens no Instagram control');
 
   app.setAccessibilitySupportEnabled(true);
@@ -419,8 +477,8 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
       'Follow / Unfollow',
       'DM Unsend',
       'Workspace',
-      'Move sidecar; use arrow keys for precise movement',
-      'Resize sidecar; use arrow keys for precise sizing',
+      'Move Insta Toolbox; use arrow keys for precise movement',
+      'Resize Insta Toolbox; use arrow keys for precise sizing',
     ]) {
       assert.equal(names.has(expected), true, `accessibility tree is missing ${expected}`);
     }
@@ -430,10 +488,413 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
   console.log('Accepted overlay keyboard focus, no-click thread Unsend preview, and Chromium accessibility-tree contract.');
 }
 
-// Drives the thread-wide unsend against a stand-in that reproduces the two
-// shapes that previously broke it: a menu portalled outside the row with no
-// role="menu", and rows that stay in place as an "unsent" note instead of
-// being removed. Both of those made every message report as a failure.
+async function acceptOverlayDmConfirmation(webContents, baseUrl) {
+  await loadFixture(webContents, baseUrl, 'messages-live');
+  await webContents.executeJavaScript(`(() => {
+    globalThis.fixtureNativeConfirmCalls = 0;
+    globalThis.confirm = () => {
+      globalThis.fixtureNativeConfirmCalls += 1;
+      throw new Error('Native confirm must not be used by the overlay.');
+    };
+    globalThis.fixtureRunnerStartCount = 0;
+    const runner = globalThis.InstaAioDmThreadUnsender;
+    let runnerWasActive = false;
+    runner.subscribe((state) => {
+      const active = state.operation === 'unsend'
+        && ['preparing', 'running', 'waiting', 'stopping'].includes(state.status);
+      if (active && !runnerWasActive) globalThis.fixtureRunnerStartCount += 1;
+      runnerWasActive = active;
+    });
+    globalThis.fixtureBridgeRequests.length = 0;
+    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+    globalThis.fixtureConfirmationTrustEvents = [];
+    shadow.querySelector('[data-ia-role="confirm-accept"]').addEventListener('click', (event) => {
+      globalThis.fixtureConfirmationTrustEvents.push(event.isTrusted);
+    });
+    shadow.querySelector('.ia-launcher').click();
+    shadow.querySelector('[data-ia-section="messages"]').click();
+    shadow.querySelector('[data-ia-action="mass-unsend"]').click();
+  })()`, true);
+
+  const firstReview = await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-aio-sidecar-root')?.shadowRoot;
+      const dialog = shadow?.querySelector('[data-ia-role="action-confirmation"]');
+      if (!dialog?.open) return null;
+      return {
+        title: shadow.querySelector('[data-ia-role="confirm-title"]')?.textContent,
+        message: shadow.querySelector('[data-ia-role="confirm-message"]')?.textContent,
+        detail: shadow.querySelector('[data-ia-role="confirm-detail"]')?.textContent,
+        confirmLabel: shadow.querySelector('[data-ia-role="confirm-accept"]')?.textContent,
+        facts: [...shadow.querySelectorAll('[data-ia-role="confirm-facts"] dt')]
+          .map((term) => [term.textContent, term.nextElementSibling?.textContent]),
+        focusedRole: shadow.activeElement?.dataset?.iaRole,
+        scope: shadow.querySelector('[data-ia-role="unsend-scope"]')?.value,
+        nativeConfirmCalls: globalThis.fixtureNativeConfirmCalls,
+        reservations: globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-reserve-thread-unsend').length,
+        runnerStarts: globalThis.fixtureRunnerStartCount,
+        unsent: globalThis.fixtureUnsentCount,
+        clicks: globalThis.fixtureDmClickCount,
+      };
+    })()`,
+    'extension in-overlay Unsend review',
+  );
+  assert.deepEqual(firstReview, {
+    title: 'Unsend DMs?',
+    message: 'Permanently unsend every message you sent in this conversation?',
+    detail: 'This cannot be undone. Stop stays available while it runs.',
+    confirmLabel: 'Unsend all my messages',
+    facts: [
+      ['Action', 'Permanently unsend messages'],
+      ['Conversation', 'Thread 123'],
+      ['Scope', 'All messages you sent'],
+    ],
+    focusedRole: 'confirm-cancel',
+    scope: 'all',
+    nativeConfirmCalls: 0,
+    reservations: 0,
+    runnerStarts: 0,
+    unsent: 0,
+    clicks: 0,
+  });
+
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+    const dialog = shadow.querySelector('[data-ia-role="action-confirmation"]');
+    dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+  })()`, true);
+  const escaped = await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-aio-sidecar-root')?.shadowRoot;
+      const dialog = shadow?.querySelector('[data-ia-role="action-confirmation"]');
+      const status = shadow?.querySelector('[data-ia-role="status-text"]')?.textContent;
+      return !dialog?.open && status === 'Canceled. Nothing was removed.' ? {
+        nativeConfirmCalls: globalThis.fixtureNativeConfirmCalls,
+        reservations: globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-reserve-thread-unsend').length,
+        runnerStarts: globalThis.fixtureRunnerStartCount,
+        unsent: globalThis.fixtureUnsentCount,
+        clicks: globalThis.fixtureDmClickCount,
+      } : null;
+    })()`,
+    'extension Escape cancellation',
+  );
+  assert.deepEqual(escaped, {
+    nativeConfirmCalls: 0, reservations: 0, runnerStarts: 0, unsent: 0, clicks: 0,
+  });
+  await webContents.executeJavaScript('new Promise((resolve) => setTimeout(resolve, 50))', true);
+
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+    shadow.querySelector('[data-ia-action="mass-unsend"]').click();
+  })()`, true);
+  await waitForPageValue(
+    webContents,
+    `document.querySelector('#insta-aio-sidecar-root')?.shadowRoot?.querySelector('[data-ia-role="action-confirmation"]')?.open`,
+    'extension cancel-button review',
+  );
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+    shadow.querySelector('[data-ia-action="confirm-cancel"]').click();
+  })()`, true);
+  const canceled = await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-aio-sidecar-root')?.shadowRoot;
+      const status = shadow?.querySelector('[data-ia-role="status-text"]')?.textContent;
+      if (shadow?.querySelector('[data-ia-role="action-confirmation"]')?.open
+        || status !== 'Canceled. Nothing was removed.') return null;
+      return {
+        reservations: globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-reserve-thread-unsend').length,
+        runnerStarts: globalThis.fixtureRunnerStartCount,
+        unsent: globalThis.fixtureUnsentCount,
+      };
+    })()`,
+    'extension Cancel button cancellation',
+  );
+  assert.deepEqual(canceled, { reservations: 0, runnerStarts: 0, unsent: 0 });
+  await webContents.executeJavaScript('new Promise((resolve) => setTimeout(resolve, 50))', true);
+
+  await webContents.executeJavaScript(`(() => {
+    globalThis.fixtureHoldThreadUnsendReservation = true;
+    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+    shadow.querySelector('[data-ia-action="mass-unsend"]').click();
+  })()`, true);
+  await waitForPageValue(
+    webContents,
+    `document.querySelector('#insta-aio-sidecar-root')?.shadowRoot?.querySelector('[data-ia-role="action-confirmation"]')?.open`,
+    'extension held-reservation review',
+  );
+  const rejectedSyntheticConfirmation = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+    const accept = shadow.querySelector('[data-ia-action="confirm-accept"]');
+    accept.click();
+    accept.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return Promise.resolve().then(() => ({
+      dialogOpen: shadow.querySelector('[data-ia-role="action-confirmation"]').open,
+      trustEvents: [...globalThis.fixtureConfirmationTrustEvents],
+      reservations: globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-reserve-thread-unsend').length,
+      runnerStarts: globalThis.fixtureRunnerStartCount,
+      unsent: globalThis.fixtureUnsentCount,
+      clicks: globalThis.fixtureDmClickCount,
+    }));
+  })()`, true);
+  assert.deepEqual(rejectedSyntheticConfirmation, {
+    dialogOpen: true,
+    trustEvents: [false, false],
+    reservations: 0,
+    runnerStarts: 0,
+    unsent: 0,
+    clicks: 0,
+  });
+  await trustedClick(
+    webContents,
+    `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-action="confirm-accept"]')`,
+    'extension Unsend confirmation',
+  );
+  const pendingReservation = await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-aio-sidecar-root')?.shadowRoot;
+      const reservations = globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-reserve-thread-unsend');
+      if (reservations.length !== 1) return null;
+      const button = shadow?.querySelector('[data-ia-action="mass-unsend"]');
+      return {
+        label: button?.textContent,
+        disabled: button?.disabled,
+        runnerStarts: globalThis.fixtureRunnerStartCount,
+        unsent: globalThis.fixtureUnsentCount,
+        confirmationTrusted: globalThis.fixtureConfirmationTrustEvents.at(-1),
+        threadId: reservations[0].plan?.threadId,
+        scope: reservations[0].plan?.scope,
+      };
+    })()`,
+    'extension pending thread-Unsend reservation',
+  );
+  assert.deepEqual(pendingReservation, {
+    label: 'Stop unsending',
+    disabled: false,
+    runnerStarts: 0,
+    unsent: 0,
+    confirmationTrusted: true,
+    threadId: '123',
+    scope: 'all',
+  });
+
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+    shadow.querySelector('[data-ia-action="mass-unsend"]').click();
+    globalThis.fixtureReleaseThreadUnsendReservations();
+  })()`, true);
+  const lateReservation = await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-aio-sidecar-root')?.shadowRoot;
+      const button = shadow?.querySelector('[data-ia-action="mass-unsend"]');
+      const status = shadow?.querySelector('[data-ia-role="status-text"]')?.textContent;
+      if (button?.textContent !== 'Unsend DMs'
+        || button.disabled
+        || status !== 'Stopped before Unsend began. Nothing was removed.') return null;
+      return {
+        runnerStarts: globalThis.fixtureRunnerStartCount,
+        unsent: globalThis.fixtureUnsentCount,
+        checkpoints: globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-checkpoint-thread-unsend').length,
+        finalization: (() => {
+          const requests = globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-finalize-thread-unsend');
+          return requests.length === 1 ? {
+            count: requests.length,
+            processed: requests[0].processed,
+            failed: requests[0].failed,
+            status: requests[0].status,
+          } : null;
+        })(),
+      };
+    })()`,
+    'extension late-reservation suppression',
+  );
+  assert.deepEqual(lateReservation, {
+    runnerStarts: 0,
+    unsent: 0,
+    checkpoints: 0,
+    finalization: { count: 1, processed: 0, failed: 0, status: 'stopped' },
+  });
+
+  await webContents.executeJavaScript(`new Promise((resolve) => setTimeout(() => {
+    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+    shadow.querySelector('[data-ia-action="mass-unsend"]').click();
+    resolve(true);
+  }, 50))`, true);
+  await waitForPageValue(
+    webContents,
+    `document.querySelector('#insta-aio-sidecar-root')?.shadowRoot?.querySelector('[data-ia-role="action-confirmation"]')?.open`,
+    'extension final explicit review',
+  );
+  await trustedClick(
+    webContents,
+    `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-action="confirm-accept"]')`,
+    'extension final Unsend confirmation',
+  );
+  const startedExecution = await waitForPageValue(
+    webContents,
+    `(() => {
+      const snapshot = globalThis.InstaAioDmThreadUnsender?.snapshot?.();
+      if (globalThis.fixtureRunnerStartCount !== 1) return null;
+      return {
+        status: snapshot?.status,
+        message: snapshot?.message,
+        processed: snapshot?.processed,
+        failed: snapshot?.failed,
+        unsent: globalThis.fixtureUnsentCount,
+        clicks: globalThis.fixtureDmClickCount,
+        stopLabel: document.querySelector('#insta-aio-sidecar-root')?.shadowRoot
+          ?.querySelector('[data-ia-action="mass-unsend"]')?.textContent,
+        stopDisabled: document.querySelector('#insta-aio-sidecar-root')?.shadowRoot
+          ?.querySelector('[data-ia-action="mass-unsend"]')?.disabled,
+      };
+    })()`,
+    'extension explicit second-click start',
+  );
+  assert.equal(['preparing', 'running', 'waiting'].includes(startedExecution.status), true, JSON.stringify(startedExecution));
+  assert.equal(startedExecution.processed, 0);
+  assert.equal(startedExecution.unsent, 0);
+  assert.equal(startedExecution.clicks, 0);
+  assert.equal(startedExecution.stopLabel, 'Stop unsending');
+  assert.equal(startedExecution.stopDisabled, false);
+  await webContents.executeJavaScript(`(() => {
+    document.querySelector('#insta-aio-sidecar-root').shadowRoot
+      .querySelector('[data-ia-action="mass-unsend"]').click();
+  })()`, true);
+  const stoppedExecution = await waitForPageValue(
+    webContents,
+    `(() => {
+      const snapshot = globalThis.InstaAioDmThreadUnsender?.snapshot?.();
+      const finalizations = globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-finalize-thread-unsend');
+      if (snapshot?.status !== 'stopped' || finalizations.length !== 2) return null;
+      return {
+        nativeConfirmCalls: globalThis.fixtureNativeConfirmCalls,
+        reservations: globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-reserve-thread-unsend').length,
+        runnerStarts: globalThis.fixtureRunnerStartCount,
+        processed: snapshot.processed,
+        failed: snapshot.failed,
+        unsent: globalThis.fixtureUnsentCount,
+        clicks: globalThis.fixtureDmClickCount,
+        finalization: finalizations.at(-1) ? {
+          processed: finalizations.at(-1).processed,
+          failed: finalizations.at(-1).failed,
+          status: finalizations.at(-1).status,
+        } : null,
+      };
+    })()`,
+    'extension explicit second-click start and Stop',
+  );
+  assert.deepEqual(stoppedExecution, {
+    nativeConfirmCalls: 0,
+    reservations: 2,
+    runnerStarts: 1,
+    processed: 0,
+    failed: 0,
+    unsent: 0,
+    clicks: 0,
+    finalization: { processed: 0, failed: 0, status: 'stopped' },
+  });
+  console.log('Accepted extension trusted-input Unsend confirmation: synthetic clicks stayed at zero actions, Cancel stayed safe, and Stop suppressed late reservations.');
+}
+
+// Drives the thread-wide unsend against a virtualized stand-in: only a small
+// moving row window is mounted, every scroll replaces those nodes, and the
+// menu is portalled outside the row without role="menu".
+async function runThreadScope(webContents, baseUrl, scope, limit) {
+  await withTimeout(
+    webContents.loadURL(`${baseUrl}/direct/t/17800000000000001/`),
+    `thread ${scope} fixture load`,
+  );
+  await waitForPageValue(
+    webContents,
+    'Boolean(globalThis.InstaAioDmThreadUnsender)',
+    `thread ${scope}: engine ready`,
+  );
+  return webContents.executeJavaScript(`(async () => {
+    const runner = globalThis.InstaAioDmThreadUnsender;
+    const plan = runner.createPlan({
+      threadId: '17800000000000001',
+      scope: '${scope}',
+      limit: ${limit},
+      expiresAt: Date.now() + 60_000,
+    });
+    const result = await runner.start({ plan, minDelayMs: 0, maxDelayMs: 0 });
+    return {
+      result,
+      openedIds: globalThis.fixtureOpenedIds,
+      remainingSentIds: globalThis.fixtureRemainingSentIds(),
+      oldestBoundaryExpandedAt: globalThis.fixtureOldestBoundaryExpandedAt,
+      firstMenuOpenedAt: globalThis.fixtureFirstMenuOpenedAt,
+      menuOpenedBeforeOldestExpansion: globalThis.fixtureMenuOpenedBeforeOldestExpansion,
+    };
+  })()`, true);
+}
+
+async function acceptThreadUnsendScopes(webContents, baseUrl) {
+  const newest = await runThreadScope(webContents, baseUrl, 'newest', 2);
+  assert.equal(newest.result.processed, 2);
+  assert.deepEqual(newest.openedIds, ['fixture-message-40', 'fixture-message-32']);
+  assert.equal(newest.remainingSentIds.length, 4);
+
+  const oldest = await runThreadScope(webContents, baseUrl, 'oldest', 2);
+  assert.equal(oldest.result.processed, 2);
+  assert.equal(
+    oldest.menuOpenedBeforeOldestExpansion,
+    false,
+    'finite oldest scope must not open a message menu before delayed history growth settles',
+  );
+  assert.ok(
+    oldest.firstMenuOpenedAt >= oldest.oldestBoundaryExpandedAt + 1_500,
+    'finite oldest scope must prove a stable oldest boundary before its first menu click',
+  );
+  assert.deepEqual(oldest.openedIds, ['fixture-message-2', 'fixture-message-9']);
+  assert.equal(oldest.remainingSentIds.length, 4);
+  console.log('Accepted newest and oldest finite Unsend ordering across virtualized rows.');
+}
+
+async function acceptThreadUnsendStop(webContents, baseUrl) {
+  await withTimeout(
+    webContents.loadURL(`${baseUrl}/direct/t/17800000000000001/`),
+    'thread Stop fixture load',
+  );
+  await waitForPageValue(
+    webContents,
+    'Boolean(globalThis.InstaAioDmThreadUnsender)',
+    'thread Stop: engine ready',
+  );
+  const stopped = await webContents.executeJavaScript(`(async () => {
+    const runner = globalThis.InstaAioDmThreadUnsender;
+    let stopRequested = false;
+    const unsubscribe = runner.subscribe((state) => {
+      if (!stopRequested && state.processed >= 1 && state.canStop) {
+        stopRequested = true;
+        runner.stop();
+      }
+    });
+    const plan = runner.createPlan({
+      threadId: '17800000000000001',
+      scope: 'all',
+      expiresAt: Date.now() + 60_000,
+    });
+    const result = await runner.start({ plan, minDelayMs: 0, maxDelayMs: 0 });
+    unsubscribe();
+    return {
+      result,
+      remainingSentIds: globalThis.fixtureRemainingSentIds(),
+      stopRequested,
+    };
+  })()`, true);
+  assert.equal(stopped.stopRequested, true);
+  assert.equal(stopped.result.status, 'stopped');
+  assert.equal(stopped.result.processed, 1);
+  assert.equal(stopped.remainingSentIds.length, 5);
+  console.log('Accepted Stop after one verified virtualized Unsend.');
+}
+
 async function acceptThreadUnsend(webContents, baseUrl) {
   await withTimeout(
     webContents.loadURL(`${baseUrl}/direct/t/17800000000000001/`),
@@ -447,12 +908,9 @@ async function acceptThreadUnsend(webContents, baseUrl) {
 
   const outcome = await webContents.executeJavaScript(`(async () => {
     const runner = globalThis.InstaAioDmThreadUnsender;
-    const inspection = await runner.inspectAll();
     const rejectedPlan = runner.createPlan({
       threadId: 'different-thread',
       scope: 'all',
-      limit: inspection.eligibleCount,
-      eligibleCount: inspection.eligibleCount,
       expiresAt: Date.now() + 60_000,
     });
     const rejected = await runner.start({
@@ -461,10 +919,9 @@ async function acceptThreadUnsend(webContents, baseUrl) {
       maxDelayMs: 0,
     });
     const plan = runner.createPlan({
-      threadId: inspection.threadId,
+      threadId: '17800000000000001',
       scope: 'all',
-      limit: inspection.eligibleCount,
-      eligibleCount: inspection.eligibleCount,
+      detectedCount: globalThis.fixtureMountedSentHighWater,
       expiresAt: Date.now() + 60_000,
     });
     const result = await runner.start({
@@ -472,34 +929,136 @@ async function acceptThreadUnsend(webContents, baseUrl) {
       minDelayMs: 0,
       maxDelayMs: 0,
     });
-    const rows = [...document.querySelectorAll('#thread .row')];
+    const replay = await runner.start({
+      plan,
+      minDelayMs: 0,
+      maxDelayMs: 0,
+    });
     return {
       result,
+      replay,
       rejected,
       fixtureCancelClicks: globalThis.fixtureCancelClicks,
       fixtureDecoyUnsendClicks: globalThis.fixtureDecoyUnsendClicks,
       fixtureUnsentCount: globalThis.fixtureUnsentCount,
-      remainingSent: rows.filter((row) => row.classList.contains('mine')).length,
+      logicalMessageCount: globalThis.fixtureLogicalMessageCount,
+      delayedWindows: globalThis.fixtureDelayedWindows,
+      newMessages: globalThis.fixtureNewMessages,
+      scrollerReplacements: globalThis.fixtureScrollerReplacements,
+      forcedRetryMisses: globalThis.fixtureForcedRetryMisses,
+      initialScrollHeight: globalThis.fixtureInitialScrollHeight,
+      finalScrollHeight: document.querySelector('#thread')?.scrollHeight,
+      confirmedIds: globalThis.fixtureConfirmedIds,
+      openedIds: globalThis.fixtureOpenedIds,
+      mountedSentHighWater: globalThis.fixtureMountedSentHighWater,
+      renderedWindows: globalThis.fixtureRenderedWindows,
+      remainingSentIds: globalThis.fixtureRemainingSentIds(),
       leftoverDialogs: document.querySelectorAll('[role="dialog"]').length,
-      status: runner.inspect?.().status ?? null,
+      status: result.status,
+      retryAttempts: result.retryAttempts,
     };
   })()`, true);
 
-  // Six of the twelve fixture rows are sent by this account.
+  // Six of the 42 logical fixture messages are sent by this account, while
+  // only four rows are mounted at a time.
   assert.match(outcome.rejected?.message || '', /Thread-specific live authorization is required/);
   assert.equal(outcome.fixtureCancelClicks, 0, 'the unrelated Cancel control is never activated');
+  assert.ok(outcome.logicalMessageCount >= 40, 'the fixture must keep at least 40 logical messages');
+  assert.ok(outcome.delayedWindows >= 1, 'the fixture must delay at least one virtual page');
+  assert.equal(outcome.newMessages, 1, 'the run must survive a new received-message boundary');
+  assert.ok(outcome.scrollerReplacements >= 1, 'the runner must survive a replaced scroller');
+  assert.equal(outcome.forcedRetryMisses, 1, 'the replaced scroller must force one bounded transient miss');
+  assert.ok(outcome.finalScrollHeight < outcome.initialScrollHeight, 'the virtual scroll range must shrink during removal');
   assert.equal(outcome.fixtureDecoyUnsendClicks, 0, 'a stale document-global Unsend decoy is never activated');
-  assert.equal(outcome.fixtureUnsentCount, 6, 'every sent message was actually unsent');
-  assert.equal(outcome.remainingSent, 0, 'no sent message was left behind');
+  assert.equal(
+    outcome.fixtureUnsentCount,
+    6,
+    `every sent message was actually unsent; remaining=${outcome.remainingSentIds.join(',')} opened=${outcome.openedIds.join(',')}`,
+  );
+  assert.deepEqual(outcome.remainingSentIds, [], 'no logical sent message was left behind');
+  assert.equal(new Set(outcome.confirmedIds).size, 6, 'each logical message is confirmed exactly once');
+  assert.equal(new Set(outcome.openedIds).size, outcome.openedIds.length, 'no logical message menu is opened twice');
+  assert.ok(outcome.mountedSentHighWater < 6, 'a mounted virtual window is smaller than the logical total');
+  assert.ok(outcome.renderedWindows > 2, 'execution traverses more than one virtual window');
   assert.equal(outcome.leftoverDialogs, 0, 'no confirmation dialog was left open');
   assert.equal(outcome.result?.processed, 6);
-  assert.equal(outcome.result?.failures ?? 0, 0, 'a working thread produces no failures');
-  console.log(`Accepted thread-bound Unsend against a portalled menu (${outcome.fixtureUnsentCount} removed, stale decoy untouched).`);
+  assert.equal(outcome.result?.failed, 0, 'a working thread produces no failures');
+  assert.ok(
+    outcome.retryAttempts >= outcome.forcedRetryMisses,
+    'the replaced scroller must exercise bounded retry recovery',
+  );
+  assert.equal(outcome.status, 'completed');
+  assert.equal(outcome.replay?.status, 'error');
+  assert.match(outcome.replay?.message || '', /already used/);
+  console.log(`Accepted thread-bound Unsend across virtualized rows (${outcome.fixtureUnsentCount} removed, stale decoy untouched).`);
+}
+
+function assertUserscriptConfirmationLayout(review, label) {
+  const geometry = JSON.stringify({
+    accept: review.accept,
+    cancel: review.cancel,
+    cssViewport: review.cssViewport,
+    dialog: review.dialog,
+  });
+  assert.deepEqual({
+    acceptLabel: review.acceptLabel,
+    cancelLabel: review.cancelLabel,
+    controlOrder: review.controlOrder,
+    detail: review.detail,
+    facts: review.facts,
+    focusedRole: review.focusedRole,
+    message: review.message,
+    title: review.title,
+  }, {
+    acceptLabel: 'Unsend all my messages',
+    cancelLabel: 'Cancel',
+    controlOrder: ['confirm-cancel', 'confirm-accept'],
+    detail: 'This cannot be undone. Stop stays available while it runs.',
+    facts: [
+      ['Action', 'Permanently unsend messages'],
+      ['Conversation', 'Thread 123'],
+      ['Scope', 'All messages you sent'],
+    ],
+    focusedRole: 'confirm-cancel',
+    message: 'Permanently unsend every message you sent in this conversation?',
+    title: 'Unsend DMs?',
+  }, `${label}: exact confirmation semantics changed`);
+  assert.ok(review.dialog.left >= -1, `${label}: confirmation escapes left; ${geometry}`);
+  assert.ok(review.dialog.top >= -1, `${label}: confirmation escapes top; ${geometry}`);
+  assert.ok(review.dialog.right <= review.cssViewport.width + 1, `${label}: confirmation escapes right; ${geometry}`);
+  assert.ok(review.dialog.bottom <= review.cssViewport.height + 1, `${label}: confirmation escapes bottom; ${geometry}`);
+  assert.ok(review.horizontalOverflow <= 1, `${label}: confirmation has horizontal overflow`);
+  for (const [controlLabel, control] of [['Cancel', review.cancel], ['Confirm', review.accept]]) {
+    assert.ok(control.width >= 43.5, `${label}: ${controlLabel} is narrower than 44px; ${geometry}`);
+    assert.ok(control.height >= 43.5, `${label}: ${controlLabel} is shorter than 44px; ${geometry}`);
+  }
+  const cancelComesFirst = review.cancel.top < review.accept.top - 1
+    || (Math.abs(review.cancel.top - review.accept.top) <= 1 && review.cancel.left < review.accept.left);
+  assert.equal(cancelComesFirst, true, `${label}: Cancel is not visually before Confirm; ${geometry}`);
+  assert.deepEqual({
+    nativeConfirmCalls: review.nativeConfirmCalls,
+    runnerStarts: review.runnerStarts,
+    runnerStatus: review.runnerStatus,
+    unsent: review.unsent,
+  }, {
+    nativeConfirmCalls: 0,
+    runnerStarts: 0,
+    runnerStatus: 'idle',
+    unsent: 0,
+  }, `${label}: opening the confirmation started destructive work`);
 }
 
 async function acceptToolboxLayout(webContents, baseUrl) {
+  console.log('Checking userscript responsive layout matrix.');
   await withTimeout(webContents.loadURL(baseUrl + "/userscript-fixture.html"), "audit load");
   await waitForPageValue(webContents, "Boolean(document.querySelector(\"#insta-aio-userscript-root\")?.shadowRoot)", "audit shell");
+  webContents.setZoomFactor(1);
+  await resizeViewport(webContents, { label: 'userscript audit default', width: 1200, height: 800 });
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    for (const details of shadow.querySelectorAll('details')) details.open = false;
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  })()`, true);
   const layoutAuditProbe = await readFile(path.join(repositoryRoot, "scripts", "probes", "layout-audit.js"), "utf8");
   const report = await webContents.executeJavaScript(layoutAuditProbe, true);
   const hitProbe = await readFile(path.join(repositoryRoot, "scripts", "probes", "hit-probe.js"), "utf8");
@@ -516,47 +1075,241 @@ async function acceptToolboxLayout(webContents, baseUrl) {
   // The brief's viewport matrix. A flex column should hold up at each, but
   // short and narrow windows are exactly where a panel starts clipping.
   const viewportMatrix = [
-    { label: 'short laptop', width: 1280, height: 620 },
-    { label: 'narrow tablet', width: 760, height: 900 },
-    { label: 'mobile portrait', width: 390, height: 780 },
-    { label: 'mobile landscape', width: 780, height: 390 },
-    { label: '200% zoom', width: 640, height: 400 },
+    { label: 'short laptop light', width: 1280, height: 620, zoom: 1, theme: 'light' },
+    { label: '480px light', width: 480, height: 800, zoom: 1, theme: 'light' },
+    { label: 'narrow custom panel dark', width: 900, height: 700, zoom: 1, theme: 'dark', panelWidth: 320 },
+    { label: 'mobile portrait dark', width: 390, height: 780, zoom: 1, theme: 'dark' },
+    { label: 'mobile landscape light', width: 780, height: 390, zoom: 1, theme: 'light' },
+    { label: 'true 200% zoom dark', width: 1280, height: 800, zoom: 2, theme: 'dark' },
+  ];
+  const confirmationViewports = [
+    {
+      filename: 'confirmation-narrow-custom-panel-dark.png',
+      height: 700,
+      label: 'confirmation narrow custom panel dark',
+      panelWidth: 320,
+      theme: 'dark',
+      width: 900,
+      zoom: 1,
+    },
+    {
+      filename: 'confirmation-true-200-zoom-dark.png',
+      height: 800,
+      label: 'confirmation true 200% zoom dark',
+      theme: 'dark',
+      width: 1280,
+      zoom: 2,
+    },
   ];
   const probe = await readFile(path.join(repositoryRoot, 'scripts', 'probes', 'layout-audit.js'), 'utf8');
-  for (const viewport of viewportMatrix) {
+  const screenshotRoot = path.join(resultsRoot, 'userscript-layout');
+  const screenshotEntries = [];
+  await mkdir(screenshotRoot, { recursive: true });
+  webContents.debugger.attach('1.3');
+  try {
+    for (const viewport of viewportMatrix) {
+      console.log(`  ${viewport.label}`);
+      webContents.setZoomFactor(1);
+      await withTimeout(resizeViewport(webContents, viewport), `${viewport.label}: resize`);
+      await withTimeout(webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+        media: 'screen',
+        features: [{ name: 'prefers-color-scheme', value: viewport.theme }],
+      }), `${viewport.label}: emulate theme`);
+      webContents.setZoomFactor(viewport.zoom);
+      await withTimeout(webContents.executeJavaScript(`new Promise((resolve) => {
+        const host = document.querySelector('#insta-aio-userscript-root');
+        if (${Number.isFinite(viewport.panelWidth)}) host?.style.setProperty('--aio-width', '${viewport.panelWidth || 390}px');
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      })`, true), `${viewport.label}: settle panel`);
+      assert.equal(webContents.getZoomFactor(), viewport.zoom, `${viewport.label}: Chromium zoom factor changed`);
+      const sized = await withTimeout(webContents.executeJavaScript(probe, true), `${viewport.label}: layout probe`);
+      assert.deepEqual(sized.overlaps, [], `${viewport.label}: sections overlap`);
+      assert.deepEqual(sized.duplicateIds, [], `${viewport.label}: duplicate ids`);
+      const resolvedTheme = await withTimeout(webContents.executeJavaScript(`(() => {
+        const shadow = document.querySelector('#insta-aio-userscript-root')?.shadowRoot;
+        const panel = shadow?.querySelector('.panel');
+        const context = shadow?.querySelector('[data-role="context"]');
+        return panel && context ? {
+          panelText: getComputedStyle(panel).color,
+          contextBackground: getComputedStyle(context).backgroundColor,
+        } : null;
+      })()`, true), `${viewport.label}: theme probe`);
+      const expectedTheme = viewport.theme === 'dark'
+        ? { panelText: 'rgb(245, 245, 245)', contextBackground: 'rgb(18, 18, 18)' }
+        : { panelText: 'rgb(0, 0, 0)', contextBackground: 'rgb(250, 250, 250)' };
+      assert.deepEqual(resolvedTheme, expectedTheme, `${viewport.label}: resolved theme`);
+      const settingsBounds = await withTimeout(webContents.executeJavaScript(`new Promise((resolve) => {
+        const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+        const details = shadow.querySelector('details.settings');
+        details.open = true;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const settingsElement = shadow.querySelector('.settings-panel');
+          const settings = settingsElement.getBoundingClientRect();
+          const panel = shadow.querySelector('.panel').getBoundingClientRect();
+          const move = shadow.querySelector('[data-role="move"]');
+          const moveStyle = getComputedStyle(move);
+          const moveRect = move.getBoundingClientRect();
+          const computed = getComputedStyle(settingsElement);
+          details.open = false;
+          resolve({
+            cssViewport: { width: innerWidth, height: innerHeight },
+            settings: { left: settings.left, top: settings.top, right: settings.right, bottom: settings.bottom },
+            panel: { left: panel.left, top: panel.top, right: panel.right, bottom: panel.bottom, width: panel.width },
+            move: { display: moveStyle.display, width: moveRect.width, height: moveRect.height },
+            computed: {
+              maxHeight: computed.maxHeight,
+              boxSizing: computed.boxSizing,
+              configuredMaxHeight: getComputedStyle(shadow.host).getPropertyValue('--aio-settings-max-height').trim(),
+            },
+          });
+        }));
+      })`, true), `${viewport.label}: settings geometry`);
+      const settingsGeometry = JSON.stringify(settingsBounds);
+      assert.ok(settingsBounds.settings.left >= settingsBounds.panel.left - 1, `${viewport.label}: settings escape left ${settingsGeometry}`);
+      assert.ok(settingsBounds.settings.top >= settingsBounds.panel.top - 1, `${viewport.label}: settings escape top ${settingsGeometry}`);
+      assert.ok(settingsBounds.settings.right <= settingsBounds.panel.right + 1, `${viewport.label}: settings escape right ${settingsGeometry}`);
+      assert.ok(settingsBounds.settings.bottom <= settingsBounds.panel.bottom + 1, `${viewport.label}: settings escape bottom ${settingsGeometry}`);
+      if (viewport.zoom === 2) {
+        assert.ok(settingsBounds.cssViewport.width <= 650, `${viewport.label}: layout viewport did not shrink at 200% zoom`);
+      }
+      if (viewport.panelWidth) {
+        assert.ok(settingsBounds.panel.width <= viewport.panelWidth + 1, `${viewport.label}: custom panel width was not applied`);
+        assert.deepEqual(settingsBounds.move, { display: 'flex', width: 44, height: 44 }, `${viewport.label}: move handle must remain usable`);
+      }
+      const filename = `${viewport.label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
+      const capture = await withTimeout(webContents.capturePage(), `${viewport.label}: screenshot`);
+      await writeFile(path.join(screenshotRoot, filename), capture.toPNG());
+      screenshotEntries.push({ ...viewport, filename, cssViewport: settingsBounds.cssViewport });
+    }
+
+    await withTimeout(webContents.executeJavaScript(`(() => {
+      globalThis.fixtureSetMessages();
+      globalThis.fixtureNativeConfirmCalls = 0;
+      globalThis.confirm = () => {
+        globalThis.fixtureNativeConfirmCalls += 1;
+        throw new Error('Native confirm must not be used by the userscript.');
+      };
+      globalThis.fixtureDmRunnerStarts = 0;
+      const runner = globalThis.InstaAioDmThreadUnsender;
+      let runnerWasActive = false;
+      runner.subscribe((state) => {
+        const active = state.operation === 'unsend'
+          && ['preparing', 'running', 'waiting', 'stopping'].includes(state.status);
+        if (active && !runnerWasActive) globalThis.fixtureDmRunnerStarts += 1;
+        runnerWasActive = active;
+      });
+      return true;
+    })()`, true), 'userscript confirmation fixture setup');
+    await waitForPageValue(
+      webContents,
+      `location.pathname === '/direct/t/123/' && Boolean(document.querySelector('#insta-aio-userscript-root')?.shadowRoot)`,
+      'userscript confirmation route',
+    );
+
+    for (const viewport of confirmationViewports) {
+      console.log(`  ${viewport.label}`);
+      webContents.setZoomFactor(1);
+      await withTimeout(resizeViewport(webContents, viewport), `${viewport.label}: resize`);
+      await withTimeout(webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+        media: 'screen',
+        features: [{ name: 'prefers-color-scheme', value: viewport.theme }],
+      }), `${viewport.label}: emulate theme`);
+      webContents.setZoomFactor(viewport.zoom);
+      await withTimeout(webContents.executeJavaScript(`new Promise((resolve) => {
+        const host = document.querySelector('#insta-aio-userscript-root');
+        const shadow = host.shadowRoot;
+        if (${Number.isFinite(viewport.panelWidth)}) {
+          host.style.setProperty('--aio-width', '${viewport.panelWidth || 390}px');
+        } else {
+          host.style.removeProperty('--aio-width');
+        }
+        for (const details of shadow.querySelectorAll('details')) details.open = false;
+        shadow.querySelector('[data-view="messages"]').click();
+        shadow.querySelector('[data-action="run-unsend"]').click();
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      })`, true), `${viewport.label}: open confirmation`);
+      assert.equal(webContents.getZoomFactor(), viewport.zoom, `${viewport.label}: Chromium zoom factor changed`);
+      await waitForPageValue(
+        webContents,
+        `document.querySelector('#insta-aio-userscript-root')?.shadowRoot?.querySelector('[data-role="action-confirmation"]')?.open`,
+        `${viewport.label}: confirmation open`,
+      );
+      const review = await withTimeout(webContents.executeJavaScript(`(() => {
+        const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+        const dialog = shadow.querySelector('[data-role="action-confirmation"]');
+        const cancel = shadow.querySelector('[data-role="confirm-cancel"]');
+        const accept = shadow.querySelector('[data-role="confirm-accept"]');
+        const rect = (element) => {
+          const value = element.getBoundingClientRect();
+          return {
+            bottom: value.bottom,
+            height: value.height,
+            left: value.left,
+            right: value.right,
+            top: value.top,
+            width: value.width,
+          };
+        };
+        return {
+          accept: rect(accept),
+          acceptLabel: accept.textContent.trim(),
+          cancel: rect(cancel),
+          cancelLabel: cancel.textContent.trim(),
+          controlOrder: [...dialog.querySelectorAll('[data-role="confirm-cancel"], [data-role="confirm-accept"]')]
+            .map((element) => element.dataset.role),
+          cssViewport: { height: innerHeight, width: innerWidth },
+          detail: shadow.querySelector('[data-role="confirm-detail"]').textContent.trim(),
+          dialog: rect(dialog),
+          facts: [...shadow.querySelectorAll('[data-role="confirm-facts"] dt')]
+            .map((term) => [term.textContent.trim(), term.nextElementSibling?.textContent.trim() || '']),
+          focusedRole: shadow.activeElement?.dataset?.role || null,
+          horizontalOverflow: dialog.scrollWidth - dialog.clientWidth,
+          message: shadow.querySelector('[data-role="confirm-message"]').textContent.trim(),
+          nativeConfirmCalls: globalThis.fixtureNativeConfirmCalls,
+          runnerStarts: globalThis.fixtureDmRunnerStarts,
+          runnerStatus: globalThis.InstaAioDmThreadUnsender.snapshot().status,
+          title: shadow.querySelector('[data-role="confirm-title"]').textContent.trim(),
+          unsent: globalThis.fixtureUnsentCount,
+        };
+      })()`, true), `${viewport.label}: confirmation geometry`);
+      assertUserscriptConfirmationLayout(review, viewport.label);
+      if (viewport.zoom === 2) {
+        assert.ok(review.cssViewport.width <= 650, `${viewport.label}: layout viewport did not shrink at 200% zoom`);
+      }
+      const capture = await withTimeout(webContents.capturePage(), `${viewport.label}: screenshot`);
+      await writeFile(path.join(screenshotRoot, viewport.filename), capture.toPNG());
+      screenshotEntries.push({
+        ...viewport,
+        cssViewport: review.cssViewport,
+        state: 'dm-confirmation-open',
+      });
+
+      await withTimeout(webContents.executeJavaScript(`(() => {
+        document.querySelector('#insta-aio-userscript-root').shadowRoot
+          .querySelector('[data-action="confirm-cancel"]').click();
+        return true;
+      })()`, true), `${viewport.label}: cancel confirmation`);
+      const canceled = await waitForPageValue(
+        webContents,
+        `(() => {
+          const shadow = document.querySelector('#insta-aio-userscript-root')?.shadowRoot;
+          if (shadow?.querySelector('[data-role="action-confirmation"]')?.open) return null;
+          return {
+            nativeConfirmCalls: globalThis.fixtureNativeConfirmCalls,
+            runnerStarts: globalThis.fixtureDmRunnerStarts,
+            unsent: globalThis.fixtureUnsentCount,
+          };
+        })()`,
+        `${viewport.label}: zero-action cancellation`,
+      );
+      assert.deepEqual(canceled, { nativeConfirmCalls: 0, runnerStarts: 0, unsent: 0 });
+    }
+  } finally {
     webContents.setZoomFactor(1);
-    await resizeViewport(webContents, viewport);
-    const sized = await webContents.executeJavaScript(probe, true);
-    assert.deepEqual(sized.overlaps, [], `${viewport.label}: sections overlap`);
-    assert.deepEqual(sized.duplicateIds, [], `${viewport.label}: duplicate ids`);
-    const settingsBounds = await webContents.executeJavaScript(`new Promise((resolve) => {
-      const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
-      const details = shadow.querySelector('details.settings');
-      details.open = true;
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        const settingsElement = shadow.querySelector('.settings-panel');
-        const settings = settingsElement.getBoundingClientRect();
-        const panel = shadow.querySelector('.panel').getBoundingClientRect();
-        const computed = getComputedStyle(settingsElement);
-        details.open = false;
-        resolve({
-          settings: { left: settings.left, top: settings.top, right: settings.right, bottom: settings.bottom },
-          panel: { left: panel.left, top: panel.top, right: panel.right, bottom: panel.bottom },
-          computed: {
-            maxHeight: computed.maxHeight,
-            boxSizing: computed.boxSizing,
-            configuredMaxHeight: getComputedStyle(shadow.host).getPropertyValue('--aio-settings-max-height').trim(),
-          },
-        });
-      }));
-    })`, true);
-    const settingsGeometry = JSON.stringify(settingsBounds);
-    assert.ok(settingsBounds.settings.left >= settingsBounds.panel.left - 1, `${viewport.label}: settings escape left ${settingsGeometry}`);
-    assert.ok(settingsBounds.settings.top >= settingsBounds.panel.top - 1, `${viewport.label}: settings escape top ${settingsGeometry}`);
-    assert.ok(settingsBounds.settings.right <= settingsBounds.panel.right + 1, `${viewport.label}: settings escape right ${settingsGeometry}`);
-    assert.ok(settingsBounds.settings.bottom <= settingsBounds.panel.bottom + 1, `${viewport.label}: settings escape bottom ${settingsGeometry}`);
+    if (webContents.debugger.isAttached()) webContents.debugger.detach();
   }
-  console.log(`Accepted toolbox layout (${report.visibleChildren} sections, no overlap or overflow, ${viewportMatrix.length} viewports).`);
+  await writeFile(path.join(screenshotRoot, 'manifest.json'), `${JSON.stringify({ version: releaseVersion, screenshots: screenshotEntries }, null, 2)}\n`);
+  console.log(`Accepted toolbox layout (${report.visibleChildren} sections, no overlap or overflow, ${viewportMatrix.length} base viewports, ${confirmationViewports.length} confirmation viewports).`);
 }
 
 async function acceptUserscriptToolbox(webContents, baseUrl) {
@@ -591,7 +1344,9 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       opacity: shadow.querySelector('[data-preference="opacity"]')?.value,
       opacityMin: shadow.querySelector('[data-preference="opacity"]')?.min,
       resize: shadow.querySelector('[data-role="resize"]')?.getAttribute('aria-label'),
-      mode: shadow.querySelector('.mode')?.textContent,
+      header: shadow.querySelector('.header h1')?.textContent,
+      credit: shadow.querySelector('.footer a')?.textContent,
+      liveRegions: shadow.querySelectorAll('[aria-live]').length,
       hasGlobalUnlock: Boolean(shadow.querySelector('[data-role="live-actions"]')),
       liveControls: [
         'review-accounts', 'run-unsend', 'scan-following', 'scan-followers', 'scan-sent', 'stop-run',
@@ -644,7 +1399,9 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(initial.opacityMin, '55');
   assert.match(initial.move, /Move toolbox/);
   assert.match(initial.resize, /Resize toolbox/);
-  assert.match(initial.mode, /local controls/i);
+  assert.equal(initial.header, 'Insta Toolbox');
+  assert.equal(initial.credit, 'created by @slaveofsolace');
+  assert.equal(initial.liveRegions, 1);
   assert.equal(initial.hasGlobalUnlock, false);
   assert.equal(initial.ambientLiveControls, 0);
   assert.deepEqual(initial.reviewControl, { disabled: false, live: false });
@@ -760,13 +1517,13 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     globalThis.prompt = () => { throw new Error('global phrase prompt must not be used'); };
     const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
     return {
-      mode: shadow.querySelector('.mode')?.textContent,
+      header: shadow.querySelector('.header h1')?.textContent,
       hasGlobalUnlock: Boolean(shadow.querySelector('[data-role="live-actions"]')),
       ambientLiveControls: shadow.querySelectorAll('[data-live-action]').length,
       clicks: globalThis.fixtureProfileClickCount,
     };
   })()`, true);
-  assert.match(finiteAuthority.mode, /local controls/i);
+  assert.equal(finiteAuthority.header, 'Insta Toolbox');
   assert.equal(finiteAuthority.hasGlobalUnlock, false);
   assert.equal(finiteAuthority.ambientLiveControls, 0);
   assert.equal(finiteAuthority.clicks, 0, 'rendering finite controls performs no Instagram action');
@@ -867,14 +1624,156 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(messages.stored.exact, true);
 
   await webContents.executeJavaScript(`(() => {
-    globalThis.confirm = (message) => {
-      globalThis.fixtureConfirmMessage = message;
-      return true;
+    globalThis.fixtureNativeConfirmCalls = 0;
+    globalThis.confirm = () => {
+      globalThis.fixtureNativeConfirmCalls += 1;
+      throw new Error('Native confirm must not be used by the userscript.');
     };
+    globalThis.fixtureDmRunnerStarts = 0;
+    const runner = globalThis.InstaAioDmThreadUnsender;
+    let runnerWasActive = false;
+    runner.subscribe((state) => {
+      const active = state.operation === 'unsend'
+        && ['preparing', 'running', 'waiting', 'stopping'].includes(state.status);
+      if (active && !runnerWasActive) globalThis.fixtureDmRunnerStarts += 1;
+      runnerWasActive = active;
+    });
     const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    globalThis.fixtureUserscriptConfirmationTrustEvents = [];
+    shadow.querySelector('[data-role="confirm-accept"]').addEventListener('click', (event) => {
+      globalThis.fixtureUserscriptConfirmationTrustEvents.push(event.isTrusted);
+    });
     shadow.querySelector('[data-view="messages"]').click();
     shadow.querySelector('[data-action="run-unsend"]').click();
   })()`, true);
+  const firstUnsendReview = await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-aio-userscript-root')?.shadowRoot;
+      const dialog = shadow?.querySelector('[data-role="action-confirmation"]');
+      if (!dialog?.open) return null;
+      return {
+        title: shadow.querySelector('[data-role="confirm-title"]')?.textContent,
+        message: shadow.querySelector('[data-role="confirm-message"]')?.textContent,
+        detail: shadow.querySelector('[data-role="confirm-detail"]')?.textContent,
+        confirmLabel: shadow.querySelector('[data-role="confirm-accept"]')?.textContent,
+        facts: [...shadow.querySelectorAll('[data-role="confirm-facts"] dt')]
+          .map((term) => [term.textContent, term.nextElementSibling?.textContent]),
+        focusedRole: shadow.activeElement?.dataset?.role,
+        scope: shadow.querySelector('[data-role="unsend-scope"]')?.value,
+        nativeConfirmCalls: globalThis.fixtureNativeConfirmCalls,
+        runnerStarts: globalThis.fixtureDmRunnerStarts,
+        unsent: globalThis.fixtureUnsentCount,
+      };
+    })()`,
+    'userscript in-overlay Unsend review',
+  );
+  assert.deepEqual(firstUnsendReview, {
+    title: 'Unsend DMs?',
+    message: 'Permanently unsend every message you sent in this conversation?',
+    detail: 'This cannot be undone. Stop stays available while it runs.',
+    confirmLabel: 'Unsend all my messages',
+    facts: [
+      ['Action', 'Permanently unsend messages'],
+      ['Conversation', 'Thread 123'],
+      ['Scope', 'All messages you sent'],
+    ],
+    focusedRole: 'confirm-cancel',
+    scope: 'all',
+    nativeConfirmCalls: 0,
+    runnerStarts: 0,
+    unsent: 0,
+  });
+
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    shadow.querySelector('[data-role="action-confirmation"]')
+      .dispatchEvent(new Event('cancel', { cancelable: true }));
+  })()`, true);
+  const escapedUnsend = await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-aio-userscript-root')?.shadowRoot;
+      const status = shadow?.querySelector('[data-role="context-detail"]')?.textContent || '';
+      return !shadow?.querySelector('[data-role="action-confirmation"]')?.open
+        && status === 'Canceled. Nothing was removed.'
+        ? {
+          nativeConfirmCalls: globalThis.fixtureNativeConfirmCalls,
+          runnerStarts: globalThis.fixtureDmRunnerStarts,
+          unsent: globalThis.fixtureUnsentCount,
+        }
+        : null;
+    })()`,
+    'userscript Escape cancellation',
+  );
+  assert.deepEqual(escapedUnsend, { nativeConfirmCalls: 0, runnerStarts: 0, unsent: 0 });
+  await webContents.executeJavaScript('new Promise((resolve) => setTimeout(resolve, 50))', true);
+
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    shadow.querySelector('[data-action="run-unsend"]').click();
+  })()`, true);
+  await waitForPageValue(
+    webContents,
+    `document.querySelector('#insta-aio-userscript-root')?.shadowRoot?.querySelector('[data-role="action-confirmation"]')?.open`,
+    'userscript cancel-button review',
+  );
+  await webContents.executeJavaScript(`(() => {
+    document.querySelector('#insta-aio-userscript-root').shadowRoot
+      .querySelector('[data-action="confirm-cancel"]').click();
+  })()`, true);
+  const canceledUnsend = await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-aio-userscript-root')?.shadowRoot;
+      const status = shadow?.querySelector('[data-role="context-detail"]')?.textContent || '';
+      if (shadow?.querySelector('[data-role="action-confirmation"]')?.open
+        || status !== 'Canceled. Nothing was removed.') return null;
+      return {
+        nativeConfirmCalls: globalThis.fixtureNativeConfirmCalls,
+        runnerStarts: globalThis.fixtureDmRunnerStarts,
+        unsent: globalThis.fixtureUnsentCount,
+      };
+    })()`,
+    'userscript Cancel button cancellation',
+  );
+  assert.deepEqual(canceledUnsend, { nativeConfirmCalls: 0, runnerStarts: 0, unsent: 0 });
+  await webContents.executeJavaScript('new Promise((resolve) => setTimeout(resolve, 50))', true);
+
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    shadow.querySelector('[data-action="run-unsend"]').click();
+  })()`, true);
+  await waitForPageValue(
+    webContents,
+    `document.querySelector('#insta-aio-userscript-root')?.shadowRoot?.querySelector('[data-role="action-confirmation"]')?.open`,
+    'userscript final explicit review',
+  );
+  const rejectedUserscriptSyntheticConfirmation = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+    const accept = shadow.querySelector('[data-action="confirm-accept"]');
+    accept.click();
+    accept.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return Promise.resolve().then(() => ({
+      dialogOpen: shadow.querySelector('[data-role="action-confirmation"]').open,
+      trustEvents: [...globalThis.fixtureUserscriptConfirmationTrustEvents],
+      runnerStarts: globalThis.fixtureDmRunnerStarts,
+      unsent: globalThis.fixtureUnsentCount,
+      clicks: Number(globalThis.fixtureDmClickCount || 0),
+    }));
+  })()`, true);
+  assert.deepEqual(rejectedUserscriptSyntheticConfirmation, {
+    dialogOpen: true,
+    trustEvents: [false, false],
+    runnerStarts: 0,
+    unsent: 0,
+    clicks: 0,
+  });
+  await trustedClick(
+    webContents,
+    `document.querySelector('#insta-aio-userscript-root').shadowRoot.querySelector('[data-action="confirm-accept"]')`,
+    'userscript Unsend confirmation',
+  );
   const confirmedUnsend = await waitForPageValue(
     webContents,
     `(() => {
@@ -882,17 +1781,21 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       if (snapshot?.status !== 'completed' || globalThis.fixtureUnsentCount !== 1) return null;
       const shadow = document.querySelector('#insta-aio-userscript-root')?.shadowRoot;
       return {
-        confirmMessage: globalThis.fixtureConfirmMessage,
+        nativeConfirmCalls: globalThis.fixtureNativeConfirmCalls,
+        runnerStarts: globalThis.fixtureDmRunnerStarts,
         processed: snapshot.processed,
         failed: snapshot.failed,
-        status: shadow?.querySelector('[data-role="status"]')?.textContent,
+        confirmationTrusted: globalThis.fixtureUserscriptConfirmationTrustEvents.at(-1),
+        status: shadow?.querySelector('[data-role="context-detail"]')?.textContent,
       };
     })()`,
     'userscript confirmed thread Unsend',
   );
-  assert.match(confirmedUnsend.confirmMessage, /Permanently unsend all 1 eligible sent message from thread 123/);
+  assert.equal(confirmedUnsend.nativeConfirmCalls, 0);
+  assert.equal(confirmedUnsend.runnerStarts, 1);
   assert.equal(confirmedUnsend.processed, 1);
   assert.equal(confirmedUnsend.failed, 0);
+  assert.equal(confirmedUnsend.confirmationTrusted, true);
   assert.equal(confirmedUnsend.status, 'Done. 1 message unsent.');
 
   await webContents.executeJavaScript(`(() => {
@@ -936,7 +1839,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(inboxEvidence.threadId, '');
   assert.equal(inboxEvidence.fragments.length, 0);
   assert.match(inboxEvidence.reason, /Open an Instagram conversation first/);
-  console.log('Accepted the movable Tampermonkey toolbox, finite-confirmation default, local follower comparison, account/DM no-click checks, and confirmed fixture Unsend.');
+  console.log('Accepted the movable Tampermonkey toolbox, trusted-input confirmation with synthetic-click rejection, local follower comparison, account/DM no-click checks, and fixture Unsend.');
 }
 
 async function acceptPwaInstallability(webContents, baseUrl) {
@@ -1024,6 +1927,9 @@ async function run() {
     });
     await acceptDmUnsend(overlay.window.webContents, overlayBaseUrl);
     await acceptOverlayAccessibility(overlay.window.webContents, overlayBaseUrl);
+    await acceptOverlayDmConfirmation(overlay.window.webContents, overlayBaseUrl);
+    await acceptThreadUnsendScopes(overlay.window.webContents, overlayBaseUrl);
+    await acceptThreadUnsendStop(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsend(overlay.window.webContents, overlayBaseUrl);
     await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);

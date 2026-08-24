@@ -33,7 +33,9 @@ const instagramContent = await readFile(
 const instagramEntry = manifest.content_scripts.find((entry) => (
   entry.matches.includes('https://www.instagram.com/*')
 ));
-const instagramOverlay = (await Promise.all(instagramEntry.js.slice(2).map((file) => readFile(
+const instagramOverlay = (await Promise.all(instagramEntry.js
+  .filter((file) => !['action-labels.js', 'content-instagram.js'].includes(file))
+  .map((file) => readFile(
   new URL(`../extension/${file}`, import.meta.url),
   'utf8',
 )))).join('\n');
@@ -49,11 +51,36 @@ const controlledDmPolicy = await readFile(
   new URL('../src/core/controlled-dm-unsend.js', import.meta.url),
   'utf8',
 );
+const license = await readFile(new URL('../LICENSE', import.meta.url), 'utf8');
+const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+const serviceWorker = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
+const userscriptBuilder = await readFile(
+  new URL('../scripts/build-userscript.mjs', import.meta.url),
+  'utf8',
+);
+const extensionBuilder = await readFile(
+  new URL('../scripts/build-extension.mjs', import.meta.url),
+  'utf8',
+);
 
 test('desktop, extension, and userscript release versions stay aligned', () => {
   const userscriptVersion = userscriptMetadata.match(/@version\s+(\d+\.\d+\.\d+)/)?.[1];
   assert.equal(packageMetadata.version, manifest.version);
   assert.equal(userscriptVersion, manifest.version);
+});
+
+test('public builds carry the author and complete MIT attribution', () => {
+  assert.equal(packageMetadata.author, 'slaveofsolace (https://github.com/slaveofsolace)');
+  assert.match(userscriptMetadata, /@author\s+@slaveofsolace/);
+  assert.match(license, /Copyright \(c\) 2026 slaveofsolace \(https:\/\/github\.com\/slaveofsolace\)/);
+  assert.match(license, /Permission is hereby granted, free of charge/);
+  assert.match(readme, /redistributed original or modified\s+copies/i);
+  assert.match(readme, /retain its copyright and permission notice/i);
+  assert.match(userscriptBuilder, /const licenseFile = path\.join\(repositoryRoot, 'LICENSE'\)/);
+  assert.match(userscriptBuilder, /licenseBanner/);
+  assert.match(extensionBuilder, /const legalFiles = \['LICENSE', 'THIRD_PARTY_NOTICES\.md'\]/);
+  assert.match(serviceWorker, /'\.\/LICENSE'/);
+  assert.match(serviceWorker, /'\.\/THIRD_PARTY_NOTICES\.md'/);
 });
 
 test('package scripts always disable electron-builder publishing in CI and local builds', () => {
@@ -74,7 +101,8 @@ test('extension uses Manifest V3 without cookie or request interception permissi
   assert.equal(permissions.includes('webRequest'), false);
   assert.equal(permissions.includes('webRequestBlocking'), false);
   assert.deepEqual(manifest.host_permissions, ['https://www.instagram.com/*']);
-  assert.deepEqual(instagramEntry.js.slice(0, 2), [
+  assert.deepEqual(instagramEntry.js.slice(0, 3), [
+    'action-confirmation.js',
     'action-labels.js',
     'content-instagram.js',
   ]);

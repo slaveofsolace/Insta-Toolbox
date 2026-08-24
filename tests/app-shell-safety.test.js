@@ -54,7 +54,10 @@ test('controlled live account UI confirms one exact item before durable executio
   assert.doesNotMatch(settingsView, /live-action-enabled|live-action-batch-limit/);
   assert.match(queueView, /data-action="run-action-extension-live"/);
   assert.match(handlers, /'action\.account-live-intent'/);
-  assert.match(handlers, /const confirmed = window\.confirm\(/);
+  assert.match(handlers, /const confirmed = await confirmAction\(\{[\s\S]*?title: `\$\{actionLabel\} 1 account\?`/);
+  assert.match(handlers, /confirmLabel: `\$\{actionLabel\} @\$\{item\.username\}`/);
+  assert.match(handlers, /currentJob\?\.previewDigest !== reviewedJob\.previewDigest/);
+  assert.match(handlers, /currentItem\?\.username !== reviewedJob\.username/);
   assert.match(handlers, /const confirmation = \{[\s\S]*?action: item\.action,[\s\S]*?count: 1,[\s\S]*?username: item\.username/);
   assert.match(handlers, /prepared\.payload\?\.ready !== true/);
   assert.match(handlers, /createExtensionAccountActionDriver\(state\.bridgePairing, \{[\s\S]*?confirmation,[\s\S]*?jobId: job\.id/);
@@ -82,6 +85,9 @@ test('controlled live DM UI confirms exactly one item before either ledger or dr
   assert.match(messagesView, /data-action="run-dm-extension-live"/);
   assert.match(handlers, /'action\.dm-live-intent'/);
   assert.match(handlers, /'Unsend 1 DM\?'/);
+  assert.match(handlers, /confirmLabel: 'Unsend this DM'/);
+  assert.match(handlers, /currentItem\?\.conversationId !== reviewedJob\.conversationId/);
+  assert.match(handlers, /currentItem\?\.messageId !== reviewedJob\.messageId/);
   assert.match(handlers, /const confirmation = \{[\s\S]*?action: 'unsend',[\s\S]*?conversationId: item\.conversationId,[\s\S]*?count: 1,[\s\S]*?messageId: item\.messageId/);
   assert.match(handlers, /prepared\.payload\?\.ready !== true/);
   assert.match(handlers, /createExtensionDmUnsendDriver\(state\.bridgePairing, \{[\s\S]*?confirmation,[\s\S]*?jobId: job\.id/);
@@ -97,6 +103,28 @@ test('controlled live DM UI confirms exactly one item before either ledger or dr
       < handlers.indexOf('executeReviewedDmJob(job'),
     true,
   );
+});
+
+test('destructive PWA actions use one accessible in-app confirmation with Cancel focused', async () => {
+  const [shell, handlers, styles] = await Promise.all([
+    readFile('src/app.parts/part-01.jsfrag', 'utf8'),
+    readFile('src/app.parts/part-04.jsfrag', 'utf8'),
+    readFile('src/styles.css', 'utf8'),
+  ]);
+  const source = `${shell}\n${handlers}`;
+  assert.doesNotMatch(source, /(?:window|globalThis)\.confirm\s*\(/);
+  assert.match(shell, /document\.createElement\('dialog'\)/);
+  assert.match(shell, /data-role="action-confirmation"/);
+  assert.match(shell, /aria-labelledby', 'action-confirmation-title'/);
+  assert.match(shell, /aria-describedby', 'action-confirmation-message action-confirmation-facts'/);
+  assert.match(shell, /data-confirmation-decision="cancel"/);
+  assert.match(shell, /dialog\.querySelector\('\[data-confirmation-decision="cancel"\]'\)\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(shell, /dialog\.addEventListener\('cancel',[\s\S]*?settleActionConfirmation\(false\)/);
+  assert.match(handlers, /title: 'Clear local workspace\?'/);
+  assert.match(handlers, /confirmLabel: 'Clear local data'/);
+  assert.match(handlers, /activeView !== 'settings' \|\| state !== reviewedState/);
+  assert.match(styles, /\.action-confirmation \.confirmation-actions button \{ min-width: 132px; min-height: 44px; \}/);
+  assert.match(styles, /@media \(forced-colors: active\)/);
 });
 
 test('discard aborts only the matching reviewed execution and stale checkpoints are rejected', async () => {

@@ -10,6 +10,25 @@ The userscript is **built from the extension's own Instagram engine**, so both
 run identical code for scanning, following, unfollowing, and unsending. The
 extension additionally pairs with the app for signed, recorded jobs.
 
+## Ready-made downloads
+
+Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest), expand **Assets**, and choose one file:
+
+The 2.0.2 files appear there together after publication. Before then, the
+commit-named CI artifacts are review builds, not a public release.
+
+| Platform | Download | What to do |
+|---|---|---|
+| Windows 64-bit | `Insta Toolbox Setup 2.0.2.exe` | Open it and follow the short installer. |
+| macOS Apple Silicon | `Insta Toolbox-2.0.2-arm64.dmg` | Open it and drag Insta Toolbox to Applications. |
+| Web / PWA hosting | `insta-toolbox-web-2.0.2.zip` | Extract and serve the folder over HTTPS or localhost. |
+| Chrome extension | `insta-aio-companion-2.0.2.zip` | Extract it, then load the extracted folder as an unpacked extension. |
+
+No Node.js or command line is required for the Windows or macOS downloads.
+The desktop files are currently unsigned, and the macOS build is not notarized.
+Verify the file against `SHA256SUMS.txt` on the release before opening it. Intel
+Mac builds are not currently provided.
+
 ---
 
 ## Option 1 — Userscript (one click)
@@ -52,14 +71,14 @@ opens each profile when its turn comes and resolves the exact relationship
 control again before acting.
 
 **DM Unsend** — open a conversation and choose the always-visible **Unsend DMs**.
-Its first click performs the no-click history check when needed, then asks once
-for the exact thread and eligible count. All eligible sent messages is the
-default; `newest N` and `oldest N` are under Advanced. The runner processes only
-rows proven sent by the current account and uses the source-audited menu and
-confirmation sequence. The finite plan receives a one-use capability and uses
-the saved delay range. Incomplete or capped checks cannot
-create a live plan. Cancel preserves the check and changes nothing. This cannot
-be undone.
+It asks once for the exact open thread and selected scope, then starts one
+streaming traversal. All messages you sent is the default; `newest N` and
+`oldest N` are under Advanced. The runner processes only rows proven sent by the
+current account and uses the source-audited menu and confirmation sequence. The
+thread-bound capability is transient, checked before every message, and each
+verified removal is recorded immediately. **Check conversation** remains an
+optional read-only diagnostic; its estimate is not an authorization count.
+Cancel changes nothing. This cannot be undone.
 
 **Starting a finite action** — review the exact target list or conversation,
 then use the ordinary confirmation naming its action, targets or thread, and
@@ -68,9 +87,10 @@ phrase. The resulting non-persistent capability cannot be widened or replayed
 and is checked before every later item; expiry stops the run. Scanning,
 comparison, evidence reading, and no-click checks require no confirmation.
 
-Pacing lives under the gear icon: per-day caps and the delay range. Runs pause
+Pacing lives under the gear icon. Account runs pause
 longer every 20 items, stop on any rate limit or security check, skip targets
-that changed, and end immediately on **Stop**. A DM run is discarded on reload.
+that changed, and end immediately on **Stop**. DM Unsend uses adaptive one-to-two
+second action pacing and has no daily usage quota. A DM run is discarded on reload.
 An already-confirmed account run may continue across the profile navigations it
 causes in the same manager tab, but only while its original finite capability
 remains valid. Thread-wide Unsend is bound to the open thread and
@@ -79,15 +99,15 @@ accepts only the newly surfaced menu and confirmation controls for each item.
 Updates are automatic. Tampermonkey re-checks the same address and offers new
 versions as they are published.
 
-Confirm the Tampermonkey dashboard shows **2.0.0 or later** after updating. A
+Confirm the Tampermonkey dashboard shows **2.0.2 or later** after updating. A
 panel that asks you to enable live actions, arm a run, or type an authorization
-phrase is an older build. The current idle label is **Userscript mode · local
-controls**.
+phrase is an older build. The current panel has a compact **Insta Toolbox**
+header and a creator credit at the bottom.
 
 ### Using the exact CI-tested review bundle
 
 Every pull-request CI run publishes a seven-day artifact named
-`insta-aio-browser-companions-<head-commit>` after the real unpacked extension
+`insta-toolbox-browser-companions-<head-commit>` after the real unpacked extension
 has loaded and paired read-only in disposable Chrome for Testing. Push-triggered
 runs use the pushed commit. Download that artifact from the workflow run when
 reviewing an unmerged commit. It contains:
@@ -95,9 +115,13 @@ reviewing an unmerged commit. It contains:
 - `insta-aio-companion-<version>.zip` for **Load unpacked** after extraction
 - `insta-aio-companion.user.js` for Tampermonkey
 
+The same run publishes `insta-toolbox-web-<head-commit>` with the verified static
+web ZIP. These short-lived CI artifacts are for reviewing an unmerged commit;
+normal downloads belong on the GitHub release page.
+
 Use the artifact whose commit matches the reviewed pull-request head. After
-installation, reload Instagram and verify **Userscript mode · local controls**
-or the extension's equivalent live-off state before any read-only
+installation, reload Instagram and verify the compact **Insta Toolbox** header
+before any read-only
 walkthrough. The artifact proves which bytes passed CI; it does not replace the
 persistent-profile, authenticated, or human acceptance checks.
 
@@ -143,7 +167,7 @@ shared code into `dist/extension/lib/`, and the extension will not start without
 
 After rebuilding, reload the extension in the extension manager **and** reload
 any open Instagram tabs, or you will keep running the previous version.
-The extension manager should show **2.0.0 or later**.
+The extension manager should show **2.0.2 or later**.
 
 On a fresh install Instagram shows only a small launcher; opening it reveals the
 tools. On desktop, drag the header to move the panel and use the marked
@@ -172,12 +196,12 @@ appears only while the review remains current. Each account is opened, re-checke
 and acted on individually.
 
 **DM Unsend.** Open a conversation and choose **Unsend DMs**. The first click
-loads history without opening a message menu. After it proves a complete finite
-count, it defaults to all eligible sent messages and asks once for the exact
-thread and count. Choose `newest N` or `oldest N` under Advanced when needed.
-The 15-minute finite plan is checked before each message, protected against
-replay, and paced with the saved delay range. Incomplete or capped checks do not
-create a plan.
+asks once for the exact thread and selected scope, then starts one traversal
+without a preliminary count scan. It defaults to all messages you sent; choose
+`newest N` or `oldest N` under Advanced when needed. The 15-minute plan is
+checked before each message, protected against replay, and paced at one to two
+seconds after successful actions. The optional read-only check reports only a
+detected minimum and never gates the run.
 **Unsending cannot be undone.**
 
 ### Batch runs, pacing, and stopping
@@ -261,56 +285,97 @@ not retry or weaken those checks; record the DOM acceptance blocker instead.
 
 ---
 
-## Option 3 — Web or desktop app
+## Option 3 — Workspace app
 
-The app is the workspace for data you have already exported from Instagram:
-snapshots, comparisons, message search, and queue history.
+The workspace app handles imported Instagram exports, snapshots, comparisons,
+message search, queue history, ledgers, and backups:
 
-To run it locally:
+### Windows 64-bit
 
-1. Run `corepack enable`.
-2. Run `pnpm install --frozen-lockfile`.
-3. Run `pnpm run assemble`.
-4. Run `pnpm run serve` and open the address it prints.
-5. Use your browser's install control if you want it as a standalone app.
+1. Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest).
+2. Under **Assets**, download `Insta Toolbox Setup 2.0.2.exe`.
+3. Open it, choose an install folder, and finish the installer.
 
-The server listens only on your own machine. After the first load the app works
-offline.
+The installer is one ready-made file; Node.js and pnpm are not needed. The
+uninstaller removes program files and shortcuts but keeps workspace data for an
+upgrade or reinstall. Export a workspace backup before uninstalling if you need
+to move that data elsewhere.
 
-Prefer a packaged desktop build? See [Windows desktop](#windows-desktop) or
-[macOS desktop](#macos-desktop) below.
+If SmartScreen appears after the checksum matches the release, choose **More
+info → Run anyway** to open this unsigned build.
 
----
+### macOS Apple Silicon
 
-## Windows desktop
+1. Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest).
+2. Under **Assets**, download `Insta Toolbox-2.0.2-arm64.dmg`.
+3. Open the DMG and drag Insta Toolbox to Applications.
 
-Build:
+This build is for Apple Silicon and is not Developer ID signed or notarized.
+macOS may show a Gatekeeper warning. Verify its SHA-256 value before deciding
+whether to open it. The `arm64-mac.zip` asset contains the same app in ZIP form;
+it is mainly useful for controlled deployment and troubleshooting.
 
-```bash
-pnpm run dist:win
+After the checksum matches, Control-click Insta Toolbox and choose **Open**. If
+macOS still blocks it, open **System Settings → Privacy & Security**, choose
+**Open Anyway**, and confirm the same app.
+
+### Web / PWA package
+
+The release includes `insta-toolbox-web-2.0.2.zip` for static hosting. It cannot
+be opened by double-clicking `index.html`; browser modules and offline support
+require HTTPS or `http://localhost`.
+
+1. Download and extract the web ZIP.
+2. Publish the extracted `insta-toolbox-web` folder with a static HTTPS host, or serve it from localhost.
+3. Open the root address. In Chrome or Edge, use **Install Insta Toolbox** from the address bar or browser menu.
+
+For a quick local preview with Python installed, open a terminal in the folder
+that contains `insta-toolbox-web`, run one command, then open
+`http://127.0.0.1:4173`:
+
+Windows:
+
+```powershell
+cd insta-toolbox-web
+py -m http.server 4173 --bind 127.0.0.1
 ```
 
-Run the generated NSIS installer under `dist/desktop`. The assisted installer allows an installation directory choice.
-
-The uninstaller removes program files and shortcuts. Workspace data is retained by default so an approved reinstall or upgrade can recover it. Export a workspace backup before removal if the data must be portable.
-
-## macOS desktop
-
-Build on macOS:
+macOS:
 
 ```bash
+cd insta-toolbox-web
+python3 -m http.server 4173 --bind 127.0.0.1
+```
+
+Keep the terminal open while using the app. Press `Ctrl+C` there to stop it.
+
+Workspace data stays in that browser profile. A public hosted URL is not bundled
+with this release. Hosts should reproduce the repository server's framing,
+content-type, and `nosniff` response headers; the ZIP itself cannot set headers.
+
+### Build from source
+
+Install Node.js 22.12.0 or newer and pnpm 11.9.0, then run:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run assemble
+pnpm run serve
+```
+
+The local server listens only on your machine. To create distributable files:
+
+```bash
+pnpm run build:web
+pnpm run verify:web-package
+pnpm run dist:win
 pnpm run dist:mac
 ```
 
-This creates DMG and ZIP targets under `dist/desktop`. Production distribution requires an Apple signing identity and notarization appropriate to the release channel.
-
-After building on macOS, run `pnpm run qa:mac-package`. It mounts the DMG,
-copies the app to a disposable install root, applies an ad-hoc test signature,
-launches `--smoke-test`, removes the copied app, and verifies the ZIP. The QA
-signature uses `build/entitlements.mac.qa.plist` because an ad-hoc identity has
-no Apple Team ID. The release entitlement files retain hardened runtime without
-that library-validation exception. This is acceptance evidence, not a substitute
-for Developer ID signing or notarization.
+`dist:win` must run on Windows. `dist:mac` and `qa:mac-package` must run on macOS.
+The macOS QA process uses an ad-hoc test signature. Public Developer ID signing
+and notarization require release credentials and are not part of this build.
 
 ## Upgrade
 

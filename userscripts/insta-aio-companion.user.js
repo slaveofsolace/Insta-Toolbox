@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-AIO-Tool
-// @version      2.0.1
+// @version      2.0.2
 // @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
+// @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-AIO-Tool
 // @supportURL   https://github.com/slaveofsolace/Insta-AIO-Tool/issues
 // @downloadURL  https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js
@@ -21,12 +22,36 @@
 // Generated file. Do not edit.
 //
 // Built by scripts/build-userscript.mjs from:
+//   extension/action-confirmation.js     <- shared destructive-action dialog
 //   extension/action-labels.js           <- labels and thread-wide DM runner
 //   extension/content-instagram.js       <- shared exact-target engine
 //   userscripts/src/toolbox-shell.js     <- userscript UI and batch runner
 //
 // Edit those sources and run: pnpm run build:userscript
 // ---------------------------------------------------------------------------
+/*
+ * MIT License
+ *
+ * Copyright (c) 2026 slaveofsolace (https://github.com/slaveofsolace)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 (() => {
   'use strict';
 
@@ -176,6 +201,166 @@
 (() => {
   'use strict';
 
+  const namespace = 'InstaToolboxActionConfirmation';
+  if (globalThis[namespace]) return;
+
+  function immutableCopy(value) {
+    if (Array.isArray(value)) return Object.freeze(value.map(immutableCopy));
+    if (value && typeof value === 'object') {
+      return Object.freeze(Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [key, immutableCopy(entry)]),
+      ));
+    }
+    return value;
+  }
+
+  function cleanText(value, fallback = '') {
+    const text = String(value ?? '').trim();
+    return (text || fallback).slice(0, 1_000);
+  }
+
+  function createController({ root, attribute, status, unavailableTone = 'error' }) {
+    if (!root?.querySelector || !attribute) throw new TypeError('A confirmation root and role attribute are required.');
+
+    const query = (role) => root.querySelector(`[${attribute}="${role}"]`);
+    const dialog = query('action-confirmation');
+    const cancelButton = query('confirm-cancel');
+    const confirmButton = query('confirm-accept');
+    let pending = null;
+
+    function renderList(role, values) {
+      const list = query(role);
+      if (!list) return;
+      const items = (Array.isArray(values) ? values : [])
+        .map((value) => cleanText(value))
+        .filter(Boolean)
+        .slice(0, 250);
+      list.replaceChildren(...items.map((value) => {
+        const item = root.ownerDocument.createElement('li');
+        item.textContent = value;
+        return item;
+      }));
+      list.hidden = items.length === 0;
+    }
+
+    function renderFacts(values) {
+      const list = query('confirm-facts');
+      if (!list) return;
+      const facts = (Array.isArray(values) ? values : [])
+        .map((entry) => ({
+          label: cleanText(entry?.label),
+          value: cleanText(entry?.value),
+        }))
+        .filter((entry) => entry.label && entry.value)
+        .slice(0, 12);
+      const nodes = [];
+      for (const fact of facts) {
+        const term = root.ownerDocument.createElement('dt');
+        const description = root.ownerDocument.createElement('dd');
+        term.textContent = fact.label;
+        description.textContent = fact.value;
+        nodes.push(term, description);
+      }
+      list.replaceChildren(...nodes);
+      list.hidden = facts.length === 0;
+    }
+
+    function settle(confirmed) {
+      const current = pending;
+      if (!current) return false;
+      pending = null;
+      if (dialog?.open) dialog.close();
+      if (current.restoreFocus?.isConnected) current.restoreFocus.focus();
+      const expired = Number(current.binding?.expiresAt) > 0
+        && Number(current.binding.expiresAt) <= Date.now();
+      if (confirmed === true && expired) {
+        status?.('This review expired. Review the action again. Nothing was changed.', unavailableTone);
+      }
+      current.resolve(confirmed === true && !expired ? current.binding : null);
+      return true;
+    }
+
+    function confirm(request = {}) {
+      if (pending) return Promise.resolve(null);
+      if (!dialog?.showModal || !cancelButton || !confirmButton) {
+        status?.('The confirmation panel is unavailable. Nothing was changed.', unavailableTone);
+        return Promise.resolve(null);
+      }
+
+      const title = query('confirm-title');
+      const message = query('confirm-message');
+      const detail = query('confirm-detail');
+      if (title) title.textContent = cleanText(request.title, 'Confirm action');
+      if (message) message.textContent = cleanText(request.message, 'Review this action.');
+      if (detail) detail.textContent = cleanText(request.detail, 'This cannot be undone.');
+      confirmButton.textContent = cleanText(request.confirmLabel, 'Confirm');
+      renderFacts(request.facts);
+      renderList('confirm-items', request.items);
+
+      const binding = immutableCopy(request.binding || {});
+      return new Promise((resolve) => {
+        pending = {
+          binding,
+          resolve,
+          restoreFocus: root.activeElement || root.ownerDocument.activeElement,
+        };
+        try {
+          dialog.showModal();
+          cancelButton.focus();
+        } catch {
+          pending = null;
+          resolve(null);
+          status?.('The confirmation panel could not open. Nothing was changed.', unavailableTone);
+        }
+      });
+    }
+
+    function onCancel(event) {
+      event.preventDefault();
+      settle(false);
+    }
+
+    function onAccept(event) {
+      if (event?.isTrusted !== true) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        return;
+      }
+      settle(true);
+    }
+
+    function onClose() {
+      if (pending) settle(false);
+    }
+
+    dialog?.addEventListener('cancel', onCancel);
+    dialog?.addEventListener('close', onClose);
+    confirmButton?.addEventListener('click', onAccept);
+
+    return Object.freeze({
+      cancel: () => settle(false),
+      confirm,
+      destroy() {
+        settle(false);
+        dialog?.removeEventListener('cancel', onCancel);
+        dialog?.removeEventListener('close', onClose);
+        confirmButton?.removeEventListener('click', onAccept);
+      },
+      isPending: () => Boolean(pending),
+    });
+  }
+
+  Object.defineProperty(globalThis, namespace, {
+    configurable: false,
+    enumerable: false,
+    value: Object.freeze({ createController }),
+    writable: false,
+  });
+})();
+
+(() => {
+  'use strict';
+
   const namespace = '__instaAioActionLabels';
   if (globalThis[namespace]) return;
 
@@ -257,16 +442,23 @@
 
   const ACTIVE_ATTRIBUTE = 'data-insta-aio-unsend-active';
   const DONE_ATTRIBUTE = 'data-insta-aio-unsent';
-  const DEFAULT_MIN_DELAY_MS = 4_000;
-  const DEFAULT_MAX_DELAY_MS = 11_000;
+  const DEFAULT_MIN_DELAY_MS = 1_000;
+  const DEFAULT_MAX_DELAY_MS = 2_000;
   const DEFAULT_MAX_FAILURES = 5;
   const MIN_USABLE_VISIBLE_PX = 24;
   const MAX_HOVER_DEPTH = 8;
   const MAX_HISTORY_CHECK_MS = 90_000;
   const MAX_SCAN_PASSES = 3;
   const MAX_PLAN_MESSAGES = 5_000;
+  const MAX_EMPTY_GROWTH_ROUNDS = 600;
+  const MAX_SCROLL_STEPS_PER_SEARCH = 2_000;
+  const OLDEST_BOUNDARY_POLL_MS = 120;
+  const OLDEST_BOUNDARY_STABLE_MS = 2_000;
+  const STABLE_EMPTY_PASSES = 3;
+  const PLAN_VERSION = 2;
   const PLAN_SCOPES = new Set(['all', 'newest', 'oldest']);
   const listeners = new Set();
+  const consumedPlanDigests = new Map();
 
   let activeController = null;
   let currentState = Object.freeze({
@@ -274,6 +466,7 @@
     operation: null,
     processed: 0,
     failed: 0,
+    retryAttempts: 0,
     consecutiveFailures: 0,
     current: null,
     message: 'Ready',
@@ -320,7 +513,7 @@
   }
 
   function randomDelay(minimum, maximum) {
-    const min = Math.max(1_500, Number(minimum) || DEFAULT_MIN_DELAY_MS);
+    const min = Math.max(1_000, Number(minimum) || DEFAULT_MIN_DELAY_MS);
     const max = Math.max(min, Number(maximum) || DEFAULT_MAX_DELAY_MS);
     return min + Math.floor(Math.random() * (max - min + 1));
   }
@@ -335,34 +528,52 @@
     return (hash >>> 0).toString(16).padStart(8, '0');
   }
 
-  function planDigest({ threadId, scope, limit, eligibleCount, expiresAt }) {
+  function planDigest({ version, threadId, scope, limit, detectedCount, expiresAt }) {
     return digestText(JSON.stringify({
+      version: Number(version),
       threadId: String(threadId || ''),
       scope: String(scope || ''),
-      limit: Number(limit),
-      eligibleCount: Number(eligibleCount),
+      limit: limit === null ? null : Number(limit),
+      detectedCount: detectedCount === null ? null : Number(detectedCount),
       expiresAt: Number(expiresAt),
     }));
   }
 
   function createPlan(value = {}) {
     const threadId = String(value.threadId || '').trim();
-    const scope = PLAN_SCOPES.has(value.scope) ? value.scope : 'all';
-    const eligibleCount = Math.min(
-      MAX_PLAN_MESSAGES,
-      Math.max(0, Math.floor(Number(value.eligibleCount) || 0)),
-    );
+    const requestedScope = value.scope === null || value.scope === undefined || value.scope === ''
+      ? 'all'
+      : String(value.scope);
+    if (!PLAN_SCOPES.has(requestedScope)) return null;
+    const scope = requestedScope;
     const requestedLimit = Math.floor(Number(value.limit));
     const limit = scope === 'all'
-      ? eligibleCount
-      : Math.min(eligibleCount, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 1));
+      ? null
+      : Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(MAX_PLAN_MESSAGES, requestedLimit)
+        : null;
+    const hasDetectedCount = value.detectedCount !== null
+      && value.detectedCount !== undefined
+      && value.detectedCount !== '';
+    const requestedDetectedCount = hasDetectedCount ? Number(value.detectedCount) : Number.NaN;
+    const detectedCount = Number.isFinite(requestedDetectedCount) && requestedDetectedCount >= 0
+      ? Math.min(MAX_PLAN_MESSAGES, Math.floor(requestedDetectedCount))
+      : null;
     const expiresAt = Math.floor(Number(value.expiresAt) || 0);
-    if (!threadId || eligibleCount < 1 || limit < 1 || expiresAt <= Date.now()) return null;
-    const plan = { threadId, scope, limit, eligibleCount, expiresAt };
+    if (!threadId || (scope !== 'all' && !(limit > 0)) || expiresAt <= Date.now()) return null;
+    const plan = {
+      version: PLAN_VERSION,
+      threadId,
+      scope,
+      limit,
+      detectedCount,
+      expiresAt,
+    };
     return Object.freeze({ ...plan, reviewedDigest: planDigest(plan) });
   }
 
   function validatePlan(value) {
+    if (Number(value?.version) !== PLAN_VERSION) return null;
     const normalized = createPlan(value);
     return normalized && normalized.reviewedDigest === String(value?.reviewedDigest || '')
       ? normalized
@@ -548,26 +759,121 @@
     return false;
   }
 
-  function candidateRows(scroller) {
+  function stableMessageKey(row) {
+    // Only identifiers whose attribute names explicitly describe a message are
+    // safe across Instagram's recycled virtual-list nodes. Generic `id` and
+    // `data-id` values often identify the physical slot, not the logical DM.
+    for (const attribute of ['data-message-id', 'data-item-id']) {
+      const value = String(row?.getAttribute?.(attribute) || '').trim();
+      if (value) return `${attribute}:${value}`;
+    }
+    for (const element of row?.querySelectorAll?.('[data-message-id], [data-item-id]') || []) {
+      for (const attribute of ['data-message-id', 'data-item-id']) {
+        const value = String(element?.getAttribute?.(attribute) || '').trim();
+        if (value) return `${attribute}:${value}`;
+      }
+    }
+    return null;
+  }
+
+  function messagePositionFingerprint(row, traversal = null) {
+    const scroller = traversal?.scroller || row?.parentElement;
+    const rowRect = row?.getBoundingClientRect?.();
+    const scrollerRect = scroller?.getBoundingClientRect?.();
+    const siblings = [...(row?.parentElement?.children || [])];
+    const ordinal = siblings.indexOf(row);
+    const scrollTop = Number(scroller?.scrollTop);
+    const relativeTop = Number(rowRect?.top) - Number(scrollerRect?.top);
+    return [
+      Number.isFinite(scrollTop) ? Math.round(scrollTop) : '',
+      Number.isFinite(relativeTop) ? Math.round(relativeTop) : '',
+      ordinal >= 0 ? ordinal : '',
+    ].join(':');
+  }
+
+  function genericMessageHint(row) {
+    for (const attribute of ['data-id', 'id']) {
+      const value = String(row?.getAttribute?.(attribute) || '').trim();
+      if (value) return `${attribute}:${value}`;
+    }
+    return '';
+  }
+
+  function messageFingerprint(row, traversal = null) {
+    const timestamp = String(
+      row?.querySelector?.('time[datetime]')?.getAttribute?.('datetime')
+      || row?.querySelector?.('[data-timestamp]')?.getAttribute?.('data-timestamp')
+      || '',
+    );
+    return digestText(JSON.stringify({
+      key: stableMessageKey(row),
+      genericHint: genericMessageHint(row),
+      position: messagePositionFingerprint(row, traversal),
+      timestamp,
+      text: preview(row),
+    }));
+  }
+
+  function processedMarkerMatches(row, traversal = null) {
+    const key = stableMessageKey(row);
+    if (key && traversal?.processedKeys?.has(key)) return true;
+    if (!row?.hasAttribute?.(DONE_ATTRIBUTE)) return false;
+    const marker = String(row.getAttribute?.(DONE_ATTRIBUTE) || '');
+    if (marker && marker === messageFingerprint(row, traversal)) return true;
+    // Instagram can recycle a virtualized row node for another message. A
+    // marker tied to the old content must not hide the newly mounted message.
+    row.removeAttribute?.(DONE_ATTRIBUTE);
+    return false;
+  }
+
+  function candidateRows(scroller, traversal = null) {
     const container = deepestMessageContainer(scroller);
     let rows = [...(container?.children || [])];
     if (!rows.length) {
       rows = [...(scroller?.querySelectorAll?.('[role="row"], [role="listitem"]') || [])];
     }
     return rows
-      .filter((row) => !row.hasAttribute?.(DONE_ATTRIBUTE))
+      .filter((row) => !processedMarkerMatches(row, traversal))
       .filter((row) => !row.hasAttribute?.(ACTIVE_ATTRIBUTE))
       .filter(hasMessageContent)
       .filter((row) => sentByCurrentUser(row, row.ownerDocument.defaultView));
   }
 
-  function orderedCandidates(scroller, order = 'oldest') {
-    const rows = candidateRows(scroller);
-    return order === 'newest' ? rows : rows.reverse();
+  function orderedCandidates(scroller, order = 'oldest', traversal = null) {
+    const rows = candidateRows(scroller, traversal);
+    const positioned = rows.map((row, index) => {
+      const rect = row?.getBoundingClientRect?.();
+      const top = Number(rect?.top);
+      const bottom = Number(rect?.bottom);
+      return {
+        index,
+        position: Number.isFinite(top) && Number.isFinite(bottom)
+          ? (top + bottom) / 2
+          : Number.NaN,
+        row,
+      };
+    });
+    const distinctPositions = new Set(
+      positioned.filter(({ position }) => Number.isFinite(position)).map(({ position }) => position),
+    );
+    if (distinctPositions.size > 1) {
+      const direction = order === 'newest' ? -1 : 1;
+      return positioned
+        .sort((left, right) => {
+          if (!Number.isFinite(left.position)) return 1;
+          if (!Number.isFinite(right.position)) return -1;
+          return ((left.position - right.position) * direction) || (left.index - right.index);
+        })
+        .map(({ row }) => row);
+    }
+    // Geometry can be unavailable in detached/unit-test DOM. Fall back to the
+    // visual ordering implied by the container's flex direction.
+    const newestFirst = reversedLayout(scroller) ? rows : [...rows].reverse();
+    return order === 'newest' ? newestFirst : newestFirst.reverse();
   }
 
-  function firstVisibleCandidate(scroller, order = 'oldest') {
-    const rows = orderedCandidates(scroller, order);
+  function firstVisibleCandidate(scroller, order = 'oldest', traversal = null) {
+    const rows = orderedCandidates(scroller, order, traversal);
     return rows.find(isVisible) || null;
   }
 
@@ -841,7 +1147,6 @@
         authorizationExpiresAt,
       );
       if (!success) throw new Error('The message was not confirmed as removed.');
-      row.setAttribute(DONE_ATTRIBUTE, '');
       return true;
     } finally {
       row.removeAttribute(ACTIVE_ATTRIBUTE);
@@ -888,7 +1193,7 @@
   async function loadAllHistory(context, signal) {
     const { root, scroller } = context;
     if (!scroller || scroller.scrollHeight <= scroller.clientHeight + 50) {
-      return { complete: true, eligibleCount: candidateRows(scroller || root).length, pagesChecked: 0 };
+      return { complete: true, detectedCount: candidateRows(scroller || root).length, pagesChecked: 0 };
     }
     const reversed = reversedLayout(scroller);
     const startedAt = Date.now();
@@ -960,7 +1265,9 @@
     );
     return {
       complete: quietRounds >= 10,
-      eligibleCount: progress.maxRows,
+      // Instagram virtualizes long conversations. This is only the largest
+      // simultaneously mounted sent-message window, never a proven total.
+      detectedCount: progress.maxRows,
       pagesChecked,
     };
   }
@@ -983,33 +1290,303 @@
     return isVisible(row);
   }
 
-  async function nextSentRow(context, signal, order = 'oldest') {
-    const { scroller } = context;
-    // Leave a comfortably visible row in place. Re-centering every message made
-    // the processing phase continually fight the thread position. Partially
-    // clipped rows are still exposed before hover so their menu affordance is
-    // reachable on other platforms and font stacks.
-    const visible = firstVisibleCandidate(scroller, order);
-    if (visible) {
-      if (await exposeRow(visible, scroller, signal)) return visible;
+  function createTraversal(order = 'newest') {
+    return {
+      order: order === 'oldest' ? 'oldest' : 'newest',
+      scroller: null,
+      lastScrollTop: null,
+      lastScrollHeight: 0,
+      lastSearchGrew: false,
+      lastSearchIncomplete: false,
+      lastSearchSteps: 0,
+      oldestBoundaryProven: order !== 'oldest',
+      processedKeys: new Set(),
+    };
+  }
+
+  function traversalContext(context, traversal) {
+    let current = context;
+    if (context?.threadId) {
+      current = threadContext();
+      if (!current.ok || current.threadId !== context.threadId) {
+        throw new Error(current.reason || 'The reviewed conversation changed.');
+      }
     }
+    if (traversal.scroller !== current?.scroller) {
+      if (traversal.order === 'oldest' && traversal.scroller) {
+        traversal.oldestBoundaryProven = false;
+      }
+      traversal.scroller = current.scroller;
+      traversal.lastScrollTop = null;
+      traversal.lastScrollHeight = Number(current.scroller?.scrollHeight) || 0;
+    }
+    return current;
+  }
+
+  function traversalBounds(scroller, order) {
+    const reversed = reversedLayout(scroller);
+    const oldest = oldestOffset(scroller, reversed);
+    const newest = newestOffset(scroller, reversed);
+    const start = order === 'oldest' ? oldest : newest;
+    const end = order === 'oldest' ? newest : oldest;
+    return { start, end, direction: end >= start ? 1 : -1 };
+  }
+
+  function oldestBoundarySnapshot(context) {
+    const scroller = context?.scroller;
+    const rows = [...(deepestMessageContainer(scroller)?.children || [])];
+    const rowEvidence = rows.map((row, index) => ({
+      genericHint: genericMessageHint(row),
+      index,
+      key: stableMessageKey(row),
+      text: visibleText(row).slice(0, 120),
+      timestamp: String(
+        row?.querySelector?.('time[datetime]')?.getAttribute?.('datetime')
+        || row?.querySelector?.('[data-timestamp]')?.getAttribute?.('data-timestamp')
+        || '',
+      ),
+    }));
+    return {
+      height: Number(scroller?.scrollHeight) || 0,
+      loaderVisible: Boolean(visibleLoader(context?.root)),
+      oldest: traversalBounds(scroller, 'oldest').start,
+      rowCount: rows.length,
+      rowSignature: digestText(JSON.stringify(rowEvidence)),
+      scroller,
+    };
+  }
+
+  async function proveStableOldestBoundary(
+    context,
+    traversal,
+    signal,
+    authorizationExpiresAt,
+  ) {
+    const startedAt = Date.now();
+    let stableKey = '';
+    let stableSince = 0;
+
+    while (Date.now() - startedAt < MAX_HISTORY_CHECK_MS) {
+      requireAuthorization(context.threadId, authorizationExpiresAt);
+      const current = traversalContext(context, traversal);
+      const before = oldestBoundarySnapshot(current);
+      current.scroller.scrollTop = before.oldest;
+      dispatch(current.scroller, new Event('scroll', { bubbles: true }));
+      await delay(OLDEST_BOUNDARY_POLL_MS, signal);
+
+      requireAuthorization(context.threadId, authorizationExpiresAt);
+      const refreshed = traversalContext(context, traversal);
+      const after = oldestBoundarySnapshot(refreshed);
+      const atOldest = Math.abs(Number(after.scroller?.scrollTop) - after.oldest) <= 1;
+      const replaced = before.scroller !== after.scroller;
+      const changed = replaced
+        || before.height !== after.height
+        || before.rowCount !== after.rowCount
+        || before.rowSignature !== after.rowSignature;
+      const nextKey = [
+        after.height,
+        after.oldest,
+        after.rowCount,
+        after.rowSignature,
+      ].join(':');
+
+      if (!atOldest || after.loaderVisible || changed) {
+        stableKey = '';
+        stableSince = 0;
+        continue;
+      }
+      if (stableKey !== nextKey) {
+        stableKey = nextKey;
+        stableSince = Date.now();
+        continue;
+      }
+      if (Date.now() - stableSince >= OLDEST_BOUNDARY_STABLE_MS) {
+        traversal.scroller = after.scroller;
+        traversal.lastScrollTop = after.oldest;
+        traversal.lastScrollHeight = after.height;
+        traversal.lastSearchGrew = false;
+        traversal.lastSearchIncomplete = false;
+        traversal.lastSearchSteps = 0;
+        traversal.oldestBoundaryProven = true;
+        return refreshed;
+      }
+    }
+
+    throw new Error('The oldest conversation boundary could not be proven before the safety timeout.');
+  }
+
+  function markProcessedRow(row, traversal, keyBeforeRemoval) {
+    if (keyBeforeRemoval) traversal.processedKeys.add(keyBeforeRemoval);
+    // Tie the marker to the postcondition DOM, not merely the physical node.
+    // If Instagram recycles the node for a different message, the fingerprint
+    // changes and candidateRows removes the stale marker.
+    row.setAttribute?.(DONE_ATTRIBUTE, messageFingerprint(row, traversal));
+  }
+
+  function resetTraversalAfterRemoval(traversal, scroller, before = {}) {
+    const scrollerChanged = Boolean(before.scroller && before.scroller !== scroller);
+    const height = Number(scroller?.scrollHeight) || 0;
+    const previousHeight = Number(before.scrollHeight);
+    const shrank = Number.isFinite(previousHeight) && height + 1 < previousHeight;
+    traversal.scroller = scroller;
+    if (traversal.order === 'oldest' && (scrollerChanged || shrank)) {
+      traversal.oldestBoundaryProven = false;
+    }
+    traversal.lastScrollTop = scrollerChanged || shrank
+      ? null
+      : Number.isFinite(Number(scroller?.scrollTop))
+        ? Number(scroller.scrollTop)
+        : traversal.lastScrollTop;
+    traversal.lastScrollHeight = height;
+    traversal.lastSearchGrew = false;
+    traversal.lastSearchIncomplete = false;
+    traversal.lastSearchSteps = 0;
+  }
+
+  async function reestablishTraversalEdge(context, traversal, signal) {
+    for (let attempt = 0; attempt < MAX_SCAN_PASSES; attempt += 1) {
+      if (signal.aborted) return null;
+      const current = traversalContext(context, traversal);
+      const scroller = current.scroller;
+      const previousHeight = Number(traversal.lastScrollHeight) || 0;
+      const { start } = traversalBounds(scroller, traversal.order);
+      scroller.scrollTop = start;
+      dispatch(scroller, new Event('scroll', { bubbles: true }));
+      await delay(5, signal);
+
+      const refreshed = traversalContext(context, traversal);
+      if (refreshed.scroller !== scroller) continue;
+      const refreshedStart = traversalBounds(scroller, traversal.order).start;
+      const actualPosition = Number(scroller.scrollTop);
+      const currentHeight = Number(scroller.scrollHeight) || 0;
+      if (!Number.isFinite(actualPosition) || Math.abs(actualPosition - refreshedStart) > 1) {
+        traversal.lastScrollTop = null;
+        traversal.lastScrollHeight = currentHeight;
+        continue;
+      }
+      if (currentHeight > previousHeight + 1) traversal.lastSearchGrew = true;
+      traversal.lastScrollTop = actualPosition;
+      traversal.lastScrollHeight = currentHeight;
+      return refreshed;
+    }
+    traversal.lastSearchIncomplete = true;
+    return null;
+  }
+
+  async function nextSentRow(
+    context,
+    signal,
+    order = 'newest',
+    traversal = createTraversal(order),
+    authorizationExpiresAt = null,
+  ) {
+    traversal.order = order === 'oldest' ? 'oldest' : 'newest';
+    traversal.lastSearchGrew = false;
+    traversal.lastSearchIncomplete = false;
+    traversal.lastSearchSteps = 0;
+
+    let current = traversalContext(context, traversal);
+    let scroller = current.scroller;
+    const startingHeight = Number(scroller?.scrollHeight) || 0;
+    if (traversal.lastScrollHeight && startingHeight + 1 < traversal.lastScrollHeight) {
+      // A successful Unsend can shrink the scroll range. Resume from the
+      // requested edge instead of retaining an offset outside the new range.
+      traversal.lastScrollTop = null;
+      if (traversal.order === 'oldest') traversal.oldestBoundaryProven = false;
+    }
+    traversal.lastScrollHeight = startingHeight;
+
+    if (traversal.order === 'oldest' && !traversal.oldestBoundaryProven) {
+      // Instagram can replace or shrink its virtual scroller after a removal.
+      // Do not expose another oldest candidate until that new edge has remained
+      // stable under the same bounded proof used before the first action.
+      let provenContext = null;
+      for (let attempt = 0; attempt < MAX_SCAN_PASSES; attempt += 1) {
+        provenContext = await proveStableOldestBoundary(
+          context,
+          traversal,
+          signal,
+          authorizationExpiresAt,
+        );
+        const verifiedContext = traversalContext(provenContext, traversal);
+        if (traversal.oldestBoundaryProven) {
+          current = verifiedContext;
+          scroller = verifiedContext.scroller;
+          break;
+        }
+      }
+      if (!traversal.oldestBoundaryProven || !provenContext) {
+        throw new Error('The oldest conversation boundary changed before the next message could be selected.');
+      }
+    } else if (!Number.isFinite(traversal.lastScrollTop)) {
+      current = await reestablishTraversalEdge(context, traversal, signal);
+      if (!current) return null;
+      scroller = current.scroller;
+    }
+
+    // Leave a comfortably visible row in place. This handles short threads and
+    // the next mounted message after Instagram replaces a virtualized window.
+    const visible = firstVisibleCandidate(scroller, traversal.order, traversal);
+    if (visible && await exposeRow(visible, scroller, signal)) return visible;
+    const [mounted] = orderedCandidates(scroller, traversal.order, traversal);
+    if (mounted && await exposeRow(mounted, scroller, signal)) return mounted;
 
     for (let pass = 0; pass < MAX_SCAN_PASSES; pass += 1) {
       if (signal.aborted) return null;
-      const [row] = orderedCandidates(scroller, order);
-      if (row) {
-        if (await exposeRow(row, scroller, signal)) return row;
-        // Still hidden: hand it back anyway on the final pass so a row that
-        // simply cannot be scrolled into view is attempted rather than skipped.
-        if (pass === MAX_SCAN_PASSES - 1) return row;
+      const stop = context.threadId ? sessionStop(context.threadId) : null;
+      if (stop) throw new Error(stop);
+      current = traversalContext(context, traversal);
+      scroller = current.scroller;
+      const heightBeforePass = Number(scroller?.scrollHeight) || 0;
+      const { start, end, direction } = traversalBounds(scroller, traversal.order);
+      const range = Math.abs(end - start);
+      // Never jump farther than one third of the mounted viewport. Instagram's
+      // virtual list can recycle every row between scroll events; overlapping
+      // windows prevent sparse sent messages from falling between coarse steps.
+      const viewportStep = Math.floor((Number(scroller?.clientHeight) || 90) / 3);
+      const step = range < 500 ? 30 : Math.max(30, Math.min(150, viewportStep));
+      let position = pass === 0 && Number.isFinite(traversal.lastScrollTop)
+        ? Math.max(Math.min(traversal.lastScrollTop, Math.max(start, end)), Math.min(start, end))
+        : start;
+
+      while (traversal.lastSearchSteps < MAX_SCROLL_STEPS_PER_SEARCH) {
+        if (signal.aborted) return null;
+        const stepStop = context.threadId ? sessionStop(context.threadId) : null;
+        if (stepStop) throw new Error(stepStop);
+        traversal.lastScrollTop = position;
+        scroller.scrollTop = position;
+        dispatch(scroller, new Event('scroll', { bubbles: true }));
+        traversal.lastSearchSteps += 1;
+        await delay(5, signal);
+
+        const row = firstVisibleCandidate(scroller, traversal.order, traversal);
+        if (row && await exposeRow(row, scroller, signal)) {
+          traversal.lastScrollHeight = Number(scroller?.scrollHeight) || heightBeforePass;
+          return row;
+        }
+        if (position === end) break;
+        position = direction > 0
+          ? Math.min(end, position + step)
+          : Math.max(end, position - step);
       }
-      // Nothing actionable is visible here; return to the reviewed edge.
-      const reversed = reversedLayout(scroller);
-      scroller.scrollTop = order === 'newest'
-        ? newestOffset(scroller, reversed)
-        : oldestOffset(scroller, reversed);
-      dispatch(scroller, new Event('scroll', { bubbles: true }));
-      await delay(120, signal);
+
+      const heightAfterPass = Number(scroller?.scrollHeight) || 0;
+      if (heightAfterPass > heightBeforePass + 1) traversal.lastSearchGrew = true;
+      if (heightAfterPass + 1 < heightBeforePass) {
+        traversal.lastScrollTop = null;
+        if (traversal.order === 'oldest') traversal.oldestBoundaryProven = false;
+      }
+      traversal.lastScrollHeight = heightAfterPass;
+      if (traversal.lastSearchSteps >= MAX_SCROLL_STEPS_PER_SEARCH && position !== end) {
+        // Resume here on the next bounded search instead of repeatedly scanning
+        // only the first 300k pixels of an unusually tall conversation.
+        traversal.lastSearchIncomplete = true;
+        return null;
+      }
+      // A new pass begins at the requested edge. This is intentional: the DOM
+      // can shrink, grow, or swap nodes after any edge-triggered page load.
+      traversal.lastScrollTop = null;
+      await delay(30, signal);
     }
     return null;
   }
@@ -1055,29 +1632,22 @@
     });
     try {
       const history = await loadAllHistory(context, controller.signal);
-      const resolvedCount = history.eligibleCount;
-      const capped = resolvedCount > MAX_PLAN_MESSAGES;
-      const eligibleCount = Math.min(MAX_PLAN_MESSAGES, resolvedCount);
-      const complete = history.complete && !capped;
+      const detectedCount = Math.min(MAX_PLAN_MESSAGES, history.detectedCount);
       const result = Object.freeze({
         ready: true,
         threadId: context.threadId,
-        eligibleCount,
-        complete,
-        capped,
+        detectedCount,
+        countExact: false,
+        complete: history.complete,
         pagesChecked: history.pagesChecked,
-        reason: complete
-          ? 'Full conversation check complete.'
-          : capped
-            ? `More than ${MAX_PLAN_MESSAGES} eligible sent messages were found. No destructive plan was created.`
-            : 'The bounded history check reached its page limit before completeness could be proven.',
+        reason: history.complete
+          ? `At least ${detectedCount} sent message${detectedCount === 1 ? '' : 's'} detected. Instagram may keep other messages outside the mounted window.`
+          : 'The bounded read-only check ended before the oldest history boundary was proven.',
         checkedAt: new Date().toISOString(),
       });
       publish({
         status: 'reviewed',
-        message: complete
-          ? `${eligibleCount} sent message${eligibleCount === 1 ? '' : 's'} found.`
-          : result.reason,
+        message: result.reason,
         current: null,
         canStop: false,
         finishedAt: result.checkedAt,
@@ -1106,7 +1676,7 @@
     if (!plan) {
       publish({
         status: 'error',
-        message: 'A fresh, count-specific reviewed plan is required before Unsend can start.',
+        message: 'A fresh, thread-specific reviewed plan is required before Unsend can start.',
         canStop: false,
         finishedAt: new Date().toISOString(),
       });
@@ -1128,46 +1698,78 @@
       return snapshot();
     }
 
+    const now = Date.now();
+    for (const [digest, expiresAt] of consumedPlanDigests) {
+      if (expiresAt <= now) consumedPlanDigests.delete(digest);
+    }
+    if (consumedPlanDigests.has(plan.reviewedDigest)) {
+      publish({
+        status: 'error',
+        message: 'This reviewed Unsend plan was already used.',
+        canStop: false,
+        finishedAt: new Date().toISOString(),
+      });
+      return snapshot();
+    }
+    consumedPlanDigests.set(plan.reviewedDigest, plan.expiresAt);
+    while (consumedPlanDigests.size > 128) {
+      consumedPlanDigests.delete(consumedPlanDigests.keys().next().value);
+    }
+
     const controller = new AbortController();
     activeController = controller;
     const signal = controller.signal;
     const maxFailures = Math.max(1, Math.min(10, Number(options.maxConsecutiveFailures) || DEFAULT_MAX_FAILURES));
     const authorizationExpiresAt = plan.expiresAt;
-    const maxMessages = plan.limit;
+    // "all" is intentionally not bound to a virtual-DOM count. This ceiling
+    // is only a catastrophic-loop guard, not a daily or user-facing quota.
+    const maxMessages = plan.limit === null ? MAX_PLAN_MESSAGES : plan.limit;
+    const order = plan.scope === 'oldest' ? 'oldest' : 'newest';
+    const traversal = createTraversal(order);
     let processed = 0;
     let failed = 0;
+    let retryAttempts = 0;
     let consecutiveFailures = 0;
     let lastUnsendAt = 0;
+    let stableEmptyPasses = 0;
+    let emptyGrowthRounds = 0;
+    let exhausted = false;
 
     publish({
       status: 'preparing',
       operation: 'unsend',
       processed: 0,
       failed: 0,
+      retryAttempts: 0,
       consecutiveFailures: 0,
       current: null,
-      message: 'Loading the conversation…',
+      message: 'Finding sent messages…',
       startedAt: new Date().toISOString(),
       finishedAt: null,
       canStop: true,
     });
 
     try {
-      const history = await loadAllHistory(context, signal);
-      const resolvedCount = history.eligibleCount;
-      if (!history.complete || resolvedCount > MAX_PLAN_MESSAGES) {
-        throw new Error('The full conversation could not be revalidated within the bounded history check.');
+      let initialContext = traversalContext(context, traversal);
+      if (plan.scope === 'oldest') {
+        publish({
+          status: 'preparing',
+          current: null,
+          message: 'Finding the oldest message boundary…',
+        });
+        initialContext = await proveStableOldestBoundary(
+          context,
+          traversal,
+          signal,
+          authorizationExpiresAt,
+        );
+      } else {
+        const initialBounds = traversalBounds(initialContext.scroller, order);
+        initialContext.scroller.scrollTop = initialBounds.start;
+        dispatch(initialContext.scroller, new Event('scroll', { bubbles: true }));
+        await delay(80, signal);
       }
-      const currentEligibleCount = resolvedCount;
-      if (currentEligibleCount !== plan.eligibleCount) {
-        throw new Error('The eligible sent-message count changed after review. Check the conversation again.');
-      }
-      if (plan.scope === 'newest') {
-        const reversed = reversedLayout(context.scroller);
-        context.scroller.scrollTop = newestOffset(context.scroller, reversed);
-        dispatch(context.scroller, new Event('scroll', { bubbles: true }));
-        await delay(100, signal);
-      }
+
       while (!signal.aborted && processed < maxMessages && consecutiveFailures < maxFailures) {
         if (authorizationExpiresAt <= Date.now()) {
           throw new Error('Live authorization expired before the next message.');
@@ -1184,12 +1786,46 @@
         const row = await nextSentRow(
           currentContext,
           signal,
-          plan.scope === 'newest' ? 'newest' : 'oldest',
+          order,
+          traversal,
+          authorizationExpiresAt,
         );
         if (!row) {
-          throw new Error('Instagram refreshed the conversation before the next reviewed message could be found. Check the conversation again.');
+          if (traversal.lastSearchGrew || traversal.lastSearchIncomplete) {
+            emptyGrowthRounds += 1;
+            if (emptyGrowthRounds > MAX_EMPTY_GROWTH_ROUNDS) {
+              throw new Error('The conversation kept changing before a stable end could be reached.');
+            }
+            stableEmptyPasses = 0;
+            publish({
+              status: 'preparing',
+              current: null,
+              message: 'Checking newly loaded messages…',
+            });
+            await delay(120, signal);
+            continue;
+          }
+          stableEmptyPasses += 1;
+          if (stableEmptyPasses < STABLE_EMPTY_PASSES) {
+            publish({
+              status: 'preparing',
+              current: null,
+              message: 'Checking for more sent messages…',
+            });
+            await delay(160, signal);
+            continue;
+          }
+          exhausted = true;
+          break;
         }
+        stableEmptyPasses = 0;
+        emptyGrowthRounds = 0;
         const label = preview(row);
+        const keyBeforeRemoval = stableMessageKey(row);
+        const traversalBeforeRemoval = {
+          scroller: currentContext.scroller,
+          scrollHeight: Number(currentContext.scroller?.scrollHeight) || 0,
+        };
         const elapsed = Date.now() - lastUnsendAt;
         const wait = lastUnsendAt
           ? Math.max(0, randomDelay(options.minDelayMs, options.maxDelayMs) - elapsed)
@@ -1207,36 +1843,62 @@
         }
 
         publish({ status: 'running', current: label, message: `Unsending message ${processed + 1}…` });
+        let removalVerified = false;
         try {
           // unsendRow already proves the removal: the confirmation dialog
           // closed and the row either went away or lost its content and menu.
           // Re-checking isConnected here rejected every success, because
           // Instagram leaves an "unsent" placeholder row in the thread.
           await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+          removalVerified = true;
+        } catch (error) {
+          if (signal.aborted) throw error;
+          retryAttempts += 1;
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= maxFailures) failed += 1;
+          const backoff = Math.min(15_000, 1_000 * (2 ** (consecutiveFailures - 1)));
+          publish({
+            status: 'waiting',
+            failed,
+            retryAttempts,
+            consecutiveFailures,
+            current: label,
+            message: consecutiveFailures >= maxFailures
+              ? `Could not remove this message after ${consecutiveFailures} attempts.`
+              : `Could not remove this message. Retrying in ${Math.round(backoff / 1_000)}s (${consecutiveFailures}/${maxFailures})…`,
+          });
+          if (consecutiveFailures >= maxFailures) break;
+          await delay(backoff, signal);
+          continue;
+        }
+        if (removalVerified) {
           processed += 1;
           consecutiveFailures = 0;
           lastUnsendAt = Date.now();
+          markProcessedRow(row, traversal, keyBeforeRemoval);
+          const afterRemovalContext = threadContext();
+          if (!afterRemovalContext.ok || afterRemovalContext.threadId !== expectedThreadId) {
+            throw new Error(afterRemovalContext.reason || 'The reviewed conversation changed.');
+          }
+          resetTraversalAfterRemoval(traversal, afterRemovalContext.scroller, traversalBeforeRemoval);
+          if (typeof options.onVerifiedRemoval === 'function') {
+            await options.onVerifiedRemoval(Object.freeze({
+              processed,
+              failed,
+              retryAttempts,
+              threadId: expectedThreadId,
+              reviewedDigest: plan.reviewedDigest,
+            }));
+          }
           publish({
             status: 'running',
             processed,
             failed,
+            retryAttempts,
             consecutiveFailures,
             current: null,
             message: `${processed} message${processed === 1 ? '' : 's'} unsent`,
           });
-        } catch (error) {
-          if (signal.aborted) throw error;
-          failed += 1;
-          consecutiveFailures += 1;
-          const backoff = Math.min(60_000, 3_000 * (2 ** (consecutiveFailures - 1)));
-          publish({
-            status: 'waiting',
-            failed,
-            consecutiveFailures,
-            current: label,
-            message: `Message could not be removed. Retrying after ${Math.round(backoff / 1_000)}s (${consecutiveFailures}/${maxFailures})…`,
-          });
-          await delay(backoff, signal);
         }
       }
 
@@ -1260,10 +1922,23 @@
           canStop: false,
           finishedAt: new Date().toISOString(),
         });
+      } else if (plan.limit === null && processed >= MAX_PLAN_MESSAGES && !exhausted) {
+        publish({
+          status: 'error',
+          message: `Safety stop after ${processed} verified removals. Start a fresh run to continue.`,
+          processed,
+          failed,
+          current: null,
+          canStop: false,
+          finishedAt: new Date().toISOString(),
+        });
       } else {
+        const shortfall = plan.limit !== null && processed < plan.limit && exhausted;
         publish({
           status: 'completed',
-          message: `Done. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
+          message: shortfall
+            ? `Done. ${processed} message${processed === 1 ? '' : 's'} unsent; no more sent messages were found.`
+            : `Done. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
           processed,
           failed,
           current: null,
@@ -1322,18 +1997,30 @@
   const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe };
   if (globalThis.__instaAioTestHooks === true) {
     publicApi.__test = Object.freeze({
+      candidateRows,
+      createTraversal,
       deepestMessageContainer,
       advanceHistoryProgress,
       actionButton,
       currentThreadId,
       hasMessageContent,
       isVisible,
+      markProcessedRow,
+      messageFingerprint,
       nextSentRow,
+      oldestBoundarySnapshot,
+      orderedCandidates,
+      proveStableOldestBoundary,
       removalEvidence,
       removalProven,
       reversedLayout,
       rowNeedsReposition,
+      resetTraversalAfterRemoval,
+      reestablishTraversalEdge,
       sentByCurrentUser,
+      stableMessageKey,
+      traversalBounds,
+      validatePlan,
     });
   }
   Object.defineProperty(globalThis, 'InstaAioDmThreadUnsender', {
@@ -1391,7 +2078,6 @@
   const RELATIONSHIP_MAX_DURATION_MS = 20 * 60 * 1_000;
   const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
   const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
-  const RELATIONSHIP_AUTO_RECONCILE_MAX_ACCOUNTS = 500;
   const RELATIONSHIP_RETRY_BASE_MS = 1_000;
 
   function normalizeUsername(value) {
@@ -1405,6 +2091,14 @@
     return /^[a-z0-9._]{1,30}$/i.test(username) && !RESERVED.has(username)
       ? username
       : '';
+  }
+
+  function relationshipCount(...values) {
+    for (const value of values) {
+      const number = Number(value);
+      if (Number.isSafeInteger(number) && number >= 0) return number;
+    }
+    return null;
   }
 
   function detectAuthenticatedUsername() {
@@ -1652,25 +2346,77 @@
     if (!/^\d+$/.test(userId)) {
       throw relationshipError('username-not-found', `Instagram could not resolve @${username}.`);
     }
-    const count = (...values) => {
-      for (const value of values) {
-        const number = Number(value);
-        if (Number.isSafeInteger(number) && number >= 0) return number;
-      }
-      return null;
-    };
-    const onExactProfile = normalizeUsername(location.pathname) === username;
     return {
       userId,
-      expectedCounts: {
-        followers: onExactProfile
-          ? exactProfileListCount('followers')
-          : count(exact.follower_count, exact.followers_count, exact.edge_followed_by?.count),
-        following: onExactProfile
-          ? exactProfileListCount('following')
-          : count(exact.following_count, exact.follows_count, exact.edge_follow?.count),
-      },
     };
+  }
+
+  async function resolveRelationshipProfileCounts(username, userId, options) {
+    const url = new URL('/api/v1/users/web_profile_info/', INSTAGRAM_WEB_ORIGIN);
+    url.searchParams.set('username', username);
+    const data = await fetchInstagramRelationshipJson(url, options);
+    const profile = data?.data?.user;
+    const resolvedUsername = normalizeUsername(profile?.username);
+    const resolvedUserId = String(profile?.id || profile?.pk || '').trim();
+    if (resolvedUsername !== username || resolvedUserId !== userId) {
+      throw relationshipError(
+        'profile-mismatch',
+        `Instagram did not return the exact profile counters for @${username}. The previous comparison is unchanged.`,
+      );
+    }
+    const followers = relationshipCount(
+      profile?.edge_followed_by?.count,
+      profile?.follower_count,
+      profile?.followers_count,
+    );
+    const following = relationshipCount(
+      profile?.edge_follow?.count,
+      profile?.following_count,
+      profile?.follows_count,
+    );
+    if (!Number.isSafeInteger(followers) || !Number.isSafeInteger(following)) {
+      throw relationshipError(
+        'profile-count-unavailable',
+        `Instagram did not provide verified follower and following totals for @${username}. The previous comparison is unchanged.`,
+      );
+    }
+    return Object.freeze({ followers, following });
+  }
+
+  function exactProfileCountDisagreement(username, profileCounts) {
+    if (normalizeUsername(location.pathname) !== username) {
+      return Object.freeze({ followers: false, following: false });
+    }
+    const followers = exactProfileListCount('followers');
+    const following = exactProfileListCount('following');
+    return Object.freeze({
+      followers: Number.isSafeInteger(followers) && followers !== profileCounts.followers,
+      following: Number.isSafeInteger(following) && following !== profileCounts.following,
+    });
+  }
+
+  function finalizeRelationshipList(list, {
+    countChanged,
+    countDisagreed,
+    expectedCount,
+  }) {
+    if (countChanged) {
+      return Object.freeze({
+        ...list,
+        complete: false,
+        expectedCount,
+        reason: 'count-changed',
+      });
+    }
+    if (countDisagreed) {
+      return Object.freeze({
+        ...list,
+        complete: false,
+        expectedCount,
+        reason: 'profile-count-disagreement',
+      });
+    }
+    return list;
   }
 
   async function fetchRelationshipList(listType, userId, username, {
@@ -1692,6 +2438,7 @@
     expectedCount = null,
   }) {
     const accounts = new Map();
+    const accountKeyByUsername = new Map();
     const seenTokens = new Set();
     const passAccounts = new Set();
     let nextMaxId = '';
@@ -1725,13 +2472,35 @@
       for (const user of data.users) {
         const accountUsername = normalizeUsername(user?.username);
         if (!accountUsername) continue;
-        accounts.set(accountUsername, {
+        const rawAccountId = user?.pk ?? user?.id ?? '';
+        const accountId = String(rawAccountId || '').trim();
+        if (accountId && !/^\d+$/.test(accountId)) {
+          throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} account ID.`);
+        }
+        const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
+        const usernameOwner = accountKeyByUsername.get(accountUsername);
+        if (usernameOwner && usernameOwner !== accountKey) {
+          if (usernameOwner === `username:${accountUsername}` && accountId) {
+            accounts.delete(usernameOwner);
+          } else {
+            throw relationshipError(
+              'invalid-response',
+              `Instagram returned conflicting ${listType} account identities.`,
+            );
+          }
+        }
+        const previous = accounts.get(accountKey);
+        if (previous?.username && previous.username !== accountUsername) {
+          accountKeyByUsername.delete(previous.username);
+        }
+        accounts.set(accountKey, {
           username: accountUsername,
           profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
           displayName: String(user?.full_name || '').trim().slice(0, 160),
           source: 'authenticated-instagram-web',
         });
-        if (reconciliationAttempts > 0) passAccounts.add(accountUsername);
+        accountKeyByUsername.set(accountUsername, accountKey);
+        if (reconciliationAttempts > 0) passAccounts.add(accountKey);
         if (accounts.size >= maxAccounts) break;
       }
       onProgress?.(Object.freeze({
@@ -1750,7 +2519,6 @@
       if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
         if (Number.isSafeInteger(expectedCount)
           && accounts.size < expectedCount
-          && expectedCount <= RELATIONSHIP_AUTO_RECONCILE_MAX_ACCOUNTS
           && reconciliationAttempts < 1) {
           reconciliationAttempts += 1;
           nextMaxId = '';
@@ -1769,13 +2537,17 @@
           await sleepImpl(800, signal);
           continue;
         }
-        const countReconciled = !Number.isSafeInteger(expectedCount) || accounts.size >= expectedCount;
+        const countReconciled = Number.isSafeInteger(expectedCount) && accounts.size === expectedCount;
         return {
           accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
           complete: countReconciled,
           expectedCount,
           pages,
-          reason: countReconciled ? 'pagination-complete' : 'count-mismatch',
+          reason: countReconciled
+            ? 'pagination-complete'
+            : Number.isSafeInteger(expectedCount)
+              ? 'count-mismatch'
+              : 'count-unverified',
         };
       }
       nextMaxId = String(candidateToken);
@@ -1857,16 +2629,54 @@
         pages: 0,
         username,
       });
-      const { userId, expectedCounts } = resolution;
-      const followers = await fetchRelationshipList('followers', userId, username, {
+      const { userId } = resolution;
+      onProgress?.(Object.freeze({ found: 0, listType: null, pages: 0, phase: 'verifying-profile', username }));
+      const profileCountsAtStart = await resolveRelationshipProfileCounts(username, userId, {
         ...common,
-        expectedCount: expectedCounts.followers,
+        found: 0,
+        listType: null,
+        pages: 0,
+        username,
       });
-      const following = await fetchRelationshipList('following', userId, username, {
+      const countDisagreementAtStart = exactProfileCountDisagreement(username, profileCountsAtStart);
+      const followersTraversal = await fetchRelationshipList('followers', userId, username, {
         ...common,
-        expectedCount: expectedCounts.following,
+        expectedCount: profileCountsAtStart.followers,
+      });
+      const followingTraversal = await fetchRelationshipList('following', userId, username, {
+        ...common,
+        expectedCount: profileCountsAtStart.following,
       });
       assertRelationshipRunActive(runSignal, startedAt, now, boundedDuration);
+      onProgress?.(Object.freeze({
+        found: followersTraversal.accounts.length + followingTraversal.accounts.length,
+        listType: null,
+        pages: followersTraversal.pages + followingTraversal.pages,
+        phase: 'revalidating-profile',
+        username,
+      }));
+      const profileCountsAtEnd = await resolveRelationshipProfileCounts(username, userId, {
+        ...common,
+        found: followersTraversal.accounts.length + followingTraversal.accounts.length,
+        listType: null,
+        pages: followersTraversal.pages + followingTraversal.pages,
+        username,
+      });
+      const countDisagreementAtEnd = exactProfileCountDisagreement(username, profileCountsAtEnd);
+      const followers = finalizeRelationshipList(followersTraversal, {
+        countChanged: profileCountsAtStart.followers !== profileCountsAtEnd.followers,
+        countDisagreed: countDisagreementAtStart.followers || countDisagreementAtEnd.followers,
+        expectedCount: profileCountsAtEnd.followers,
+      });
+      const following = finalizeRelationshipList(followingTraversal, {
+        countChanged: profileCountsAtStart.following !== profileCountsAtEnd.following,
+        countDisagreed: countDisagreementAtStart.following || countDisagreementAtEnd.following,
+        expectedCount: profileCountsAtEnd.following,
+      });
+      const expectedCounts = Object.freeze({
+        followers: profileCountsAtEnd.followers,
+        following: profileCountsAtEnd.following,
+      });
       const capturedAt = new Date(now()).toISOString();
       const result = Object.freeze({
         capturedAt,
@@ -3448,8 +4258,8 @@
       limits: {
         dailyActions: 100,
         dailyUnsends: 50,
-        minDelayMs: 4_000,
-        maxDelayMs: 11_000,
+        minDelayMs: 1_000,
+        maxDelayMs: 2_000,
       },
       ledger: { day: null, actions: 0, unsends: 0 },
       run: null,
@@ -3904,9 +4714,9 @@
       button, label, summary { cursor: pointer; }
       [hidden] { display: none !important; }
       .launcher { position: fixed; z-index: 2147482900; right: 16px; bottom: 16px; width: 46px; height: 46px; border: 1px solid var(--aio-line, #cfd5cc); border-radius: 14px; background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha), transparent); color: var(--aio-text, #172018); box-shadow: var(--aio-shadow-popover, 0 10px 32px rgba(0,0,0,.2)); font-weight: 850; }
-      .panel { animation: aio-in var(--aio-motion-fast, 120ms) var(--aio-ease, ease) both; position: fixed; z-index: 2147482900; top: 62px; right: 16px; width: min(var(--aio-width), calc(100vw - 24px)); height: min(var(--aio-height), calc(100dvh - 74px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--aio-line, #cfd5cc); border-radius: var(--aio-radius-lg, 14px); background: color-mix(in srgb, var(--aio-bg, #f7f8f5) var(--aio-alpha), transparent); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel, 0 20px 60px rgba(0,0,0,.24)); backdrop-filter: blur(10px) saturate(.95); -webkit-backdrop-filter: blur(10px) saturate(.95); font: var(--aio-text-md, 14px)/var(--aio-leading-md, 20px) var(--aio-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      .panel { animation: aio-in var(--aio-motion-fast, 120ms) var(--aio-ease, ease) both; position: fixed; z-index: 2147482900; top: 62px; right: 16px; width: min(var(--aio-width), calc(100vw - 24px)); height: min(var(--aio-height), calc(100dvh - 74px)); display: flex; flex-direction: column; overflow: hidden; container-type: inline-size; border: 1px solid var(--aio-line, #cfd5cc); border-radius: var(--aio-radius-lg, 14px); background: color-mix(in srgb, var(--aio-bg, #f7f8f5) var(--aio-alpha), transparent); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel, 0 20px 60px rgba(0,0,0,.24)); backdrop-filter: blur(10px) saturate(.95); -webkit-backdrop-filter: blur(10px) saturate(.95); font: var(--aio-text-md, 14px)/var(--aio-leading-md, 20px) var(--aio-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
       :host([data-floating="true"]) .panel { top: var(--aio-top); right: auto; left: var(--aio-left); }
-      .header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; align-items: center; min-height: 66px; padding: 10px; border-bottom: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); }
+      .header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 4px; align-items: center; height: 52px; min-height: 52px; padding: 4px 6px; border-bottom: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); }
       .handle, .icon { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: inherit; }
       .handle { cursor: grab; touch-action: none; font-size: 20px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
       .handle:hover { background: color-mix(in srgb, var(--aio-text, #000) 8%, transparent); }
@@ -3915,9 +4725,7 @@
       .header { cursor: grab; }
       .header:active { cursor: grabbing; }
       .header button, .header select, .header summary, .header input { cursor: default; }
-      .header h1 { margin: 0; overflow-wrap: break-word; word-break: normal; font-size: 17px; line-height: 1.15; }
-      .header p { margin: 2px 0 0; color: var(--aio-text-muted, #667067); font-size: 11px; }
-      .mode { display: inline-flex; margin-top: 4px; border: 1px solid var(--aio-warning, #8b6a20); border-radius: 999px; padding: 2px 7px; color: var(--aio-warning, #72520d); font-size: 10px; font-weight: 750; }
+      .header h1 { margin: 0; min-width: 0; overflow-wrap: normal; word-break: keep-all; font-size: 16px; line-height: 1.15; white-space: nowrap; }
       .tabs { display: grid; grid-template-columns: repeat(3,minmax(44px,1fr)); border-bottom: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg-sunken, #eef1ec) var(--aio-alpha-strong), transparent); }
       .tab { transition: background var(--aio-motion-fast, 120ms) var(--aio-ease, ease), color var(--aio-motion-fast, 120ms) var(--aio-ease, ease); min-height: 48px; border: 0; border-bottom: 3px solid transparent; padding: 6px 3px; background: transparent; color: var(--aio-text-muted, #616a61); font-size: 11px; font-weight: 700; }
       .tab[aria-selected="true"] { border-bottom-color: var(--aio-accent, #347844); color: var(--aio-text, #172018); background: color-mix(in srgb, var(--aio-bg-raised, #fff) 72%, transparent); }
@@ -3959,14 +4767,18 @@
       details.settings { position: relative; }
       details.settings > summary { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 9px; list-style: none; font-size: 18px; }
       details.settings > summary::-webkit-details-marker { display:none; }
+      details.settings:not([open]) > .settings-panel { display: none; }
       .settings-panel { position: absolute; z-index: 5; top: 48px; right: 0; width: min(250px, calc(100vw - 32px)); max-height: var(--aio-settings-max-height); overflow: auto; padding: 12px; border: 1px solid var(--aio-line, #cfd5cc); border-radius: 10px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) 97%, transparent); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel, 0 16px 46px rgba(0,0,0,.2)); }
       .range-row { display:grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items:center; }
-      .footer { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 54px 8px 12px; border-top: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); color: var(--aio-text-muted, #687068); font-size: 11px; }
+      .footer { height: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; padding: 3px 52px 3px 12px; border-top: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); color: var(--aio-text-muted, #687068); font-size: 10px; line-height: 1; }
+      .footer a { color: inherit; text-decoration: none; }
+      .footer a:hover, .footer a:focus-visible { color: var(--aio-text, #1b211c); text-decoration: underline; text-underline-offset: 2px; }
       .resize { position: absolute; right: 0; bottom: 0; display: block; width: 44px; height: 44px; z-index: 5; border: 0; border-radius: 10px 0 12px 0; padding: 0; background: transparent; color: var(--aio-text-muted, #687068); cursor: nwse-resize; touch-action: none; }
       .resize::before { content:""; position:absolute; right:9px; bottom:9px; width:12px; height:12px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; opacity:.9; }
       .resize:hover { background: color-mix(in srgb, var(--aio-accent-soft, #e8f3ec) 72%, transparent); color: var(--aio-text, #1b211c); }
       button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, .file:focus-within { outline: 3px solid var(--aio-focus, #168cff); outline-offset: 2px; }
       @media (max-width: 600px) { .panel { top:auto; right:0; bottom:0; left:0; width:100%; height:min(78dvh,720px); border-radius:14px 14px 0 0; } .handle,.resize { display:none; } .header { grid-template-columns:minmax(0,1fr) auto; } }
+      @container (max-width: 330px) { .header h1 { font-size:14px; } }
       @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; } }
       .step, .context, .review, .card { transition: border-color var(--aio-motion-base, 180ms) var(--aio-ease, ease); }
       .intro { animation: aio-in var(--aio-motion-slow, 240ms) var(--aio-ease, ease) both; }
@@ -3999,14 +4811,14 @@
       .field input[type="checkbox"] { min-width: 20px; min-height: 20px; }
       /* The checkbox itself stays small; its label carries the 44px target. */
       .field label { display: inline-flex; align-items: center; min-height: 44px; }
-      .context { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--aio-line, #d8ddd4); background: var(--aio-bg-sunken, #eef1ec); color: var(--aio-text, #1b211c); }
+      .context { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; min-height: 44px; max-height: 52px; align-items: center; overflow: hidden; padding: 5px 10px; border-bottom: 1px solid var(--aio-line, #d8ddd4); background: var(--aio-bg-sunken, #eef1ec); color: var(--aio-text, #1b211c); }
       .context-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--aio-text-muted, #687068); }
       .context[data-tone="ready"] .context-dot { background: var(--aio-success, #0a7d3f); }
       .context[data-tone="warning"] .context-dot { background: var(--aio-warning, #b26a00); }
       .context[data-tone="blocked"] .context-dot { background: var(--aio-danger, #8c1d1d); }
       .context-copy { min-width: 0; }
-      .context-copy strong { display: block; color: var(--aio-text, #1b211c) !important; font-size: 13px; }
-      .context-copy span { display: block; color: var(--aio-text-muted, #687068) !important; font-size: 12px; overflow-wrap: break-word; word-break: normal; }
+      .context-copy strong { display: block; overflow: hidden; color: var(--aio-text, #1b211c) !important; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+      .context-copy span { display: -webkit-box; overflow: hidden; color: var(--aio-text-muted, #687068) !important; font-size: 11px; overflow-wrap: break-word; word-break: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
       .context-cta { white-space: nowrap; }
       .intro { padding: 14px; border-bottom: 1px solid var(--aio-line, #d8ddd4); }
       .intro h2 { margin: 0 0 8px; font-size: 15px; }
@@ -4023,15 +4835,25 @@
       .button.primary:hover { filter: brightness(1.08); }
       .button.big { width: 100%; padding: 10px 12px; font-size: var(--system-14-font-size, 14px); line-height: var(--system-14-line-height, 18px); border-radius: 8px; }
       .button:disabled { cursor: not-allowed; filter: none; opacity: .48; }
+      .confirm-dialog { width: min(420px, calc(100vw - 28px)); max-height: min(620px, calc(100vh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--aio-bg-raised, #fff); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel); }
+      .confirm-dialog::backdrop { background: rgba(0, 0, 0, .62); }
+      .confirm-dialog form { display: grid; gap: 12px; margin: 0; padding: 18px; }
+      .confirm-dialog h2 { margin: 0; font-size: 18px; line-height: 24px; overflow-wrap: break-word; }
+      .confirm-dialog p { margin: 0; color: var(--aio-text-muted, #687068); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; white-space: pre-line; }
+      .confirm-dialog dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 13px; line-height: 19px; }
+      .confirm-dialog dt { color: var(--aio-text-muted, #687068); font-weight: 600; }
+      .confirm-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+      .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
+      .confirm-dialog .toolbar { justify-content: flex-end; }
       @keyframes aio-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
-      @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel { background:Canvas; } .panel,.card,.tool,.metric { border:2px solid CanvasText; } }
+      @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog { border:2px solid CanvasText; } }
     </style>
     <button class="launcher" type="button" data-action="open" aria-label="Open Insta Toolbox" aria-expanded="false">IT</button>
     <aside class="panel" aria-label="Insta Toolbox" hidden>
       <header class="header">
         <button class="handle" type="button" data-role="move" aria-label="Move toolbox; use arrow keys for precise movement" title="Drag to move">✥</button>
-        <div><h1>Insta Toolbox</h1><p>Instagram tools</p><span class="mode" data-role="mode-label">Tampermonkey · local controls</span></div>
+        <h1>Insta Toolbox</h1>
         <div style="display:flex">
           <details class="settings">
             <summary aria-label="Toolbox preferences">⚙</summary>
@@ -4040,16 +4862,16 @@
               <div class="field"><label for="aio-opacity">Surface transparency</label><div class="range-row"><input id="aio-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
               <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
               <button class="button quiet" type="button" data-action="reset-layout">Reset position and size</button>
-              <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="aio-limit-min">Min delay (seconds)</label><input id="aio-limit-min" type="number" min="2" max="600" data-role="limit-min"></div><div class="field"><label for="aio-limit-max">Max delay (seconds)</label><input id="aio-limit-max" type="number" min="2" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
+              <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="aio-limit-min">Min delay (seconds)</label><input id="aio-limit-min" type="number" min="1" max="600" data-role="limit-min"></div><div class="field"><label for="aio-limit-max">Max delay (seconds)</label><input id="aio-limit-max" type="number" min="1" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
               <p class="lead">Drag the header handle or lower corner. Arrow keys work on both.</p>
             </div>
           </details>
           <button class="icon" type="button" data-action="close" aria-label="Collapse Insta Toolbox">×</button>
         </div>
       </header>
-      <div class="context" data-role="context" role="status" aria-live="polite">
+      <div class="context" data-role="context">
         <span class="context-dot" data-role="context-dot"></span>
-        <div class="context-copy"><strong data-role="context-title">Checking this page…</strong><span data-role="context-detail"></span></div>
+        <div class="context-copy" role="status" aria-live="polite" aria-atomic="true"><strong data-role="context-title">Checking this page…</strong> <span data-role="context-detail"></span></div>
         <button class="button quiet context-cta" type="button" data-action="context-cta" data-role="context-cta" hidden></button>
       </div>
       <section class="intro" data-role="intro" aria-labelledby="aio-intro-title" hidden>
@@ -4072,22 +4894,32 @@
         <section id="aio-panel-checker" class="view" role="tabpanel" aria-labelledby="aio-tab-checker" data-panel="checker" hidden><section class="card" aria-labelledby="aio-checker-account-title"><h2 id="aio-checker-account-title">Check mutuals</h2><p>Read-only. Uses the Instagram session in this tab.</p><div class="field"><label for="aio-checker-username">Instagram username</label><input id="aio-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-role="checker-username"></div><div class="toolbar"><button class="button primary" type="button" data-action="check-account-relationships" data-role="checker-run">Check mutuals</button></div></section>
           <div class="scan-progress" data-role="scan-progress" hidden><div class="run-bar"><span data-role="scan-fill"></span></div><p class="lead" data-role="scan-detail"></p></div>
           <div class="field"><label for="aio-filter">Filter results</label><input id="aio-filter" type="search" placeholder="Search a username" data-role="result-filter"></div>
-          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Advanced: list fallback and export</summary><p class="lead">If the account check fails, open a Following or Followers dialog and scan that list. A fallback scan clears prior authenticated results.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="aio-list-type">Raw list</label><select id="aio-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
+          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Advanced: list-dialog fallback and export</summary><p class="lead">If the account check fails, open a Following or Followers dialog and scan that list. A fallback scan clears prior authenticated results.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="aio-list-type">Raw list</label><select id="aio-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
         <section id="aio-panel-account" class="view" role="tabpanel" aria-labelledby="aio-tab-account" data-panel="account" hidden><p class="lead"><strong>Follow / Unfollow.</strong> Choose the action first, then review a finite compatible target list. Nothing clicks during review.</p><div class="card" data-role="queue-current"></div>
           <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Inspect exact profile</button><button class="button quiet" type="button" data-action="open-profile">Open exact profile</button></div><details class="settings-inline"><summary>Advanced: queue state and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
           <div class="field"><label for="aio-bot-action">What do you want to do?</label><select id="aio-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
           <div class="field"><label for="aio-bot-source">Choose compatible targets</label><select id="aio-bot-source" data-role="bot-source"><option value="current-profile">Current exact profile</option><option value="i-do-not-follow-back">People who follow you that you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Compatible queue items</option></select></div>
           <div class="field" data-role="bot-count-field"><label for="aio-bot-count">How many this run</label><input id="aio-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
           <p class="lead" data-role="account-run-summary">Choose compatible targets, then review the exact accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          <p class="notice">To grow from someone else's audience, open their profile, scan their Followers in the checker, then run with <strong>Last scanned Followers list</strong>. Accounts you already follow are skipped automatically. The run stops itself on any rate limit, security check, or block.</p></section>
-        <section id="aio-panel-messages" class="view" role="tabpanel" aria-labelledby="aio-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend.</strong> One button checks this conversation when needed, then asks once before removing anything.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
+          <p class="notice">To use a scanned list, choose <strong>Scanned Followers</strong> or <strong>Scanned Following</strong>. Already-correct accounts are skipped. The run stops on a rate limit, security check, or block.</p></section>
+        <section id="aio-panel-messages" class="view" role="tabpanel" aria-labelledby="aio-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend.</strong> Remove messages you sent from this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
-          <details class="settings-inline"><summary>Advanced message options</summary><div data-role="unsend-plan"><div class="field"><label for="aio-unsend-scope">Scope</label><select id="aio-unsend-scope" data-role="unsend-scope"><option value="all">All eligible sent messages</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="field" data-role="unsend-count-field"><label for="aio-unsend-count">Number of messages</label><input id="aio-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation only</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">No-click exact check</button></div></details><div class="card" data-role="dm-result"></div><ul class="list" data-role="message-list"></ul><p class="notice">Only messages you sent are eligible. The exact thread, scope, finite count, digest, and expiry are revalidated before the first message menu opens.</p></section>
+          <details class="settings-inline"><summary>Advanced message options</summary><div data-role="unsend-plan"><div class="field"><label for="aio-unsend-scope">Scope</label><select id="aio-unsend-scope" data-role="unsend-scope"><option value="all">All messages you sent</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="field" data-role="unsend-count-field"><label for="aio-unsend-count">Number of messages</label><input id="aio-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">No-click exact check</button></div></details><div class="card" data-role="dm-result"></div><ul class="list" data-role="message-list"></ul><p class="notice">Only your messages are touched. The run stops on the wrong thread, an unclear menu, or any Instagram warning.</p></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
-      <footer class="footer" role="status" aria-live="polite"><span data-role="status">Ready. No Instagram control has been used.</span><strong>Local only</strong></footer>
+      <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
       <button class="resize" type="button" data-role="resize" aria-label="Resize toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
-    </aside>`;
+    </aside>
+    <dialog class="confirm-dialog" data-role="action-confirmation" aria-labelledby="aio-confirm-title" aria-describedby="aio-confirm-message aio-confirm-detail">
+      <form>
+        <h2 id="aio-confirm-title" data-role="confirm-title">Confirm action</h2>
+        <p id="aio-confirm-message" data-role="confirm-message"></p>
+        <dl data-role="confirm-facts" hidden></dl>
+        <ul data-role="confirm-items" aria-label="Reviewed targets" hidden></ul>
+        <p id="aio-confirm-detail" data-role="confirm-detail"></p>
+        <div class="toolbar"><button class="button quiet" type="button" data-action="confirm-cancel" data-role="confirm-cancel">Cancel</button><button class="button danger" type="button" data-action="confirm-accept" data-role="confirm-accept">Confirm</button></div>
+      </form>
+    </dialog>`;
 
   const query = (selector) => shadow.querySelector(selector);
   const queryAll = (selector) => [...shadow.querySelectorAll(selector)];
@@ -4095,7 +4927,35 @@
     const element = query(`[data-role="${role}"]`);
     if (element) element.textContent = String(value ?? '');
   };
-  const status = (message) => setText('status', message);
+  let contextStatus = null;
+  let contextStatusTimer = null;
+  const statusTone = (message) => {
+    const text = safeText(message).toLocaleLowerCase();
+    if (/blocked|could not|disabled|error|expired|failed|rate limit|security check|signed out|unclear|unavailable|wrong thread/.test(text)) return 'blocked';
+    if (/captured|checked|complete|detected|done|finished|imported|loaded|marked|ready|reviewed|saved|scanned|unsent/.test(text)) return 'ready';
+    return 'warning';
+  };
+  const status = (message, tone = '') => {
+    const text = safeText(message);
+    contextStatus = text ? { message: text, tone: tone || statusTone(text) } : null;
+    clearTimeout(contextStatusTimer);
+    contextStatusTimer = null;
+    if (contextStatus?.tone !== 'blocked') {
+      contextStatusTimer = setTimeout(() => {
+        contextStatus = null;
+        renderContext();
+      }, 10_000);
+    }
+    renderContext();
+  };
+
+  const confirmationController = globalThis.InstaToolboxActionConfirmation?.createController({
+    root: shadow,
+    attribute: 'data-role',
+    status,
+    unavailableTone: 'blocked',
+  });
+  const confirmRun = (request) => confirmationController?.confirm(request) ?? Promise.resolve(null);
 
   function panelSize() {
     return {
@@ -4151,17 +5011,6 @@
     }
     for (const view of queryAll('[data-panel]')) view.hidden = view.dataset.panel !== preferences.view;
 
-    const modeLabel = query('[data-role="mode-label"]');
-    if (modeLabel) {
-      const dmActive = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
-      modeLabel.textContent = state.run?.status === 'running'
-        ? 'Userscript mode · finite account run active'
-        : dmActive
-          ? dmRunnerSnapshot.operation === 'check'
-            ? 'Userscript mode · checking this conversation'
-            : 'Userscript mode · finite Unsend run active'
-          : 'Userscript mode · local controls';
-    }
   }
 
   function renderNow() {
@@ -4174,7 +5023,7 @@
     const tools = [
       ['checker', 'Mutual Checker', `${formatCount(verifiedFollowers.length)} followers · ${formatCount(verifiedFollowing.length)} following · ${formatCount(comparison.notFollowingMeBack.length)} not following back`, 'read only'],
       ['account', 'Follow / Unfollow', item ? `${item.action} @${item.account.username} is next` : 'Choose an action and compatible targets', 'review then confirm'],
-      ['messages', 'DM Unsend', dmThreadPreview ? `${dmThreadPreview.eligibleCount} eligible in this thread` : 'Checks this conversation when needed', 'scan then confirm'],
+      ['messages', 'DM Unsend', dmThreadPreview ? `At least ${dmThreadPreview.detectedCount || 0} detected in this thread` : 'Confirm the open conversation once', 'confirm then stop'],
     ];
     for (const [view, title, detail, badge] of tools) {
       const button = document.createElement('button');
@@ -4210,7 +5059,7 @@
     const runButton = query('[data-role="checker-run"]');
     if (runButton) {
       runButton.textContent = relationshipController
-        ? 'Stop follower check'
+        ? 'Stop mutual check'
         : 'Check Followers + Following';
       runButton.classList.toggle('danger', Boolean(relationshipController));
       runButton.classList.toggle('primary', !relationshipController);
@@ -4476,7 +5325,7 @@
       ? { ...candidate, status: statusValue, companionUpdatedAt: nowIso() }
       : candidate);
     saveState();
-    status(`Marked @${item.account.username} ${statusValue} in userscript-local state.`);
+    status(`Saved @${item.account.username} as ${statusValue}.`);
   }
 
   // --- Finite confirmed actions ------------------------------------------
@@ -4507,8 +5356,8 @@
   }
 
   const LIMIT_BOUNDS = {
-    minDelayMs: [1_500, 600_000],
-    maxDelayMs: [1_500, 900_000],
+    minDelayMs: [1_000, 600_000],
+    maxDelayMs: [1_000, 900_000],
   };
   const REST_EVERY = 20;
   const REST_MS = 90_000;
@@ -4533,7 +5382,7 @@
       nextAt: null,
       queue: [],
     });
-    status('The finite run expired. It stopped before another Instagram action.');
+    status('This run expired. No further Instagram action was made.');
   }
 
   function clampNumber(value, [minimum, maximum], fallback) {
@@ -4545,8 +5394,8 @@
   function limits() {
     const stored = state.limits || {};
     return {
-      minDelayMs: clampNumber(stored.minDelayMs, LIMIT_BOUNDS.minDelayMs, 4_000),
-      maxDelayMs: clampNumber(stored.maxDelayMs, LIMIT_BOUNDS.maxDelayMs, 11_000),
+      minDelayMs: clampNumber(stored.minDelayMs, LIMIT_BOUNDS.minDelayMs, 1_000),
+      maxDelayMs: clampNumber(stored.maxDelayMs, LIMIT_BOUNDS.maxDelayMs, 2_000),
     };
   }
 
@@ -4563,31 +5412,56 @@
     saveState();
   }
 
+  let activeUnsendCapability = null;
+
   function reserveUnsendPlan(plan) {
+    const finite = plan?.scope !== 'all';
     const count = Number(plan?.limit);
     const reviewedDigest = String(plan?.reviewedDigest || '');
     if (
-      !Number.isInteger(count)
-      || count < 1
+      plan?.version !== 2
+      || (finite && (!Number.isInteger(count) || count < 1))
       || !/^[0-9a-f]{8}$/.test(reviewedDigest)
       || Number(plan?.expiresAt) <= Date.now()
     ) return { ok: false, reason: 'The reviewed thread plan expired.' };
+    if (activeUnsendCapability?.reviewedDigest === reviewedDigest) {
+      return { ok: false, reason: 'This reviewed Unsend plan was already reserved.' };
+    }
+    activeUnsendCapability = {
+      expiresAt: Number(plan.expiresAt),
+      reviewedDigest,
+      threadId: String(plan.threadId || ''),
+      recordedProcessed: 0,
+    };
+    return {
+      ok: true,
+      minDelayMs: 1_000,
+      maxDelayMs: 2_000,
+    };
+  }
+
+  function recordVerifiedUnsend(plan, outcome) {
+    const removed = Math.max(0, Math.floor(Number(outcome?.processed) || 0));
+    const recorded = Math.max(0, Math.floor(Number(activeUnsendCapability?.recordedProcessed) || 0));
+    const increment = Math.max(0, removed - recorded);
+    if (!increment) return;
     const current = state.ledger?.day === today()
       ? state.ledger
       : { day: today(), actions: 0, unsends: 0 };
-    if (current.lastUnsendPlanDigest === reviewedDigest) {
-      return { ok: false, reason: 'This reviewed Unsend plan was already reserved.' };
-    }
-    current.unsends = Number(current.unsends || 0) + count;
-    current.lastUnsendPlanDigest = reviewedDigest;
+    current.unsends = Number(current.unsends || 0) + increment;
+    current.lastUnsendPlanDigest = String(plan?.reviewedDigest || current.lastUnsendPlanDigest || '');
+    current.lastUnsendPlanResult = safeText(outcome?.status, 'running');
+    current.lastUnsendPlanProcessed = removed;
     state.ledger = current;
+    if (activeUnsendCapability) activeUnsendCapability.recordedProcessed = removed;
     saveState();
-    const bounds = limits();
-    return {
-      ok: true,
-      minDelayMs: bounds.minDelayMs,
-      maxDelayMs: Math.max(bounds.minDelayMs, bounds.maxDelayMs),
-    };
+  }
+
+  function finalizeUnsendOutcome(plan, outcome) {
+    recordVerifiedUnsend(plan, outcome);
+    if (!Math.max(0, Math.floor(Number(outcome?.processed) || 0))) return;
+    state.ledger.lastUnsendPlanResult = safeText(outcome?.status, 'stopped');
+    saveState();
   }
 
   function sleep(ms) {
@@ -4716,7 +5590,7 @@
 
   async function startAccountRun({ action, usernames }) {
     if (!managerTabStorageAvailable) {
-      status('This userscript manager does not provide isolated tab storage, so account batches stay disabled. Scans and no-click checks still work.');
+      status('This userscript manager cannot keep a run active while opening profiles. Account batches are unavailable; scans and no-click checks still work.');
       return;
     }
     if (state.run?.status === 'running') {
@@ -4746,12 +5620,6 @@
     });
     await continueAccountRun();
   }
-
-  function confirmRun(message) {
-    // eslint-disable-next-line no-alert
-    return globalThis.confirm(message);
-  }
-
 
   // --- Section 2: current Instagram context -------------------------------
   //
@@ -4806,12 +5674,10 @@
 
     const path = location.pathname.toLowerCase();
     if (path.startsWith('/direct/t/')) {
-      const found = (state.sentDms || []).length;
       return {
         tone: 'ready',
         title: 'Conversation open',
-        detail: found ? `${found} of your sent messages found here.` : 'Check it to see how many of your messages can be removed.',
-        cta: found ? null : { label: 'Check conversation', action: 'scan-sent' },
+        detail: 'DM Unsend is ready for this conversation.',
         view: 'messages',
       };
     }
@@ -4848,9 +5714,10 @@
     const context = currentContext();
     const strip = query('[data-role="context"]');
     if (!strip) return;
-    strip.dataset.tone = context.tone;
+    const blockedContext = context.tone === 'blocked';
+    strip.dataset.tone = blockedContext ? 'blocked' : contextStatus?.tone || context.tone;
     setText('context-title', context.title);
-    setText('context-detail', context.detail);
+    setText('context-detail', blockedContext ? context.detail : contextStatus?.message || context.detail);
     const cta = query('[data-role="context-cta"]');
     if (cta) {
       const show = Boolean(context.cta) && state.run?.status !== 'running';
@@ -4921,6 +5788,22 @@
         : `Scanning ${listType}… ${formatCount(found)} found so far.`);
   }
 
+  function reconciliationScanDetail(progress) {
+    const label = progress?.listType === 'followers' ? 'Followers' : 'Following';
+    return `Retrying ${label}: ${formatCount(progress?.passFound)} checked; ${formatCount(progress?.found)} of ${formatCount(progress?.expectedCount)} unique found.`;
+  }
+
+  function completedRelationshipScanDetail(result) {
+    const complete = result?.complete?.followers === true && result?.complete?.following === true;
+    return `Checked ${formatCount(result?.followers?.length)} followers and ${formatCount(result?.following?.length)} following — ${complete ? 'complete' : 'partial'}.`;
+  }
+
+  function failedRelationshipScanDetail(error) {
+    if (error?.code === 'stopped') return 'Mutual check stopped. Saved comparison unchanged.';
+    const message = safeText(error?.message, 'Instagram did not return readable relationship data.');
+    return `Mutual check failed: ${message} Saved comparison unchanged.`;
+  }
+
   async function scanInto(listType) {
     const select = query('[data-role="list-type"]');
     if (select) select.value = listType;
@@ -4934,7 +5817,7 @@
   async function checkAccountRelationships() {
     if (relationshipController) {
       relationshipController.abort();
-      status('Stopping the follower check. Saved comparison data was not changed.');
+      status('Stopping the mutual check. Saved comparison data was not changed.');
       return;
     }
     if (typeof engine?.fetchFollowerComparison !== 'function') {
@@ -4967,6 +5850,14 @@
             setText('scan-detail', `Finding the exact @${username} account…`);
             return;
           }
+          if (progress.phase === 'verifying-profile') {
+            setText('scan-detail', `Reading the exact @${username} profile totals…`);
+            return;
+          }
+          if (progress.phase === 'revalidating-profile') {
+            setText('scan-detail', `Confirming @${username}'s profile totals did not change…`);
+            return;
+          }
           if (progress.phase === 'retrying') {
             const label = progress.listType || 'account lookup';
             setText(
@@ -4976,12 +5867,11 @@
             return;
           }
           if (progress.phase === 'reconciling') {
-            const label = progress.listType === 'followers' ? 'Followers' : 'Following';
+            showScanProgress(progress.listType, progress.found, false);
             setText(
               'scan-detail',
-              `Retrying ${label}: ${(progress.passFound || 0).toLocaleString('en-US')} checked; ${progress.found.toLocaleString('en-US')} of ${progress.expectedCount.toLocaleString('en-US')} unique found.`,
+              reconciliationScanDetail(progress),
             );
-            showScanProgress(progress.listType, progress.found, false);
             return;
           }
           if (progress.listType) showScanProgress(progress.listType, progress.found, false);
@@ -5005,18 +5895,34 @@
         state.capture = previousCapture;
         throw error;
       }
-      const mismatch = result.reasons.followers === 'count-mismatch'
-        ? ` Instagram returned ${result.followers.length.toLocaleString('en-US')} accessible followers; the profile shows ${result.expectedCounts.followers.toLocaleString('en-US')}. ${(result.expectedCounts.followers - result.followers.length).toLocaleString('en-US')} accounts were not returned.`
-        : result.reasons.following === 'count-mismatch'
-          ? ` Instagram returned ${result.following.length.toLocaleString('en-US')} accessible following; the profile shows ${result.expectedCounts.following.toLocaleString('en-US')}. ${(result.expectedCounts.following - result.following.length).toLocaleString('en-US')} accounts were not returned.`
-          : ' A bounded read limit was reached.';
+      const partialDetails = [];
+      for (const [listType, accounts] of [
+        ['followers', result.followers],
+        ['following', result.following],
+      ]) {
+        const label = listType === 'followers' ? 'Followers' : 'Following';
+        const reason = result.reasons[listType];
+        const expected = result.expectedCounts[listType];
+        if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
+          const difference = expected - accounts.length;
+          partialDetails.push(difference > 0
+            ? `${label}: Instagram returned ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')}; ${difference.toLocaleString('en-US')} were not returned.`
+            : `${label}: the API returned ${accounts.length.toLocaleString('en-US')} unique accounts while the profile shows ${expected.toLocaleString('en-US')}.`);
+        } else if (reason === 'count-changed') {
+          partialDetails.push(`${label}: the profile total changed during the check.`);
+        } else if (reason === 'profile-count-disagreement') {
+          partialDetails.push(`${label}: Instagram's profile counters disagreed.`);
+        }
+      }
+      const mismatch = ` ${partialDetails.join(' ') || 'A bounded read limit was reached.'}`;
       status(
         `Checked @${result.username}: ${result.followers.length.toLocaleString('en-US')} followers and ${result.following.length.toLocaleString('en-US')} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
       );
+      setText('scan-detail', completedRelationshipScanDetail(result));
     } catch (error) {
-      status(error?.code === 'stopped'
-        ? 'Follower check stopped. The previous saved comparison is unchanged.'
-        : `Follower check stopped: ${error?.message || 'Instagram did not return readable relationship data.'}`);
+      const detail = failedRelationshipScanDetail(error);
+      setText('scan-detail', detail);
+      status(detail);
     } finally {
       if (relationshipController === controller) relationshipController = null;
       renderAll();
@@ -5050,7 +5956,7 @@
     // count and a surprising one.
     setText(
       'review-skips',
-      `${removed} duplicate or already-correct target${removed === 1 ? '' : 's'} removed; ${omitted} valid target${omitted === 1 ? '' : 's'} remain outside this finite run; ${skippedReasons.reduce((total, entry) => total + entry.count, 0)} protected or incompatible target${skippedReasons.reduce((total, entry) => total + entry.count, 0) === 1 ? '' : 's'} skipped. Every profile is rechecked before action.`,
+      `Duplicates or already-correct targets removed: ${removed}. Outside this run: ${omitted}. Protected or incompatible targets skipped: ${skippedReasons.reduce((total, entry) => total + entry.count, 0)}. Every profile is rechecked before action.`,
     );
   }
 
@@ -5171,7 +6077,7 @@
       button.textContent = `Review ${plan.requested} ${label} target${plan.requested === 1 ? '' : 's'}`;
       button.classList.add('primary');
       button.classList.remove('danger');
-      setText('account-run-summary', 'Choose a source, action, and bounded amount, then review the exact targets.');
+      setText('account-run-summary', 'Choose a source, action, and count, then review the exact targets.');
     }
   }
 
@@ -5214,20 +6120,18 @@
   function renderDmSummary() {
     const summary = query('[data-role="dm-summary"]');
     const primary = query('[data-role="unsend-primary"]');
-    const found = Number(dmThreadPreview?.eligibleCount) || 0;
+    const found = Number(dmThreadPreview?.detectedCount ?? dmThreadPreview?.eligibleCount) || 0;
     const checked = dmThreadPreview?.ready === true
       && dmThreadPreview.threadId === currentDirectThreadId();
     const active = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
     if (summary) {
       summary.hidden = !checked;
       setText('dm-summary-title', found
-        ? `${found} sent message${found === 1 ? '' : 's'} found`
+        ? `At least ${found} sent message${found === 1 ? '' : 's'} detected`
         : 'No sent messages found');
       setText('dm-summary-detail', !found
         ? 'No messages in this thread were identified as yours.'
-        : dmThreadPreview?.complete
-          ? 'Full conversation checked.'
-          : 'The check ended before the full conversation loaded.');
+        : 'Read-only estimate. Instagram may load more while Unsend runs.');
     }
     // Never hidden. Progressive disclosure applies to secondary controls, not
     // to the action the tool exists for.
@@ -5247,52 +6151,82 @@
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
     status('Checking this conversation for messages you sent. Nothing will be removed.');
     const outcome = await dmRunner.inspectAll();
-    dmThreadPreview = outcome?.ready && outcome.complete === true ? outcome : null;
+    dmThreadPreview = outcome?.ready ? outcome : null;
     renderAll();
-    status(outcome?.ready && outcome.complete === true
-      ? `${outcome.eligibleCount} sent message${outcome.eligibleCount === 1 ? '' : 's'} found.`
+    const detected = Number(outcome?.detectedCount ?? outcome?.eligibleCount) || 0;
+    status(outcome?.ready
+      ? detected > 0
+        ? `Detected at least ${detected} sent message${detected === 1 ? '' : 's'}. No menus opened.`
+        : 'No sent messages found. No menus opened.'
       : outcome?.reason || 'Could not check this conversation.');
     return outcome;
   }
 
   async function runDmUnsend() {
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
+    if (confirmationController?.isPending()) return;
     const snapshot = dmRunner.snapshot();
     if (snapshot.canStop || ['preparing', 'running', 'waiting', 'stopping'].includes(snapshot.status)) {
       dmRunner.stop();
       return;
     }
-    let preview = dmThreadPreview?.threadId === currentDirectThreadId() ? dmThreadPreview : null;
-    if (!preview?.ready || preview.complete !== true) {
-      const scanned = await scanSentConversation();
-      if (!scanned?.ready || scanned.complete !== true) return;
-      preview = scanned;
-    }
-    if (preview.eligibleCount < 1) {
-      status('No sent messages found.');
-      return;
-    }
+    const inspection = dmRunner.inspect();
+    if (!inspection?.ready) throw new Error(inspection?.reason || 'Open a conversation first.');
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
     const requested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
-    const limit = scope === 'all'
-      ? preview.eligibleCount
-      : Math.min(preview.eligibleCount, Math.max(1, requested));
+    const limit = scope === 'all' ? null : Math.max(1, requested);
     const plan = dmRunner.createPlan({
-      threadId: preview.threadId,
+      threadId: inspection.threadId,
       scope,
       limit,
-      eligibleCount: preview.eligibleCount,
+      detectedCount: Number(dmThreadPreview?.detectedCount ?? dmThreadPreview?.eligibleCount) || null,
       expiresAt: Date.now() + DM_PLAN_CAPABILITY_MS,
     });
-    if (!plan) throw new Error('The reviewed Unsend plan could not be created. Check the conversation again.');
+    if (!plan) throw new Error('The Unsend plan could not be created. Keep this conversation open and try again.');
     const scopeLabel = scope === 'all'
-      ? `all ${limit} eligible sent message${limit === 1 ? '' : 's'}`
-      : `${scope} ${limit} sent message${limit === 1 ? '' : 's'}`;
-    if (!confirmRun(
-      `Permanently unsend ${scopeLabel} from thread ${plan.threadId}?\n\n`
-      + `The count is checked again before message menus open.`,
-    )) {
-      status('Canceled. Scan kept.');
+      ? 'every message you sent'
+      : `the ${scope} ${limit} message${limit === 1 ? '' : 's'} you sent`;
+    const confirmation = await confirmRun({
+      title: 'Unsend DMs?',
+      message: `Permanently unsend ${scopeLabel} in this conversation?`,
+      detail: 'This cannot be undone. Stop stays available while it runs.',
+      confirmLabel: scope === 'all' ? 'Unsend all my messages' : `Unsend ${limit} message${limit === 1 ? '' : 's'}`,
+      facts: [
+        { label: 'Action', value: 'Permanently unsend messages' },
+        { label: 'Conversation', value: `Thread ${plan.threadId}` },
+        { label: 'Scope', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
+      ],
+      binding: {
+        action: 'unsend',
+        expiresAt: plan.expiresAt,
+        limit: plan.limit,
+        reviewedDigest: plan.reviewedDigest,
+        scope: plan.scope,
+        threadId: plan.threadId,
+      },
+    });
+    if (!confirmation) {
+      status('Canceled. Nothing was removed.');
+      return;
+    }
+    const confirmedInspection = dmRunner.inspect();
+    const confirmedScope = query('[data-role="unsend-scope"]')?.value || 'all';
+    const confirmedRequested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
+    const confirmedLimit = confirmedScope === 'all' ? null : Math.max(1, confirmedRequested);
+    if (
+      !confirmedInspection?.ready
+      || confirmedInspection.threadId !== plan.threadId
+      || confirmation.action !== 'unsend'
+      || confirmation.threadId !== plan.threadId
+      || confirmation.scope !== plan.scope
+      || confirmation.limit !== plan.limit
+      || confirmation.reviewedDigest !== plan.reviewedDigest
+      || Number(confirmation.expiresAt) !== plan.expiresAt
+      || plan.expiresAt <= Date.now()
+      || confirmedScope !== plan.scope
+      || confirmedLimit !== plan.limit
+    ) {
+      status('The conversation or Unsend scope changed after review. Nothing was removed.', 'blocked');
       return;
     }
     const reservation = reserveUnsendPlan(plan);
@@ -5301,11 +6235,20 @@
       return;
     }
     dmThreadPreview = null;
-    await dmRunner.start({
-      plan,
-      minDelayMs: reservation.minDelayMs,
-      maxDelayMs: reservation.maxDelayMs,
-    });
+    try {
+      const outcome = await dmRunner.start({
+        plan,
+        minDelayMs: reservation.minDelayMs,
+        maxDelayMs: reservation.maxDelayMs,
+        onVerifiedRemoval: (progress) => recordVerifiedUnsend(plan, {
+          ...progress,
+          status: 'running',
+        }),
+      });
+      finalizeUnsendOutcome(plan, outcome);
+    } finally {
+      activeUnsendCapability = null;
+    }
   }
 
 
@@ -5342,6 +6285,7 @@
   }
 
   const actions = {
+    'confirm-cancel': () => confirmationController?.cancel(),
     'check-account-relationships': () => checkAccountRelationships(),
     'scan-following': () => scanInto('following'),
     'scan-followers': () => scanInto('followers'),
@@ -5361,7 +6305,10 @@
     },
     'review-accounts': () => reviewAccountRun(),
     open: () => savePreferences({ open: true }),
-    close: () => savePreferences({ open: false }),
+    close: () => {
+      confirmationController?.cancel();
+      savePreferences({ open: false });
+    },
     'stop-run': () => {
       if (dmRunner?.stop?.()) {
         status('Stopping DM Unsend after the current step.');
@@ -5420,18 +6367,53 @@
     },
     'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
+      if (confirmationController?.isPending()) return;
       const current = accountRunPlan();
       if (!accountRunDraft || accountRunDraft.signature !== current.signature) {
         clearAccountRunDraft();
         status('Targets changed. Review the run again before starting.');
         return;
       }
-      const targetList = accountRunDraft.items.map((item) => `@${item.username}`).join('\n');
-      if (!confirmRun(
-        `${accountRunDraft.action === 'follow' ? 'Follow' : 'Unfollow'} ${accountRunDraft.items.length} reviewed account${accountRunDraft.items.length === 1 ? '' : 's'}?\n\n`
-        + `${targetList}\n\nThis tab will move between these exact profiles. Each account is revalidated before the action.`,
-      )) return;
-      const approved = accountRunDraft;
+      const reviewed = accountRunDraft;
+      const actionLabel = reviewed.action === 'follow' ? 'Follow' : 'Unfollow';
+      const expiresAt = Date.now() + RUN_CAPABILITY_MS;
+      const confirmation = await confirmRun({
+        title: `${actionLabel} ${reviewed.items.length} reviewed account${reviewed.items.length === 1 ? '' : 's'}?`,
+        message: 'Review the exact accounts before starting.',
+        detail: 'This tab will move between these exact profiles. Each account is revalidated before the action.',
+        confirmLabel: `Start ${actionLabel}`,
+        items: reviewed.items.map((item) => `@${item.username}`),
+        facts: [
+          { label: 'Action', value: actionLabel },
+          { label: 'Accounts', value: String(reviewed.items.length) },
+        ],
+        binding: {
+          action: reviewed.action,
+          count: reviewed.items.length,
+          expiresAt,
+          targetDigest: reviewed.signature,
+        },
+      });
+      if (!confirmation) {
+        status('Canceled. The reviewed targets were kept. Nothing was changed.');
+        return;
+      }
+      const refreshed = accountRunPlan();
+      if (
+        !accountRunDraft
+        || accountRunDraft.signature !== reviewed.signature
+        || refreshed.signature !== reviewed.signature
+        || confirmation.action !== reviewed.action
+        || confirmation.count !== reviewed.items.length
+        || confirmation.targetDigest !== reviewed.signature
+        || Number(confirmation.expiresAt) !== expiresAt
+        || expiresAt <= Date.now()
+      ) {
+        clearAccountRunDraft();
+        status('Targets changed after review. Review the run again. Nothing was changed.');
+        return;
+      }
+      const approved = reviewed;
       clearAccountRunDraft();
       await startAccountRun({ action: approved.action, usernames: approved.items.map((item) => item.username) });
     },
@@ -5439,8 +6421,8 @@
     'save-limits': () => {
       state.limits = {
         ...(state.limits || {}),
-        minDelayMs: clampNumber(Number(query('[data-role="limit-min"]')?.value) * 1000, LIMIT_BOUNDS.minDelayMs, 4_000),
-        maxDelayMs: clampNumber(Number(query('[data-role="limit-max"]')?.value) * 1000, LIMIT_BOUNDS.maxDelayMs, 11_000),
+        minDelayMs: clampNumber(Number(query('[data-role="limit-min"]')?.value) * 1000, LIMIT_BOUNDS.minDelayMs, 1_000),
+        maxDelayMs: clampNumber(Number(query('[data-role="limit-max"]')?.value) * 1000, LIMIT_BOUNDS.maxDelayMs, 2_000),
       };
       saveState();
       status('Pacing saved.');
@@ -5696,6 +6678,7 @@
 
   function toggleToolboxShortcut(event) {
     if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey || event.key.toLowerCase() !== 'i') return;
+    if (preferences.open) confirmationController?.cancel();
     savePreferences({ open: !preferences.open });
     event.preventDefault();
   }
@@ -5706,6 +6689,8 @@
     const currentHref = location.href;
     if (currentHref !== lastLocationHref) {
       lastLocationHref = currentHref;
+      confirmationController?.cancel();
+      contextStatus = null;
       dmThreadPreview = null;
       state.messageEvidence = null;
       state.dmCheck = null;
@@ -5723,6 +6708,7 @@
     if (!document.getElementById(EXTENSION_ROOT_ID)) return;
     duplicateObserver.disconnect();
     window.removeEventListener('keydown', toggleToolboxShortcut, true);
+    confirmationController?.destroy();
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });

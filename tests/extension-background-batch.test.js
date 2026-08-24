@@ -28,7 +28,7 @@ async function loadBackground({ profileResponses, performResponses, stored }) {
 
   globalThis.chrome = {
     runtime: {
-      getManifest: () => ({ version: '2.0.0' }),
+      getManifest: () => ({ version: '2.0.2' }),
       onMessage: { addListener(listener) { runtimeListener = listener; } },
     },
     storage: {
@@ -166,29 +166,97 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
     tab: { id: 7, url: 'https://www.instagram.com/direct/t/thread-123/' },
   };
   const plan = {
+    version: 2,
     threadId: 'thread-123',
     scope: 'oldest',
     limit: 2,
-    eligibleCount: 8,
+    detectedCount: 8,
     reviewedDigest: 'a1b2c3d4',
     expiresAt: Date.now() + 60_000,
   };
   try {
     const reserved = await deliver({ kind: 'insta-aio-reserve-thread-unsend', plan }, threadSender);
     assert.equal(reserved.error, undefined);
-    assert.deepEqual(reserved.pacing, { minDelayMs: 1_500, maxDelayMs: 2_200 });
-    assert.equal(stored.threadUnsendLedger.length, 1);
-    assert.equal(stored.threadUnsendLedger[0].count, 2);
-    assert.equal(stored.threadUnsendLedger[0].status, 'reserved');
+    assert.deepEqual(reserved.pacing, { minDelayMs: 1_000, maxDelayMs: 2_000 });
+    assert.equal(stored.threadUnsendLedger.length, 0, 'capability is memory-only before a verified removal');
 
     const duplicate = await deliver({ kind: 'insta-aio-reserve-thread-unsend', plan }, threadSender);
     assert.equal(duplicate.error, 'thread-unsend-plan-already-reserved');
 
+    const checkpoint = await deliver({
+      kind: 'insta-aio-checkpoint-thread-unsend',
+      reservationId: reserved.reservation.id,
+      reviewedDigest: plan.reviewedDigest,
+      threadId: plan.threadId,
+      processed: 1,
+      failed: 0,
+    }, threadSender);
+    assert.equal(checkpoint.error, undefined);
+    assert.equal(checkpoint.reservation.processed, 1);
+    assert.equal(checkpoint.reservation.status, 'running');
+    assert.equal(stored.threadUnsendLedger.length, 1, 'each verified removal is checkpointed immediately');
+    assert.equal(stored.threadUnsendLedger[0].processed, 1);
+
+    const skippedCheckpoint = await deliver({
+      kind: 'insta-aio-checkpoint-thread-unsend',
+      reservationId: reserved.reservation.id,
+      reviewedDigest: plan.reviewedDigest,
+      threadId: plan.threadId,
+      processed: 3,
+      failed: 0,
+    }, threadSender);
+    assert.equal(skippedCheckpoint.error, 'thread-unsend-reservation-missing');
+    assert.equal(stored.threadUnsendLedger[0].processed, 1, 'unproven increments cannot advance the ledger');
+
+    const finalized = await deliver({
+      kind: 'insta-aio-finalize-thread-unsend',
+      reservationId: reserved.reservation.id,
+      reviewedDigest: plan.reviewedDigest,
+      threadId: plan.threadId,
+      processed: 1,
+      failed: 1,
+      status: 'stopped',
+    }, threadSender);
+    assert.equal(finalized.error, undefined);
+    assert.equal(finalized.reservation.processed, 1);
+    assert.equal(finalized.reservation.failed, 1);
+    assert.equal(finalized.reservation.status, 'stopped');
+    assert.equal(finalized.reservation.recorded, true);
+    assert.equal(stored.threadUnsendLedger.length, 1, 'finalization updates the checkpoint instead of duplicating it');
+    assert.equal(stored.threadUnsendLedger[0].count, 2);
+
     const secondPlan = await deliver({
       kind: 'insta-aio-reserve-thread-unsend',
-      plan: { ...plan, reviewedDigest: 'd4c3b2a1' },
+      plan: { ...plan, scope: 'all', limit: null, reviewedDigest: 'd4c3b2a1' },
     }, threadSender);
     assert.equal(secondPlan.error, undefined);
+    assert.equal(secondPlan.reservation.count, null);
+    assert.equal(secondPlan.reservation.scope, 'all');
+
+    const uncheckpointedJump = await deliver({
+      kind: 'insta-aio-finalize-thread-unsend',
+      reservationId: secondPlan.reservation.id,
+      reviewedDigest: 'd4c3b2a1',
+      threadId: plan.threadId,
+      processed: 1,
+      failed: 0,
+      status: 'completed',
+    }, threadSender);
+    assert.equal(uncheckpointedJump.error, 'thread-unsend-reservation-missing');
+    assert.equal(stored.threadUnsendLedger.length, 1, 'finalization cannot invent an uncheckpointed removal');
+
+    const zeroClick = await deliver({
+      kind: 'insta-aio-finalize-thread-unsend',
+      reservationId: secondPlan.reservation.id,
+      reviewedDigest: 'd4c3b2a1',
+      threadId: plan.threadId,
+      processed: 0,
+      failed: 1,
+      status: 'error',
+    }, threadSender);
+    assert.equal(zeroClick.error, undefined);
+    assert.equal(zeroClick.reservation.recorded, false);
+    assert.equal(stored.threadUnsendLedger.length, 1, 'zero-click failure is not appended to the ledger');
 
     const wrongThread = await deliver({
       kind: 'insta-aio-reserve-thread-unsend',
@@ -197,6 +265,65 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
     assert.equal(wrongThread.error, 'thread-unsend-plan-invalid');
   } finally {
     await cleanup();
+  }
+});
+
+test('a service-worker restart can record verified removals without restoring action authority', async () => {
+  const stored = baseStored();
+  const threadSender = {
+    url: 'https://www.instagram.com/direct/t/thread-restart/',
+    tab: { id: 7, url: 'https://www.instagram.com/direct/t/thread-restart/' },
+  };
+  const plan = {
+    version: 2,
+    threadId: 'thread-restart',
+    scope: 'all',
+    limit: null,
+    reviewedDigest: '1234abcd',
+    expiresAt: Date.now() + 60_000,
+  };
+  const firstWorker = await loadBackground({ profileResponses: {}, performResponses: {}, stored });
+  let reservation;
+  try {
+    reservation = await firstWorker.deliver({ kind: 'insta-aio-reserve-thread-unsend', plan }, threadSender);
+    assert.equal(reservation.error, undefined);
+    assert.equal(stored.threadUnsendLedger.length, 0);
+  } finally {
+    await firstWorker.cleanup();
+  }
+
+  const restartedWorker = await loadBackground({ profileResponses: {}, performResponses: {}, stored });
+  try {
+    const checkpoint = await restartedWorker.deliver({
+      kind: 'insta-aio-checkpoint-thread-unsend',
+      plan,
+      reservationId: reservation.reservation.id,
+      reviewedDigest: plan.reviewedDigest,
+      threadId: plan.threadId,
+      processed: 1,
+      failed: 0,
+    }, threadSender);
+    assert.equal(checkpoint.error, undefined);
+    assert.equal(checkpoint.reservation.processed, 1);
+    assert.equal(checkpoint.reservation.recoveredAfterWorkerRestart, true);
+    assert.equal(checkpoint.reservation.authorityRestored, false);
+    assert.equal(stored.threadUnsendLedger.length, 1);
+
+    const final = await restartedWorker.deliver({
+      kind: 'insta-aio-finalize-thread-unsend',
+      reservationId: reservation.reservation.id,
+      reviewedDigest: plan.reviewedDigest,
+      threadId: plan.threadId,
+      processed: 1,
+      failed: 0,
+      status: 'stopped',
+    }, threadSender);
+    assert.equal(final.error, undefined);
+    assert.equal(final.reservation.status, 'stopped');
+    assert.equal(stored.threadUnsendLedger.length, 1);
+    assert.equal(stored.threadUnsendLedger[0].authorityRestored, false);
+  } finally {
+    await restartedWorker.cleanup();
   }
 });
 

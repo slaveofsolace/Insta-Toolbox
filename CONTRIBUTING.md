@@ -18,7 +18,7 @@ pnpm test
 - Preserve all import dispositions.
 - Document new sources with an exact revision or artifact hash and license.
 - Keep state migrations additive.
-- Keep live settings disabled by default.
+- Keep every action inactive until its action-specific confirmation.
 - Do not commit generated `src/app.js`, `dist`, exported user data, or local configuration.
 - Update relevant documentation and third-party notices.
 

@@ -11,6 +11,8 @@ import { createAppServer } from '../scripts/serve.mjs';
 
 test('development server exposes only application runtime assets', () => {
   for (const asset of [
+    'LICENSE',
+    'THIRD_PARTY_NOTICES.md',
     'index.html',
     'assets/icon-192.png',
     'src/app-loader.js',

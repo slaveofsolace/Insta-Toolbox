@@ -77,10 +77,10 @@ const requiredStates = [
         includes: ['Mutual Checker', 'Follow / Unfollow', 'DM Unsend'],
       }),
       semantic('[data-ia-role="move-handle"]', {
-        attributes: { 'aria-label': 'Move sidecar; use arrow keys for precise movement', type: 'button' },
+        attributes: { 'aria-label': 'Move Insta Toolbox; use arrow keys for precise movement', type: 'button' },
       }),
       semantic('[data-ia-role="resize-handle"]', {
-        attributes: { 'aria-label': 'Resize sidecar; use arrow keys for precise sizing', type: 'button' },
+        attributes: { 'aria-label': 'Resize Insta Toolbox; use arrow keys for precise sizing', type: 'button' },
       }),
       semantic('[data-ia-preference="opacity"]', {
         attributes: { max: '100', min: '55', type: 'range' },
@@ -121,7 +121,7 @@ const requiredStates = [
       semantic('[data-ia-role="capture-detail"]', { includes: ['followers · updated'] }),
       semantic('[data-ia-role="capture-state-title"]', { equals: '3 unique followers accounts captured' }),
       semantic('[data-ia-role="capture-state-detail"]', {
-        includes: ['3 rendered', '3 added', '0 duplicates ignored'],
+        includes: ['Rendered 3', 'Added 3', 'Duplicates ignored 0'],
       }),
     ],
     targetSelector: '.fixture-dialog',
@@ -136,7 +136,7 @@ const requiredStates = [
       semantic('[data-ia-role="capture-detail"]', { includes: ['following · updated'] }),
       semantic('[data-ia-role="capture-state-title"]', { equals: '4 unique following accounts captured' }),
       semantic('[data-ia-role="capture-state-detail"]', {
-        includes: ['3 rendered', '2 added', '1 duplicate ignored'],
+        includes: ['Rendered 3', 'Added 2', 'Duplicates ignored 1'],
       }),
     ],
     targetSelector: '.fixture-dialog',
@@ -146,7 +146,7 @@ const requiredStates = [
     mode: 'qa-checker-results',
     section: 'capture',
     semantics: [
-      semantic('[data-ia-role="capture-state-title"]', { equals: 'Follower comparison complete' }),
+      semantic('[data-ia-role="capture-state-title"]', { equals: 'Mutual comparison complete' }),
       semantic('[data-ia-role="checker-browser"]', { hidden: false, visible: true }),
       semantic('[data-ia-role="checker-filter-count"]', { numberEquals: 1 }),
       semantic('[data-ia-role="checker-filtered-list"]', {
@@ -166,7 +166,7 @@ const requiredStates = [
         equals: 'Check Followers + Following',
       }),
       semantic('[data-ia-role="capture-state-title"]', {
-        equals: 'Follower comparison complete for @demo_creator',
+        equals: 'Mutual comparison complete for @demo_creator',
       }),
       semantic('[data-ia-role="followers-count"]', { numberEquals: 2 }),
       semantic('[data-ia-role="following-count"]', { numberEquals: 2 }),
@@ -175,6 +175,10 @@ const requiredStates = [
       }),
       semantic('[data-ia-role="checker-filtered-list"]', {
         includes: ['@following_only', 'Following Only'],
+      }),
+      semantic('[data-ia-role="status"]', {
+        includes: ['Checked @demo_creator', '2 followers', '2 following'],
+        tone: 'good',
       }),
     ],
     targetSelector: null,
@@ -194,7 +198,7 @@ const requiredStates = [
     mode: 'qa-queue-locked',
     section: 'queue',
     semantics: [
-      semantic('[data-ia-role="bot-disclosure"]', { hidden: false, visible: true, includes: ['Run composer', 'Inspect exact profiles'] }),
+      semantic('[data-ia-role="bot-disclosure"]', { hidden: false, visible: true, includes: ['Follow or unfollow people', 'Choose an action, then review the accounts'] }),
       semantic('[data-ia-role="bot-source"]', { includes: ['Current exact profile'] }),
       semantic('[data-ia-role="bot-count-field"]', { hidden: true }),
       semantic('[data-ia-action="bot-review"]', { disabled: false, includes: ['Review 1'] }),
@@ -217,7 +221,7 @@ const requiredStates = [
     semantics: [
       semantic('[data-ia-role="bot-action"]', { includes: ['Follow people', 'Unfollow people'] }),
       semantic('[data-ia-role="bot-source"]', { includes: ['Scanned Followers', 'Compatible queue items'] }),
-      semantic('[data-ia-role="bot-disclosure"]', { includes: ['Run composer', 'Each target is opened', 'rate limit'] }),
+      semantic('[data-ia-role="bot-disclosure"]', { includes: ['Follow or unfollow people', 'Each target is opened', 'rate limit'] }),
     ],
   }),
   scenario('messages-evidence-only', {
@@ -228,7 +232,7 @@ const requiredStates = [
       semantic('[data-ia-role="message-count"]', { numberEquals: 3 }),
       semantic('[data-ia-role="message-state-title"]', { equals: 'Conversation ready' }),
       semantic('[data-ia-role="message-state-detail"]', {
-        includes: ['Read visible evidence', 'eligible count'],
+        includes: ['asks once', 'messages sent by this account'],
       }),
       semantic('[data-ia-action="mass-unsend"]', { disabled: false, equals: 'Unsend DMs' }),
     ],
@@ -239,7 +243,7 @@ const requiredStates = [
     section: 'messages',
     semantics: [
       semantic('[data-ia-action="mass-unsend"]', { disabled: false, equals: 'Unsend DMs' }),
-      semantic('[data-ia-role="unsend-scope"]', { includes: ['All eligible sent messages', 'Newest N', 'Oldest N'] }),
+      semantic('[data-ia-role="unsend-scope"]', { includes: ['All messages you sent', 'Newest N', 'Oldest N'] }),
       semantic('[data-ia-action="scan-sent-dms"]', { equals: 'Check conversation' }),
     ],
     targetSelector: '[data-message-id="sent-1"]',
@@ -250,7 +254,7 @@ const requiredStates = [
     semantics: [
       semantic('[data-ia-role="message-state-title"]', { equals: 'Conversation ready' }),
       semantic('[data-ia-action="mass-unsend"]', { disabled: false, equals: 'Unsend DMs' }),
-      semantic('[data-ia-role="unsend-detail"]', { includes: ['first checks this conversation'] }),
+      semantic('[data-ia-role="unsend-detail"]', { equals: 'Confirm the open conversation to begin.' }),
     ],
     targetSelector: '[data-message-id="sent-1"]',
   }),
@@ -356,6 +360,46 @@ const matrixStates = [
     theme: 'dark',
     viewport: 'tablet',
   }),
+  scenario('messages-confirmation-open-narrow', {
+    after: 'open-dm-confirmation',
+    confirmationOpen: true,
+    mode: 'messages-exact',
+    section: 'messages',
+    semantics: [
+      semantic('[data-ia-role="action-confirmation"]', {
+        attributes: {
+          'aria-describedby': 'ia-confirm-message ia-confirm-detail',
+          'aria-labelledby': 'ia-confirm-title',
+        },
+        visible: true,
+      }),
+      semantic('[data-ia-role="confirm-title"]', { equals: 'Unsend DMs?' }),
+      semantic('[data-ia-role="confirm-message"]', {
+        equals: 'Permanently unsend every message you sent in this conversation?',
+      }),
+      semantic('[data-ia-role="confirm-facts"]', {
+        includes: [
+          'Action',
+          'Permanently unsend messages',
+          'Conversation',
+          'Thread 123',
+          'Scope',
+          'All messages you sent',
+        ],
+      }),
+      semantic('[data-ia-role="confirm-cancel"]', {
+        attributes: { type: 'button' },
+        equals: 'Cancel',
+      }),
+      semantic('[data-ia-role="confirm-accept"]', {
+        attributes: { type: 'button' },
+        equals: 'Unsend all my messages',
+      }),
+    ],
+    targetSelector: '[data-message-id="sent-1"]',
+    theme: 'dark',
+    viewport: 'tablet',
+  }),
   scenario('profile-mobile-portrait', { viewport: 'mobile' }),
   scenario('queue-mobile-portrait-dark', { section: 'queue', theme: 'dark', viewport: 'mobile' }),
   scenario('profile-mobile-landscape', { viewport: 'landscape' }),
@@ -372,6 +416,46 @@ const matrixStates = [
         visible: true,
       }),
     ],
+    theme: 'dark',
+    zoom: 2,
+  }),
+  scenario('messages-confirmation-open-zoom-200', {
+    after: 'open-dm-confirmation',
+    confirmationOpen: true,
+    mode: 'messages-exact',
+    section: 'messages',
+    semantics: [
+      semantic('[data-ia-role="action-confirmation"]', {
+        attributes: {
+          'aria-describedby': 'ia-confirm-message ia-confirm-detail',
+          'aria-labelledby': 'ia-confirm-title',
+        },
+        visible: true,
+      }),
+      semantic('[data-ia-role="confirm-title"]', { equals: 'Unsend DMs?' }),
+      semantic('[data-ia-role="confirm-message"]', {
+        equals: 'Permanently unsend every message you sent in this conversation?',
+      }),
+      semantic('[data-ia-role="confirm-facts"]', {
+        includes: [
+          'Action',
+          'Permanently unsend messages',
+          'Conversation',
+          'Thread 123',
+          'Scope',
+          'All messages you sent',
+        ],
+      }),
+      semantic('[data-ia-role="confirm-cancel"]', {
+        attributes: { type: 'button' },
+        equals: 'Cancel',
+      }),
+      semantic('[data-ia-role="confirm-accept"]', {
+        attributes: { type: 'button' },
+        equals: 'Unsend all my messages',
+      }),
+    ],
+    targetSelector: null,
     theme: 'dark',
     zoom: 2,
   }),
@@ -395,7 +479,7 @@ const matrixStates = [
       semantic('[data-ia-role="bot-badge"]', { equals: '1 reviewed', tone: 'warning' }),
       semantic('[data-ia-role="bot-review-title"]', { equals: '1 target ready to confirm' }),
       semantic('[data-ia-role="bot-review-detail"]', {
-        includes: ['0 duplicates removed', '0 valid targets remain outside this finite run', 'rechecked before action'],
+        includes: ['Duplicates removed: 0', 'Outside this run: 0', 'rechecked before action'],
       }),
       semantic('[data-ia-role="bot-detail"]', { includes: ['Reviewed: @demo_creator', 'rechecked before action'] }),
       semantic('[data-ia-role="bot-review-list"]', { includes: ['@demo_creator'] }),

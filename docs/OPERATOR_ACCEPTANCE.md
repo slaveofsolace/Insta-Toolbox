@@ -24,12 +24,12 @@ tokens, or private Instagram screenshots in the repository.
 ## 1. Install and prove the safe default
 
 1. Follow [Installation](./INSTALLATION.md) and update the companion.
-2. In Tampermonkey, confirm **Insta Toolbox 2.0.0** or later. If
+2. In Tampermonkey, confirm **Insta Toolbox 2.0.2** or later. If
    Chrome is used, open Tampermonkey's extension details and enable
    **Allow User Scripts**.
 3. Reload `https://www.instagram.com/`, then press **Alt + Shift + I**.
-4. Confirm the toolbox reports **Userscript mode · local controls**, or the
-   extension's equivalent live-off state.
+4. Confirm the compact header reads **Insta Toolbox** and the credit links to
+   `https://github.com/slaveofsolace`.
 5. Confirm there is no global unlock, arm button, or typed authorization phrase.
    Cancel any action-specific destructive confirmation during sections 1–4.
 6. Move the panel, resize it from the lower-right corner, and change its
@@ -38,8 +38,8 @@ tokens, or private Instagram screenshots in the repository.
 7. Reload once and confirm the intended position, size, translucency, and
    idle state restore without covering a native Instagram dialog.
 
-Stop if the version is older, the lock is absent, a control is unreachable, or
-the panel interferes with a native confirmation surface.
+Stop if the version is older, a global unlock or arm control appears, a control
+is unreachable, or the panel interferes with a native confirmation surface.
 
 ## 2. Authenticated read-only route walkthrough
 
@@ -127,20 +127,22 @@ result plus both durable ledger records. Stop if the relationship, account,
 route, transient capability, permission, limit, protection, or reviewed digest
 changes.
 
-### One-message Unsend
+### Disposable-message Unsend
 
 Record privately:
 
 - exact conversation:
-- exact sent message:
+- exact disposable sent message or messages:
 - authorization time:
 - expected message identity before:
 
-Use only the reviewed one-message path. Confirm sent ownership, accept the exact
-thread/message confirmation, execute once, and capture sanitized before/after DOM
-evidence plus both durable ledger records. Never target a received or ambiguous
-message. Do not use a successful one-item acceptance as permission for a
-thread-wide run.
+Begin with one disposable sent message. Confirm sent ownership, accept the exact
+thread/scope confirmation, execute once, and capture sanitized before/after DOM
+and ledger evidence. Then obtain a separate fresh authorization for a bounded
+multi-message run containing only disposable sent messages; prove Stop and the
+final DOM state. Never target a received, ambiguous, historic, or unlisted
+message. Each authorization is confined to the named conversation, disposable
+content, and requested action.
 
 ## Completion
 

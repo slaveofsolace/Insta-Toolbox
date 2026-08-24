@@ -44,7 +44,19 @@
       "width": 1134,
       "height": 700,
       "view": "settings",
-      "sha256": "55caf789a2992c0ba3a6a07da4dac7e17373c5cef3a958ec47636e810ab3be38"
+      "sha256": "f55900f231fba058cc714fd3971dc71c981bcffe5a5f82d1053c7d0273716bb9"
+    },
+    {
+      "file": "zoom-200-settings-clear-confirmation.png",
+      "viewport": "desktop",
+      "width": 1134,
+      "height": 700,
+      "view": "settings",
+      "state": "clear-workspace-confirmation",
+      "zoomFactor": 2,
+      "cssWidth": 567,
+      "cssHeight": 350,
+      "sha256": "c04e04930a19b359fdb179ced88d171e16efc33e728efb231020a0cb13ec6322"
     },
     {
       "file": "tablet-overview.png",
@@ -68,7 +80,7 @@
       "width": 820,
       "height": 900,
       "view": "settings",
-      "sha256": "af754f1cb43a2bcfe1cb46033a3251c5f46ed3f73a82fb1806e2df1da6af798f"
+      "sha256": "29faa50dd830e6e78d2ca18baf28fce453ffa90276de22428322838b417ca846"
     },
     {
       "file": "mobile-overview.png",
@@ -92,7 +104,19 @@
       "width": 390,
       "height": 844,
       "view": "settings",
-      "sha256": "443528a22f0d899f89971cbe383c7d104e93a0eebcf43da2d0ecab9db1de8264"
+      "sha256": "989af8b97143e802260fd4faa448b7abfc0c82090af3b8fbafa1a98a064eaab3"
+    },
+    {
+      "file": "mobile-settings-clear-confirmation.png",
+      "viewport": "mobile",
+      "width": 390,
+      "height": 844,
+      "view": "settings",
+      "state": "clear-workspace-confirmation",
+      "zoomFactor": 1,
+      "cssWidth": 390,
+      "cssHeight": 844,
+      "sha256": "11b83f522147e5f63804c9aa096261b873b0650fdebc39bdad60246de5b1bf82"
     }
   ]
 }

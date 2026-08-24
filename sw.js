@@ -1,6 +1,7 @@
-const CACHE_NAME = 'insta-aio-v11';
+const CACHE_NAME = 'insta-toolbox-v202';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './assets/icon.svg',
+  './LICENSE', './THIRD_PARTY_NOTICES.md',
   './assets/icon-192.png', './assets/icon-512.png', './src/styles.css', './src/app-loader.js',
   './src/app.parts/part-01.jsfrag', './src/app.parts/part-02.jsfrag',
   './src/app.parts/part-03.jsfrag', './src/app.parts/part-04.jsfrag',

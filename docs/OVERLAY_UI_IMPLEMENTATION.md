@@ -9,14 +9,15 @@ migrations, exchange contracts, and signed one-item bridge. It provides:
 - fitted mobile/bottom-sheet geometry with no horizontal overflow;
 - persisted 55–100% surface opacity with an 88% default;
 - an explicit three-tool landing surface;
-- a first-open walkthrough that distinguishes read-only checks from locked live
+- a first-open walkthrough that distinguishes read-only checks from confirmed
   actions;
 - the same three-tool engine in the generated Tampermonkey script; and
-- guided Following/Followers comparison and review-before-start account runs;
+- authenticated Followers/Following comparison with a list-dialog fallback and
+  review-before-start account runs;
 - local category and username filtering for captured follower comparisons;
-- a simplified, primary thread-Unsend card whose history loader does not keep
-  repositioning an already settled conversation; and
-- default-locked local batches plus an expiry-enforcing thread Unsend runner.
+- a primary thread-Unsend card that begins one streaming traversal after the
+  exact thread/scope confirmation; and
+- action-specific confirmations plus an expiry-enforcing thread Unsend runner.
 
 Automated tests use synthetic Instagram fixtures. Authenticated selector checks,
 live account changes, and human screen-reader review require separate operator
@@ -30,18 +31,18 @@ full Instagram overlay and owns these in-page surfaces:
 | Surface | In-page responsibility | Durable authority |
 | --- | --- | --- |
 | Now | Route, session, exact profile relationship, queue match, next safe step | None |
-| Capture | Guide separate Following and Followers full scans, compare only when both are present, and retain manual capture under secondary controls | PWA after explicit import |
+| Capture | Fetch authenticated Followers and Following through the fixed same-origin read-only allowlist, fall back to verified list dialogs when needed, and compare only complete captures | PWA after explicit import |
 | Queue | Keep one primary profile-navigation action, freeze exact targets in Review run, reveal Start only for a matching review, and show signed summaries | PWA reviewed jobs/ledgers for signed runs; extension-local state for toolbox batches |
 | Messages | Keep thread Unsend primary, capture visible fragments secondarily, and show the exact signed DM gate when available | PWA reviewed job/ledgers for signed one-message work; tab-scoped authorization for thread runs |
 | Workspace | Show sanitized pairing facts and link to the exact paired origin | PWA |
 
 The generated Tampermonkey script embeds the same exact-label and Instagram
-engine sources behind a userscript-specific three-tab shell. It supports guided
-full-list scanning/comparison, review-before-start paced Follow/Unfollow, and thread DM
-Unsend. Destructive controls start disabled and require one ordinary confirmation
-naming the exact finite action, target list or thread, and count. The resulting
+engine sources behind a userscript-specific three-tab shell. It supports
+authenticated mutual comparison, review-before-start paced Follow/Unfollow, and thread DM
+Unsend. Destructive runs require one ordinary confirmation naming the exact
+action and target list, or the exact thread and scope. The resulting
 capability is non-persistent and bound only to that reviewed run. It does not receive
-the signed extension bridge, PWA one-item arms, or durable workspace ledgers.
+the signed extension bridge, PWA one-item capabilities, or durable workspace ledgers.
 
 ## Module graph
 
@@ -71,7 +72,7 @@ instagram-overlay.js
 `instagram-overlay.js` is now the lifecycle owner. It creates the closed shadow
 root, loads storage, applies preferences, refreshes sanitized bridge state,
 coordinates focus and keyboard events, owns persistence, starts and tears down
-observers, updates the immutable-expiry countdown, and revokes resources. View
+observers, updates active-run expiry state, and revokes resources. View
 modules render or handle their bounded tool interaction but do not directly call
 Chrome storage.
 
@@ -130,23 +131,24 @@ saved. Capture and queue contracts remain V1 and import-compatible.
 Overlay views do not own Instagram selectors or synthetic event sequences. They
 can request or cancel one exact 90-second transient capability for a signed PWA
 job, mint one finite local-account capability after its ordinary run
-confirmation, or create a finite thread plan after a complete no-click history
-check. Execution remains in the audited background/content drivers. The
-thread runner binds that plan to the exact thread, scope, eligible count, digest,
-and future expiry; it revalidates completeness and count before the first menu
-and rechecks expiry before every message.
+confirmation, or create a thread plan after one exact thread/scope confirmation.
+Execution remains in the audited background/content drivers. The thread runner
+binds that plan to the exact thread, scope, optional finite limit, digest, and
+future expiry; it starts one traversal without a preliminary count scan and
+rechecks expiry before every message. **Check conversation** is an optional
+read-only diagnostic, not an authorization gate.
 
 Local account execution requires a review signature over the selected source,
 action, limit, and exact target list. Editing any of those inputs discards the
 draft and hides Start; live authority is checked only after review succeeds.
 
-While an arm is active, or for a bounded ten-second transition after the bridge
-consumes one, the full panel is suspended. A measured status strip is placed on
+While a confirmed capability is active, or for a bounded ten-second transition
+after the bridge consumes one, the full panel is suspended. A measured status strip is placed on
 a non-intersecting edge when possible. Relevant native dialogs or menus keep the
 overlay in this collision-safe state. If no safe rectangle exists, overlay
 controls stay hidden; Instagram is never moved or restyled.
 
-Pending intents and arms are sanitized again in the overlay and discarded when
+Pending requests and capabilities are sanitized again in the overlay and discarded when
 expired. Dynamic Instagram, queue, message, pairing, and run text is written
 with `textContent`. One audited static shell assignment is the only overlay
 `innerHTML` use. Object URLs are revoked on replacement and teardown.
@@ -154,7 +156,7 @@ with `textContent`. One audited static shell assignment is the only overlay
 ## Verification
 
 The repository checks every production overlay module, the extension package,
-preference migration, and runtime module graph. The overlay matrix contains 40
+preference migration, and runtime module graph. The overlay matrix contains 43
 scenarios with state-specific assertions, selector contracts, a child-process
 watchdog, geometry checks, accessibility-tree checks, and screenshot comparison.
 The benchmark also verifies that a 2,000-item queue renders only the current

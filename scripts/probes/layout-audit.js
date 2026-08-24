@@ -1,5 +1,9 @@
 (async () => {
-  await Promise.all(document.querySelector("#insta-aio-userscript-root").shadowRoot.getAnimations().map((a) => a.finished.catch(() => {})));
+  const animations = document.querySelector("#insta-aio-userscript-root").shadowRoot.getAnimations();
+  await Promise.race([
+    Promise.all(animations.map((animation) => animation.finished.catch(() => {}))),
+    new Promise((resolve) => setTimeout(resolve, 1_000)),
+  ]);
   const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
   const panel = shadow.querySelector('.panel');
   const cs = getComputedStyle(panel);

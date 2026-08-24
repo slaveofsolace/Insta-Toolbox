@@ -71,7 +71,8 @@ A reviewed job shall:
 - Stop on uncertain identity, controls outside the verified profile header, any pre-existing dialog, an unbound confirmation, session expiry, challenge, rate limit, or action block
 - Record before/after evidence and results
 
-Live action flags default to false and the default live batch limit is one.
+No action receives authority until its exact action-specific confirmation. The
+signed extension path keeps a one-item live batch bound.
 
 ## Message requirements
 
@@ -90,8 +91,8 @@ The application shall:
 A reviewed DM job shall:
 
 - Block received, duplicate, or incomplete records
-- Bind review to a digest and exact phrase
-- Require a second destructive phrase for live mode
+- Bind review to a digest and exact message identity
+- Require one ordinary destructive confirmation naming the exact conversation and message
 - Reconfirm exact conversation, exact message, and sender ownership
 - Reserve a destructive attempt before the driver call
 - Checkpoint every message
@@ -129,21 +130,27 @@ The bridge shall:
 - Reject session and authorization material
 - Preserve JSON exchange as a fallback
 
-The shipped extension shall keep live execution inactive by default. A live
+The shipped extension shall expose no global live switch. A live
 account run may start only after an ordinary confirmation names the exact action,
 targets, and finite count. That confirmation creates a short-lived, tab-scoped,
 one-use capability. The capability must be revalidated before reservation and
 consumed before the page-control request. Dry-run routes shall never reach the
 page-control activator. A live DM route shall remain separate from dry run and
-may process only the finite sent-message plan proven by a complete scan of the
-exact rendered conversation. The thread ID, scope, count, message ownership,
-review digest, and expiry must remain bound throughout the run. Each destructive
-stage requires a newly surfaced structurally bound menu or dialog and fresh
+may process only a versioned plan bound to the exact rendered conversation. The
+thread ID, scope, optional finite limit, message ownership, review digest, and
+expiry must remain bound throughout one streaming traversal. An optional
+read-only check may report a detected minimum but shall not authorize by count.
+Each destructive stage requires a newly surfaced structurally bound menu or dialog and fresh
 revalidation. Success requires the same thread and verified removal. Any
 missing, changed, duplicate, stale, replayed, pre-existing, unbound, or
 noninteractive surface shall safe-stop.
 
-The Instagram sidecar shall:
+Thread-wide Unsend shall reserve only its transient capability before page
+control. Ledger progress may advance only after verified removal; cancellation,
+failed preflight, or any zero-click failure records zero removals. It shall not
+enforce a daily user quota or compare authorization against a mounted-row count.
+
+The Instagram overlay shall:
 
 - Be visible on Instagram without replacing the PWA
 - Keep Instagram as the current-context surface and the PWA as the durable system of record
@@ -152,7 +159,7 @@ The Instagram sidecar shall:
 - Expose current-page inspection and sanitized no-click run history
 - Treat visible DM text as evidence only until exact message identity and ownership are available
 - Remain keyboard reachable, responsive, and reduced-motion aware
-- Keep mutation controls inactive until the exact finite run is confirmed
+- Keep every mutation path inactive until its exact run is confirmed
 
 ## Desktop requirements
 

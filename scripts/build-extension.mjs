@@ -26,6 +26,7 @@ const libraryFiles = [
   'controlled-account-action.js',
   'controlled-dm-unsend.js',
 ];
+const legalFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md'];
 const liveSafetyTests = [
   'tests/content-instagram-dm-live.test.js',
   'tests/content-instagram-live.test.js',
@@ -113,7 +114,9 @@ async function validateSources() {
   const instagramSource = await readFile(path.join(sourceRoot, 'content-instagram.js'), 'utf8');
   const actionLabelsSource = await readFile(path.join(sourceRoot, 'action-labels.js'), 'utf8');
   const overlaySource = (await Promise.all(
-    instagramScriptOrder.slice(2).map((file) => readFile(path.join(sourceRoot, file), 'utf8')),
+    instagramScriptOrder
+      .filter((file) => !['action-labels.js', 'content-instagram.js'].includes(file))
+      .map((file) => readFile(path.join(sourceRoot, file), 'utf8')),
   )).join('\n');
   const allowedLiveActivator = `function activateLiveControl(control) {
     control.click();
@@ -211,6 +214,9 @@ async function validateSources() {
   for (const file of libraryFiles) {
     await readFile(path.join(repositoryRoot, 'src', 'core', file));
   }
+  for (const file of legalFiles) {
+    await readFile(path.join(repositoryRoot, file));
+  }
   return manifest;
 }
 
@@ -251,11 +257,15 @@ for (const file of libraryFiles) {
     path.join(resolvedOutput, 'lib', file),
   );
 }
+for (const file of legalFiles) {
+  await copyFile(path.join(repositoryRoot, file), path.join(resolvedOutput, file));
+}
 
 const artifactEntries = [];
 for (const file of [
   ...sourceFiles,
   ...libraryFiles.map((libraryFile) => `lib/${libraryFile}`),
+  ...legalFiles,
 ].sort()) {
   artifactEntries.push({
     name: file,

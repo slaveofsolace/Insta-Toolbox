@@ -17,29 +17,38 @@ already open in that tab; it never reads, stores, or exports the session value.
 |---|---|---|
 | **Userscript** (Tampermonkey) | All three tools, including live Follow, Unfollow, and Unsend with paced batch runs. | Fastest start — one click, no build step. |
 | **Browser extension** | The same tools, plus pairing with the app for signed, recorded jobs. | Anyone who also uses the app workspace. |
-| **Desktop / web app** | The full workspace: import Instagram ZIP exports, snapshots, message search, queue history. | Working with exported data in bulk. |
+| **Desktop app** | The full workspace in an installed Windows or macOS app. | A ready-made local app for exported data. |
+| **Web / PWA** | The same workspace as a static web package with offline support. | Browser use or self-hosting over HTTPS/localhost. |
 
-The userscript and the extension run the **same inspected Instagram engine** —
-the userscript is built from the extension's own target-resolution code. Their
-delivery and pairing features differ, but their account/message checks share the
-same safe-stop rules.
+The userscript is generated from the extension's Instagram code, so fixes to
+scanning and page controls apply to both.
 
-### Quickest start
+## Download or install
 
-Install [Tampermonkey](https://www.tampermonkey.net/), then open this link and
-select **Install**:
+The 2.0.2 files below appear together when the release is published. If GitHub
+still shows an older release, use the commit-named CI artifacts only for review;
+do not mix files from different builds.
 
-**[Install Insta Toolbox](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js)**
+- **Instagram overlay:** [install the Tampermonkey userscript](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js),
+  reload Instagram, then press **Alt + Shift + I**.
+- **Windows 64-bit:** open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest),
+  download `Insta Toolbox Setup 2.0.2.exe`, and follow the short installer.
+- **macOS Apple Silicon:** open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest),
+  download `Insta Toolbox-2.0.2-arm64.dmg`, then drag the app to Applications.
+- **Web/PWA package:** download `insta-toolbox-web-2.0.2.zip` from the latest
+  release. It is ready for static hosting over HTTPS or localhost; it is not a
+  double-click app.
+- **Chrome extension:** download `insta-aio-companion-2.0.2.zip`, extract it,
+  then choose **Extensions → Developer mode → Load unpacked** and select the
+  extracted folder.
 
-Then allow the userscript to run in Chrome:
+The desktop packages are not publicly code-signed. Windows SmartScreen or
+macOS Gatekeeper may warn. Verify the matching SHA-256 value in
+`SHA256SUMS.txt` before opening a download. The macOS build is currently for
+Apple Silicon; an Intel build and Apple notarization are not included.
 
-1. Open `chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo`.
-2. Open Tampermonkey's **Details**.
-3. Enable **Allow User Scripts**.
-
-Reload Instagram and press **Alt + Shift + I**. Updates arrive automatically.
-
-Full steps and the other options are in [Installation](./docs/INSTALLATION.md).
+See [Installation](./docs/INSTALLATION.md) for full steps, troubleshooting,
+upgrades, and source builds.
 
 <details>
 <summary>Full feature list</summary>
@@ -58,19 +67,16 @@ Full steps and the other options are in [Installation](./docs/INSTALLATION.md).
 
 ## Safety model
 
-Live account changes and DM removal are disabled on every load. Scans,
-comparisons, visible evidence, and exact-target dry runs need no unlock. A
-destructive run becomes eligible only after one ordinary confirmation naming its
-exact action, target or thread, and finite count. That confirmation mints a
-non-persistent capability bound to the reviewed targets and expiry; completion,
-Stop, expiry, a challenge, a block, a rate limit, or an unexpected state revokes
-it. Thread-wide Unsend first performs a no-click conversation check when needed,
-then creates a finite plan bound to the exact thread, scope (`all`, `newest`, or
-`oldest`), eligible count, digest, and 15-minute expiry. The runner revalidates
-the count before accepting only the newly surfaced menu and confirmation control
-for each message. Account runs retain only their finite target-bound capability
-across the profile navigation they cause in the userscript manager's tab-local
-storage; an expired run stops before another action.
+Scans and dry runs never open an Instagram action control. Follow, Unfollow, and
+DM Unsend each require one confirmation for the exact account or conversation.
+The resulting capability stays in memory, expires, and is revoked by Stop or any
+Instagram warning.
+
+DM Unsend works through one conversation in a single pass. **All** is the
+default; **newest N** and **oldest N** are available under Advanced. Instagram
+recycles rendered message rows, so the optional read-only check reports only
+what it detected—not a made-up total. Every message is rechecked as sent by the
+current account before its newly opened Unsend menu and confirmation are used.
 
 The signed PWA path adds stricter one-item controls. A live Follow or Unfollow
 requires a fresh signed batch of exactly one item, action permission, one exact
@@ -94,7 +100,7 @@ and complying with the rules that apply to their accounts and environment.
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22.12.0 or newer
 - Corepack with pnpm 11.9.0, as pinned in `package.json`
 - A modern Chromium-based browser for the PWA
 - Windows for producing the NSIS installer
@@ -113,9 +119,9 @@ pnpm run serve
 `pnpm run serve` prints the local address to open in your browser. It listens on
 your own machine only and is not reachable from your network.
 
-`pnpm run assemble` rebuilds `src/app.js` from the UI fragments in
-`src/app.parts/`. That generated file is not committed, so run it after a fresh
-clone or you will get a blank app.
+`pnpm run assemble` rebuilds the audit copy at `src/app.js` from the committed UI
+fragments. The browser runtime loads those fragments through `src/app-loader.js`,
+so the generated audit copy is not required to open the PWA.
 
 ## Import workflow
 
@@ -164,29 +170,27 @@ missing/expired finite capability. The PWA ledger and the extension's bounded
 mirror reserve before the isolated driver call and prevent duplicate or
 out-of-plan execution.
 
-Extension 2.0.0 preserves the stricter signed live paths for one reviewed PWA
-item while removing typed arm phrases. The PWA sends a signed intent; the
-matching Instagram profile or exact sent message must receive one ordinary
-action-specific confirmation. The resulting capability exists only in memory,
-is consumed before page control, and is paired with a durable reservation that
-is finalized as succeeded or uncertain. The PWA independently checkpoints its
-transactional ledger. These implemented paths still require authenticated
-selector acceptance before issues #3 and #4 can be closed.
+The signed PWA workflow remains limited to one reviewed item. It requires one
+ordinary confirmation naming the exact account action or sent message, then
+uses a short-lived in-memory capability and durable reservation. The capability
+is consumed before page control, and the result is recorded as succeeded or
+uncertain. Authenticated selector acceptance is still required before issues #3
+and #4 can close.
 
 ## Reviewed DM jobs
 
-Only messages classified as sent by the configured owner can enter a reviewed unsend job. Each item preserves conversation ID, message ID, timestamp, sender ownership, and a content digest.
+Only messages classified as sent by the configured owner can enter a reviewed
+Unsend job. Each item keeps its conversation ID, message ID, timestamp, sender
+ownership, and content digest.
 
-Live-mode data structures require:
-
-- Complete batch review
-- A second destructive confirmation
-- Exact conversation and message resolution
-- Immediate sender-ownership revalidation
-- A durable reservation before the destructive call
-- Post-action removal verification
-
-The browser extension performs a true no-click exact-message dry run when the open thread ID matches and one rendered sent row exposes the reviewed message ID, exact timestamp, matching content digest, and sender ownership. Missing stable attributes, duplicate candidates, wrong threads, changed content, and unknown ownership safe-stop. The controlled live path is isolated from that dry-run route: it accepts one fresh twice-confirmed item, consumes an expiring tab-scoped capability before page control, revalidates the same row before each stage, rejects pre-existing menus or dialogs, requires newly surfaced ARIA-bound interactive Unsend controls, and confirms the same-thread target is gone while another stable message identity remains observable. Wrong-thread navigation, identity loss, unbound surfaces, noninteractive text, and unrelated right-aligned descendants all stop uncertain. Authenticated Instagram DOM and action acceptance remain not run, so this is not a claim that issue #4 is closed.
+The signed one-message path requires a reviewed digest, one ordinary
+confirmation naming the thread and message, exact re-resolution, a durable
+reservation, and verified removal. Its no-click check succeeds only when the
+open thread and one rendered sent row expose every reviewed identity field.
+Missing or duplicate candidates, changed content, unknown ownership, a wrong
+thread, pre-existing controls, or an uncertain postcondition stop the run.
+Authenticated Instagram action acceptance remains pending, so issue #4 is not
+closed.
 
 ## Companion extension
 
@@ -196,7 +200,9 @@ Build the extension:
 pnpm run build:extension
 ```
 
-Load `dist/extension` as an unpacked extension, or install the generated ZIP through the appropriate browser-managed workflow.
+Load `dist/extension` as an unpacked extension. If you downloaded the generated
+ZIP, extract it first, then select the extracted folder with **Load unpacked**;
+the ZIP is not a Chrome Web Store package.
 
 Open Instagram after loading the extension. A compact **Toolbox** launcher appears
 on the right by default; the full overlay opens only when the operator requests
@@ -238,14 +244,14 @@ Each target is opened, re-verified, and acted on one at a time. **Complete** and
 **Skip** remain available under the secondary options disclosure.
 
 **DM Unsend.** Open a conversation and choose the always-visible **Unsend DMs**
-button. It automatically performs the no-click history check when needed and
-must prove a complete finite count before showing one permanent-action
-confirmation naming the exact thread and count. The default scope is all
-eligible sent messages; `newest N` and `oldest N` are under Advanced. Incomplete
-or capped checks do not create a destructive plan. The finite plan is reserved
-before the first page control and uses the saved delay range; only rows proven
-sent by the current account are eligible.
-Cancel preserves the read-only count and changes nothing. Unsending is permanent.
+button. One confirmation names the exact open thread and selected scope, then a
+single streaming traversal begins immediately. The default scope is all
+messages you sent; `newest N` and `oldest N` are under Advanced. The transient
+plan is checked before every page control, only rows proven sent by the current
+account are eligible, and each verified removal is recorded as it happens.
+**Check conversation** is an optional read-only diagnostic and its mounted-row
+estimate is never treated as the conversation total. Cancel changes nothing.
+Unsending is permanent.
 
 ### Batch pacing and safety
 
@@ -254,9 +260,8 @@ inspect, exact-resolution, reserve, act, and record cycle. One finite capability
 is bound to the confirmed target list, consumed by that run, and cannot be
 replayed or widened.
 
-- Randomised delays between items, plus a longer rest every 20 items
-- Configurable delays under **Settings → Batch pacing**, with a 1.5-second
-  minimum and a longer rest every 20 items
+- Configurable random delays under **Settings → Batch pacing**, with a
+  1.5-second minimum and a longer rest every 20 items
 - The whole run stops on the first rate limit, checkpoint, block, session
   expiry, or unexpected screen
 - A target whose relationship no longer matches is skipped, not forced
@@ -300,19 +305,19 @@ cannot inherit a running batch. Tampermonkey is the supported manager; on a
 manager without those tab APIs, follower scanning, comparison, and no-click
 checks remain available but account batch execution stays disabled.
 
-Live execution is off on every page load. Each reviewed account run asks once
+Each reviewed account run asks once
 for its exact action, target list, and count, then mints a finite capability for
-that run only. There is no general switch, arm control, or authorization phrase.
+that run only. There is no global switch, arm control, or authorization phrase.
 The capability expires during a run and is checked before every later item;
 account navigation retains only the already-confirmed run and its expiry in the
 same manager tab. Thread-wide Unsend separately binds its finite plan to the
 current thread and rejects navigation, expired authority, pre-existing menu
 decoys, and ambiguous newly opened controls. The
-follower scanner, exported comparisons, visible-message scan, and exact no-click
-checks work while live controls are locked. The userscript does not include the
+Mutual Checker, exported comparisons, visible-message scan, and exact no-click
+checks need no action confirmation. The userscript does not include the
 extension's signed PWA bridge or its durable workspace ledgers.
 
-## Desktop builds
+## Build packages from source
 
 Create an unpacked desktop build:
 
@@ -331,6 +336,15 @@ Create macOS DMG and ZIP artifacts on macOS:
 ```bash
 pnpm run dist:mac
 ```
+
+Create the static web folder and deployment ZIP:
+
+```bash
+pnpm run build:web
+pnpm run verify:web-package
+```
+
+The ready-made files are on the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest); these commands are for developers building locally.
 
 The Electron renderer runs with context isolation, sandboxing, Node integration disabled, denied permission requests, a confined custom protocol, and a restrictive content policy. Local Chromium data is retained across approved upgrades, and up to five startup backups are kept in an app-specific data directory.
 
@@ -352,11 +366,12 @@ The automated suite covers imports, migrations, archive limits, reviewed action
 and DM jobs, no-click execution, bridge signing and replay protection, extension
 permissions, desktop hardening, state migration, service-worker assets, and
 large-list rendering. `qa:extension` runs the production content script through
-local synthetic Follow, Unfollow, and one-message Unsend DOM fixtures. It also
+local synthetic Follow, Unfollow, exact-message Unsend, and virtualized
+thread-Unsend fixtures. It also
 checks keyboard access, the Chromium accessibility tree, PWA installability,
 and read-only pairing defaults. `qa:chrome` loads and pairs the unpacked package
 in a disposable Chrome-for-Testing profile. Browser QA exercises every PWA view
-at desktop, tablet, and mobile sizes while keeping live settings off.
+at desktop, tablet, and mobile sizes without confirming a destructive action.
 
 Use `pnpm run qa:browser:update` only when intentionally accepting a reviewed
 visual change. Baselines are platform-specific and actual run output stays under
@@ -365,19 +380,25 @@ ignored `test-results`.
 The overlay-specific commands rebuild the production extension before loading
 its manifest-ordered content scripts in the deterministic Instagram fixture.
 Use `pnpm run qa:overlay:update` only for an intentional, manually reviewed
-baseline replacement. The 43-state Windows baseline includes fresh-install and
-filtered-checker evidence, plus a centered,
-resized 62%-opacity proof plus desktop, tablet, mobile, zoom, forced-colors,
-collision, locked-action, and review-before-start states. It has been reproduced by
+baseline replacement. The 45-state Windows baseline covers fresh install,
+filtered Mutual Checker results, a centered 62%-opacity panel, desktop, tablet,
+mobile, zoom, forced colors, collision, exact confirmation, and
+review-before-start states. It has been reproduced by
 `qa:overlay:check`; CI runs the non-updating check on Windows.
+
+The compact userscript layout is also tracked in six reviewed Windows captures
+covering light and dark themes, mobile, short-laptop, narrow custom-panel, and
+true 200% zoom states. See [Userscript UI evidence](./docs/evidence/userscript-ui-2.0.2/README.md).
+
 Human screen-reader review, persistent-profile installation, and authenticated
 Instagram selector acceptance remain separate operator/release gates.
 
-Windows packaging covers unpacked launch, packaged-renderer smoke, NSIS install,
-installed-app launch, and uninstall. CI also builds and smoke-tests macOS DMG and
-ZIP packages with QA-only ad-hoc signing. Apple Developer ID signing and
-notarization, human screen-reader review, persistent-profile installation, and
-any user-selected live Instagram action remain manual release checks.
+Windows packaging produces an unpacked application and NSIS installer; CI runs
+the confined unpacked-app smoke test and verifies the installer artifacts. CI
+also builds and smoke-tests macOS DMG and ZIP packages with QA-only ad-hoc
+signing. NSIS install/uninstall, Apple Developer ID signing and notarization,
+human screen-reader review, persistent-profile installation, and any
+user-selected live Instagram action remain manual release checks.
 
 ## Documentation
 
@@ -397,4 +418,7 @@ any user-selected live Instagram action remain manual release checks.
 
 ## License
 
-Insta Toolbox is available under the [MIT License](./LICENSE). Reviewed third-party sources and their license boundaries are documented in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+Created by [@slaveofsolace](https://github.com/slaveofsolace). Insta Toolbox is
+available under the [MIT License](./LICENSE); redistributed original or modified
+copies must retain its copyright and permission notice. Reviewed third-party
+sources remain credited in [Third-party notices](./THIRD_PARTY_NOTICES.md).

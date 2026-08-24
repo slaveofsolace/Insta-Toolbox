@@ -221,7 +221,9 @@ test('PWA refreshes online assets while retaining an offline cache fallback', as
   const serviceWorker = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
   const loader = await readFile(new URL('../src/app.parts/part-04.jsfrag', import.meta.url), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE_NAME = 'insta-aio-v11'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'insta-toolbox-v202'/);
+  assert.match(serviceWorker, /'\.\/LICENSE'/);
+  assert.match(serviceWorker, /'\.\/THIRD_PARTY_NOTICES\.md'/);
   assert.ok(
     serviceWorker.indexOf('await fetch(event.request)') < serviceWorker.indexOf('await caches.match(event.request)'),
     'online fetch must be attempted before the offline cache fallback',

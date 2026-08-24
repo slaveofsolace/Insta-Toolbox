@@ -229,6 +229,20 @@ dialog::backdrop { background: rgba(23, 26, 23, .66); }
 .confirmation-card p { margin: 0; color: var(--muted); }
 .confirmation-card .field input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .confirmation-actions { justify-content: flex-end; }
+.action-confirmation { max-height: min(680px, calc(100dvh - 28px)); overflow: auto; }
+.confirmation-heading { display: grid; gap: 5px; }
+.confirmation-eyebrow {
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.confirmation-facts { display: grid; gap: 1px; margin: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 9px; background: var(--border); }
+.confirmation-facts > div { display: grid; grid-template-columns: minmax(84px, .35fr) minmax(0, 1fr); gap: 12px; padding: 10px 12px; background: var(--panel-2); }
+.confirmation-facts dt { color: var(--muted); font-size: 12px; font-weight: 700; }
+.confirmation-facts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 700; }
+.action-confirmation .confirmation-actions button { min-width: 132px; min-height: 44px; }
 
 @media (max-width: 1000px) {
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -252,6 +266,19 @@ dialog::backdrop { background: rgba(23, 26, 23, .66); }
   .message { grid-template-columns: auto minmax(0, 1fr); }
   .message time { grid-column: 2; }
   .log-entry { grid-template-columns: 1fr; gap: 3px; }
+}
+
+@media (max-width: 480px) {
+  .confirmation-card { padding: 18px; }
+  .confirmation-facts > div { grid-template-columns: 1fr; gap: 3px; }
+  .action-confirmation .confirmation-actions { display: grid; grid-template-columns: 1fr; }
+  .action-confirmation .confirmation-actions button { width: 100%; }
+}
+
+@media (forced-colors: active) {
+  dialog, .confirmation-facts, .confirmation-facts > div { border-color: CanvasText; }
+  dialog::backdrop { background: Canvas; opacity: .75; }
+  .confirmation-eyebrow { color: CanvasText; }
 }
 
 @media (prefers-reduced-motion: reduce) {

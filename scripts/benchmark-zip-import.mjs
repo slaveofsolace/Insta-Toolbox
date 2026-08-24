@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import assert from 'node:assert/strict';
 
 import { importFileRecords } from '../src/core/imports.js';
 import { inspectZipArchive, readZipJsonRecords } from '../src/core/zip.js';
@@ -39,12 +40,17 @@ const imported = importFileRecords(extracted.records, {
   ownerNames: ['Owner Example'],
 });
 const importedAt = performance.now();
+const expectedMessages = fileCount * messagesPerFile;
+
+assert.equal(extracted.records.length, fileCount, 'Every fixture file must be extracted.');
+assert.equal(imported.messages.length, expectedMessages, 'Every fixture message must be imported.');
+assert.deepEqual(imported.warnings, [], 'The bounded benchmark fixture must import without warnings.');
 
 console.log(JSON.stringify({
   schemaVersion: 1,
   fixture: {
     files: fileCount,
-    messages: fileCount * messagesPerFile,
+    messages: expectedMessages,
     archiveBytes: archive.byteLength,
     uncompressedBytes: manifest.totalUncompressedBytes,
   },

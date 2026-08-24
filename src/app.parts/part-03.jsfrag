@@ -183,13 +183,13 @@ function renderSettings() {
           <button class="danger" data-action="revoke-extension-pairing">${bridgePairing.pairedAt ? 'Revoke PWA pairing' : 'Discard pairing code'}</button>
         </div>
       ` : `
-        <label class="checkbox"><input id="bridge-action-permission" type="checkbox"> Allow signed dry runs and one-item controlled Follow or Unfollow intents</label>
+        <label class="checkbox"><input id="bridge-action-permission" type="checkbox"> Allow signed dry runs and one-item Follow, Unfollow, or DM Unsend actions</label>
         <div class="toolbar" style="margin-top:14px">
           <button class="primary" data-action="create-extension-pairing">Create one-time pairing code</button>
         </div>
       `}
       <div class="notice" style="margin-top:14px">
-        The extension performs visible-page inspection and true no-click dry runs. With account-action permission, a fresh reviewed Follow or Unfollow batch of exactly one may use the short-lived Instagram arm gate. Live Unsend remains unavailable. JSON job export remains available as a fallback.
+        The extension supports no-click checks and, with action permission, one confirmed Follow, Unfollow, or DM Unsend at a time. JSON export remains available.
       </div>
       ${bridgeStatus ? `<div class="notice ${bridgeStatus.startsWith('Error:') ? 'warning' : ''}" style="margin-top:10px">${escapeHtml(bridgeStatus)}</div>` : ''}
     </section>

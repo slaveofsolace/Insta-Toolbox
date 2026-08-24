@@ -1,6 +1,6 @@
 # Release status
 
-Current version: **2.0.1**
+Current version: **2.0.2 release candidate**
 
 ## Available tools
 
@@ -9,6 +9,9 @@ Current version: **2.0.1**
 - Imports Instagram relationship exports and supported legacy formats.
 - Resolves a user-entered or locally detected username and loads Followers and
   Following through bounded, authenticated Instagram pagination.
+- Verifies the exact profile ID and current totals before pagination. Stale
+  search counters cannot make a shortened result appear complete. Totals are
+  checked again after both lists finish, and completion requires exact equality.
 - Gives each page request and JSON decode a 20-second watchdog, retries a
   stalled page twice with visible bounded backoff, and preserves the prior
   comparison if the new read cannot finish.
@@ -33,7 +36,7 @@ Current version: **2.0.1**
   unexpected profile state.
 - Extension live jobs are limited to one reviewed account, with signed intent,
   exact profile matching, independent reservations, and post-action checks.
-- Live execution is disabled by default.
+- No account action starts without its exact run confirmation.
 
 ### DM Unsend
 
@@ -41,13 +44,14 @@ Current version: **2.0.1**
 - Supports read-only inspection and no-click dry runs.
 - The signed extension path is limited to one reviewed message with stable
   thread and message identity.
-- The userscript and extension always show **Unsend DMs**. Its first click runs
-  the no-click conversation check when needed, then asks once for the exact
-  thread and eligible count. All messages is the default; newest/oldest finite
-  scopes remain under Advanced.
-- Each thread plan remains bound to the exact thread, scope, finite count,
-  reviewed digest, expiry, and pacing.
-- Live execution is disabled by default.
+- The userscript and extension always show **Unsend DMs**. It confirms the open
+  conversation once, then uses one streaming pass; it does not repeat a full
+  history scan before opening the first exact message menu.
+- All messages is the default. Newest/oldest finite scopes remain under Advanced.
+- Each thread plan remains bound to the exact thread, scope, reviewed digest,
+  expiry, and pacing. Optional checks report a detected minimum because
+  Instagram virtualizes rendered message rows.
+- No Unsend starts without its exact thread/scope confirmation.
 
 ## Delivery formats
 
@@ -83,8 +87,8 @@ The repository includes checks for:
   clean replacement of captures made by older fallback logic;
 - exact profile-total reconciliation, so a stable scroll boundary cannot be
   called complete when Instagram reports a different row count;
-- bounded DM-history convergence that ignores reversible DOM virtualization
-  churn while preserving the maximum proven eligible sent-message count;
+- one-pass DM traversal across virtualized rows without treating a mounted
+  window as the conversation total;
 - capture-confidence migration to schema 5, which preserves older local rows,
   records authenticated-web versus list-dialog provenance, and requires a new
   reconciled scan before stale rows can drive comparisons or reviewed runs;
@@ -93,9 +97,79 @@ The repository includes checks for:
 
 The final local Windows matrix count and artifact hashes are refreshed for each
 release candidate after the generated userscript and extension have been rebuilt.
-The Windows 2.0.0 installer remains intentionally unsigned.
+Windows installers remain intentionally unsigned.
 
-### Current 2.0.1 userscript hotfix evidence (2026-08-22)
+### 2.0.2 candidate status
+
+- Restores the source-audited single-pass DM traversal and 1–2 second default
+  pacing while retaining exact-thread, sent-by-me, menu, confirmation, Stop,
+  and postcondition checks.
+- Removes the virtualized mounted-row equality gate that could stop with zero
+  removals after confirmation.
+- Compacts the in-page header and replaces the old status footer with the
+  unobtrusive creator credit.
+- Updates MIT attribution, embeds the full MIT notice in the userscript, and
+  includes `LICENSE` plus `THIRD_PARTY_NOTICES.md` in the extension, desktop,
+  release archives, and offline PWA cache.
+- Adds a deterministic `insta-toolbox-web-2.0.2.zip` containing the exact 44-file
+  public PWA runtime plus launch/version notes. Its verifier checks canonical
+  source parity, legal files, the offline asset graph, relative paths,
+  private-file exclusion, repeatable bytes, and extracted localhost delivery.
+- Removes the Mutual Checker's former 500-account reconciliation cutoff. One
+  bounded restart now also recovers a prematurely cursorless large-account
+  response; a 2,104-follower regression and exhausted-retry case cover the
+  reported failure without adding an unbounded loop.
+- Full local suite: **301/301** passing after the confirmation, finite-oldest,
+  and web-package repairs, including dependency verification, repository
+  hygiene, generated parity, migrations, virtualized DM traversal, bounded
+  capabilities, safe stops, and the exact static release archive.
+- Extension/userscript acceptance: production Follow, Unfollow, and
+  one-message Unsend fixture chains; exact newest/oldest ordering; delayed
+  oldest-history growth after normal and reversed scroller replacement; Stop
+  after one verified removal; a six-message thread-wide run; keyboard and
+  accessibility-tree checks; and six responsive layouts all passed in isolated
+  Chromium. Synthetic confirmation clicks produced zero reservations, runner
+  starts, Instagram fixture clicks, or removals; trusted browser input was
+  required for the affirmative path.
+- Visual and browser gates: **45/45** reviewed Windows overlay states, **11/11**
+  reviewed Windows PWA baselines, and real Chrome PWA installability plus
+  extension pairing passed. Confirmation-open coverage includes narrow panels,
+  mobile, and true 200-percent Chromium zoom with Cancel focused first.
+- Repository hygiene, dependency audit, generated-source checks, and
+  `git diff --check` passed. The final source-level security audit found a
+  synthetic-click authorization path and a post-replacement finite-ordering
+  defect. Both were repaired and regression-tested before this matrix; no
+  reportable finding remains in the corrected local patch.
+- The preceding candidate passed all five GitHub CI jobs at
+  [run 32673476244](https://github.com/slaveofsolace/Insta-AIO-Tool/actions/runs/32673476244),
+  for `589674bb3421344b6c4c5aa452f656eeb5570758`: tests, Chrome pairing,
+  reviewed Windows rendering, Windows NSIS lifecycle, macOS DMG/ZIP lifecycle,
+  and a seven-file checksum set. A Windows/Linux comparison then exposed a
+  line-ending-only difference in the packaged MIT license. The packager now
+  canonicalizes public text entries while preserving binary assets; exact-head
+  CI remains required before release. Current artifact hashes belong in the
+  generated `SHA256SUMS.txt`, PR evidence, and published release rather than a
+  second hand-maintained list here.
+- The commit-pinned Tampermonkey build was installed in authenticated Chrome.
+  The live overlay showed the compact header and credit line with the old mode
+  pill and status footer absent. A large-account Mutual Checker run completed
+  without false completion: the exact Following total reconciled, the
+  irreconcilable Followers difference stayed explicitly partial, and the
+  downloaded report contained the expected summary and numbered sections.
+- That run exposed stale reconciliation/completion copy even though the engine
+  had finished. The progress line now reports the reconciliation pass and
+  settles to complete, partial, stopped, or failed; focused coverage prevents
+  the apparent-hang wording from returning.
+- Authenticated acceptance exposed a release-blocking native-dialog hazard: a
+  browser-control click timed out at `window.confirm`, but the dialog was then
+  accepted outside the requested flow and Unsend started. Stop ended the run
+  after 72 verified removals. All Instagram automation was stopped afterward.
+- The replacement in-overlay confirmation is implemented and passes local
+  trusted-input, synthetic-click rejection, accessibility, zoom, and fixture
+  action coverage. Release still requires exact-head CI, installation of the
+  final commit-pinned userscript, and separately authorized disposable-message
+  reacceptance. No further authenticated mutation has been performed.
+### Prior 2.0.1 main-branch userscript hotfix evidence (2026-08-22)
 
 - Full test matrix: **259/259** passing, including dependency verification,
   repository hygiene, extension reproducibility, userscript parity, migrations,
@@ -153,7 +227,9 @@ and are not automated:
   routes, canceling at every exact destructive confirmation;
 - complete a human screen-reader walkthrough;
 - verify persistent-profile PWA pairing;
-- sign and notarize macOS packages for public distribution;
+- download and checksum the published Windows, macOS, web, extension, and
+  userscript assets;
+- sign and notarize macOS packages if release credentials are supplied;
 - if desired, authorize and observe a single real Instagram action against an
   explicitly selected target.
 

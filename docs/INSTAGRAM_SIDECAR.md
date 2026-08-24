@@ -116,16 +116,16 @@ only when the open thread resolves the exact sent-message identity; the
 background repeats that check before creating a transient one-use capability.
 
 The independent local thread tool always shows **Unsend DMs**. Its first click
-loads history without opening a message menu and must prove a complete finite
-eligible count. The default is all eligible messages; `newest N` and `oldest N`
-remain under Advanced. One permanent-action confirmation names the exact thread
-and count. The source-audited runner
-revalidates completeness and count before the first menu, accepts only rows
-proven sent by the current account, follows the rendered menu/dialog sequence,
-reserves a one-use capability for the finite plan, uses the saved delay range,
-and checks expiry before every next message. Incomplete or capped
-checks, expiry, Stop, session loss, challenge, block, rate limit, or repeated
-failure end or prevent the run.
+confirms the exact open thread and selected scope once, then starts one streaming
+traversal without a preliminary count scan. The default is all messages the
+operator sent; `newest N` and `oldest N` remain under Advanced. The source-audited
+runner accepts only rows proven sent by the current account and follows the
+rendered menu/dialog sequence. It reserves a transient thread-bound capability
+before page control; the extension then checkpoints its ledger only after each
+verified removal. Expiry is checked before every next message. The optional
+read-only check reports a detected minimum only. Expiry, Stop, session loss,
+challenge, block, rate limit, wrong thread, ambiguity, or repeated failure ends
+the run.
 
 ### Workspace
 
@@ -158,18 +158,18 @@ Instagram cookies, or credentials.
 - Dynamic Instagram text is inserted with `textContent`, not HTML.
 - Production UI and extension-local queue data remain inside a closed shadow root.
 
-When a relevant native confirmation surface is visible, or while an exact arm
-is active/being consumed, the full panel yields to a compact measured status
+When a relevant native confirmation surface is visible, or while a confirmed
+capability is active or being consumed, the full panel yields to a compact status
 strip. If no non-intersecting placement is available, overlay controls remain
 hidden. Instagram controls are never moved, hidden, or restyled.
 
 ## Extension and userscript availability
 
 The Manifest V3 companion implements Now, Capture, Queue, Messages, Workspace,
-signed dry-run summaries, exact one-item arm gates, and locally phrase-gated
-batch tools. The Tampermonkey companion injects the same three user-facing tools
+signed dry-run summaries, exact one-item gates, and action-specific confirmations.
+The Tampermonkey companion injects the same three user-facing tools
 through the same Instagram engine, including paced Follow/Unfollow and DM
-Unsend. It starts live-locked and has no signed PWA bridge or durable workspace
+Unsend. It has no global live switch, signed PWA bridge, or durable workspace
 ledger.
 
 ## Safety invariants
@@ -180,14 +180,17 @@ ledger.
 - `content-instagram.js` contains one isolated control activator, reachable only
   after the signed intent, exact confirmation, transient capability, PWA authorization check,
   ledger reservation, and short-lived DOM token all match.
-- All Instagram reading is limited to the visible DOM.
-- Only the explicit full-list scanner scrolls, and only inside the open account
-  list dialog; normal inspection and visible capture do not scroll Instagram.
+- Profile, relationship-control, and message inspection is limited to the
+  visible DOM. Mutual Checker is the narrow exception: it can send only the
+  audited, fixed, same-origin search, Followers, and Following GET requests.
+- Only the Advanced list-dialog fallback scrolls Instagram, and only inside the
+  open account list dialog; normal inspection and visible capture do not scroll.
 - No global live setting or arm control exists. Signed PWA execution still accepts at
   most one reviewed account or DM item and consumes its transient capability
   before mutation. Local batches require one exact finite confirmation;
-  thread-wide Unsend additionally requires a 15-minute plan checked before every
-  message.
+  thread-wide Unsend additionally requires a transient 15-minute plan checked before every
+  message. It has no daily quota or mounted-row count gate. A zero-click failure
+  records zero removals; ledger counts advance only after verified removal.
 - Discarding the matching PWA reviewed job aborts its in-flight pre-driver work.
   Any completed reservation is finalized `canceled`, missing-job checkpoints
   reject, and no new page driver is dispatched. A mutation already dispatched

@@ -12,11 +12,11 @@ import { app, BrowserWindow, nativeImage, session } from 'electron';
 import { overlayQaScenarios, viewports } from './overlay-qa-scenarios.mjs';
 
 const viewTitles = Object.freeze({
-  capture: 'Mutual Checker',
-  messages: 'DM Unsend',
-  now: 'Instagram tools',
-  queue: 'Follow / Unfollow',
-  workspace: 'Workspace',
+  capture: 'Insta Toolbox',
+  messages: 'Insta Toolbox',
+  now: 'Insta Toolbox',
+  queue: 'Insta Toolbox',
+  workspace: 'Insta Toolbox',
 });
 
 const update = process.argv.includes('--update');
@@ -253,6 +253,7 @@ function scenarioUrl(baseUrl, scenario) {
     section: scenario.section,
     shadow: 'open',
     theme: scenario.theme,
+    version: builtManifest.version,
     width: scenario.width,
   });
   if (scenario.layout === 'floating') {
@@ -279,7 +280,7 @@ async function applyAfterState(webContents, scenario) {
     })()`, true);
     await waitForValue(
       webContents,
-      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="capture-state-title"]')?.textContent === 'Follower comparison complete for @demo_creator'`,
+      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="capture-state-title"]')?.textContent === 'Mutual comparison complete for @demo_creator'`,
       `${scenario.id}: authenticated follower comparison`,
     );
   }
@@ -303,6 +304,19 @@ async function applyAfterState(webContents, scenario) {
       webContents,
       `Number(document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="${role}"]').textContent) > 0`,
       `${scenario.id}: ${action}`,
+    );
+  }
+  if (scenario.after === 'open-dm-confirmation') {
+    await webContents.executeJavaScript(`(() => {
+      const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+      const control = shadow.querySelector('[data-ia-action="mass-unsend"]');
+      if (!control) throw new Error('DM Unsend control is missing.');
+      control.click();
+    })()`, true);
+    await waitForValue(
+      webContents,
+      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="action-confirmation"]')?.open`,
+      `${scenario.id}: in-overlay DM confirmation`,
     );
   }
   if (scenario.after === 'bot-review') {
@@ -356,7 +370,11 @@ async function inspectScenario(webContents, scenario) {
     const header = shadow.querySelector('.ia-header');
     const headerActions = shadow.querySelector('.ia-header-actions');
     const headerCopy = shadow.querySelector('.ia-header-copy');
-    const footer = shadow.querySelector('[data-ia-role="status"]');
+    const footer = shadow.querySelector('.ia-credit');
+    const statusRegion = shadow.querySelector('[data-ia-role="status"]');
+    const confirmationDialog = shadow.querySelector('[data-ia-role="action-confirmation"]');
+    const confirmationCancel = shadow.querySelector('[data-ia-role="confirm-cancel"]');
+    const confirmationAccept = shadow.querySelector('[data-ia-role="confirm-accept"]');
     const target = ${JSON.stringify(scenario.targetSelector)}
       ? document.querySelector(${JSON.stringify(scenario.targetSelector)})
       : null;
@@ -446,6 +464,43 @@ async function inspectScenario(webContents, scenario) {
       bodyWidth: document.body.scrollWidth,
       collision: host.dataset.collision,
       collisionPlacement: host.dataset.collisionPlacement || null,
+      ...(${JSON.stringify(scenario.confirmationOpen)} ? {
+        activeElementRole: shadow.activeElement?.dataset?.iaRole || null,
+        confirmation: {
+          accept: rect(confirmationAccept),
+          acceptLabel: confirmationAccept?.textContent.trim() || '',
+          cancel: rect(confirmationCancel),
+          cancelLabel: confirmationCancel?.textContent.trim() || '',
+          controlOrder: confirmationDialog
+            ? [...confirmationDialog.querySelectorAll('[data-ia-role="confirm-cancel"], [data-ia-role="confirm-accept"]')]
+              .map((element) => element.dataset.iaRole)
+            : [],
+          detail: shadow.querySelector('[data-ia-role="confirm-detail"]')?.textContent.trim() || '',
+          dialog: rect(confirmationDialog),
+          facts: [...shadow.querySelectorAll('[data-ia-role="confirm-facts"] dt')]
+            .map((term) => [term.textContent.trim(), term.nextElementSibling?.textContent.trim() || '']),
+          horizontalOverflow: confirmationDialog
+            ? confirmationDialog.scrollWidth - confirmationDialog.clientWidth
+            : 0,
+          message: shadow.querySelector('[data-ia-role="confirm-message"]')?.textContent.trim() || '',
+          open: Boolean(confirmationDialog?.open),
+          title: shadow.querySelector('[data-ia-role="confirm-title"]')?.textContent.trim() || '',
+        },
+        destructiveActivity: {
+          dmClicks: Number(globalThis.fixtureDmClickCount || 0),
+          reservations: Array.isArray(globalThis.fixtureBridgeRequests)
+            ? globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-reserve-thread-unsend').length
+            : 0,
+          runnerStatus: globalThis.InstaAioDmThreadUnsender?.snapshot?.().status || 'idle',
+          unsent: Number(globalThis.fixtureUnsentCount || 0),
+        },
+      } : {}),
+      credit: {
+        href: shadow.querySelector('.ia-credit-link')?.getAttribute('href') || '',
+        rel: shadow.querySelector('.ia-credit-link')?.getAttribute('rel') || '',
+        target: shadow.querySelector('.ia-credit-link')?.getAttribute('target') || '',
+        text: shadow.querySelector('.ia-credit-link')?.textContent || '',
+      },
       documentWidth: document.documentElement.scrollWidth,
       dock: host.dataset.dock,
       footer: rect(footer),
@@ -480,7 +535,13 @@ async function inspectScenario(webContents, scenario) {
       selectedHidden: selected?.hidden ?? true,
       selectedHorizontalOverflow: selected ? selected.scrollWidth - selected.clientWidth : 0,
       semantics,
-      status: footer?.textContent.trim() || '',
+      status: statusRegion?.textContent.trim() || '',
+      statusRegion: rect(statusRegion),
+      statusSemantics: {
+        atomic: statusRegion?.getAttribute('aria-atomic') || '',
+        live: statusRegion?.getAttribute('aria-live') || '',
+      },
+      workspaceExtensionVersion: shadow.querySelector('[data-ia-role="bridge-facts"] div:nth-child(3) dd')?.textContent.trim() || '',
       strip: rect(strip),
       target: targetRect,
       theme: host.dataset.theme,
@@ -524,12 +585,28 @@ function assertScenario(metrics, scenario) {
   if (scenario.targetSelector) assert.ok(metrics.target, `${scenario.id}: target fixture is missing`);
   if (scenario.presentation === 'panel') {
     assert.equal(metrics.selectedHidden, false, `${scenario.id}: requested tool view is hidden`);
-    assert.ok(metrics.header && metrics.footer, `${scenario.id}: panel chrome is incomplete`);
+    assert.ok(metrics.header && metrics.footer && metrics.statusRegion, `${scenario.id}: panel chrome is incomplete`);
+    assert.ok(Math.abs(metrics.header.height - 52) <= 1, `${scenario.id}: compact header height changed (${metrics.header.height}px)`);
+    assert.ok(metrics.footer.height >= 26 && metrics.footer.height <= 28, `${scenario.id}: credit line height changed (${metrics.footer.height}px)`);
+    assert.deepEqual(metrics.credit, {
+      href: 'https://github.com/slaveofsolace',
+      rel: 'noopener noreferrer',
+      target: '_blank',
+      text: 'created by @slaveofsolace',
+    }, `${scenario.id}: creator credit changed`);
+    assert.deepEqual(metrics.statusSemantics, { atomic: 'true', live: 'polite' }, `${scenario.id}: live status semantics changed`);
     assert.ok(metrics.panelAreaShare <= 0.86, `${scenario.id}: panel consumes too much viewport area`);
     for (const target of metrics.touchTargets) {
       assert.ok(target.height >= 43, `${scenario.id}: short touch target ${target.label} (${target.height}px)`);
       assert.ok(target.width >= 43, `${scenario.id}: narrow touch target ${target.label} (${target.width}px)`);
     }
+  }
+  if (scenario.section === 'workspace') {
+    assert.equal(
+      metrics.workspaceExtensionVersion,
+      builtManifest.version,
+      `${scenario.id}: fixture extension version does not match the built extension`,
+    );
   }
   if (scenario.layout === 'floating') {
     assert.equal(metrics.layout, 'floating', `${scenario.id}: floating layout was not applied`);
@@ -546,6 +623,65 @@ function assertScenario(metrics, scenario) {
   if (scenario.presentation === 'launcher') {
     assert.equal(metrics.launcher.width, 44, `${scenario.id}: launcher width changed`);
     assert.equal(metrics.launcher.height, 44, `${scenario.id}: launcher height changed`);
+  }
+  if (scenario.confirmationOpen) {
+    const confirmation = metrics.confirmation;
+    const geometry = JSON.stringify({
+      accept: confirmation.accept,
+      cancel: confirmation.cancel,
+      dialog: confirmation.dialog,
+      innerHeight: metrics.innerHeight,
+      innerWidth: metrics.innerWidth,
+    });
+    assert.equal(confirmation.open, true, `${scenario.id}: destructive confirmation is not open`);
+    assert.deepEqual({
+      acceptLabel: confirmation.acceptLabel,
+      cancelLabel: confirmation.cancelLabel,
+      detail: confirmation.detail,
+      facts: confirmation.facts,
+      message: confirmation.message,
+      title: confirmation.title,
+    }, {
+      acceptLabel: 'Unsend all my messages',
+      cancelLabel: 'Cancel',
+      detail: 'This cannot be undone. Stop stays available while it runs.',
+      facts: [
+        ['Action', 'Permanently unsend messages'],
+        ['Conversation', 'Thread 123'],
+        ['Scope', 'All messages you sent'],
+      ],
+      message: 'Permanently unsend every message you sent in this conversation?',
+      title: 'Unsend DMs?',
+    }, `${scenario.id}: exact confirmation copy or facts changed`);
+    assert.equal(metrics.activeElementRole, 'confirm-cancel', `${scenario.id}: Cancel does not own initial focus`);
+    assert.deepEqual(
+      confirmation.controlOrder,
+      ['confirm-cancel', 'confirm-accept'],
+      `${scenario.id}: Cancel must precede the destructive control in DOM order`,
+    );
+    assert.ok(confirmation.dialog, `${scenario.id}: confirmation has no rendered bounds`);
+    assert.ok(confirmation.dialog.left >= -1, `${scenario.id}: confirmation escapes left; ${geometry}`);
+    assert.ok(confirmation.dialog.top >= -1, `${scenario.id}: confirmation escapes top; ${geometry}`);
+    assert.ok(confirmation.dialog.right <= metrics.innerWidth + 1, `${scenario.id}: confirmation escapes right; ${geometry}`);
+    assert.ok(confirmation.dialog.bottom <= metrics.innerHeight + 1, `${scenario.id}: confirmation escapes bottom; ${geometry}`);
+    assert.ok(confirmation.horizontalOverflow <= 1, `${scenario.id}: confirmation has horizontal overflow`);
+    for (const [label, control] of [['Cancel', confirmation.cancel], ['Confirm', confirmation.accept]]) {
+      assert.ok(control, `${scenario.id}: ${label} control has no rendered bounds`);
+      assert.ok(control.width >= 43.5, `${scenario.id}: ${label} is narrower than 44px; ${geometry}`);
+      assert.ok(control.height >= 43.5, `${scenario.id}: ${label} is shorter than 44px; ${geometry}`);
+    }
+    const cancelComesFirst = confirmation.cancel.top < confirmation.accept.top - 1
+      || (
+        Math.abs(confirmation.cancel.top - confirmation.accept.top) <= 1
+        && confirmation.cancel.left < confirmation.accept.left
+      );
+    assert.equal(cancelComesFirst, true, `${scenario.id}: Cancel is not visually before Confirm; ${geometry}`);
+    assert.deepEqual(metrics.destructiveActivity, {
+      dmClicks: 0,
+      reservations: 0,
+      runnerStatus: 'idle',
+      unsent: 0,
+    }, `${scenario.id}: opening a confirmation started destructive work`);
   }
   for (const expectation of scenario.semantics) {
     const actual = metrics.semantics[expectation.selector];
@@ -618,7 +754,7 @@ function assertScenario(metrics, scenario) {
 }
 
 async function accessibilitySmoke(webContents, scenario) {
-  if (!['profile-following-queue-match', 'profile-mobile-portrait'].includes(scenario.id)) return;
+  if (!scenario.confirmationOpen && !['profile-following-queue-match', 'profile-mobile-portrait'].includes(scenario.id)) return;
   if (!webContents.debugger.isAttached()) webContents.debugger.attach('1.3');
   await withTimeout(
     webContents.debugger.sendCommand('Accessibility.enable'),
@@ -630,7 +766,20 @@ async function accessibilitySmoke(webContents, scenario) {
     `${scenario.id}: accessibility tree`,
     5_000,
   );
-  const names = new Set((tree.nodes || []).map((node) => node.name?.value).filter(Boolean));
+  const nodes = tree.nodes || [];
+  const names = new Set(nodes.map((node) => node.name?.value).filter(Boolean));
+  if (scenario.confirmationOpen) {
+    const dialog = nodes.find((node) => node.role?.value === 'dialog' && node.name?.value === 'Unsend DMs?');
+    assert.ok(dialog, `${scenario.id}: accessibility tree is missing the named Unsend confirmation dialog`);
+    for (const expected of ['Cancel', 'Unsend all my messages']) {
+      assert.equal(
+        nodes.some((node) => node.role?.value === 'button' && node.name?.value === expected),
+        true,
+        `${scenario.id}: accessibility tree is missing button ${expected}`,
+      );
+    }
+    return;
+  }
   for (const expected of [
     'Insta Toolbox',
     'Toolbox',
@@ -664,7 +813,7 @@ async function captureScenario(browserWindow, baseUrl, scenario, expectedManifes
   await waitForValue(
     webContents,
     `Boolean(document.querySelector('#insta-aio-sidecar-root')?.shadowRoot
-      && document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Inspection ready'))`,
+        && document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Review the exact target'))`,
     `${scenario.id}: production overlay initialization`,
   );
   await applyAfterState(webContents, scenario);
@@ -902,7 +1051,7 @@ async function run() {
     );
     await waitForValue(
       browserWindow.webContents,
-      `document.querySelector('#insta-aio-sidecar-root')?.shadowRoot?.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Inspection ready')`,
+      `document.querySelector('#insta-aio-sidecar-root')?.shadowRoot?.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Review the exact target')`,
       'performance overlay initialization',
     );
     const performance = await performanceMetrics(browserWindow.webContents);

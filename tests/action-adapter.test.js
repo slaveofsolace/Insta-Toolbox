@@ -84,7 +84,7 @@ test('excludes protected and historical records from an action preview', () => {
   );
 });
 
-test('requires an unchanged preview and exact confirmation phrase', () => {
+test('requires an unchanged preview and recorded exact confirmation', () => {
   const job = createReviewedActionJob([
     createQueueItem('target', 'follow'),
   ], { createdAt: 1_700_000_000_000 });
