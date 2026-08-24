@@ -27,6 +27,11 @@ const libraryFiles = [
   'controlled-dm-unsend.js',
 ];
 const legalFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md'];
+const extensionIconSizes = [16, 32, 48, 128];
+const extensionIcons = Object.freeze(Object.fromEntries(
+  extensionIconSizes.map((size) => [String(size), `icons/icon-${size}.png`]),
+));
+const extensionIconFiles = Object.values(extensionIcons);
 const liveSafetyTests = [
   'tests/content-instagram-dm-live.test.js',
   'tests/content-instagram-live.test.js',
@@ -100,6 +105,21 @@ async function validateSources() {
   const manifest = JSON.parse(await readFile(path.join(sourceRoot, 'manifest.json'), 'utf8'));
   if (manifest.manifest_version !== 3) {
     throw new Error('Companion extension must use Manifest V3.');
+  }
+  if (
+    JSON.stringify(manifest.icons) !== JSON.stringify(extensionIcons)
+    || JSON.stringify(manifest.action?.default_icon) !== JSON.stringify(extensionIcons)
+  ) {
+    throw new Error('Companion extension must declare the complete local icon set.');
+  }
+  for (const [declaredSize, file] of Object.entries(extensionIcons)) {
+    const icon = await readFile(path.join(sourceRoot, ...file.split('/')));
+    const signature = icon.subarray(0, 8).toString('hex');
+    const width = icon.length >= 24 ? icon.readUInt32BE(16) : 0;
+    const height = icon.length >= 24 ? icon.readUInt32BE(20) : 0;
+    if (signature !== '89504e470d0a1a0a' || width !== Number(declaredSize) || height !== Number(declaredSize)) {
+      throw new Error(`Companion extension icon ${file} must be a ${declaredSize}x${declaredSize} PNG.`);
+    }
   }
   const forbiddenPermissions = ['cookies', 'webRequest', 'webRequestBlocking'];
   const declaredPermissions = [
@@ -251,6 +271,11 @@ for (const file of sourceFiles) {
   await mkdir(path.dirname(target), { recursive: true });
   await copyFile(path.join(sourceRoot, file), target);
 }
+for (const file of extensionIconFiles) {
+  const target = path.join(resolvedOutput, ...file.split('/'));
+  await mkdir(path.dirname(target), { recursive: true });
+  await copyFile(path.join(sourceRoot, ...file.split('/')), target);
+}
 for (const file of libraryFiles) {
   await copyFile(
     path.join(repositoryRoot, 'src', 'core', file),
@@ -264,6 +289,7 @@ for (const file of legalFiles) {
 const artifactEntries = [];
 for (const file of [
   ...sourceFiles,
+  ...extensionIconFiles,
   ...libraryFiles.map((libraryFile) => `lib/${libraryFile}`),
   ...legalFiles,
 ].sort()) {

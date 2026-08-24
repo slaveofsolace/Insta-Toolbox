@@ -80,7 +80,7 @@ unbound or noninteractive surfaces stop before Unsend, wrong-thread/identity-los
 outcomes stay uncertain, nested flex-end descendants cannot prove ownership,
 and success uses only the exact row action, bound localized Unsend choice, bound
 confirmation, and stable-identity removal proof. Do not treat this fixture as
-authenticated issue #4 acceptance.
+authenticated Instagram acceptance.
 
 For pairing changes, run `pnpm run qa:chrome` with Chrome for Testing. The gate
 uses a disposable browser profile, pregrants only loopback access in a disposable
@@ -90,11 +90,17 @@ deletes the profile. Branded stable Chrome may reject command-line loading of an
 unpacked extension; do not weaken or modify the user's real profile to bypass
 that policy.
 
-For macOS packaging changes, run `pnpm run dist:mac` followed
-by `pnpm run qa:mac-package` on macOS. CI performs this lifecycle with the
-QA-only ad-hoc entitlement file; the release and inherited entitlements omit its
-library-validation exception. A public release still requires its own Developer
-ID identity and notarization.
+For macOS packaging changes, run `pnpm run dist:mac` followed by
+`pnpm run qa:mac-package` on macOS. The current public package is universal and
+ad-hoc signed. Its inherited entitlements include
+`com.apple.security.cs.disable-library-validation` because an ad-hoc-signed
+Electron bundle has no Developer ID Team ID for library validation. QA must
+reject unexpected outer archive content; check both architectures, the
+hardened-runtime flag and effective entitlement allowlist for every bundled
+Mach-O; verify the bundle icon; and launch the exact packaged app without
+modifying it. When Developer ID credentials are
+available, remove this exception, sign the complete bundle, notarize it, staple
+the ticket, and repeat the lifecycle checks.
 
 For the portable web artifact, run `pnpm run build:web` and
 `pnpm run verify:web-package`. The ZIP is a static-hosting package, not a

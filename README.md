@@ -25,27 +25,27 @@ scanning and page controls apply to both.
 
 ## Download or install
 
-The 2.0.2 files below appear together when the release is published. If GitHub
+The 2.0.3 files below appear together when the release is published. If GitHub
 still shows an older release, use the commit-named CI artifacts only for review;
 do not mix files from different builds.
 
 - **Instagram overlay:** [install the Tampermonkey userscript](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js),
   reload Instagram, then press **Alt + Shift + I**.
 - **Windows 64-bit:** open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest),
-  download `Insta Toolbox Setup 2.0.2.exe`, and follow the short installer.
-- **macOS Apple Silicon:** open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest),
-  download `Insta Toolbox-2.0.2-arm64.dmg`, then drag the app to Applications.
-- **Web/PWA package:** download `insta-toolbox-web-2.0.2.zip` from the latest
+  download `Insta-Toolbox-Setup-2.0.3.exe`, and follow the short installer.
+- **macOS (Intel + Apple Silicon):** open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest),
+  download `Insta-Toolbox-2.0.3-universal.dmg`, then drag the app to Applications.
+- **Web/PWA package:** download `insta-toolbox-web-2.0.3.zip` from the latest
   release. It is ready for static hosting over HTTPS or localhost; it is not a
   double-click app.
-- **Chrome extension:** download `insta-aio-companion-2.0.2.zip`, extract it,
+- **Chrome extension:** download `insta-aio-companion-2.0.3.zip`, extract it,
   then choose **Extensions → Developer mode → Load unpacked** and select the
   extracted folder.
 
-The desktop packages are not publicly code-signed. Windows SmartScreen or
-macOS Gatekeeper may warn. Verify the matching SHA-256 value in
-`SHA256SUMS.txt` before opening a download. The macOS build is currently for
-Apple Silicon; an Intel build and Apple notarization are not included.
+The Windows installer is unsigned. The universal macOS app has an ad-hoc
+integrity signature, not an Apple Developer ID signature or notarization.
+Windows SmartScreen or macOS Gatekeeper may therefore warn. Verify the matching
+SHA-256 value in `SHA256SUMS.txt` before opening a download.
 
 See [Installation](./docs/INSTALLATION.md) for full steps, troubleshooting,
 upgrades, and source builds.
@@ -174,8 +174,8 @@ The signed PWA workflow remains limited to one reviewed item. It requires one
 ordinary confirmation naming the exact account action or sent message, then
 uses a short-lived in-memory capability and durable reservation. The capability
 is consumed before page control, and the result is recorded as succeeded or
-uncertain. Authenticated selector acceptance is still required before issues #3
-and #4 can close.
+uncertain. Recheck authenticated selectors against the current Instagram UI
+before each release; fixture results alone do not prove live compatibility.
 
 ## Reviewed DM jobs
 
@@ -189,8 +189,9 @@ reservation, and verified removal. Its no-click check succeeds only when the
 open thread and one rendered sent row expose every reviewed identity field.
 Missing or duplicate candidates, changed content, unknown ownership, a wrong
 thread, pre-existing controls, or an uncertain postcondition stop the run.
-Authenticated Instagram action acceptance remains pending, so issue #4 is not
-closed.
+The 2.0.2 acceptance run verified one disposable exact-message removal. Treat
+broader thread-history compatibility as version-sensitive and recheck it before
+making a new release claim.
 
 ## Companion extension
 
@@ -395,10 +396,12 @@ Instagram selector acceptance remain separate operator/release gates.
 
 Windows packaging produces an unpacked application and NSIS installer; CI runs
 the confined unpacked-app smoke test and verifies the installer artifacts. CI
-also builds and smoke-tests macOS DMG and ZIP packages with QA-only ad-hoc
-signing. NSIS install/uninstall, Apple Developer ID signing and notarization,
-human screen-reader review, persistent-profile installation, and any
-user-selected live Instagram action remain manual release checks.
+also builds the exact universal macOS DMG and ZIP, checks every bundled Mach-O
+file for Intel and Apple Silicon slices, verifies the bundle icon and the app's
+ad-hoc signature, and smoke-tests the packaged app without re-signing it. The macOS
+build is not Developer ID signed or notarized. Human screen-reader review,
+persistent-profile installation, and any user-selected live Instagram action
+remain manual release checks.
 
 ## Documentation
 

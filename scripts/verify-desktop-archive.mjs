@@ -5,6 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import asar from '@electron/asar';
 
+import { webRuntimeFiles } from './web-package-files.mjs';
+
 const { extractFile, listPackage } = asar;
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepositoryRoot = path.resolve(scriptDirectory, '..');
@@ -13,7 +15,12 @@ const maxArchiveEntries = 20_000;
 const maxDirectoryEntries = 4_096;
 const maxSearchDepth = 12;
 const maxLegalFileBytes = 2 * 1024 * 1024;
-const requiredEntries = Object.freeze(['LICENSE', 'THIRD_PARTY_NOTICES.md', 'package.json']);
+export const requiredDesktopEntries = Object.freeze([
+  'desktop/main.mjs',
+  'desktop/startup-recovery.mjs',
+  'package.json',
+  ...webRuntimeFiles,
+]);
 
 function relativeInside(root, target, label) {
   const relative = path.relative(root, target);
@@ -108,7 +115,7 @@ export async function verifyDesktopArchive(archivePath, expectedVersion) {
     throw new Error('Desktop app.asar has an invalid entry count.');
   }
   const entries = new Set(listed.map((entry) => entry.replaceAll('\\', '/').replace(/^\/+/, '')));
-  for (const required of requiredEntries) {
+  for (const required of requiredDesktopEntries) {
     if (!entries.has(required)) throw new Error(`Desktop app.asar is missing ${required}.`);
   }
 
@@ -130,6 +137,9 @@ export async function verifyDesktopArchive(archivePath, expectedVersion) {
   }
   if (packageMetadata?.version !== expectedVersion) {
     throw new Error(`Desktop app.asar version does not match ${expectedVersion}.`);
+  }
+  if (packageMetadata?.main !== 'desktop/main.mjs') {
+    throw new Error('Desktop app.asar package.json does not point to desktop/main.mjs.');
   }
   return { entries: listed.length, version: expectedVersion };
 }
