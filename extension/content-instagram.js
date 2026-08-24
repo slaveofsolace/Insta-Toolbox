@@ -60,6 +60,14 @@
       : '';
   }
 
+  function relationshipCount(...values) {
+    for (const value of values) {
+      const number = Number(value);
+      if (Number.isSafeInteger(number) && number >= 0) return number;
+    }
+    return null;
+  }
+
   function detectAuthenticatedUsername() {
     const candidates = new Set();
     const anchors = [
@@ -305,25 +313,77 @@
     if (!/^\d+$/.test(userId)) {
       throw relationshipError('username-not-found', `Instagram could not resolve @${username}.`);
     }
-    const count = (...values) => {
-      for (const value of values) {
-        const number = Number(value);
-        if (Number.isSafeInteger(number) && number >= 0) return number;
-      }
-      return null;
-    };
-    const onExactProfile = normalizeUsername(location.pathname) === username;
     return {
       userId,
-      expectedCounts: {
-        followers: onExactProfile
-          ? exactProfileListCount('followers')
-          : count(exact.follower_count, exact.followers_count, exact.edge_followed_by?.count),
-        following: onExactProfile
-          ? exactProfileListCount('following')
-          : count(exact.following_count, exact.follows_count, exact.edge_follow?.count),
-      },
     };
+  }
+
+  async function resolveRelationshipProfileCounts(username, userId, options) {
+    const url = new URL('/api/v1/users/web_profile_info/', INSTAGRAM_WEB_ORIGIN);
+    url.searchParams.set('username', username);
+    const data = await fetchInstagramRelationshipJson(url, options);
+    const profile = data?.data?.user;
+    const resolvedUsername = normalizeUsername(profile?.username);
+    const resolvedUserId = String(profile?.id || profile?.pk || '').trim();
+    if (resolvedUsername !== username || resolvedUserId !== userId) {
+      throw relationshipError(
+        'profile-mismatch',
+        `Instagram did not return the exact profile counters for @${username}. The previous comparison is unchanged.`,
+      );
+    }
+    const followers = relationshipCount(
+      profile?.edge_followed_by?.count,
+      profile?.follower_count,
+      profile?.followers_count,
+    );
+    const following = relationshipCount(
+      profile?.edge_follow?.count,
+      profile?.following_count,
+      profile?.follows_count,
+    );
+    if (!Number.isSafeInteger(followers) || !Number.isSafeInteger(following)) {
+      throw relationshipError(
+        'profile-count-unavailable',
+        `Instagram did not provide verified follower and following totals for @${username}. The previous comparison is unchanged.`,
+      );
+    }
+    return Object.freeze({ followers, following });
+  }
+
+  function exactProfileCountDisagreement(username, profileCounts) {
+    if (normalizeUsername(location.pathname) !== username) {
+      return Object.freeze({ followers: false, following: false });
+    }
+    const followers = exactProfileListCount('followers');
+    const following = exactProfileListCount('following');
+    return Object.freeze({
+      followers: Number.isSafeInteger(followers) && followers !== profileCounts.followers,
+      following: Number.isSafeInteger(following) && following !== profileCounts.following,
+    });
+  }
+
+  function finalizeRelationshipList(list, {
+    countChanged,
+    countDisagreed,
+    expectedCount,
+  }) {
+    if (countChanged) {
+      return Object.freeze({
+        ...list,
+        complete: false,
+        expectedCount,
+        reason: 'count-changed',
+      });
+    }
+    if (countDisagreed) {
+      return Object.freeze({
+        ...list,
+        complete: false,
+        expectedCount,
+        reason: 'profile-count-disagreement',
+      });
+    }
+    return list;
   }
 
   async function fetchRelationshipList(listType, userId, username, {
@@ -345,6 +405,7 @@
     expectedCount = null,
   }) {
     const accounts = new Map();
+    const accountKeyByUsername = new Map();
     const seenTokens = new Set();
     const passAccounts = new Set();
     let nextMaxId = '';
@@ -378,13 +439,35 @@
       for (const user of data.users) {
         const accountUsername = normalizeUsername(user?.username);
         if (!accountUsername) continue;
-        accounts.set(accountUsername, {
+        const rawAccountId = user?.pk ?? user?.id ?? '';
+        const accountId = String(rawAccountId || '').trim();
+        if (accountId && !/^\d+$/.test(accountId)) {
+          throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} account ID.`);
+        }
+        const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
+        const usernameOwner = accountKeyByUsername.get(accountUsername);
+        if (usernameOwner && usernameOwner !== accountKey) {
+          if (usernameOwner === `username:${accountUsername}` && accountId) {
+            accounts.delete(usernameOwner);
+          } else {
+            throw relationshipError(
+              'invalid-response',
+              `Instagram returned conflicting ${listType} account identities.`,
+            );
+          }
+        }
+        const previous = accounts.get(accountKey);
+        if (previous?.username && previous.username !== accountUsername) {
+          accountKeyByUsername.delete(previous.username);
+        }
+        accounts.set(accountKey, {
           username: accountUsername,
           profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
           displayName: String(user?.full_name || '').trim().slice(0, 160),
           source: 'authenticated-instagram-web',
         });
-        if (reconciliationAttempts > 0) passAccounts.add(accountUsername);
+        accountKeyByUsername.set(accountUsername, accountKey);
+        if (reconciliationAttempts > 0) passAccounts.add(accountKey);
         if (accounts.size >= maxAccounts) break;
       }
       onProgress?.(Object.freeze({
@@ -421,13 +504,17 @@
           await sleepImpl(800, signal);
           continue;
         }
-        const countReconciled = !Number.isSafeInteger(expectedCount) || accounts.size >= expectedCount;
+        const countReconciled = Number.isSafeInteger(expectedCount) && accounts.size === expectedCount;
         return {
           accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
           complete: countReconciled,
           expectedCount,
           pages,
-          reason: countReconciled ? 'pagination-complete' : 'count-mismatch',
+          reason: countReconciled
+            ? 'pagination-complete'
+            : Number.isSafeInteger(expectedCount)
+              ? 'count-mismatch'
+              : 'count-unverified',
         };
       }
       nextMaxId = String(candidateToken);
@@ -509,16 +596,54 @@
         pages: 0,
         username,
       });
-      const { userId, expectedCounts } = resolution;
-      const followers = await fetchRelationshipList('followers', userId, username, {
+      const { userId } = resolution;
+      onProgress?.(Object.freeze({ found: 0, listType: null, pages: 0, phase: 'verifying-profile', username }));
+      const profileCountsAtStart = await resolveRelationshipProfileCounts(username, userId, {
         ...common,
-        expectedCount: expectedCounts.followers,
+        found: 0,
+        listType: null,
+        pages: 0,
+        username,
       });
-      const following = await fetchRelationshipList('following', userId, username, {
+      const countDisagreementAtStart = exactProfileCountDisagreement(username, profileCountsAtStart);
+      const followersTraversal = await fetchRelationshipList('followers', userId, username, {
         ...common,
-        expectedCount: expectedCounts.following,
+        expectedCount: profileCountsAtStart.followers,
+      });
+      const followingTraversal = await fetchRelationshipList('following', userId, username, {
+        ...common,
+        expectedCount: profileCountsAtStart.following,
       });
       assertRelationshipRunActive(runSignal, startedAt, now, boundedDuration);
+      onProgress?.(Object.freeze({
+        found: followersTraversal.accounts.length + followingTraversal.accounts.length,
+        listType: null,
+        pages: followersTraversal.pages + followingTraversal.pages,
+        phase: 'revalidating-profile',
+        username,
+      }));
+      const profileCountsAtEnd = await resolveRelationshipProfileCounts(username, userId, {
+        ...common,
+        found: followersTraversal.accounts.length + followingTraversal.accounts.length,
+        listType: null,
+        pages: followersTraversal.pages + followingTraversal.pages,
+        username,
+      });
+      const countDisagreementAtEnd = exactProfileCountDisagreement(username, profileCountsAtEnd);
+      const followers = finalizeRelationshipList(followersTraversal, {
+        countChanged: profileCountsAtStart.followers !== profileCountsAtEnd.followers,
+        countDisagreed: countDisagreementAtStart.followers || countDisagreementAtEnd.followers,
+        expectedCount: profileCountsAtEnd.followers,
+      });
+      const following = finalizeRelationshipList(followingTraversal, {
+        countChanged: profileCountsAtStart.following !== profileCountsAtEnd.following,
+        countDisagreed: countDisagreementAtStart.following || countDisagreementAtEnd.following,
+        expectedCount: profileCountsAtEnd.following,
+      });
+      const expectedCounts = Object.freeze({
+        followers: profileCountsAtEnd.followers,
+        following: profileCountsAtEnd.following,
+      });
       const capturedAt = new Date(now()).toISOString();
       const result = Object.freeze({
         capturedAt,

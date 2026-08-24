@@ -24,8 +24,13 @@ not removed or replaced.
 
 The Mutual Checker runtime also provides an independent, bounded client
 for the source's exact authenticated read behavior. It resolves one exact
-username, pages only the fixed Instagram Followers and Following GET routes,
-stores both lists atomically with schema-5 provenance, and retains the dialog
+username, verifies its numeric ID and current profile totals, and pages only the
+fixed Instagram Followers and Following GET routes. Search-result counters never
+serve as completeness proof. A terminal page that falls short of the verified
+profile total gets one full reconciliation pass and remains partial if accounts
+are still hidden. Exact equality and an unchanged post-traversal profile read are
+required before completeness is true. The runtime stores both lists atomically
+with schema-5 provenance and retains the dialog
 reader as an Advanced fallback. This does not change legacy result migration:
 old two-array reports remain incomplete and non-actionable.
 

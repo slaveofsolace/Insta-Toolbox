@@ -63,13 +63,15 @@ The project does not support:
 
 Reports requesting or depending on those behaviors will not be implemented.
 
-Mutual Checker is the narrow exception for authenticated web reads. It
-uses a fixed allowlist of the exact search, Followers, and Following GET routes
-reviewed from the supplied legacy checker, a fixed application header, bounded
-pagination, and browser-managed credentials. It does not read or export cookies,
-accept arbitrary routes, or expose a mutation method. Instagram can change or
-remove these unsupported web routes at any time; errors, challenges, blocks, and
-rate limits stop the read.
+Mutual Checker is the narrow exception for authenticated web reads. It uses a
+fixed allowlist of the exact search, profile-counter, Followers, and Following
+GET routes. The profile-counter route only verifies the exact normalized
+username, numeric account ID, and Followers/Following totals before and after a
+read. Requests use a fixed application header, bounded pagination, and
+browser-managed credentials. The tool does not read or export cookies, accept
+arbitrary routes, or expose a mutation method. Instagram can change or remove
+these unsupported web routes at any time; errors, challenges, blocks, and rate
+limits stop the read.
 
 The latest dependency and application-boundary review is documented in
 [`docs/SECURITY_REVIEW.md`](docs/SECURITY_REVIEW.md).

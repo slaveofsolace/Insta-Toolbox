@@ -125,12 +125,22 @@ The source is one dependency-free script designed for execution in an authentica
 The script relies on the existing browser session, a fixed application header,
 private search and relationship GET routes, and pagination tokens. The current
 Mutual Checker independently implements that narrow read flow with exact
-username matching, a fixed Instagram-origin route allowlist, 50-row pages,
-bounded iteration, 800–1499 ms
+username matching, a fixed Instagram-origin route allowlist, exact
+profile-identity and counter verification, 50-row pages, bounded iteration, 800–1499 ms
 page pacing, a 20-second per-attempt watchdog, two bounded stalled-page retries,
 stop support, schema validation, and immediate session/challenge/
 block/rate-limit stops. It never reads or exports the session and exposes no
 relationship mutation route. The older exact-dialog reader remains a fallback.
+
+Search-result counters are treated only as untrusted discovery metadata. Before
+pagination begins, the reader verifies the exact username and numeric user ID
+through the fixed `web_profile_info` route and uses those profile totals for
+reconciliation. A cursorless result that falls short retries once, then remains
+partial instead of being labeled complete. Completion requires exact count
+equality, a second profile-total read after both traversals, and no disagreement
+with counters visible on the exact open profile. Rows use Instagram's numeric
+account ID for deduplication when supplied, with username-only fallback for
+legacy responses.
 
 ### Output contract
 

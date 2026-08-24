@@ -1699,6 +1699,14 @@
             setText('scan-detail', `Finding the exact @${username} account…`);
             return;
           }
+          if (progress.phase === 'verifying-profile') {
+            setText('scan-detail', `Reading the exact @${username} profile totals…`);
+            return;
+          }
+          if (progress.phase === 'revalidating-profile') {
+            setText('scan-detail', `Confirming @${username}'s profile totals did not change…`);
+            return;
+          }
           if (progress.phase === 'retrying') {
             const label = progress.listType || 'account lookup';
             setText(
@@ -1737,11 +1745,26 @@
         state.capture = previousCapture;
         throw error;
       }
-      const mismatch = result.reasons.followers === 'count-mismatch'
-        ? ` Instagram returned ${result.followers.length.toLocaleString('en-US')} accessible followers; the profile shows ${result.expectedCounts.followers.toLocaleString('en-US')}. ${(result.expectedCounts.followers - result.followers.length).toLocaleString('en-US')} accounts were not returned.`
-        : result.reasons.following === 'count-mismatch'
-          ? ` Instagram returned ${result.following.length.toLocaleString('en-US')} accessible following; the profile shows ${result.expectedCounts.following.toLocaleString('en-US')}. ${(result.expectedCounts.following - result.following.length).toLocaleString('en-US')} accounts were not returned.`
-          : ' A bounded read limit was reached.';
+      const partialDetails = [];
+      for (const [listType, accounts] of [
+        ['followers', result.followers],
+        ['following', result.following],
+      ]) {
+        const label = listType === 'followers' ? 'Followers' : 'Following';
+        const reason = result.reasons[listType];
+        const expected = result.expectedCounts[listType];
+        if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
+          const difference = expected - accounts.length;
+          partialDetails.push(difference > 0
+            ? `${label}: Instagram returned ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')}; ${difference.toLocaleString('en-US')} were not returned.`
+            : `${label}: the API returned ${accounts.length.toLocaleString('en-US')} unique accounts while the profile shows ${expected.toLocaleString('en-US')}.`);
+        } else if (reason === 'count-changed') {
+          partialDetails.push(`${label}: the profile total changed during the check.`);
+        } else if (reason === 'profile-count-disagreement') {
+          partialDetails.push(`${label}: Instagram's profile counters disagreed.`);
+        }
+      }
+      const mismatch = ` ${partialDetails.join(' ') || 'A bounded read limit was reached.'}`;
       status(
         `Checked @${result.username}: ${result.followers.length.toLocaleString('en-US')} followers and ${result.following.length.toLocaleString('en-US')} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
       );

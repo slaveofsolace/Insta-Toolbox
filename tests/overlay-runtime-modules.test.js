@@ -22,10 +22,21 @@ const captureViewSource = await readFile(
   new URL('../extension/overlay/views/capture.js', import.meta.url),
   'utf8',
 );
+const queueViewSource = await readFile(
+  new URL('../extension/overlay/views/queue.js', import.meta.url),
+  'utf8',
+);
 
 function loadModules() {
   const context = vm.createContext({ console, Date, Intl });
   for (const name of moduleNames) vm.runInContext(sources[name], context);
+  return context.__instaAioOverlayModules;
+}
+
+function loadQueueModules() {
+  const context = vm.createContext({ console, Date, Intl });
+  vm.runInContext(sources.shared, context);
+  vm.runInContext(queueViewSource, context);
   return context.__instaAioOverlayModules;
 }
 
@@ -365,6 +376,52 @@ test('authenticated checker publishes a comparison only after persistence succee
     /await runtime\.persistCapture\(nextCapture\);\s*model\.capture = nextCapture;/,
     'extension storage failures must leave the prior rendered comparison untouched',
   );
+});
+
+test('partial Mutual Checker data stays visible but cannot seed account actions', () => {
+  const { queueView, shared } = loadQueueModules();
+  const normalizeUsername = (value) => String(value || '').replace(/^@/, '').toLowerCase();
+  const base = {
+    schemaVersion: 5,
+    followers: [{ username: 'mutual' }, { username: 'follower_only' }],
+    following: [{ username: 'mutual' }, { username: 'not_back' }],
+    verified: { followers: true, following: true },
+    complete: { followers: true, following: true },
+  };
+  const complete = shared.normalizeCaptureWorkspace(base, normalizeUsername);
+  const runtime = { model: { capture: complete } };
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(queueView.botTargets(runtime, 'not-following-me-back', 'unfollow').pool)),
+    ['not_back'],
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(queueView.botTargets(runtime, 'i-do-not-follow-back', 'follow').pool)),
+    ['follower_only'],
+  );
+
+  for (const [listType, directSource] of [
+    ['followers', 'scanned-followers'],
+    ['following', 'scanned-following'],
+  ]) {
+    runtime.model.capture = shared.normalizeCaptureWorkspace({
+      ...base,
+      complete: { ...base.complete, [listType]: false },
+    }, normalizeUsername);
+    for (const source of ['not-following-me-back', 'i-do-not-follow-back', directSource]) {
+      const result = queueView.botTargets(runtime, source, source.includes('following-me') ? 'unfollow' : 'follow');
+      assert.deepEqual(JSON.parse(JSON.stringify(result.pool)), []);
+      assert.match(result.skipped[0].reason, /data is partial/i);
+    }
+  }
+
+  const quarantined = shared.normalizeCaptureWorkspace({ ...base, schemaVersion: 3 }, normalizeUsername);
+  runtime.model.capture = quarantined;
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(queueView.botTargets(runtime, 'not-following-me-back', 'unfollow').pool)),
+    [],
+  );
+  assert.equal(quarantined.followers.length, 2, 'partial rows remain available for display and export');
 });
 
 test('follower comparison filters stay local, bounded, and category-specific', () => {

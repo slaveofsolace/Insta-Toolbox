@@ -9,6 +9,9 @@ Current version: **2.0.2 release candidate**
 - Imports Instagram relationship exports and supported legacy formats.
 - Resolves a user-entered or locally detected username and loads Followers and
   Following through bounded, authenticated Instagram pagination.
+- Verifies the exact profile ID and current totals before pagination. Stale
+  search counters cannot make a shortened result appear complete. Totals are
+  checked again after both lists finish, and completion requires exact equality.
 - Gives each page request and JSON decode a 20-second watchdog, retries a
   stalled page twice with visible bounded backoff, and preserves the prior
   comparison if the new read cannot finish.
@@ -108,7 +111,7 @@ Windows installers remain intentionally unsigned.
 - Updates MIT attribution, embeds the full MIT notice in the userscript, and
   includes `LICENSE` plus `THIRD_PARTY_NOTICES.md` in the extension, desktop,
   release archives, and offline PWA cache.
-- Adds a deterministic `insta-toolbox-web-2.0.2.zip` containing the exact 42-file
+- Adds a deterministic `insta-toolbox-web-2.0.2.zip` containing the exact 44-file
   public PWA runtime plus launch/version notes. Its verifier checks canonical
   source parity, legal files, the offline asset graph, relative paths,
   private-file exclusion, repeatable bytes, and extracted localhost delivery.
@@ -116,7 +119,7 @@ Windows installers remain intentionally unsigned.
   bounded restart now also recovers a prematurely cursorless large-account
   response; a 2,104-follower regression and exhausted-retry case cover the
   reported failure without adding an unbounded loop.
-- Full local suite: **292/292** passing after the confirmation, finite-oldest,
+- Full local suite: **300/300** passing after the confirmation, finite-oldest,
   and web-package repairs, including dependency verification, repository
   hygiene, generated parity, migrations, virtualized DM traversal, bounded
   capabilities, safe stops, and the exact static release archive.

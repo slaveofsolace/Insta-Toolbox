@@ -222,6 +222,23 @@
       };
     }
     const workspace = runtime.model.capture || shared.captureWorkspaceDefaults();
+    const requiredLists = source === 'scanned-followers'
+      ? ['followers']
+      : source === 'scanned-following'
+        ? ['following']
+        : ['followers', 'following'];
+    const captureReady = requiredLists.every((listType) => (
+      workspace.verified?.[listType] === true && workspace.complete?.[listType] === true
+    ));
+    if (!captureReady) {
+      return {
+        pool: [],
+        skipped: [{
+          count: 0,
+          reason: 'Mutual Checker data is partial. Run Mutual Checker again before creating account actions.',
+        }],
+      };
+    }
     const comparison = shared.compareCaptureWorkspace(workspace);
     const list = source === 'i-do-not-follow-back'
       ? comparison.iDoNotFollowBack

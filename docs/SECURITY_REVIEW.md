@@ -59,16 +59,21 @@ also requires the same state object and active Settings view. All rendered facts
 use text nodes rather than HTML interpolation.
 
 Mutual Checker uses a narrow authenticated read client for the reviewed legacy
-checker behavior. It can
-call only `www.instagram.com/api/v1/web/search/topsearch/` and the exact
+checker behavior. It can call only
+`www.instagram.com/api/v1/web/search/topsearch/`,
+`www.instagram.com/api/v1/users/web_profile_info/?username=<exact-username>`, and the exact
 `www.instagram.com/api/v1/friendships/<numeric-id>/(followers|following)/`
 GET routes. It uses browser-managed credentials without reading them, a fixed
 application header, 50-row pages, unique pagination tokens, 800–1499 ms pacing,
 25,000-account and 1,000-page limits per list, a shared 20-minute deadline, and
 user cancellation. Non-Instagram origins, arbitrary paths, invalid schemas,
 login loss, challenges, blocks, rate limits, repeated tokens, and request errors
-stop. Results replace both saved lists atomically and are never sent through the
-extension bridge.
+stop. The profile response must repeat the exact normalized username and numeric
+ID resolved by search, and must provide both relationship totals. Search counters
+cannot authorize a completeness claim. Exact total equality and stable profile
+totals before and after traversal are required. Conflicting exact-profile DOM
+counters leave the affected list partial. Results replace both saved lists
+atomically and are never sent through the extension bridge.
 
 The PWA service worker uses network-first handling for same-origin GET requests,
 caches only successful same-origin responses, bypasses the HTTP cache while
@@ -212,7 +217,7 @@ synthetic clicks at zero reservations, runner starts, fixture clicks, and
 removals. Second, a replacement scroller could briefly expose a mounted row
 before the reviewed newest or oldest edge was restored. Traversal now invalidates
 that proof on replacement or shrinkage and re-establishes the requested edge
-before selecting another row. Focused regressions, 292/292 local tests, the
+before selecting another row. Focused regressions, 300/300 local tests, the
 extension/userscript acceptance matrix, 45 overlay states, and 11 PWA baselines
 pass. Exact-head GitHub CI and corrected-build authenticated acceptance remain
 release gates.

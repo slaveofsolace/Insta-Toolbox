@@ -410,6 +410,14 @@
             setState(runtime, `Resolving @${username}`, 'Finding the exact Instagram account.', 'warning');
             return;
           }
+          if (progress.phase === 'verifying-profile') {
+            setState(runtime, `Checking @${username}`, 'Reading the exact profile totals before pagination.', 'warning');
+            return;
+          }
+          if (progress.phase === 'revalidating-profile') {
+            setState(runtime, `Finishing @${username}`, 'Confirming the profile totals did not change.', 'warning');
+            return;
+          }
           if (progress.phase === 'retrying') {
             const label = progress.listType === 'followers'
               ? 'Followers'
@@ -465,15 +473,26 @@
       model.captureMeta = null;
       const reasons = result.reasons || {};
       const expectedCounts = result.expectedCounts || {};
-      const followerMismatch = reasons.followers === 'count-mismatch'
-        && Number.isSafeInteger(expectedCounts.followers);
-      const followingMismatch = reasons.following === 'count-mismatch'
-        && Number.isSafeInteger(expectedCounts.following);
-      const mismatch = followerMismatch
-        ? ` Instagram returned ${result.followers.length.toLocaleString('en-US')} accessible followers; the profile shows ${expectedCounts.followers.toLocaleString('en-US')}. ${Math.max(0, expectedCounts.followers - result.followers.length).toLocaleString('en-US')} accounts were not returned.`
-        : followingMismatch
-          ? ` Instagram returned ${result.following.length.toLocaleString('en-US')} accessible following; the profile shows ${expectedCounts.following.toLocaleString('en-US')}. ${Math.max(0, expectedCounts.following - result.following.length).toLocaleString('en-US')} accounts were not returned.`
-          : ' A bounded read limit was reached.';
+      const partialDetails = [];
+      for (const [listType, accounts] of [
+        ['followers', result.followers],
+        ['following', result.following],
+      ]) {
+        const label = listType === 'followers' ? 'Followers' : 'Following';
+        const reason = reasons[listType];
+        const expected = expectedCounts[listType];
+        if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
+          const difference = expected - accounts.length;
+          partialDetails.push(difference > 0
+            ? `${label}: Instagram returned ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')}; ${difference.toLocaleString('en-US')} were not returned.`
+            : `${label}: the API returned ${accounts.length.toLocaleString('en-US')} unique accounts while the profile shows ${expected.toLocaleString('en-US')}.`);
+        } else if (reason === 'count-changed') {
+          partialDetails.push(`${label}: the profile total changed during the check.`);
+        } else if (reason === 'profile-count-disagreement') {
+          partialDetails.push(`${label}: Instagram's profile counters disagreed.`);
+        }
+      }
+      const mismatch = ` ${partialDetails.join(' ') || 'A bounded read limit was reached.'}`;
       status(
         `Checked @${result.username}: ${result.followers.length.toLocaleString('en-US')} followers and ${result.following.length.toLocaleString('en-US')} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
         result.complete.followers && result.complete.following ? 'good' : 'warning',
