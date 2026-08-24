@@ -5788,6 +5788,22 @@
         : `Scanning ${listType}… ${formatCount(found)} found so far.`);
   }
 
+  function reconciliationScanDetail(progress) {
+    const label = progress?.listType === 'followers' ? 'Followers' : 'Following';
+    return `Retrying ${label}: ${formatCount(progress?.passFound)} checked; ${formatCount(progress?.found)} of ${formatCount(progress?.expectedCount)} unique found.`;
+  }
+
+  function completedRelationshipScanDetail(result) {
+    const complete = result?.complete?.followers === true && result?.complete?.following === true;
+    return `Checked ${formatCount(result?.followers?.length)} followers and ${formatCount(result?.following?.length)} following — ${complete ? 'complete' : 'partial'}.`;
+  }
+
+  function failedRelationshipScanDetail(error) {
+    if (error?.code === 'stopped') return 'Mutual check stopped. Saved comparison unchanged.';
+    const message = safeText(error?.message, 'Instagram did not return readable relationship data.');
+    return `Mutual check failed: ${message} Saved comparison unchanged.`;
+  }
+
   async function scanInto(listType) {
     const select = query('[data-role="list-type"]');
     if (select) select.value = listType;
@@ -5851,12 +5867,11 @@
             return;
           }
           if (progress.phase === 'reconciling') {
-            const label = progress.listType === 'followers' ? 'Followers' : 'Following';
+            showScanProgress(progress.listType, progress.found, false);
             setText(
               'scan-detail',
-              `Retrying ${label}: ${(progress.passFound || 0).toLocaleString('en-US')} checked; ${progress.found.toLocaleString('en-US')} of ${progress.expectedCount.toLocaleString('en-US')} unique found.`,
+              reconciliationScanDetail(progress),
             );
-            showScanProgress(progress.listType, progress.found, false);
             return;
           }
           if (progress.listType) showScanProgress(progress.listType, progress.found, false);
@@ -5903,10 +5918,11 @@
       status(
         `Checked @${result.username}: ${result.followers.length.toLocaleString('en-US')} followers and ${result.following.length.toLocaleString('en-US')} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
       );
+      setText('scan-detail', completedRelationshipScanDetail(result));
     } catch (error) {
-      status(error?.code === 'stopped'
-        ? 'Mutual check stopped. The previous saved comparison is unchanged.'
-        : `Mutual check stopped: ${error?.message || 'Instagram did not return readable relationship data.'}`);
+      const detail = failedRelationshipScanDetail(error);
+      setText('scan-detail', detail);
+      status(detail);
     } finally {
       if (relationshipController === controller) relationshipController = null;
       renderAll();

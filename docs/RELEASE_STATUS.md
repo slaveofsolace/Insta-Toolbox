@@ -119,7 +119,7 @@ Windows installers remain intentionally unsigned.
   bounded restart now also recovers a prematurely cursorless large-account
   response; a 2,104-follower regression and exhausted-retry case cover the
   reported failure without adding an unbounded loop.
-- Full local suite: **300/300** passing after the confirmation, finite-oldest,
+- Full local suite: **301/301** passing after the confirmation, finite-oldest,
   and web-package repairs, including dependency verification, repository
   hygiene, generated parity, migrations, virtualized DM traversal, bounded
   capabilities, safe stops, and the exact static release archive.
@@ -152,7 +152,14 @@ Windows installers remain intentionally unsigned.
   second hand-maintained list here.
 - The commit-pinned Tampermonkey build was installed in authenticated Chrome.
   The live overlay showed the compact header and credit line with the old mode
-  pill and status footer absent.
+  pill and status footer absent. A large-account Mutual Checker run completed
+  without false completion: the exact Following total reconciled, the
+  irreconcilable Followers difference stayed explicitly partial, and the
+  downloaded report contained the expected summary and numbered sections.
+- That run exposed stale reconciliation/completion copy even though the engine
+  had finished. The progress line now reports the reconciliation pass and
+  settles to complete, partial, stopped, or failed; focused coverage prevents
+  the apparent-hang wording from returning.
 - Authenticated acceptance exposed a release-blocking native-dialog hazard: a
   browser-control click timed out at `window.confirm`, but the dialog was then
   accepted outside the requested flow and Unsend started. Stop ended the run
@@ -160,9 +167,8 @@ Windows installers remain intentionally unsigned.
 - The replacement in-overlay confirmation is implemented and passes local
   trusted-input, synthetic-click rejection, accessibility, zoom, and fixture
   action coverage. Release still requires exact-head CI, installation of the
-  corrected commit-pinned userscript, and separately authorized
-  disposable-message reacceptance. No further authenticated action has been
-  performed.
+  final commit-pinned userscript, and separately authorized disposable-message
+  reacceptance. No further authenticated mutation has been performed.
 ### Prior 2.0.1 main-branch userscript hotfix evidence (2026-08-22)
 
 - Full test matrix: **259/259** passing, including dependency verification,

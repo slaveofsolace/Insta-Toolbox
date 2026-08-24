@@ -1,11 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 
 const shell = await readFile(new URL('../userscripts/src/toolbox-shell.js', import.meta.url), 'utf8');
 const labels = await readFile(new URL('../extension/action-labels.js', import.meta.url), 'utf8');
 const confirmation = await readFile(new URL('../extension/action-confirmation.js', import.meta.url), 'utf8');
 const generated = await readFile(new URL('../userscripts/insta-aio-companion.user.js', import.meta.url), 'utf8');
+
+function loadShellFunction(name, globals = {}) {
+  const match = shell.match(new RegExp(`  function ${name}\\([\\s\\S]*?\\n  \\}`));
+  assert.ok(match, `${name} must remain available for runtime copy checks`);
+  return vm.runInNewContext(`(${match[0].trim()})`, globals);
+}
 
 test('first use explains the tools, local storage, and the read-only boundary', () => {
   assert.match(generated, /data-role="intro"/);
@@ -61,6 +68,56 @@ test('the checker is a sequence that reports completeness per list', () => {
   assert.match(shell, /Scanned \$\{found\} \$\{listType\} — incomplete\./);
   assert.match(shell, /outcome\?\.reason === 'list-count-mismatch'/);
   assert.match(shell, /Instagram reports \$\{outcome\.expectedCount\}, so this capture stays incomplete/);
+});
+
+test('the Mutual Checker preserves reconciliation progress and settles final detail', () => {
+  const formatCount = (value) => Number(value || 0).toLocaleString('en-US');
+  const reconciliationDetail = loadShellFunction('reconciliationScanDetail', { formatCount });
+  const completedDetail = loadShellFunction('completedRelationshipScanDetail', { formatCount });
+  const failedDetail = loadShellFunction('failedRelationshipScanDetail', {
+    safeText: (value, fallback = '') => String(value ?? '').trim() || fallback,
+  });
+
+  assert.equal(
+    reconciliationDetail({
+      listType: 'followers',
+      passFound: 20,
+      found: 2_071,
+      expectedCount: 2_101,
+    }),
+    'Retrying Followers: 20 checked; 2,071 of 2,101 unique found.',
+  );
+  assert.equal(
+    completedDetail({
+      followers: Array(2_101),
+      following: Array(101),
+      complete: { followers: true, following: true },
+    }),
+    'Checked 2,101 followers and 101 following — complete.',
+  );
+  assert.equal(
+    completedDetail({
+      followers: Array(2_071),
+      following: Array(100),
+      complete: { followers: false, following: false },
+    }),
+    'Checked 2,071 followers and 100 following — partial.',
+  );
+  assert.equal(
+    failedDetail({ code: 'stopped' }),
+    'Mutual check stopped. Saved comparison unchanged.',
+  );
+  assert.equal(
+    failedDetail({ message: 'Instagram returned an unreadable page.' }),
+    'Mutual check failed: Instagram returned an unreadable page. Saved comparison unchanged.',
+  );
+
+  const start = shell.indexOf("if (progress.phase === 'reconciling')");
+  const block = shell.slice(start, shell.indexOf('if (progress.listType)', start));
+  assert.ok(block.indexOf('showScanProgress(') < block.indexOf("setText("));
+  assert.match(block, /reconciliationScanDetail\(progress\)/);
+  assert.match(shell, /setText\('scan-detail', completedRelationshipScanDetail\(result\)\)/);
+  assert.match(shell, /const detail = failedRelationshipScanDetail\(error\);\s*setText\('scan-detail', detail\);\s*status\(detail\)/);
 });
 
 test('legacy checker rows are quarantined until an exact list dialog is rescanned', () => {
