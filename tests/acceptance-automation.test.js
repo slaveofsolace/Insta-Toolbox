@@ -33,8 +33,8 @@ const macEntitlements = await readFile(
   new URL('../build/entitlements.mac.plist', import.meta.url),
   'utf8',
 );
-const macQaEntitlements = await readFile(
-  new URL('../build/entitlements.mac.qa.plist', import.meta.url),
+const macInheritedEntitlements = await readFile(
+  new URL('../build/entitlements.mac.inherit.plist', import.meta.url),
   'utf8',
 );
 const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
@@ -177,15 +177,25 @@ test('desktop CI builds and exercises confined packaged lifecycles without relea
   assert.match(desktop, /mkdtempSync\(path\.join\(configuredParent, 'insta-aio-desktop-smoke-'\)\)/);
   assert.doesNotMatch(desktop, /insta-aio-desktop-smoke-\$\{process\.pid\}/);
   assert.match(desktop, /if \(!DESKTOP_SMOKE_TEST && process\.platform !== 'darwin'\) app\.quit\(\)/);
-  assert.match(desktop, /if \(!DESKTOP_SMOKE_TEST\) void window\.loadURL/);
-  assert.match(desktop, /void window\.loadURL\(`\$\{SCHEME\}:\/\/\$\{HOST\}\/`\)\.catch\(reject\)/);
+  assert.match(desktop, /MAX_DESKTOP_LOAD_ATTEMPTS = 3/);
+  assert.match(desktop, /dialog\.showMessageBox/);
+  assert.match(desktop, /Accessibility\.getFullAXTree/);
+  assert.match(desktop, /window\.webContents\.getTitle\(\)/);
+  assert.match(desktop, /node\.name\?\.value === 'Overview'/);
+  assert.match(desktop, /console-message/);
+  assert.match(desktop, /Runtime\.exceptionThrown/);
   assert.match(desktop, /desktop startup failed/);
   assert.match(desktop, /Insta Toolbox desktop smoke test passed/);
   assert.doesNotMatch(desktop, /executeJavaScript/);
   assert.match(macVerifier, /process\.platform !== 'darwin'/);
   assert.match(macVerifier, /hdiutil/);
   assert.match(macVerifier, /codesign/);
-  assert.match(macVerifier, /--entitlements', qaEntitlements/);
+  assert.match(macVerifier, /Signature=adhoc/);
+  assert.match(macVerifier, /lipo/);
+  assert.match(macVerifier, /\['arm64', 'x86_64'\]/);
+  assert.match(macVerifier, /machOBinaries/);
+  assert.match(macVerifier, /CFBundleIconFile/);
+  assert.doesNotMatch(macVerifier, /--force|--sign|qaEntitlements/);
   assert.match(macVerifier, /--smoke-test/);
   assert.match(macVerifier, /INSTA_AIO_DESKTOP_SMOKE_PARENT: smokeParent/);
   assert.match(macVerifier, /await rm\(installedApp/);
@@ -193,6 +203,9 @@ test('desktop CI builds and exercises confined packaged lifecycles without relea
   assert.match(workflow, /package-macos:/);
   assert.match(workflow, /runs-on: macos-14/);
   assert.match(workflow, /CSC_IDENTITY_AUTO_DISCOVERY: "false"/);
+  assert.match(workflow, /CSC_FOR_PULL_REQUEST: "true"/);
+  assert.match(workflow, /ExtractAssociatedIcon\(\$installedExecutable\)/);
+  assert.match(workflow, /accentPixels -lt 8/);
   assert.match(workflow, /\$env:INSTA_AIO_DESKTOP_SMOKE_TEST = '1'/);
   assert.match(workflow, /Remove-Item Env:INSTA_AIO_DESKTOP_SMOKE_TEST/);
   assert.match(workflow, /pnpm run qa:mac-package/);
@@ -201,10 +214,18 @@ test('desktop CI builds and exercises confined packaged lifecycles without relea
     packageJson.build.mac.entitlementsInherit,
     'build/entitlements.mac.inherit.plist',
   );
+  assert.equal(packageJson.build.mac.identity, '-');
+  assert.equal(packageJson.build.mac.notarize, false);
+  assert.deepEqual(packageJson.build.mac.target, [
+    { target: 'dmg', arch: ['universal'] },
+    { target: 'zip', arch: ['universal'] },
+  ]);
+  assert.equal(packageJson.build.win.artifactName, 'Insta-Toolbox-Setup-${version}.${ext}');
+  assert.equal(packageJson.build.mac.artifactName, 'Insta-Toolbox-${version}-${arch}.${ext}');
   assert.match(macEntitlements, /com\.apple\.security\.cs\.allow-jit/);
-  assert.doesNotMatch(macEntitlements, /disable-library-validation/);
-  assert.match(macQaEntitlements, /com\.apple\.security\.cs\.allow-jit/);
-  assert.match(macQaEntitlements, /com\.apple\.security\.cs\.disable-library-validation/);
+  assert.match(macEntitlements, /com\.apple\.security\.cs\.disable-library-validation/);
+  assert.match(macInheritedEntitlements, /com\.apple\.security\.cs\.allow-jit/);
+  assert.match(macInheritedEntitlements, /com\.apple\.security\.cs\.disable-library-validation/);
   assert.match(
     workflow,
     /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/,

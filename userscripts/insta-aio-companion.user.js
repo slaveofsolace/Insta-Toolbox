@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-AIO-Tool
-// @version      2.0.2
+// @version      2.0.3
 // @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-AIO-Tool
 // @supportURL   https://github.com/slaveofsolace/Insta-AIO-Tool/issues
 // @downloadURL  https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js
 // @updateURL    https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js
-// @icon         data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23ffffff'/%3E%3Crect x='1' y='1' width='62' height='62' rx='15' fill='none' stroke='%23dbdbdb' stroke-width='2'/%3E%3Ctext x='32' y='42' font-family='system-ui,sans-serif' font-size='25' font-weight='700' text-anchor='middle' fill='%23262626'%3EIT%3C/text%3E%3C/svg%3E
+// @icon         data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Crect width='1024' height='1024' fill='%23101114'/%3E%3Crect x='160' y='224' width='192' height='128' fill='%23b83d67'/%3E%3Crect x='224' y='352' width='64' height='352' fill='%23b83d67'/%3E%3Crect x='160' y='704' width='192' height='96' fill='%23b83d67'/%3E%3Crect x='416' y='224' width='448' height='128' fill='%23f4f1e8'/%3E%3Crect x='576' y='352' width='128' height='448' fill='%23f4f1e8'/%3E%3C/svg%3E
 // @license      MIT
 // @match        https://www.instagram.com/*
 // @sandbox      DOM

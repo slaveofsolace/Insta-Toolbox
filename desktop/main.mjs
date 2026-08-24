@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   protocol,
   shell,
 } from 'electron';
@@ -16,11 +17,17 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 
+import { loadWithRecovery, withTimeout } from './startup-recovery.mjs';
+
 const SCHEME = 'insta-aio';
 const HOST = 'app';
+const APP_URL = `${SCHEME}://${HOST}/`;
 const PRODUCT_DATA_DIRECTORY = 'Insta AIO Tool';
 const BACKUP_DIRECTORY = 'Insta AIO Tool Backups';
 const BACKUP_RETENTION = 5;
+const MAX_DESKTOP_LOAD_ATTEMPTS = 3;
+const DESKTOP_LOAD_TIMEOUT_MS = 15_000;
+const WINDOW_REVEAL_DELAY_MS = 1_000;
 const DESKTOP_SMOKE_TEST = process.argv.includes('--smoke-test')
   || process.env.INSTA_AIO_DESKTOP_SMOKE_TEST === '1';
 const BACKUP_PATHS = [
@@ -210,7 +217,8 @@ function createWindow() {
     minWidth: 820,
     minHeight: 620,
     show: false,
-    backgroundColor: '#101114',
+    backgroundColor: '#f2f1ed',
+    icon: path.join(app.getAppPath(), 'assets', 'icon-512.png'),
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
@@ -229,49 +237,153 @@ function createWindow() {
   window.webContents.on('will-navigate', (event, url) => {
     if (new URL(url).protocol !== `${SCHEME}:`) event.preventDefault();
   });
-  window.once('ready-to-show', () => {
-    if (!DESKTOP_SMOKE_TEST) window.show();
+  if (!DESKTOP_SMOKE_TEST) {
+    const reveal = () => {
+      if (!window.isDestroyed() && !window.isVisible()) window.show();
+    };
+    const revealTimer = setTimeout(reveal, WINDOW_REVEAL_DELAY_MS);
+    window.once('ready-to-show', () => {
+      clearTimeout(revealTimer);
+      reveal();
+    });
+    window.once('closed', () => clearTimeout(revealTimer));
+  }
+  return window;
+}
+
+async function loadProductionWindow(window) {
+  return loadWithRecovery({
+    attempts: MAX_DESKTOP_LOAD_ATTEMPTS,
+    timeoutMs: DESKTOP_LOAD_TIMEOUT_MS,
+    load: () => window.loadURL(APP_URL),
+    stop: () => {
+      if (!window.isDestroyed()) window.webContents.stop();
+    },
+    reveal: () => {
+      if (!window.isDestroyed() && !window.isVisible()) window.show();
+    },
+    prompt: async ({ attempt, canRetry, error }) => {
+      if (window.isDestroyed()) return 'close';
+      console.error(`Insta Toolbox desktop load attempt ${attempt} failed: ${error.message}`);
+      const result = await dialog.showMessageBox(window, {
+        type: 'error',
+        title: 'Insta Toolbox could not start',
+        message: 'The local interface could not be loaded.',
+        detail: canRetry
+          ? `${error.message}\n\nYou can retry this local startup.`
+          : `${error.message}\n\nThe retry limit was reached.`,
+        buttons: canRetry ? ['Retry', 'Close'] : ['Close'],
+        defaultId: 0,
+        cancelId: canRetry ? 1 : 0,
+        noLink: true,
+      });
+      return canRetry && result.response === 0 ? 'retry' : 'close';
+    },
+    close: () => {
+      if (!window.isDestroyed()) window.close();
+    },
   });
-  if (!DESKTOP_SMOKE_TEST) void window.loadURL(`${SCHEME}://${HOST}/`);
+}
+
+function openProductionWindow() {
+  const window = createWindow();
+  void loadProductionWindow(window).catch((error) => {
+    console.error(`Insta Toolbox desktop recovery failed: ${error.message}`);
+    if (!window.isDestroyed() && !window.isVisible()) window.show();
+  });
   return window;
 }
 
 async function runDesktopSmokeTest(window) {
   const timeoutMs = 15_000;
-  let timer;
+  const debuggerCommandTimeoutMs = 5_000;
+  const hardStopTimer = setTimeout(() => {
+    console.error('Insta Toolbox desktop smoke test exceeded its hard time limit.');
+    app.exit(1);
+  }, (timeoutMs * 2) + debuggerCommandTimeoutMs);
   let exitCode = 0;
   let loadedUrl = null;
+  let renderedTitle = null;
+  let rendererFailure = null;
+  let overviewFound = false;
+  const rendererErrors = [];
+  const debuggerClient = window.webContents.debugger;
+  const onConsoleMessage = (_event, details) => {
+    const severity = details?.level;
+    const text = details?.message || 'unknown renderer console error';
+    if (severity === 'error') rendererErrors.push(text);
+  };
+  const onLoadFailure = (_event, code, description, url, isMainFrame) => {
+    if (isMainFrame !== false) {
+      rendererFailure = new Error(`Desktop smoke renderer failed ${code}: ${description} (${url})`);
+    }
+  };
+  const onRendererGone = (_event, details) => {
+    rendererFailure = new Error(`Desktop smoke renderer exited: ${details.reason}`);
+  };
+  const onDebuggerMessage = (_event, method, parameters) => {
+    if (method !== 'Runtime.exceptionThrown') return;
+    const exception = parameters?.exceptionDetails;
+    rendererErrors.push(exception?.exception?.description || exception?.text || 'renderer exception');
+  };
+  const sendDebuggerCommand = (method, parameters) => withTimeout(
+    debuggerClient.sendCommand(method, parameters),
+    debuggerCommandTimeoutMs,
+    `Desktop smoke debugger command ${method} timed out.`,
+  );
   try {
-    const load = new Promise((resolve, reject) => {
-      window.webContents.once('did-finish-load', resolve);
-      window.webContents.once('did-fail-load', (_event, code, description, url) => {
-        reject(new Error(`Desktop smoke renderer failed ${code}: ${description} (${url})`));
-      });
-      window.webContents.once('render-process-gone', (_event, details) => {
-        reject(new Error(`Desktop smoke renderer exited: ${details.reason}`));
-      });
-      void window.loadURL(`${SCHEME}://${HOST}/`).catch(reject);
-    });
-    await Promise.race([
-      load,
-      new Promise((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(
-          `Desktop smoke renderer timed out after ${timeoutMs}ms.`,
-        )), timeoutMs);
-      }),
-    ]);
+    window.webContents.on('console-message', onConsoleMessage);
+    window.webContents.on('did-fail-load', onLoadFailure);
+    window.webContents.on('render-process-gone', onRendererGone);
+    await withTimeout(
+      window.loadURL(APP_URL),
+      timeoutMs,
+      `Desktop smoke renderer timed out after ${timeoutMs}ms.`,
+    );
     loadedUrl = window.webContents.getURL();
-    if (loadedUrl !== `${SCHEME}://${HOST}/`) {
+    if (loadedUrl !== APP_URL) {
       throw new Error(`Desktop smoke renderer loaded an unexpected URL: ${loadedUrl}`);
+    }
+    debuggerClient.attach('1.3');
+    debuggerClient.on('message', onDebuggerMessage);
+    await sendDebuggerCommand('Runtime.enable');
+    await sendDebuggerCommand('Accessibility.enable');
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (rendererFailure) throw rendererFailure;
+      if (rendererErrors.length) {
+        throw new Error(`Desktop smoke renderer reported errors: ${rendererErrors.join(' | ')}`);
+      }
+      renderedTitle = window.webContents.getTitle();
+      const accessibilityTree = await sendDebuggerCommand('Accessibility.getFullAXTree');
+      overviewFound = accessibilityTree.nodes?.some((node) => (
+        node.role?.value === 'heading' && node.name?.value === 'Overview'
+      )) || false;
+      if (renderedTitle === 'Insta Toolbox' && overviewFound) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (renderedTitle !== 'Insta Toolbox') {
+      throw new Error(`Desktop smoke renderer title was ${JSON.stringify(renderedTitle)}.`);
+    }
+    if (!overviewFound) throw new Error('Desktop smoke renderer did not render the Overview heading.');
+    if (rendererFailure) throw rendererFailure;
+    if (rendererErrors.length) {
+      throw new Error(`Desktop smoke renderer reported errors: ${rendererErrors.join(' | ')}`);
     }
   } catch (error) {
     exitCode = 1;
     console.error(`Insta Toolbox desktop smoke test failed: ${error.message}`);
   } finally {
-    clearTimeout(timer);
+    clearTimeout(hardStopTimer);
+    window.webContents.off('console-message', onConsoleMessage);
+    window.webContents.off('did-fail-load', onLoadFailure);
+    window.webContents.off('render-process-gone', onRendererGone);
+    debuggerClient.off('message', onDebuggerMessage);
+    if (debuggerClient.isAttached()) debuggerClient.detach();
     if (!window.isDestroyed()) window.destroy();
     if (exitCode === 0) {
-      console.log(`Insta Toolbox desktop smoke test passed: ${loadedUrl}`);
+      console.log(`Insta Toolbox desktop smoke test passed: ${loadedUrl} (${renderedTitle}, Overview)`);
     }
     app.exit(exitCode);
   }
@@ -295,13 +407,14 @@ if (hasSingleInstanceLock) {
     } catch (error) {
       console.error('Unable to create startup backup:', error.message);
     }
-    const window = createWindow();
     if (DESKTOP_SMOKE_TEST) {
+      const window = createWindow();
       await runDesktopSmokeTest(window);
       return;
     }
+    openProductionWindow();
     app.on('activate', () => {
-      if (!BrowserWindow.getAllWindows().length) createWindow();
+      if (!BrowserWindow.getAllWindows().length) openProductionWindow();
     });
   }).catch((error) => {
     if (!DESKTOP_SMOKE_TEST) throw error;

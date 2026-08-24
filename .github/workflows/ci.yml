@@ -142,7 +142,7 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
-          $expectedInstaller = "Insta Toolbox Setup $version.exe"
+          $expectedInstaller = "Insta-Toolbox-Setup-$version.exe"
           $expectedBlockmap = "$expectedInstaller.blockmap"
           $installers = @(Get-ChildItem -Path dist/desktop -Filter *.exe -File)
           $blockmaps = @(Get-ChildItem -Path dist/desktop -Filter *.blockmap -File)
@@ -158,7 +158,7 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
-          $installer = Get-Item -LiteralPath "dist/desktop/Insta Toolbox Setup $version.exe"
+          $installer = Get-Item -LiteralPath "dist/desktop/Insta-Toolbox-Setup-$version.exe"
           $installRoot = Join-Path $env:RUNNER_TEMP "insta-toolbox-nsis-$version"
           $installerProcess = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installRoot") -PassThru -WindowStyle Hidden
           if (-not $installerProcess.WaitForExit(120000)) {
@@ -171,6 +171,32 @@ jobs:
           $installedExecutable = Join-Path $installRoot 'Insta Toolbox.exe'
           if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
             throw "Installed application was not found at $installedExecutable."
+          }
+          Add-Type -AssemblyName System.Drawing
+          $embeddedIcon = [System.Drawing.Icon]::ExtractAssociatedIcon($installedExecutable)
+          if ($null -eq $embeddedIcon) {
+            throw 'Installed application has no extractable Windows icon.'
+          }
+          $iconBitmap = $embeddedIcon.ToBitmap()
+          try {
+            if ($iconBitmap.Width -lt 16 -or $iconBitmap.Height -lt 16) {
+              throw "Installed application icon is unexpectedly small: $($iconBitmap.Width)x$($iconBitmap.Height)."
+            }
+            $accentPixels = 0
+            for ($x = 0; $x -lt $iconBitmap.Width; $x += 1) {
+              for ($y = 0; $y -lt $iconBitmap.Height; $y += 1) {
+                $pixel = $iconBitmap.GetPixel($x, $y)
+                if ($pixel.R -ge 160 -and $pixel.R -le 210 -and $pixel.G -ge 35 -and $pixel.G -le 100 -and $pixel.B -ge 70 -and $pixel.B -le 140) {
+                  $accentPixels += 1
+                }
+              }
+            }
+            if ($accentPixels -lt 8) {
+              throw 'Installed application icon does not contain the reviewed Insta Toolbox accent mark.'
+            }
+          } finally {
+            $iconBitmap.Dispose()
+            $embeddedIcon.Dispose()
           }
           $smokeParent = Join-Path ([System.IO.Path]::GetTempPath()) 'insta-aio-desktop-smoke-parent'
           New-Item -ItemType Directory -Path $smokeParent -Force | Out-Null
@@ -221,6 +247,7 @@ jobs:
     timeout-minutes: 45
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      CSC_FOR_PULL_REQUEST: "true"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -236,7 +263,7 @@ jobs:
         run: pnpm run dist:mac
       - name: Verify packaged macOS archive contents
         run: pnpm run verify:desktop-archive
-      - name: Verify macOS package lifecycle
+      - name: Verify universal signed macOS package lifecycle
         run: pnpm run qa:mac-package
       - name: Upload verified macOS packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

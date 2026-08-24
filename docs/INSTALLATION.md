@@ -14,20 +14,20 @@ extension additionally pairs with the app for signed, recorded jobs.
 
 Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest), expand **Assets**, and choose one file:
 
-The 2.0.2 files appear there together after publication. Before then, the
+The 2.0.3 files appear there together after publication. Before then, the
 commit-named CI artifacts are review builds, not a public release.
 
 | Platform | Download | What to do |
 |---|---|---|
-| Windows 64-bit | `Insta Toolbox Setup 2.0.2.exe` | Open it and follow the short installer. |
-| macOS Apple Silicon | `Insta Toolbox-2.0.2-arm64.dmg` | Open it and drag Insta Toolbox to Applications. |
-| Web / PWA hosting | `insta-toolbox-web-2.0.2.zip` | Extract and serve the folder over HTTPS or localhost. |
-| Chrome extension | `insta-aio-companion-2.0.2.zip` | Extract it, then load the extracted folder as an unpacked extension. |
+| Windows 64-bit | `Insta-Toolbox-Setup-2.0.3.exe` | Open it and follow the short installer. |
+| macOS (Intel + Apple Silicon) | `Insta-Toolbox-2.0.3-universal.dmg` | Open it and drag Insta Toolbox to Applications. |
+| Web / PWA hosting | `insta-toolbox-web-2.0.3.zip` | Extract and serve the folder over HTTPS or localhost. |
+| Chrome extension | `insta-aio-companion-2.0.3.zip` | Extract it, then load the extracted folder as an unpacked extension. |
 
 No Node.js or command line is required for the Windows or macOS downloads.
-The desktop files are currently unsigned, and the macOS build is not notarized.
-Verify the file against `SHA256SUMS.txt` on the release before opening it. Intel
-Mac builds are not currently provided.
+The Windows installer is unsigned. The universal macOS app is ad-hoc signed,
+not Developer ID signed or notarized. Verify the file against
+`SHA256SUMS.txt` on the release before opening it.
 
 ---
 
@@ -45,7 +45,8 @@ confirmation when it starts.
 
    Tampermonkey recognises the `.user.js` address and opens its install screen.
 3. Select **Install**.
-4. Right click the Tapermonkey extension at the top right of your browser, hit manage extension, and scroll down to enable "**Allow User Scripts**".
+4. Right-click Tampermonkey in the browser toolbar, choose **Manage extension**,
+   then enable **Allow User Scripts**.
 5. Open or reload `https://www.instagram.com/`.
 6. Use the panel, or press **Alt + Shift + I** to show and hide it.
 
@@ -100,7 +101,7 @@ accepts only the newly surfaced menu and confirmation controls for each item.
 Updates are automatic. Tampermonkey re-checks the same address and offers new
 versions as they are published.
 
-Confirm the Tampermonkey dashboard shows **2.0.2 or later** after updating. A
+Confirm the Tampermonkey dashboard shows **2.0.3 or later** after updating. A
 panel that asks you to enable live actions, arm a run, or type an authorization
 phrase is an older build. The current panel has a compact **Insta Toolbox**
 header and a creator credit at the bottom.
@@ -168,7 +169,7 @@ shared code into `dist/extension/lib/`, and the extension will not start without
 
 After rebuilding, reload the extension in the extension manager **and** reload
 any open Instagram tabs, or you will keep running the previous version.
-The extension manager should show **2.0.2 or later**.
+The extension manager should show **2.0.3 or later**.
 
 On a fresh install Instagram shows only a small launcher; opening it reveals the
 tools. On desktop, drag the header to move the panel and use the marked
@@ -294,7 +295,7 @@ message search, queue history, ledgers, and backups:
 ### Windows 64-bit
 
 1. Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest).
-2. Under **Assets**, download `Insta Toolbox Setup 2.0.2.exe`.
+2. Under **Assets**, download `Insta-Toolbox-Setup-2.0.3.exe`.
 3. Open it, choose an install folder, and finish the installer.
 
 The installer is one ready-made file; Node.js and pnpm are not needed. The
@@ -305,15 +306,16 @@ to move that data elsewhere.
 If SmartScreen appears after the checksum matches the release, choose **More
 info → Run anyway** to open this unsigned build.
 
-### macOS Apple Silicon
+### macOS (Intel + Apple Silicon)
 
 1. Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest).
-2. Under **Assets**, download `Insta Toolbox-2.0.2-arm64.dmg`.
+2. Under **Assets**, download `Insta-Toolbox-2.0.3-universal.dmg`.
 3. Open the DMG and drag Insta Toolbox to Applications.
 
-This build is for Apple Silicon and is not Developer ID signed or notarized.
-macOS may show a Gatekeeper warning. Verify its SHA-256 value before deciding
-whether to open it. The `arm64-mac.zip` asset contains the same app in ZIP form;
+This build runs on both Intel and Apple Silicon. It has an ad-hoc integrity
+signature but is not Developer ID signed or notarized, so macOS may show a
+Gatekeeper warning. Verify its SHA-256 value before deciding whether to open it.
+The `Insta-Toolbox-2.0.3-universal.zip` asset contains the same app in ZIP form;
 it is mainly useful for controlled deployment and troubleshooting.
 
 After the checksum matches, Control-click Insta Toolbox and choose **Open**. If
@@ -322,7 +324,7 @@ macOS still blocks it, open **System Settings → Privacy & Security**, choose
 
 ### Web / PWA package
 
-The release includes `insta-toolbox-web-2.0.2.zip` for static hosting. It cannot
+The release includes `insta-toolbox-web-2.0.3.zip` for static hosting. It cannot
 be opened by double-clicking `index.html`; browser modules and offline support
 require HTTPS or `http://localhost`.
 
@@ -375,8 +377,10 @@ pnpm run dist:mac
 ```
 
 `dist:win` must run on Windows. `dist:mac` and `qa:mac-package` must run on macOS.
-The macOS QA process uses an ad-hoc test signature. Public Developer ID signing
-and notarization require release credentials and are not part of this build.
+The shipped macOS app is universal and ad-hoc signed. Package QA inspects both
+architectures, the bundle icon, and the signature on the exact packaged app; it
+does not modify or re-sign that app. Developer ID signing and notarization
+require release credentials and are not part of this build.
 
 ## Upgrade
 

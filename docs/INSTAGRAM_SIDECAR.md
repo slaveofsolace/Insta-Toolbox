@@ -220,8 +220,8 @@ It supports `?mode=messages` for fragment-only evidence,
 That fixture validates runtime behavior and visual composition without account
 access. It does not establish authenticated Instagram selector acceptance,
 screen-reader acceptance, or a successful real-account action. Those remain
-separate controlled checks. Issue #3 requires exact account before/after and
-ledger evidence; issue #4 requires one exact sent-message removal plus both
+separate controlled checks. Account actions require exact before/after and
+ledger evidence. DM acceptance requires one exact sent-message removal plus both
 durable ledger records, each from a user-selected authenticated run.
 
 See [Overlay UI implementation](./OVERLAY_UI_IMPLEMENTATION.md) for the ordered

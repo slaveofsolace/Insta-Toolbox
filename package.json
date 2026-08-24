@@ -1,6 +1,6 @@
 {
   "name": "insta-aio-tool",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "private": true,
   "type": "module",
   "main": "desktop/main.mjs",
@@ -28,7 +28,7 @@
     "build:web": "node scripts/build-web-package.mjs",
     "pack:desktop": "pnpm run assemble && pnpm run build:desktop-assets && electron-builder --dir",
     "dist:win": "pnpm run assemble && pnpm run build:desktop-assets && electron-builder --win nsis --publish never",
-    "dist:mac": "pnpm run assemble && pnpm run build:desktop-assets && electron-builder --mac dmg zip --publish never",
+    "dist:mac": "pnpm run assemble && pnpm run build:desktop-assets && electron-builder --mac dmg zip --universal --publish never",
     "benchmark:zip": "node scripts/benchmark-zip-import.mjs",
     "qa:extension": "node scripts/run-extension-acceptance.mjs",
     "qa:chrome": "node scripts/build-extension.mjs && node scripts/chrome-pairing-acceptance.mjs",
@@ -76,6 +76,7 @@
       "output": "dist/desktop"
     },
     "win": {
+      "artifactName": "Insta-Toolbox-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -87,13 +88,26 @@
       "icon": "dist/branding/icon.ico"
     },
     "mac": {
+      "artifactName": "Insta-Toolbox-${version}-${arch}.${ext}",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
       ],
       "icon": "dist/branding/icon.png",
       "category": "public.app-category.utilities",
+      "identity": "-",
       "hardenedRuntime": true,
+      "notarize": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist"
     },

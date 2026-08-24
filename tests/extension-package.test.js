@@ -85,7 +85,7 @@ test('public builds carry the author and complete MIT attribution', () => {
 
 test('package scripts always disable electron-builder publishing in CI and local builds', () => {
   assert.match(packageMetadata.scripts['dist:win'], /electron-builder --win nsis --publish never$/);
-  assert.match(packageMetadata.scripts['dist:mac'], /electron-builder --mac dmg zip --publish never$/);
+  assert.match(packageMetadata.scripts['dist:mac'], /electron-builder --mac dmg zip --universal --publish never$/);
   assert.match(ciWorkflow, /run: pnpm run dist:win\n/);
   assert.match(ciWorkflow, /run: pnpm run dist:mac\n/);
   assert.doesNotMatch(ciWorkflow, /dist:(?:win|mac) -- --publish never/);

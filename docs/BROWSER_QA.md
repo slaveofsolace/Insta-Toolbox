@@ -148,8 +148,9 @@ responsive layout, and cache delivery.
 - Perform a human screen-reader walkthrough.
 - Establish and visually accept native baselines on any additional release
   platform where screenshot hashes will be gated.
-- Apply Apple Developer ID signing/notarization for a distributable macOS
-  release; CI uses an ad-hoc signature only for lifecycle acceptance.
+- Apply Apple Developer ID signing and notarization when release credentials
+  are available. Version 2.0.3 is universal and ad-hoc signed; CI validates the
+  exact shipped package but cannot establish Apple trust or notarization.
 
 These remaining checks prevent a claim of complete human browser or
 cross-platform release acceptance.

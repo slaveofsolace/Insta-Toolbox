@@ -16,13 +16,12 @@ const textExtensions = new Set([
 const allowedEmails = new Set([
   'i@izs.me', // Package-maintainer metadata in pnpm-lock.yaml.
 ]);
+const allowedRootDotDirectories = new Set(['.github']);
 const internalArtifactTerms = [
-  `human-${'cortex'}`,
-  `human-${'eye'}`,
-  `${'Codex'}-Handoff`,
-  `current ${'Codex'} task`,
-  `${'ChatGPT'} Pro`,
   `cross-${'task'} coordination steer`,
+  `copy-ready ${'task'} prompt`,
+  `current ${'task'} context`,
+  `system ${'maintenance'} checkpoint`,
 ];
 
 const problems = [];
@@ -120,6 +119,20 @@ const candidateFiles = candidateOutput.split('\0').filter(Boolean).map((relative
 }));
 
 for (const file of candidateFiles) {
+  let fileInfo;
+  try {
+    fileInfo = await stat(file.absolutePath);
+  } catch (error) {
+    if (error?.code === 'ENOENT') continue;
+    throw error;
+  }
+  const [rootSegment] = file.relativePath.split('/');
+  if (file.relativePath.includes('/')
+      && rootSegment.startsWith('.')
+      && !allowedRootDotDirectories.has(rootSegment)) {
+    problems.push(`${file.relativePath} contains unexpected local tool state`);
+    continue;
+  }
   const extension = path.extname(file.relativePath).toLowerCase();
   if (imageExtensions.has(extension)) {
     const buffer = await readFile(file.absolutePath);
@@ -128,7 +141,7 @@ for (const file of candidateFiles) {
     continue;
   }
   if (!textExtensions.has(extension)) continue;
-  if ((await stat(file.absolutePath)).size > 5 * 1024 * 1024) continue;
+  if (fileInfo.size > 5 * 1024 * 1024) continue;
   inspectText(file.relativePath, await readFile(file.absolutePath, 'utf8'));
 }
 

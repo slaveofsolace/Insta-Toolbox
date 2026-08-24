@@ -1,6 +1,6 @@
 # Security review
 
-Last reviewed: 2026-08-23
+Last reviewed: 2026-08-24
 
 ## Application boundaries
 
@@ -231,6 +231,28 @@ The corrected build has only fixture/browser proof so far. Authenticated
 Follow/Unfollow compatibility, corrected-build disposable-message Unsend, and
 human screen-reader acceptance remain unproven and require fresh action-specific
 authorization where a mutation is involved.
+
+## 2.0.3 desktop package boundary
+
+The macOS package is a universal Electron application with an ad-hoc integrity
+signature. It is not Developer ID signed or notarized. The bundle enables
+`com.apple.security.cs.disable-library-validation` because this ad-hoc build has
+no Developer ID Team ID for library validation. This weakens macOS library
+validation inside the desktop process, so it is treated as a disclosed packaging
+exception rather than an Apple trust claim.
+
+Package verification does not rewrite the artifact. It rejects unexpected DMG
+or ZIP root content, checks every bundled Mach-O file for `arm64` and `x86_64`
+slices plus the hardened-runtime flag, and requires the exact documented main-app
+entitlements with no unapproved nested entitlement. It verifies the ad-hoc
+signature and declared bundle icon, then launches the exact app copied from the
+DMG. Desktop startup has one bounded retry and shows the final failure instead of
+leaving a hidden process. Archive checks require the complete renderer, desktop
+entry point, startup-recovery module, license notices, and icon resources.
+
+When Developer ID credentials are available, remove the library-validation
+exception, sign every nested binary with the release identity, notarize the DMG
+and ZIP, staple the notarization ticket, and rerun the same package checks.
 
 ## Dependency review
 

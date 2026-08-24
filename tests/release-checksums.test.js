@@ -30,8 +30,8 @@ test('package and download docs expose the current release artifacts', async () 
   ]);
   const escapedVersion = version.replaceAll('.', '\\.');
   for (const document of documents) {
-    assert.match(document, new RegExp(`Insta Toolbox Setup ${escapedVersion}\\.exe`));
-    assert.match(document, new RegExp(`Insta Toolbox-${escapedVersion}-arm64\\.dmg`));
+    assert.match(document, new RegExp(`Insta-Toolbox-Setup-${escapedVersion}\\.exe`));
+    assert.match(document, new RegExp(`Insta-Toolbox-${escapedVersion}-universal\\.dmg`));
     assert.match(document, new RegExp(`insta-toolbox-web-${escapedVersion}\\.zip`));
     assert.match(document, new RegExp(`insta-aio-companion-${escapedVersion}\\.zip`));
   }
@@ -87,10 +87,10 @@ function digest(value) {
 test('writes deterministic sorted SHA256SUMS entries without private paths', async (t) => {
   const root = await fixtureRoot(t);
   const desktopArtifacts = new Map([
-    [`Insta Toolbox Setup ${version}.exe`, 'windows-installer'],
-    [`Insta Toolbox Setup ${version}.exe.blockmap`, 'windows-blockmap'],
-    [`Insta Toolbox-${version}.dmg`, 'mac-dmg'],
-    [`Insta Toolbox-${version}-mac.zip`, 'mac-zip'],
+    [`Insta-Toolbox-Setup-${version}.exe`, 'windows-installer'],
+    [`Insta-Toolbox-Setup-${version}.exe.blockmap`, 'windows-blockmap'],
+    [`Insta-Toolbox-${version}-universal.dmg`, 'mac-dmg'],
+    [`Insta-Toolbox-${version}-universal.zip`, 'mac-zip'],
   ]);
   for (const [name, content] of desktopArtifacts) {
     await writeFile(path.join(root, 'dist', 'desktop', name), content);
@@ -100,10 +100,10 @@ test('writes deterministic sorted SHA256SUMS entries without private paths', asy
   const firstFile = await readFile(path.join(root, 'dist', 'SHA256SUMS.txt'), 'utf8');
   const second = await generateReleaseChecksums({ repositoryRoot: root });
   const expectedNames = [
-    `Insta Toolbox Setup ${version}.exe`,
-    `Insta Toolbox Setup ${version}.exe.blockmap`,
-    `Insta Toolbox-${version}-mac.zip`,
-    `Insta Toolbox-${version}.dmg`,
+    `Insta-Toolbox-${version}-universal.dmg`,
+    `Insta-Toolbox-${version}-universal.zip`,
+    `Insta-Toolbox-Setup-${version}.exe`,
+    `Insta-Toolbox-Setup-${version}.exe.blockmap`,
     `insta-aio-companion-${version}.zip`,
     'insta-aio-companion.user.js',
     `insta-toolbox-web-${version}.zip`,
@@ -120,10 +120,10 @@ test('writes deterministic sorted SHA256SUMS entries without private paths', asy
 
 test('rejects stale desktop artifacts instead of silently mixing release versions', async (t) => {
   const root = await fixtureRoot(t);
-  await writeFile(path.join(root, 'dist', 'desktop', 'Insta Toolbox Setup 2.0.1.exe'), 'stale');
+  await writeFile(path.join(root, 'dist', 'desktop', 'Insta-Toolbox-Setup-2.0.1.exe'), 'stale');
   await assert.rejects(
     generateReleaseChecksums({ repositoryRoot: root }),
-    /Stale desktop release artifacts are present: Insta Toolbox Setup 2\.0\.1\.exe/,
+    /Stale desktop release artifacts are present: Insta-Toolbox-Setup-2\.0\.1\.exe/,
   );
 });
 
