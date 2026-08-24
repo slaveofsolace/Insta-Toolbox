@@ -45,8 +45,9 @@ confirmation when it starts.
 
    Tampermonkey recognises the `.user.js` address and opens its install screen.
 3. Select **Install**.
-4. Open or reload `https://www.instagram.com/`.
-5. Use the panel, or press **Alt + Shift + I** to show and hide it.
+4. Right click the Tapermonkey extension at the top right of your browser, hit manage extension, and scroll down to enable "**Allow User Scripts**".
+5. Open or reload `https://www.instagram.com/`.
+6. Use the panel, or press **Alt + Shift + I** to show and hide it.
 
 Tampermonkey is the supported manager for paced account runs. The script asks
 for an isolated DOM sandbox and `GM_getTab`/`GM_saveTab` so a confirmed
