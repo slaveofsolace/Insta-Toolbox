@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import {
   instagramScriptOrder,
 } from './instagram-script-order.mjs';
+import { canonicalizeExtensionEntry } from './canonical-extension-entry.mjs';
 import {
   expectedExtensionArchiveEntries,
   extensionIconFiles,
@@ -264,7 +265,10 @@ await mkdir(path.join(resolvedOutput, 'lib'), { recursive: true });
 for (const file of extensionSourceFiles) {
   const target = path.join(resolvedOutput, ...file.split('/'));
   await mkdir(path.dirname(target), { recursive: true });
-  await copyFile(path.join(sourceRoot, file), target);
+  await writeFile(
+    target,
+    canonicalizeExtensionEntry(file, await readFile(path.join(sourceRoot, file))),
+  );
 }
 for (const file of extensionIconFiles) {
   const target = path.join(resolvedOutput, ...file.split('/'));
@@ -272,13 +276,20 @@ for (const file of extensionIconFiles) {
   await copyFile(path.join(sourceRoot, ...file.split('/')), target);
 }
 for (const file of extensionLibraryFiles) {
-  await copyFile(
-    path.join(repositoryRoot, 'src', 'core', file),
+  const relative = `lib/${file}`;
+  await writeFile(
     path.join(resolvedOutput, 'lib', file),
+    canonicalizeExtensionEntry(
+      relative,
+      await readFile(path.join(repositoryRoot, 'src', 'core', file)),
+    ),
   );
 }
 for (const file of extensionLegalFiles) {
-  await copyFile(path.join(repositoryRoot, file), path.join(resolvedOutput, file));
+  await writeFile(
+    path.join(resolvedOutput, file),
+    canonicalizeExtensionEntry(file, await readFile(path.join(repositoryRoot, file))),
+  );
 }
 
 const artifactEntries = [];

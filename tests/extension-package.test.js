@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
+import { canonicalizeExtensionEntry } from '../scripts/canonical-extension-entry.mjs';
+
 const manifest = JSON.parse(await readFile(
   new URL('../extension/manifest.json', import.meta.url),
   'utf8',
@@ -77,8 +79,14 @@ test('desktop, extension, and userscript release versions stay aligned', () => {
   assert.equal(userscriptVersion, manifest.version);
 });
 
-test('extension release archive has a dedicated exact-inventory verifier', () => {
+test('extension release archive is exact-inventory and cross-platform reproducible', () => {
   assert.equal(packageMetadata.scripts['verify:extension-package'], 'node scripts/verify-extension-package.mjs');
+  assert.equal(
+    canonicalizeExtensionEntry('overlay/shell.js', Buffer.from('one\r\ntwo\rthree')).toString(),
+    'one\ntwo\nthree',
+  );
+  const icon = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
+  assert.strictEqual(canonicalizeExtensionEntry('icons/icon-16.png', icon), icon);
 });
 
 test('public builds carry the author and complete MIT attribution', () => {
