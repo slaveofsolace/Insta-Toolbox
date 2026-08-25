@@ -93,7 +93,7 @@ Runtime application code has no third-party production dependencies. The lockfil
 
 CI actions are pinned to full commit SHAs. Pull requests receive dependency review; CodeQL runs on pull requests, `main`, and weekly. Dependabot proposes npm and action updates. Release promotion accepts only artifacts from the successful current `main` CI run, rechecks versions and checksums, generates an SBOM, and requests GitHub provenance attestation without rebuilding.
 
-The 3.0 account-free matrix contains 346 tests, 45 overlay states, and 11 PWA states. Final pass links and hashes belong in [the 3.0 acceptance record](./acceptance/3.0.0.md). Fixtures do not prove current authenticated Instagram behavior.
+The 3.0 account-free matrix contains 347 tests, 45 overlay states, and 11 PWA states. Final pass links and hashes belong in [the 3.0 acceptance record](./acceptance/3.0.0.md). Fixtures do not prove current authenticated Instagram behavior.
 
 ## License
 

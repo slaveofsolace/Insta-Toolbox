@@ -243,6 +243,11 @@ test('the userscript tablist exposes one selected tab and explicit panel relatio
   assert.match(shell, /id="insta-toolbox-panel-messages"[^>]*aria-labelledby="insta-toolbox-tab-messages"/);
 });
 
+test('userscript tab focus stays inside the tab strip without drawing a clipped box', () => {
+  assert.match(shell, /\.tab:focus-visible\s*\{[^}]*outline:\s*0;[^}]*box-shadow:\s*inset 0 -3px 0 var\(--insta-toolbox-focus/);
+  assert.match(shell, /@media \(forced-colors: active\)[\s\S]{0,500}?\.tab:focus-visible\s*\{[^}]*outline:\s*2px solid Highlight;[^}]*outline-offset:\s*-3px;[^}]*box-shadow:\s*none;/);
+});
+
 test('the movable panel and local follower comparison are preserved', () => {
   assert.match(source, /Insta Toolbox/);
   assert.match(source, /Mutual Checker/);
