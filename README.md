@@ -38,7 +38,8 @@ Download files from the [latest release](https://github.com/slaveofsolace/Insta-
 | Tampermonkey | `insta-toolbox.user.js` | You want the simplest Instagram overlay install. |
 | Chrome extension | `Insta-Toolbox-Extension-3.0.0.zip` | You prefer an unpacked browser extension. |
 | Windows desktop | `Insta-Toolbox-Setup-3.0.0.exe` | You want one downloadable Windows installer. |
-| macOS desktop | `Insta-Toolbox-3.0.0-universal.dmg` | You want the desktop workspace on Intel or Apple Silicon. |
+| macOS desktop | `Insta-Toolbox-3.0.0-universal.dmg` | You want the recommended drag-to-Applications package for Intel or Apple Silicon. |
+| macOS portable | `Insta-Toolbox-3.0.0-universal.zip` | You prefer to extract the universal app directly. |
 | Web/PWA | `insta-toolbox-web-3.0.0.zip` | You want to self-host the local-first workspace. |
 
 Windows packages are unsigned. macOS packages are ad-hoc signed, but not Developer ID signed or notarized. Confirm the checksum before opening a download.

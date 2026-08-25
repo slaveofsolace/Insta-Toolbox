@@ -4,7 +4,7 @@ Tampermonkey is the quickest way to put the toolbox on Instagram. Desktop and we
 
 ## Tampermonkey: one to two minutes
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) for Chrome, Edge, Firefox, or another supported browser.
+1. Install [Tampermonkey](https://www.tampermonkey.net/) for Chrome or another Chromium browser. Chrome is the verified 3.0 target.
 2. In Chrome, open `chrome://extensions`, select **Details** for Tampermonkey, and enable **Allow User Scripts**. Skip this step if your browser does not show it.
 3. Open **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**.
 4. Review the metadata and select **Install**.
@@ -56,11 +56,13 @@ Uninstall from **Settings > Apps > Installed apps > Insta Toolbox**.
 
 ## macOS desktop app
 
-1. Download `Insta-Toolbox-3.0.0-universal.dmg` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download the recommended `Insta-Toolbox-3.0.0-universal.dmg` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify the checksum.
 3. Open the DMG and drag **Insta Toolbox** to Applications.
 
 The universal package targets Intel and Apple Silicon. Public builds are not notarized unless the release notes explicitly say they are. On first launch, control-click the app, choose **Open**, then confirm the macOS warning.
+
+The release also includes `Insta-Toolbox-3.0.0-universal.zip` as a portable alternative. Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
 
 To remove it, quit the app and move **Insta Toolbox** from Applications to Trash. Remove its application data separately only if you want to erase local workspace history.
 
