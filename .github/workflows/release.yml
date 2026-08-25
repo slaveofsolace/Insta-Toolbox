@@ -52,7 +52,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Check out the tested source identity
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.ci.outputs.sha }}
           persist-credentials: false
@@ -63,7 +63,7 @@ jobs:
           package-manager-cache: false
 
       - name: Download tested browser companions
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-browser-companions-${{ steps.ci.outputs.sha }}
           path: incoming/browser
@@ -71,7 +71,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download tested web app
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-web-${{ steps.ci.outputs.sha }}
           path: incoming/web
@@ -79,7 +79,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download verified Windows packages
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-windows-${{ steps.ci.outputs.sha }}
           path: incoming/windows
@@ -87,7 +87,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download verified macOS packages
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-macos-${{ steps.ci.outputs.sha }}
           path: incoming/macos
@@ -95,7 +95,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download release checksums
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-checksums-${{ steps.ci.outputs.sha }}
           path: incoming/checksums
@@ -153,7 +153,7 @@ jobs:
           sha256sum --check --strict SHA256SUMS.txt
 
       - name: Attest promoted release files
-        uses: actions/attest-build-provenance@62fc1d596301d0ab9914e1fec14dc5c8d93f65cd # v3.2.0
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
           subject-checksums: release/SHA256SUMS.txt
 
