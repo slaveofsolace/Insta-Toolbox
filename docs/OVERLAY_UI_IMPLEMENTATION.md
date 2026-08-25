@@ -78,7 +78,7 @@ Chrome storage.
 
 ## Preference migration
 
-The stored record is now `instaAioOverlayPreferencesV3`. V1 and V2 records are
+The stored record is now `instaToolboxOverlayPreferencesV3`. V1 and V2 records are
 migrated additively.
 
 | Field | Fresh V3 default | Prior-record migration |
@@ -156,7 +156,7 @@ with `textContent`. One audited static shell assignment is the only overlay
 ## Verification
 
 The repository checks every production overlay module, the extension package,
-preference migration, and runtime module graph. The overlay matrix contains 43
+preference migration, and runtime module graph. The overlay matrix contains 45
 scenarios with state-specific assertions, selector contracts, a child-process
 watchdog, geometry checks, accessibility-tree checks, and screenshot comparison.
 The benchmark also verifies that a 2,000-item queue renders only the current

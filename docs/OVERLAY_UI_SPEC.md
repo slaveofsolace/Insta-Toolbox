@@ -111,7 +111,7 @@ addition to color. Final tokens must pass WCAG AA at their actual text size.
 
 ## Preferences V3
 
-Storage key: `instaAioOverlayPreferencesV3`
+Storage key: `instaToolboxOverlayPreferencesV3`
 
 ```json
 {

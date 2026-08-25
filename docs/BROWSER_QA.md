@@ -32,8 +32,8 @@ the authenticated Instagram session.
 | Automated accessibility tree | Pass | The inspected view exposed one `main`, one primary `nav`, one `h1`, named controls, and the expected status and empty-state text. This is not a human screen-reader result. |
 | Desktop viewport | Pass | Chrome content viewport measured 1134 by 569 CSS pixels. |
 | Responsive PWA layouts | Pass on Windows Chromium | Every primary view passed at 1134x700, 820x900, and 390x844 CSS pixels with no document/body horizontal overflow and visible bounded navigation/main regions. |
-| Screenshot regression | Pass on Windows Chromium | Overview, Messages, and Settings were captured at all three sizes. A second run reproduced all nine SHA-256 hashes exactly. |
-| Fresh service-worker origin | Pass | The final source was reassembled and loaded from a fresh loopback origin using cache generation `insta-toolbox-v202`. |
+| Screenshot regression | Pass on Windows Chromium | The 11-state PWA matrix covers primary views, responsive sizes, and themes. The non-updating check compares exact reviewed hashes. |
+| Fresh service-worker origin | Pass | The final source is reassembled and loaded from a fresh loopback origin using cache generation `insta-toolbox-v300`. |
 | No-click safety | Pass | The walkthrough used local PWA state only; no global live toggle was present and no extension action path was available. |
 | Production account DOM chains | Pass in isolated Chromium | The actual content script resolved and executed bounded local Follow (one control) and Unfollow (relationship plus newly bound confirmation), then rejected token replay without another activation. |
 | Production one-message DOM chain | Pass in isolated Chromium | The actual content script used one exact row action, one bound Unsend menu item, and one bound confirmation, proved retained row/identity disconnection plus exact absence, then rejected replay. |
@@ -77,7 +77,8 @@ the authenticated Instagram session.
 
 Focused regressions live in `tests/app-shell-safety.test.js`,
 `tests/static-asset-policy.test.js`, and `tests/browser-qa-harness.test.js`. The
-complete repository suite passes 282 of 282 tests.
+3.0 repository suite contains 343 tests. Record the final pass against the exact
+release commit in [acceptance/3.0.0.md](./acceptance/3.0.0.md).
 
 ## Representative screenshots
 
@@ -92,6 +93,11 @@ desktop evidence remains available:
 The deterministic Windows Chromium baseline is tracked under
 [`tests/baselines/pwa/win32`](../tests/baselines/pwa/win32/manifest.json):
 
+The generated manifest records the current package version and a deterministic
+UTC capture timestamp derived from that version's dated changelog entry. A
+non-updating check rejects stale product or capture metadata before accepting
+the reviewed screenshot hashes.
+
 - [Desktop Overview](../tests/baselines/pwa/win32/desktop-overview.png)
 - [Tablet Messages](../tests/baselines/pwa/win32/tablet-messages.png)
 - [Mobile Settings](../tests/baselines/pwa/win32/mobile-settings.png)
@@ -103,7 +109,7 @@ true 200% Chromium zoom presentations.
 
 Run `pnpm run qa:extension` for production-script DOM and accessibility checks,
 `pnpm run qa:chrome` with Chrome for Testing for real unpacked-extension pairing,
-and `pnpm run qa:browser:check` to reproduce and hash-check all nine captures.
+and `pnpm run qa:browser:check` to reproduce and hash-check all 11 captures.
 Run `pnpm run qa:browser:update` only when intentionally reviewing and accepting
 a visual change. Baselines are platform-specific; macOS and Linux are not
 claimed by the Windows manifest.
@@ -117,14 +123,14 @@ not alter production extension permissions.
 
 ## Overlay-specific QA
 
-The Instagram overlay has a separate 43-scenario harness that
+The Instagram overlay has a separate 45-scenario harness that
 loads the production-built content-script graph and checks state semantics,
 geometry, target intersection, responsive presentations, accessibility-tree
 names, and bounded performance before comparing screenshots. Its commands are
 `pnpm run qa:overlay:update` and `pnpm run qa:overlay:check`.
 
-All 43 Windows scenarios passed their semantic, geometry, collision,
-accessibility-tree, and performance checks. The translucent, compact DM,
+The 3.0 matrix contains 45 Windows scenarios with semantic, geometry,
+collision, accessibility-tree, and performance checks. The translucent, compact DM,
 workspace-version, mobile, dark, and 200% zoom states were inspected at full
 resolution; the reviewed baseline reproduced through
 `qa:overlay:check`, and the non-updating Windows check is wired into CI. That is
@@ -149,7 +155,7 @@ responsive layout, and cache delivery.
 - Establish and visually accept native baselines on any additional release
   platform where screenshot hashes will be gated.
 - Apply Apple Developer ID signing and notarization when release credentials
-  are available. Version 2.0.3 is universal and ad-hoc signed; CI validates the
+  are available. Version 3.0.0 is universal and ad-hoc signed; CI validates the
   exact shipped package but cannot establish Apple trust or notarization.
 
 These remaining checks prevent a claim of complete human browser or

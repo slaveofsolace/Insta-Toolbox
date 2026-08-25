@@ -1,10 +1,10 @@
 # Overlay QA
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 ## Current status
 
-The production-script overlay matrix is green on Windows. The 2.0.2 update
+The production-script overlay matrix is green on Windows. The 3.0.0 update
 generated and reviewed 45 baselines, including the compact header and credit,
 the immediate thread-bound Unsend action, authenticated Mutual Checker state,
 floating translucency, mobile layouts, forced colors, and 200% zoom. A
@@ -13,9 +13,9 @@ accessibility-tree, performance, and screenshot expectation. Ordinary CI runs
 `qa:overlay:check` on `windows-latest`; CI never updates baselines.
 
 The baseline set lives under
-`docs/evidence/overlay-ui-2026-08-02/after/win32`. Its manifest SHA-256 at the
+`docs/evidence/overlay-ui-3.0.0-2026-08-24/after/win32`. Its manifest SHA-256 at the
 time of the reviewed update is
-`d431772bd8b08050a6050fb0ed2fab8b78323f4149a06556d28e6246fb1e7e46`.
+`06770775895839a150d00272c24a10a51ccafa336fca1f957b7bfa6fd8e3e072`.
 This establishes synthetic-fixture and Windows-rendering evidence only. It does
 not establish human visual or screen-reader acceptance, cross-platform pixel
 parity, persistent-profile acceptance, or authenticated Instagram selector
@@ -161,7 +161,7 @@ test-results/overlay-qa/
 An explicit update copies candidate evidence to:
 
 ```text
-docs/evidence/overlay-ui-2026-08-02/after/<platform>/
+docs/evidence/overlay-ui-3.0.0-2026-08-24/after/<platform>/
 ├── <scenario>.png
 ├── manifest.json
 └── fidelity-ledger.json
@@ -187,16 +187,16 @@ log for review.
 3. Inspect every generated image, not only its hash. Reject clipping,
    obstruction, unreadable copy, wrong state, theme mismatch, unsafe collision
    placement, or a screenshot that does not show the named scenario.
-4. Review `fidelity-ledger.json` against the current quiet-operator
-   specification and named scenario.
+4. Review `fidelity-ledger.json` against the current overlay specification and
+   named scenario.
 5. Record the review date and platform in the release notes.
 6. Run `pnpm run qa:overlay:check` without changing the baseline and require an
    exact pass.
 7. Only after the reviewed platform baseline is committed, add the corresponding
    non-updating CI check. Do not generate or accept baselines in ordinary CI.
 
-The original Windows procedure was completed on 2026-08-03. The 2.0.2 matrix
-was regenerated on 2026-08-23 for the compact header and credit, immediate
+The original Windows procedure was completed on 2026-08-03. The 3.0.0 matrix
+was regenerated and reviewed on 2026-08-24 for the compact header and credit, immediate
 thread-bound Unsend path, current extension version, authenticated checker,
 floating translucency, and responsive layouts. Key light, dark, DM, workspace,
 floating, mobile, and 200% zoom captures were inspected at full resolution;
