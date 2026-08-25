@@ -62,6 +62,7 @@ test('browser QA hashes tracked platform baselines and keeps actual output dispo
   assert.match(harness, /browserWindow\.getContentSize\(\)/);
   assert.match(harness, /browserWindow\.webContents\.capturePage\(\)/);
   assert.match(harness, /assertPngDimensions\(png, viewport, label\)/);
+  assert.match(harness, /screenshot did not stabilize after four full repaints/);
   assert.match(harness, /const candidates = \[\]/);
   assert.match(harness, /assertPngDimensions\(actual, capture/);
   assert.match(harness, /assertPngDimensions\(baseline, expectedCapture/);

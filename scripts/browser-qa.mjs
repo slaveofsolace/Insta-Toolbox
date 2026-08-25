@@ -166,14 +166,23 @@ async function captureExactViewportPng(browserWindow, viewport, label) {
     [viewport.width, viewport.height],
     `${label}: BrowserWindow content size changed before capture`,
   );
-  const image = await withTimeout(
-    browserWindow.webContents.capturePage(),
-    `${label}: exact screenshot`,
-    10_000,
-  );
-  const png = image.toPNG();
-  assertPngDimensions(png, viewport, label);
-  return png;
+  let priorHash = '';
+  let priorPng = null;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    await waitForPaint(browserWindow.webContents, `${label}: stable capture ${attempt}`);
+    const image = await withTimeout(
+      browserWindow.webContents.capturePage(),
+      `${label}: exact screenshot ${attempt}`,
+      10_000,
+    );
+    const png = image.toPNG();
+    assertPngDimensions(png, viewport, label);
+    const currentHash = sha256(png);
+    if (priorPng && currentHash === priorHash) return png;
+    priorPng = png;
+    priorHash = currentHash;
+  }
+  throw new Error(`${label}: screenshot did not stabilize after four full repaints.`);
 }
 
 function recordConsoleProblem(problems, detailsOrLevel, legacyMessage) {
