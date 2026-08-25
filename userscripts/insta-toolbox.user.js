@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Insta Toolbox
-// @namespace    https://github.com/slaveofsolace/Insta-AIO-Tool
-// @version      2.0.3
+// @namespace    https://github.com/slaveofsolace/Insta-Toolbox
+// @version      3.0.0
 // @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
 // @author       @slaveofsolace
-// @homepageURL  https://github.com/slaveofsolace/Insta-AIO-Tool
-// @supportURL   https://github.com/slaveofsolace/Insta-AIO-Tool/issues
-// @downloadURL  https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js
-// @updateURL    https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js
+// @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
+// @supportURL   https://github.com/slaveofsolace/Insta-Toolbox/issues
+// @downloadURL  https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js
+// @updateURL    https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js
 // @icon         data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Crect width='1024' height='1024' fill='%23101114'/%3E%3Crect x='160' y='224' width='192' height='128' fill='%23b83d67'/%3E%3Crect x='224' y='352' width='64' height='352' fill='%23b83d67'/%3E%3Crect x='160' y='704' width='192' height='96' fill='%23b83d67'/%3E%3Crect x='416' y='224' width='448' height='128' fill='%23f4f1e8'/%3E%3Crect x='576' y='352' width='128' height='448' fill='%23f4f1e8'/%3E%3C/svg%3E
 // @license      MIT
 // @match        https://www.instagram.com/*
@@ -72,61 +72,61 @@
 
   function palette() {
     return {
-      '--aio-bg': 'rgb(var(--ig-primary-background, 255 255 255))',
-      '--aio-bg-raised': 'rgb(var(--ig-elevated-background, 255 255 255))',
-      '--aio-bg-sunken': 'rgb(var(--ig-secondary-background, 250 250 250))',
-      '--aio-text': 'rgb(var(--ig-primary-text, 0 0 0))',
-      '--aio-text-muted': 'rgb(var(--ig-secondary-text, 115 115 115))',
-      '--aio-line': 'rgb(var(--ig-separator, 219 219 219))',
-      '--aio-accent': 'rgb(var(--ig-primary-button, 0 149 246))',
-      '--aio-on-accent': '#fff',
-      '--aio-success': 'rgb(var(--ig-success, 0 148 84))',
-      '--aio-warning': '#b26a00',
-      '--aio-danger': 'rgb(var(--ig-error-or-destructive, 237 73 86))',
+      '--insta-toolbox-bg': 'rgb(var(--ig-primary-background, 255 255 255))',
+      '--insta-toolbox-bg-raised': 'rgb(var(--ig-elevated-background, 255 255 255))',
+      '--insta-toolbox-bg-sunken': 'rgb(var(--ig-secondary-background, 250 250 250))',
+      '--insta-toolbox-text': 'rgb(var(--ig-primary-text, 0 0 0))',
+      '--insta-toolbox-text-muted': 'rgb(var(--ig-secondary-text, 115 115 115))',
+      '--insta-toolbox-line': 'rgb(var(--ig-separator, 219 219 219))',
+      '--insta-toolbox-accent': '#b83d67',
+      '--insta-toolbox-on-accent': '#fff',
+      '--insta-toolbox-success': 'rgb(var(--ig-success, 0 148 84))',
+      '--insta-toolbox-warning': '#b26a00',
+      '--insta-toolbox-danger': 'rgb(var(--ig-error-or-destructive, 237 73 86))',
       // Deliberately not the danger colour: an uncertain outcome may well have
       // succeeded, and colouring it as a failure would assert what we do not know.
-      '--aio-uncertain': '#7a5cc4',
-      '--aio-focus': 'rgb(var(--ig-primary-button, 0 149 246))',
+      '--insta-toolbox-uncertain': '#7a5cc4',
+      '--insta-toolbox-focus': '#b83d67',
     };
   }
 
   function scale(density) {
     const tight = density === 'compact';
     return {
-      '--aio-space-1': SPACE[1],
-      '--aio-space-2': SPACE[2],
-      '--aio-space-3': SPACE[3],
-      '--aio-space-4': SPACE[4],
-      '--aio-space-5': SPACE[5],
-      '--aio-space-6': SPACE[6],
+      '--insta-toolbox-space-1': SPACE[1],
+      '--insta-toolbox-space-2': SPACE[2],
+      '--insta-toolbox-space-3': SPACE[3],
+      '--insta-toolbox-space-4': SPACE[4],
+      '--insta-toolbox-space-5': SPACE[5],
+      '--insta-toolbox-space-6': SPACE[6],
       // Compact trims vertical rhythm only. Hit targets and font sizes are
       // never reduced, so a denser panel stays as usable as a roomy one.
-      '--aio-pad-y': tight ? SPACE[2] : SPACE[3],
-      '--aio-pad-x': tight ? SPACE[3] : SPACE[4],
-      '--aio-gap': tight ? SPACE[2] : SPACE[3],
-      '--aio-radius-sm': '6px',
-      '--aio-radius-md': '8px',
-      '--aio-radius-lg': '16px',
-      '--aio-border': '1px',
-      '--aio-target': '44px',
-      '--aio-text-lg': '15px',
-      '--aio-text-md': '14px',
-      '--aio-text-sm': '13px',
-      '--aio-text-xs': '12px',
-      '--aio-leading-lg': '20px',
-      '--aio-leading-md': '20px',
-      '--aio-leading-sm': '18px',
-      '--aio-leading-xs': '16px',
-      '--aio-weight-normal': '400',
-      '--aio-weight-strong': '600',
-      '--aio-font': 'var(--ig-font-family, "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif)',
-      '--aio-shadow-panel': '0 12px 40px rgba(0, 0, 0, .18)',
-      '--aio-shadow-popover': '0 8px 24px rgba(0, 0, 0, .16)',
-      '--aio-shadow-none': 'none',
-      '--aio-motion-fast': '120ms',
-      '--aio-motion-base': '180ms',
-      '--aio-motion-slow': '240ms',
-      '--aio-ease': 'cubic-bezier(.2, .7, .3, 1)',
+      '--insta-toolbox-pad-y': tight ? SPACE[2] : SPACE[3],
+      '--insta-toolbox-pad-x': tight ? SPACE[3] : SPACE[4],
+      '--insta-toolbox-gap': tight ? SPACE[2] : SPACE[3],
+      '--insta-toolbox-radius-sm': '6px',
+      '--insta-toolbox-radius-md': '8px',
+      '--insta-toolbox-radius-lg': '16px',
+      '--insta-toolbox-border': '1px',
+      '--insta-toolbox-target': '44px',
+      '--insta-toolbox-text-lg': '15px',
+      '--insta-toolbox-text-md': '14px',
+      '--insta-toolbox-text-sm': '13px',
+      '--insta-toolbox-text-xs': '12px',
+      '--insta-toolbox-leading-lg': '20px',
+      '--insta-toolbox-leading-md': '20px',
+      '--insta-toolbox-leading-sm': '18px',
+      '--insta-toolbox-leading-xs': '16px',
+      '--insta-toolbox-weight-normal': '400',
+      '--insta-toolbox-weight-strong': '600',
+      '--insta-toolbox-font': 'var(--ig-font-family, "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif)',
+      '--insta-toolbox-shadow-panel': '0 12px 40px rgba(0, 0, 0, .18)',
+      '--insta-toolbox-shadow-popover': '0 8px 24px rgba(0, 0, 0, .16)',
+      '--insta-toolbox-shadow-none': 'none',
+      '--insta-toolbox-motion-fast': '120ms',
+      '--insta-toolbox-motion-base': '180ms',
+      '--insta-toolbox-motion-slow': '240ms',
+      '--insta-toolbox-ease': 'cubic-bezier(.2, .7, .3, 1)',
     };
   }
 
@@ -140,21 +140,21 @@
   // decides colour, focus, target size, or motion lives here.
   function primitives() {
     return `
-    .aio-focusable:focus { outline: none; }
-    .aio-focusable:focus-visible {
-      outline: 2px solid var(--aio-focus);
+    .insta-toolbox-focusable:focus { outline: none; }
+    .insta-toolbox-focusable:focus-visible {
+      outline: 2px solid var(--insta-toolbox-focus);
       outline-offset: 2px;
     }
     /* A control may look small but must never be small to hit. */
-    .aio-target { min-width: var(--aio-target); min-height: var(--aio-target); }
-    .aio-state-locked { color: var(--aio-text-muted); }
-    .aio-state-armed { border-color: var(--aio-danger); color: var(--aio-danger); }
-    .aio-state-running { border-color: var(--aio-warning); color: var(--aio-warning); }
-    .aio-state-paused { border-color: var(--aio-line); color: var(--aio-text-muted); }
-    .aio-state-stopped { border-color: var(--aio-danger); color: var(--aio-danger); }
-    .aio-state-uncertain { border-color: var(--aio-uncertain); color: var(--aio-uncertain); }
-    .aio-state-success { color: var(--aio-success); }
-    .aio-state-selected { color: var(--aio-accent); }
+    .insta-toolbox-target { min-width: var(--insta-toolbox-target); min-height: var(--insta-toolbox-target); }
+    .insta-toolbox-state-locked { color: var(--insta-toolbox-text-muted); }
+    .insta-toolbox-state-armed { border-color: var(--insta-toolbox-danger); color: var(--insta-toolbox-danger); }
+    .insta-toolbox-state-running { border-color: var(--insta-toolbox-warning); color: var(--insta-toolbox-warning); }
+    .insta-toolbox-state-paused { border-color: var(--insta-toolbox-line); color: var(--insta-toolbox-text-muted); }
+    .insta-toolbox-state-stopped { border-color: var(--insta-toolbox-danger); color: var(--insta-toolbox-danger); }
+    .insta-toolbox-state-uncertain { border-color: var(--insta-toolbox-uncertain); color: var(--insta-toolbox-uncertain); }
+    .insta-toolbox-state-success { color: var(--insta-toolbox-success); }
+    .insta-toolbox-state-selected { color: var(--insta-toolbox-accent); }
     [disabled], [aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 
     @media (prefers-reduced-motion: reduce) {
@@ -169,10 +169,10 @@
 
     @media (forced-colors: active) {
       /* Structure has to survive without colour, so every edge becomes real. */
-      .aio-surface, .aio-raised, .aio-sunken { background: Canvas; color: CanvasText; }
-      .aio-surface, .aio-raised, .aio-sunken, .aio-card { border: 1px solid CanvasText; }
-      .aio-focusable:focus-visible { outline-color: Highlight; }
-      .aio-state-selected { color: Highlight; }
+      .insta-toolbox-surface, .insta-toolbox-raised, .insta-toolbox-sunken { background: Canvas; color: CanvasText; }
+      .insta-toolbox-surface, .insta-toolbox-raised, .insta-toolbox-sunken, .insta-toolbox-card { border: 1px solid CanvasText; }
+      .insta-toolbox-focusable:focus-visible { outline-color: Highlight; }
+      .insta-toolbox-state-selected { color: Highlight; }
     }`;
   }
 
@@ -190,7 +190,7 @@
     steps: Object.freeze(Object.keys(scale('comfortable'))),
   });
 
-  Object.defineProperty(globalThis, 'InstaAioTokens', {
+  Object.defineProperty(globalThis, 'InstaToolboxTokens', {
     configurable: false,
     enumerable: false,
     value: api,
@@ -361,7 +361,7 @@
 (() => {
   'use strict';
 
-  const namespace = '__instaAioActionLabels';
+  const namespace = '__instaToolboxActionLabels';
   if (globalThis[namespace]) return;
 
   const relationshipEntries = Object.freeze([
@@ -436,12 +436,12 @@
 (() => {
   'use strict';
 
-  if (globalThis.InstaAioDmThreadUnsender) return;
-  const actionLabels = globalThis.__instaAioActionLabels;
+  if (globalThis.InstaToolboxDmThreadUnsender) return;
+  const actionLabels = globalThis.__instaToolboxActionLabels;
   if (!actionLabels) return;
 
-  const ACTIVE_ATTRIBUTE = 'data-insta-aio-unsend-active';
-  const DONE_ATTRIBUTE = 'data-insta-aio-unsent';
+  const ACTIVE_ATTRIBUTE = 'data-insta-toolbox-unsend-active';
+  const DONE_ATTRIBUTE = 'data-insta-toolbox-unsent';
   const DEFAULT_MIN_DELAY_MS = 1_000;
   const DEFAULT_MAX_DELAY_MS = 2_000;
   const DEFAULT_MAX_FAILURES = 5;
@@ -675,7 +675,7 @@
   }
 
   function sessionStop(expectedThreadId = '') {
-    const observation = globalThis.InstaAioInstagramInspector?.inspectSession?.() || {};
+    const observation = globalThis.InstaToolboxInstagramInspector?.inspectSession?.() || {};
     if (observation.sessionExpired) return 'Instagram signed you out';
     if (observation.challenge) return 'Instagram opened a security check';
     if (observation.actionBlocked) return 'Instagram blocked the action';
@@ -1995,7 +1995,7 @@
   }
 
   const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe };
-  if (globalThis.__instaAioTestHooks === true) {
+  if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
       candidateRows,
       createTraversal,
@@ -2023,7 +2023,7 @@
       validatePlan,
     });
   }
-  Object.defineProperty(globalThis, 'InstaAioDmThreadUnsender', {
+  Object.defineProperty(globalThis, 'InstaToolboxDmThreadUnsender', {
     configurable: false,
     enumerable: false,
     value: Object.freeze(publicApi),
@@ -2032,8 +2032,8 @@
 })();
 
 (() => {
-  if (globalThis.__instaAioInspectorInstalled) return;
-  const actionLabels = globalThis.__instaAioActionLabels;
+  if (globalThis.__instaToolboxInspectorInstalled) return;
+  const actionLabels = globalThis.__instaToolboxActionLabels;
   if (
     !actionLabels
     || typeof actionLabels.isDmUnsendLabel !== 'function'
@@ -2041,7 +2041,7 @@
     || typeof actionLabels.normalizeActionLabel !== 'function'
     || typeof actionLabels.relationshipForLabel !== 'function'
   ) return;
-  globalThis.__instaAioInspectorInstalled = true;
+  globalThis.__instaToolboxInspectorInstalled = true;
 
   const RESERVED = new Set([
     'accounts', 'about', 'api', 'developer', 'direct', 'emails', 'explore',
@@ -2711,7 +2711,7 @@
   function followerComparisonRecord(workspace, comparison, generatedAt = new Date().toISOString()) {
     return {
       schemaVersion: 1,
-      kind: 'insta-aio-comparison',
+      kind: 'insta-toolbox-comparison',
       generatedAt,
       subjectUsername: normalizeUsername(workspace?.subjectUsername),
       source: workspace?.source && typeof workspace.source === 'object' ? workspace.source : {},
@@ -2894,7 +2894,7 @@
   }
 
   function dmContentCandidates(row) {
-    const explicitlyMarked = [...(row?.querySelectorAll?.('[data-insta-aio-message-content]') || [])];
+    const explicitlyMarked = [...(row?.querySelectorAll?.('[data-insta-toolbox-message-content]') || [])];
     const nodes = explicitlyMarked.length
       ? explicitlyMarked
       : [...(row?.querySelectorAll?.('[dir="auto"]') || [])]
@@ -4055,7 +4055,7 @@
     };
   }
 
-  globalThis.InstaAioInstagramInspector = Object.freeze({
+  globalThis.InstaToolboxInstagramInspector = Object.freeze({
     captureVisibleAccounts,
     collectAccountList,
     detectAuthenticatedUsername,
@@ -4083,48 +4083,48 @@
   if (!globalThis.chrome?.runtime?.onMessage?.addListener) return;
 
   chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-    if (request?.kind === 'insta-aio-inspect-profile') {
+    if (request?.kind === 'insta-toolbox-inspect-profile') {
       sendResponse(inspectProfile(request.username));
       return;
     }
-    if (request?.kind === 'insta-aio-inspect-session') {
+    if (request?.kind === 'insta-toolbox-inspect-session') {
       sendResponse(inspectSession());
       return;
     }
-    if (request?.kind === 'insta-aio-capture-visible-accounts') {
+    if (request?.kind === 'insta-toolbox-capture-visible-accounts') {
       sendResponse({
         capturedAt: new Date().toISOString(),
         accounts: captureVisibleAccounts(),
       });
       return;
     }
-    if (request?.kind === 'insta-aio-collect-account-list') {
+    if (request?.kind === 'insta-toolbox-collect-account-list') {
       collectAccountList(request.options || {})
         .then(sendResponse)
         .catch(() => sendResponse({ unexpectedUi: true, reason: 'account-list-collection-failed' }));
       return true;
     }
-    if (request?.kind === 'insta-aio-enumerate-sent-dms') {
+    if (request?.kind === 'insta-toolbox-enumerate-sent-dms') {
       enumerateSentDms(request.options || {})
         .then(sendResponse)
         .catch(() => sendResponse({ unexpectedUi: true, reason: 'sent-dm-enumeration-failed' }));
       return true;
     }
-    if (request?.kind === 'insta-aio-inspect-visible-messages') {
+    if (request?.kind === 'insta-toolbox-inspect-visible-messages') {
       sendResponse(inspectVisibleMessages());
       return;
     }
-    if (request?.kind === 'insta-aio-inspect-reviewed-dm-item') {
+    if (request?.kind === 'insta-toolbox-inspect-reviewed-dm-item') {
       sendResponse(inspectReviewedDmItem(request.item));
       return;
     }
-    if (request?.kind === 'insta-aio-perform-reviewed-profile-action') {
+    if (request?.kind === 'insta-toolbox-perform-reviewed-profile-action') {
       performReviewedProfileAction(request.item)
         .then(sendResponse)
         .catch(() => sendResponse({ unexpectedUi: true, reason: 'live-action-driver-error' }));
       return true;
     }
-    if (request?.kind === 'insta-aio-perform-reviewed-dm-unsend') {
+    if (request?.kind === 'insta-toolbox-perform-reviewed-dm-unsend') {
       performReviewedDmUnsend(request.item)
         .then(sendResponse)
         .catch(() => sendResponse({ unexpectedUi: true, reason: 'live-dm-driver-error' }));
@@ -4136,12 +4136,12 @@
 (async () => {
   'use strict';
 
-  const EXTENSION_ROOT_ID = 'insta-aio-sidecar-root';
-  const ROOT_ID = 'insta-aio-userscript-root';
-  const STATE_KEY = 'instaAioUserscriptStateV2';
-  const PREFERENCES_KEY = 'instaAioUserscriptPreferencesV1';
-  const LEGACY_QUEUE_KEY = 'instaAioManualQueueV1';
-  const TAB_RUN_FIELD = 'instaAioAccountRunV1';
+  const EXTENSION_ROOT_ID = 'insta-toolbox-sidecar-root';
+  const ROOT_ID = 'insta-toolbox-userscript-root';
+  const STATE_KEY = 'instaToolboxUserscriptStateV2';
+  const PREFERENCES_KEY = 'instaToolboxUserscriptPreferencesV1';
+  const LEGACY_QUEUE_KEY = 'instaToolboxManualQueueV1';
+  const TAB_RUN_FIELD = 'instaToolboxAccountRunV1';
   const ACTIONABLE_STATUSES = new Set(['pending', 'ready', 'failed', 'paused']);
   const RESERVED = new Set([
     'accounts', 'about', 'api', 'developer', 'direct', 'emails', 'explore',
@@ -4256,8 +4256,6 @@
       sentDmsComplete: false,
       sentDmsChecked: false,
       limits: {
-        dailyActions: 100,
-        dailyUnsends: 50,
         minDelayMs: 1_000,
         maxDelayMs: 2_000,
       },
@@ -4649,7 +4647,7 @@
         const row = identity.closest?.('[role="row"], [role="listitem"]') || identity;
         const messageId = safeText(identity.getAttribute('data-message-id') || identity.getAttribute('data-item-id'));
         const timestamp = Number(identity.getAttribute('data-timestamp-ms') || row.getAttribute?.('data-timestamp-ms'));
-        const content = [...row.querySelectorAll('[data-insta-aio-message-content], [dir="auto"]')]
+        const content = [...row.querySelectorAll('[data-insta-toolbox-message-content], [dir="auto"]')]
           .filter((element) => !element.querySelector?.('[dir="auto"]'))
           .map(visibleText)
           .find((text) => fnvDigest(text) === item.contentDigest);
@@ -4701,151 +4699,143 @@
     setTimeout(() => URL.revokeObjectURL(url), 1_000);
   }
 
-  const sharedTokenCss = globalThis.InstaAioTokens?.css({ density: 'compact' }) || '';
+  const sharedTokenCss = globalThis.InstaToolboxTokens?.css({ density: 'compact' }) || '';
   const host = document.createElement('div');
   host.id = ROOT_ID;
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `
     <style>
       ${sharedTokenCss}
-      :host { all: initial; --aio-alpha: 88%; --aio-alpha-strong: 96%; --aio-width: 390px; --aio-height: 620px; --aio-settings-max-height: 460px; color-scheme: light dark; color: var(--aio-text, #1b211c); font-family: var(--aio-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      :host { all: initial; --insta-toolbox-alpha: 88%; --insta-toolbox-alpha-strong: 96%; --insta-toolbox-width: 390px; --insta-toolbox-height: 620px; --insta-toolbox-settings-max-height: 460px; color-scheme: light dark; color: var(--insta-toolbox-text, #1b211c); font-family: var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
       *, *::before, *::after { box-sizing: border-box; }
       button, input, select { font: inherit; }
       button, label, summary { cursor: pointer; }
       [hidden] { display: none !important; }
-      .launcher { position: fixed; z-index: 2147482900; right: 16px; bottom: 16px; width: 46px; height: 46px; border: 1px solid var(--aio-line, #cfd5cc); border-radius: 14px; background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha), transparent); color: var(--aio-text, #172018); box-shadow: var(--aio-shadow-popover, 0 10px 32px rgba(0,0,0,.2)); font-weight: 850; }
-      .panel { animation: aio-in var(--aio-motion-fast, 120ms) var(--aio-ease, ease) both; position: fixed; z-index: 2147482900; top: 62px; right: 16px; width: min(var(--aio-width), calc(100vw - 24px)); height: min(var(--aio-height), calc(100dvh - 74px)); display: flex; flex-direction: column; overflow: hidden; container-type: inline-size; border: 1px solid var(--aio-line, #cfd5cc); border-radius: var(--aio-radius-lg, 14px); background: color-mix(in srgb, var(--aio-bg, #f7f8f5) var(--aio-alpha), transparent); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel, 0 20px 60px rgba(0,0,0,.24)); backdrop-filter: blur(10px) saturate(.95); -webkit-backdrop-filter: blur(10px) saturate(.95); font: var(--aio-text-md, 14px)/var(--aio-leading-md, 20px) var(--aio-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
-      :host([data-floating="true"]) .panel { top: var(--aio-top); right: auto; left: var(--aio-left); }
-      .header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 4px; align-items: center; height: 52px; min-height: 52px; padding: 4px 6px; border-bottom: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); }
+      .launcher { position: fixed; z-index: 2147482900; right: 16px; bottom: 16px; width: 46px; height: 46px; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: 14px; background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha), transparent); color: var(--insta-toolbox-text, #172018); box-shadow: var(--insta-toolbox-shadow-popover, 0 10px 32px rgba(0,0,0,.2)); font-weight: 850; }
+      .panel { animation: insta-toolbox-in var(--insta-toolbox-motion-fast, 120ms) var(--insta-toolbox-ease, ease) both; position: fixed; z-index: 2147482900; top: 62px; right: 16px; width: min(var(--insta-toolbox-width), calc(100vw - 24px)); height: min(var(--insta-toolbox-height), calc(100dvh - 74px)); display: flex; flex-direction: column; overflow: hidden; container-type: inline-size; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: var(--insta-toolbox-radius-lg, 14px); background: color-mix(in srgb, var(--insta-toolbox-bg, #f7f8f5) var(--insta-toolbox-alpha), transparent); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel, 0 20px 60px rgba(0,0,0,.24)); backdrop-filter: blur(10px) saturate(.95); -webkit-backdrop-filter: blur(10px) saturate(.95); font: var(--insta-toolbox-text-md, 14px)/var(--insta-toolbox-leading-md, 20px) var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      :host([data-floating="true"]) .panel { top: var(--insta-toolbox-top); right: auto; left: var(--insta-toolbox-left); }
+      .header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 4px; align-items: center; height: 52px; min-height: 52px; padding: 4px 6px; border-bottom: 1px solid var(--insta-toolbox-line, #d8ddd4); background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha-strong), transparent); }
       .handle, .icon { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: inherit; }
       .handle { cursor: grab; touch-action: none; font-size: 20px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
-      .handle:hover { background: color-mix(in srgb, var(--aio-text, #000) 8%, transparent); }
-      .handle:active { cursor: grabbing; background: color-mix(in srgb, var(--aio-text, #000) 14%, transparent); }
+      .handle:hover { background: color-mix(in srgb, var(--insta-toolbox-text, #000) 8%, transparent); }
+      .handle:active { cursor: grabbing; background: color-mix(in srgb, var(--insta-toolbox-text, #000) 14%, transparent); }
       /* The whole header bar drags, so the grip is a hint rather than the only target. */
       .header { cursor: grab; }
       .header:active { cursor: grabbing; }
       .header button, .header select, .header summary, .header input { cursor: default; }
       .header h1 { margin: 0; min-width: 0; overflow-wrap: normal; word-break: keep-all; font-size: 16px; line-height: 1.15; white-space: nowrap; }
-      .tabs { display: grid; grid-template-columns: repeat(3,minmax(44px,1fr)); border-bottom: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg-sunken, #eef1ec) var(--aio-alpha-strong), transparent); }
-      .tab { transition: background var(--aio-motion-fast, 120ms) var(--aio-ease, ease), color var(--aio-motion-fast, 120ms) var(--aio-ease, ease); min-height: 48px; border: 0; border-bottom: 3px solid transparent; padding: 6px 3px; background: transparent; color: var(--aio-text-muted, #616a61); font-size: 11px; font-weight: 700; }
-      .tab[aria-selected="true"] { border-bottom-color: var(--aio-accent, #347844); color: var(--aio-text, #172018); background: color-mix(in srgb, var(--aio-bg-raised, #fff) 72%, transparent); }
-      .scroll { flex: 1 1 auto; min-height: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+      .tabs { display: grid; grid-template-columns: repeat(3,minmax(44px,1fr)); border-bottom: 1px solid var(--insta-toolbox-line, #d8ddd4); background: color-mix(in srgb, var(--insta-toolbox-bg-sunken, #eef1ec) var(--insta-toolbox-alpha-strong), transparent); }
+      .tab { transition: background var(--insta-toolbox-motion-fast, 120ms) var(--insta-toolbox-ease, ease), color var(--insta-toolbox-motion-fast, 120ms) var(--insta-toolbox-ease, ease); min-height: 48px; border: 0; border-bottom: 3px solid transparent; padding: 6px 3px; background: transparent; color: var(--insta-toolbox-text-muted, #616a61); font-size: 11px; font-weight: 700; }
+      .tab[aria-selected="true"] { border-bottom-color: var(--insta-toolbox-accent, #b83d67); color: var(--insta-toolbox-text, #172018); background: color-mix(in srgb, var(--insta-toolbox-bg-raised, #fff) 72%, transparent); }
+      .scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
       .view { padding: 14px; }
-      .lead { margin: 0 0 12px; color: var(--aio-text-muted, #606960); font-size: 12px; }
-      .tool-grid { display: grid; gap: 8px; }
-      .tool { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; width: 100%; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 10px; padding: 12px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) var(--aio-alpha-strong), transparent); color: inherit; text-align: left; }
-      .tool strong, .tool span { display: block; }
-      .tool span { margin-top: 3px; color: var(--aio-text-muted, #687068); font-size: 12px; }
-      .tool em { color: var(--aio-accent, #347844); font-size: 10px; font-style: normal; font-weight: 800; text-transform: uppercase; }
-      .card { margin-bottom: 10px; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 10px; padding: 12px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) var(--aio-alpha-strong), transparent); }
+      .lead { margin: 0 0 12px; color: var(--insta-toolbox-text-muted, #606960); font-size: 12px; }
+      .card { margin-bottom: 10px; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 10px; padding: 12px; background: color-mix(in srgb, var(--insta-toolbox-bg-raised, #fff) var(--insta-toolbox-alpha-strong), transparent); }
       .card h2, .card h3 { margin: 0 0 6px; font-size: 15px; }
-      .card p { margin: 4px 0 0; color: var(--aio-text-muted, #687068); font-size: 12px; overflow-wrap: break-word; word-break: normal; }
+      .card p { margin: 4px 0 0; color: var(--insta-toolbox-text-muted, #687068); font-size: 12px; overflow-wrap: break-word; word-break: normal; }
       .card > strong, .card > span { display: block; }
       .card > strong + span { margin-top: 4px; }
       .metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 10px 0; }
-      .metric { border: 1px solid var(--aio-line, #d8ddd4); border-radius: 9px; padding: 10px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) var(--aio-alpha-strong), transparent); }
+      .metric { border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 9px; padding: 10px; background: color-mix(in srgb, var(--insta-toolbox-bg-raised, #fff) var(--insta-toolbox-alpha-strong), transparent); }
       .metric span, .metric strong { display: block; }
-      .metric span { color: var(--aio-text-muted, #687068); font-size: 11px; }
+      .metric span { color: var(--insta-toolbox-text-muted, #687068); font-size: 11px; }
       .metric strong { margin-top: 2px; font-size: 21px; }
       .field { display: grid; gap: 5px; margin: 10px 0; }
-      .field label { color: var(--aio-text-muted, #687068); font-size: 12px; }
-      .live-toggle { display: flex; align-items: flex-start; gap: 8px; color: var(--aio-text, #1b211c) !important; font-weight: 700; }
-      .live-toggle input { width: 18px; height: 18px; flex: 0 0 auto; margin: 0; accent-color: var(--aio-accent, #347844); }
+      .field label { color: var(--insta-toolbox-text-muted, #687068); font-size: 12px; }
       select, input[type="range"] { width: 100%; }
-      select { min-height: 44px; border: 1px solid var(--aio-line, #cfd5cc); border-radius: 8px; padding: 8px; background: var(--aio-bg, #fff); color: var(--aio-text, #1b211c); }
-      select option { background: var(--aio-bg, #fff); color: var(--aio-text, #1b211c); }
-      input, textarea { background: var(--aio-bg, #fff); color: var(--aio-text, #1b211c); border: 1px solid var(--aio-line, #cfd5cc); border-radius: 8px; padding: 8px; }
+      select { min-height: 44px; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: 8px; padding: 8px; background: var(--insta-toolbox-bg, #fff); color: var(--insta-toolbox-text, #1b211c); }
+      select option { background: var(--insta-toolbox-bg, #fff); color: var(--insta-toolbox-text, #1b211c); }
+      input, textarea { background: var(--insta-toolbox-bg, #fff); color: var(--insta-toolbox-text, #1b211c); border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: 8px; padding: 8px; }
       .toolbar { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
-      .button, .file { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--aio-line, #243027); border-radius: 8px; padding: 8px 11px; background: var(--aio-bg-sunken, #26362a); color: var(--aio-text, #1b211c); font-weight: 720; text-decoration: none; }
-      .button.quiet, .file.quiet { border-color: var(--aio-line, #cfd5cc); background: color-mix(in srgb, var(--aio-bg-raised, #fff) 72%, transparent); color: var(--aio-text, #1b211c); }
+      .button, .file { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--insta-toolbox-line, #243027); border-radius: 8px; padding: 8px 11px; background: var(--insta-toolbox-bg-sunken, #26362a); color: var(--insta-toolbox-text, #1b211c); font-weight: 720; text-decoration: none; }
+      .button.quiet, .file.quiet { border-color: var(--insta-toolbox-line, #cfd5cc); background: color-mix(in srgb, var(--insta-toolbox-bg-raised, #fff) 72%, transparent); color: var(--insta-toolbox-text, #1b211c); }
       .file { position: relative; overflow: hidden; }
       .file input { position: absolute; inset: 0; opacity: 0; }
-      .list { margin: 10px 0 0; padding: 0; border-top: 1px solid var(--aio-line, #d8ddd4); list-style: none; }
-      .list li { padding: 8px 0; border-bottom: 1px solid var(--aio-line, #d8ddd4); overflow-wrap: break-word; word-break: normal; font-size: 12px; }
-      .list small { display: block; margin-top: 2px; color: var(--aio-text-muted, #687068); }
-      .notice { padding: 10px; border-left: 4px solid var(--aio-warning, #ad7823); background: var(--aio-bg-sunken, #fff4d6); color: var(--aio-text, #62490f); font-size: 12px; }
+      .list { margin: 10px 0 0; padding: 0; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); list-style: none; }
+      .list li { padding: 8px 0; border-bottom: 1px solid var(--insta-toolbox-line, #d8ddd4); overflow-wrap: break-word; word-break: normal; font-size: 12px; }
+      .list small { display: block; margin-top: 2px; color: var(--insta-toolbox-text-muted, #687068); }
+      .notice { padding: 10px; border-left: 4px solid var(--insta-toolbox-warning, #ad7823); background: var(--insta-toolbox-bg-sunken, #fff4d6); color: var(--insta-toolbox-text, #62490f); font-size: 12px; }
       details.settings { position: relative; }
       details.settings > summary { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 9px; list-style: none; font-size: 18px; }
       details.settings > summary::-webkit-details-marker { display:none; }
       details.settings:not([open]) > .settings-panel { display: none; }
-      .settings-panel { position: absolute; z-index: 5; top: 48px; right: 0; width: min(250px, calc(100vw - 32px)); max-height: var(--aio-settings-max-height); overflow: auto; padding: 12px; border: 1px solid var(--aio-line, #cfd5cc); border-radius: 10px; background: color-mix(in srgb, var(--aio-bg-raised, #fff) 97%, transparent); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel, 0 16px 46px rgba(0,0,0,.2)); }
+      .settings-panel { position: absolute; z-index: 5; top: 48px; right: 0; width: min(250px, calc(100vw - 32px)); max-height: var(--insta-toolbox-settings-max-height); overflow: auto; padding: 12px; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: 10px; background: color-mix(in srgb, var(--insta-toolbox-bg-raised, #fff) 97%, transparent); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel, 0 16px 46px rgba(0,0,0,.2)); }
       .range-row { display:grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items:center; }
-      .footer { height: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; padding: 3px 52px 3px 12px; border-top: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); color: var(--aio-text-muted, #687068); font-size: 10px; line-height: 1; }
+      .footer { height: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; padding: 3px 52px 3px 12px; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha-strong), transparent); color: var(--insta-toolbox-text-muted, #687068); font-size: 10px; line-height: 1; }
       .footer a { color: inherit; text-decoration: none; }
-      .footer a:hover, .footer a:focus-visible { color: var(--aio-text, #1b211c); text-decoration: underline; text-underline-offset: 2px; }
-      .resize { position: absolute; right: 0; bottom: 0; display: block; width: 44px; height: 44px; z-index: 5; border: 0; border-radius: 10px 0 12px 0; padding: 0; background: transparent; color: var(--aio-text-muted, #687068); cursor: nwse-resize; touch-action: none; }
+      .footer a:hover, .footer a:focus-visible { color: var(--insta-toolbox-text, #1b211c); text-decoration: underline; text-underline-offset: 2px; }
+      .resize { position: absolute; right: 0; bottom: 0; display: block; width: 44px; height: 44px; z-index: 5; border: 0; border-radius: 10px 0 12px 0; padding: 0; background: transparent; color: var(--insta-toolbox-text-muted, #687068); cursor: nwse-resize; touch-action: none; }
       .resize::before { content:""; position:absolute; right:9px; bottom:9px; width:12px; height:12px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; opacity:.9; }
-      .resize:hover { background: color-mix(in srgb, var(--aio-accent-soft, #e8f3ec) 72%, transparent); color: var(--aio-text, #1b211c); }
-      button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, .file:focus-within { outline: 3px solid var(--aio-focus, #168cff); outline-offset: 2px; }
+      .resize:hover { background: color-mix(in srgb, var(--insta-toolbox-accent, #b83d67) 12%, transparent); color: var(--insta-toolbox-text, #1b211c); }
+      button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, .file:focus-within { outline: 3px solid var(--insta-toolbox-focus, #b83d67); outline-offset: 2px; }
       @media (max-width: 600px) { .panel { top:auto; right:0; bottom:0; left:0; width:100%; height:min(78dvh,720px); border-radius:14px 14px 0 0; } .handle,.resize { display:none; } .header { grid-template-columns:minmax(0,1fr) auto; } }
       @container (max-width: 330px) { .header h1 { font-size:14px; } }
       @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; } }
-      .step, .context, .review, .card { transition: border-color var(--aio-motion-base, 180ms) var(--aio-ease, ease); }
-      .intro { animation: aio-in var(--aio-motion-slow, 240ms) var(--aio-ease, ease) both; }
-      .scan-progress .run-bar span { transition: width var(--aio-motion-base, 180ms) var(--aio-ease, ease); }
+      .step, .context, .review, .card { transition: border-color var(--insta-toolbox-motion-base, 180ms) var(--insta-toolbox-ease, ease); }
+      .intro { animation: insta-toolbox-in var(--insta-toolbox-motion-slow, 240ms) var(--insta-toolbox-ease, ease) both; }
+      .scan-progress .run-bar span { transition: width var(--insta-toolbox-motion-base, 180ms) var(--insta-toolbox-ease, ease); }
       /* A finished run should register without stealing attention. */
-      .run-panel[data-finished="true"] .run-bar span { transition: width var(--aio-motion-slow, 240ms) var(--aio-ease, ease); }
+      .run-panel[data-finished="true"] .run-bar span { transition: width var(--insta-toolbox-motion-slow, 240ms) var(--insta-toolbox-ease, ease); }
       @media (prefers-reduced-motion: reduce) {
         .step, .context, .review, .card, .scan-progress .run-bar span, .run-panel[data-finished="true"] .run-bar span { transition: none; }
         .intro { animation: none; }
       }
-      .review { margin-bottom: 12px; padding: 10px; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 10px; }
+      .review { margin-bottom: 12px; padding: 10px; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 10px; }
       .review strong { display: block; margin-bottom: 6px; font-size: 13px; }
       .list--compact { max-height: 132px; overflow-y: auto; }
       .steps { display: grid; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
-      .step { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 10px; }
-      .step[data-state="done"] { border-color: var(--aio-success, #0a7d3f); }
-      .step[data-state="partial"] { border-color: var(--aio-warning, #b26a00); }
-      .step-num { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 50%; background: var(--aio-bg-sunken, #eef1ec); font-size: 12px; font-weight: 600; }
-      .step[data-state="done"] .step-num { background: var(--aio-success, #0a7d3f); color: #fff; }
+      .step { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 10px; }
+      .step[data-state="done"] { border-color: var(--insta-toolbox-success, #0a7d3f); }
+      .step[data-state="partial"] { border-color: var(--insta-toolbox-warning, #b26a00); }
+      .step-num { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 50%; background: var(--insta-toolbox-bg-sunken, #eef1ec); font-size: 12px; font-weight: 600; }
+      .step[data-state="done"] .step-num { background: var(--insta-toolbox-success, #0a7d3f); color: #fff; }
       .step-body strong { display: block; font-size: 13px; }
-      .step-body span { display: block; color: var(--aio-text-muted, #687068); font-size: 12px; }
+      .step-body span { display: block; color: var(--insta-toolbox-text-muted, #687068); font-size: 12px; }
       .scan-progress { margin-bottom: 12px; }
-      .settings-inline { margin-top: 10px; border-top: 1px solid var(--aio-line, #d8ddd4); }
+      .settings-inline { margin-top: 10px; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); }
       .settings-inline > summary { min-height: 44px; display: flex; align-items: center; font-size: 13px; cursor: pointer; }
       .header, .context, .tabs, .run-panel, .footer { flex: 0 0 auto; }
-      .intro { flex: 0 1 auto; min-height: 0; overflow: auto; }
+      .intro { flex: 0 0 auto; min-height: 0; overflow: visible; }
       .header, .footer { position: relative; z-index: 1; }
       input:not([type="range"]):not([type="checkbox"]), select, textarea { min-height: 44px; box-sizing: border-box; }
       .field input[type="range"] { min-height: 24px; }
       .field input[type="checkbox"] { min-width: 20px; min-height: 20px; }
       /* The checkbox itself stays small; its label carries the 44px target. */
       .field label { display: inline-flex; align-items: center; min-height: 44px; }
-      .context { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; min-height: 44px; max-height: 52px; align-items: center; overflow: hidden; padding: 5px 10px; border-bottom: 1px solid var(--aio-line, #d8ddd4); background: var(--aio-bg-sunken, #eef1ec); color: var(--aio-text, #1b211c); }
-      .context-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--aio-text-muted, #687068); }
-      .context[data-tone="ready"] .context-dot { background: var(--aio-success, #0a7d3f); }
-      .context[data-tone="warning"] .context-dot { background: var(--aio-warning, #b26a00); }
-      .context[data-tone="blocked"] .context-dot { background: var(--aio-danger, #8c1d1d); }
+      .context { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; min-height: 44px; max-height: 52px; align-items: center; overflow: hidden; padding: 5px 10px; border-bottom: 1px solid var(--insta-toolbox-line, #d8ddd4); background: var(--insta-toolbox-bg-sunken, #eef1ec); color: var(--insta-toolbox-text, #1b211c); }
+      .context-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--insta-toolbox-text-muted, #687068); }
+      .context[data-tone="ready"] .context-dot { background: var(--insta-toolbox-success, #0a7d3f); }
+      .context[data-tone="warning"] .context-dot { background: var(--insta-toolbox-warning, #b26a00); }
+      .context[data-tone="blocked"] .context-dot { background: var(--insta-toolbox-danger, #8c1d1d); }
       .context-copy { min-width: 0; }
-      .context-copy strong { display: block; overflow: hidden; color: var(--aio-text, #1b211c) !important; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-      .context-copy span { display: -webkit-box; overflow: hidden; color: var(--aio-text-muted, #687068) !important; font-size: 11px; overflow-wrap: break-word; word-break: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+      .context-copy strong { display: block; overflow: hidden; color: var(--insta-toolbox-text, #1b211c) !important; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+      .context-copy span { display: -webkit-box; overflow: hidden; color: var(--insta-toolbox-text-muted, #687068) !important; font-size: 11px; overflow-wrap: break-word; word-break: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
       .context-cta { white-space: nowrap; }
-      .intro { padding: 14px; border-bottom: 1px solid var(--aio-line, #d8ddd4); }
-      .intro h2 { margin: 0 0 8px; font-size: 15px; }
-      .intro-list { margin: 0 0 10px; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; }
-      .intro-note { margin: 0 0 8px; color: var(--aio-text-muted, #687068); font-size: 12px; }
-      .run-panel { padding: 10px 12px; border-top: 1px solid var(--aio-line, #d8ddd4); background: color-mix(in srgb, var(--aio-bg, #fff) var(--aio-alpha-strong), transparent); }
+      .intro { padding: 14px; border-bottom: 1px solid var(--insta-toolbox-line, #d8ddd4); }
+      .intro h2 { margin: 0 0 4px; font-size: 15px; }
+      .intro-note { max-width: 42ch; margin: 0 0 8px; color: var(--insta-toolbox-text-muted, #687068); font-size: 12px; }
+      .run-panel { padding: 10px 12px; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha-strong), transparent); }
       .run-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
       .run-head strong { font-size: 12px; overflow-wrap: break-word; word-break: normal; }
-      .run-bar { overflow: hidden; height: 5px; margin: 8px 0 6px; border-radius: 999px; background: var(--aio-line, #d8ddd4); }
-      .run-bar span { display: block; width: 0%; height: 100%; border-radius: 999px; background: var(--aio-accent, #1c6b3c); transition: width var(--aio-motion-base, 180ms) var(--aio-ease, ease); }
+      .run-bar { overflow: hidden; height: 5px; margin: 8px 0 6px; border-radius: 999px; background: var(--insta-toolbox-line, #d8ddd4); }
+      .run-bar span { display: block; width: 0%; height: 100%; border-radius: 999px; background: var(--insta-toolbox-accent, #b83d67); transition: width var(--insta-toolbox-motion-base, 180ms) var(--insta-toolbox-ease, ease); }
       .run-panel .list { max-height: 118px; overflow-y: auto; }
-      .button.danger { background: var(--aio-accent, #0095f6); color: var(--aio-on-accent, #fff); }
-      .button.primary { background: var(--aio-accent, #0095f6); color: var(--aio-on-accent, #fff); border: 0; font-weight: 600; }
+      .button.danger { background: var(--insta-toolbox-danger, #b42318); color: var(--insta-toolbox-on-danger, #fff); }
+      .button.primary { background: var(--insta-toolbox-accent, #b83d67); color: var(--insta-toolbox-on-accent, #fff); border: 0; font-weight: 600; }
       .button.primary:hover { filter: brightness(1.08); }
       .button.big { width: 100%; padding: 10px 12px; font-size: var(--system-14-font-size, 14px); line-height: var(--system-14-line-height, 18px); border-radius: 8px; }
       .button:disabled { cursor: not-allowed; filter: none; opacity: .48; }
-      .confirm-dialog { width: min(420px, calc(100vw - 28px)); max-height: min(620px, calc(100vh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--aio-bg-raised, #fff); color: var(--aio-text, #1b211c); box-shadow: var(--aio-shadow-panel); }
+      .confirm-dialog { width: min(420px, calc(100vw - 28px)); max-height: min(620px, calc(100vh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); }
       .confirm-dialog::backdrop { background: rgba(0, 0, 0, .62); }
       .confirm-dialog form { display: grid; gap: 12px; margin: 0; padding: 18px; }
       .confirm-dialog h2 { margin: 0; font-size: 18px; line-height: 24px; overflow-wrap: break-word; }
-      .confirm-dialog p { margin: 0; color: var(--aio-text-muted, #687068); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; white-space: pre-line; }
+      .confirm-dialog p { margin: 0; color: var(--insta-toolbox-text-muted, #687068); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; white-space: pre-line; }
       .confirm-dialog dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 13px; line-height: 19px; }
-      .confirm-dialog dt { color: var(--aio-text-muted, #687068); font-weight: 600; }
+      .confirm-dialog dt { color: var(--insta-toolbox-text-muted, #687068); font-weight: 600; }
       .confirm-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
-      .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--aio-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
+      .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
       .confirm-dialog .toolbar { justify-content: flex-end; }
-      @keyframes aio-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+      @keyframes insta-toolbox-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
       @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog { border:2px solid CanvasText; } }
     </style>
@@ -4859,10 +4849,10 @@
             <summary aria-label="Toolbox preferences">⚙</summary>
             <div class="settings-panel">
               <strong>Layout</strong>
-              <div class="field"><label for="aio-opacity">Surface transparency</label><div class="range-row"><input id="aio-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
+              <div class="field"><label for="insta-toolbox-opacity">Surface transparency</label><div class="range-row"><input id="insta-toolbox-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
               <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
               <button class="button quiet" type="button" data-action="reset-layout">Reset position and size</button>
-              <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="aio-limit-min">Min delay (seconds)</label><input id="aio-limit-min" type="number" min="1" max="600" data-role="limit-min"></div><div class="field"><label for="aio-limit-max">Max delay (seconds)</label><input id="aio-limit-max" type="number" min="1" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
+              <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="insta-toolbox-limit-min">Min delay (seconds)</label><input id="insta-toolbox-limit-min" type="number" min="1" max="600" data-role="limit-min"></div><div class="field"><label for="insta-toolbox-limit-max">Max delay (seconds)</label><input id="insta-toolbox-limit-max" type="number" min="1" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
               <p class="lead">Drag the header handle or lower corner. Arrow keys work on both.</p>
             </div>
           </details>
@@ -4874,49 +4864,43 @@
         <div class="context-copy" role="status" aria-live="polite" aria-atomic="true"><strong data-role="context-title">Checking this page…</strong> <span data-role="context-detail"></span></div>
         <button class="button quiet context-cta" type="button" data-action="context-cta" data-role="context-cta" hidden></button>
       </div>
-      <section class="intro" data-role="intro" aria-labelledby="aio-intro-title" hidden>
-        <h2 id="aio-intro-title">Three Instagram tools</h2>
-        <ol class="intro-list">
-          <li><strong>Mutual Checker</strong> — compare Followers and Following.</li>
-          <li><strong>Follow / Unfollow</strong> — review and run exact targets.</li>
-          <li><strong>DM Unsend</strong> — remove messages you sent.</li>
-        </ol>
-        <p class="intro-note">Data stays in this browser.</p>
-        <p class="intro-note"><strong>Checks are read-only.</strong> Changes require one exact confirmation.</p>
+      <section class="intro" data-role="intro" aria-labelledby="insta-toolbox-intro-title" hidden>
+        <h2 id="insta-toolbox-intro-title">Start with Mutual Checker</h2>
+        <p class="intro-note">Compare Followers and Following without clicking an Instagram action.</p>
         <div class="toolbar"><button class="button primary" type="button" data-action="intro-done">Open Mutual Checker</button></div>
       </section>
       <nav class="tabs" role="tablist" aria-label="Insta Toolbox tools">
-        <button id="aio-tab-checker" class="tab" type="button" role="tab" data-view="checker" aria-controls="aio-panel-checker" aria-selected="true" tabindex="0">Mutual Checker</button>
-        <button id="aio-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="aio-panel-account" aria-selected="false" tabindex="-1">Follow / Unfollow</button>
-        <button id="aio-tab-messages" class="tab" type="button" role="tab" data-view="messages" aria-controls="aio-panel-messages" aria-selected="false" tabindex="-1">DM Unsend</button>
+        <button id="insta-toolbox-tab-checker" class="tab" type="button" role="tab" data-view="checker" aria-controls="insta-toolbox-panel-checker" aria-selected="true" tabindex="0">Mutual Checker</button>
+        <button id="insta-toolbox-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="insta-toolbox-panel-account" aria-selected="false" tabindex="-1">Follow / Unfollow</button>
+        <button id="insta-toolbox-tab-messages" class="tab" type="button" role="tab" data-view="messages" aria-controls="insta-toolbox-panel-messages" aria-selected="false" tabindex="-1">DM Unsend</button>
       </nav>
       <div class="scroll">
-        <section id="aio-panel-checker" class="view" role="tabpanel" aria-labelledby="aio-tab-checker" data-panel="checker" hidden><section class="card" aria-labelledby="aio-checker-account-title"><h2 id="aio-checker-account-title">Check mutuals</h2><p>Read-only. Uses the Instagram session in this tab.</p><div class="field"><label for="aio-checker-username">Instagram username</label><input id="aio-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-role="checker-username"></div><div class="toolbar"><button class="button primary" type="button" data-action="check-account-relationships" data-role="checker-run">Check mutuals</button></div></section>
+        <section id="insta-toolbox-panel-checker" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-checker" data-panel="checker" hidden><section class="card" aria-labelledby="insta-toolbox-checker-account-title"><h2 id="insta-toolbox-checker-account-title">Check mutuals</h2><p>Read-only. Uses the Instagram session in this tab.</p><div class="field"><label for="insta-toolbox-checker-username">Instagram username</label><input id="insta-toolbox-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-role="checker-username"></div><div class="toolbar"><button class="button primary" type="button" data-action="check-account-relationships" data-role="checker-run">Check mutuals</button></div></section>
           <div class="scan-progress" data-role="scan-progress" hidden><div class="run-bar"><span data-role="scan-fill"></span></div><p class="lead" data-role="scan-detail"></p></div>
-          <div class="field"><label for="aio-filter">Filter results</label><input id="aio-filter" type="search" placeholder="Search a username" data-role="result-filter"></div>
-          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Advanced: list-dialog fallback and export</summary><p class="lead">If the account check fails, open a Following or Followers dialog and scan that list. A fallback scan clears prior authenticated results.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="aio-list-type">Raw list</label><select id="aio-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
-        <section id="aio-panel-account" class="view" role="tabpanel" aria-labelledby="aio-tab-account" data-panel="account" hidden><p class="lead"><strong>Follow / Unfollow.</strong> Choose the action first, then review a finite compatible target list. Nothing clicks during review.</p><div class="card" data-role="queue-current"></div>
-          <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Inspect exact profile</button><button class="button quiet" type="button" data-action="open-profile">Open exact profile</button></div><details class="settings-inline"><summary>Advanced: queue state and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
-          <div class="field"><label for="aio-bot-action">What do you want to do?</label><select id="aio-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
-          <div class="field"><label for="aio-bot-source">Choose compatible targets</label><select id="aio-bot-source" data-role="bot-source"><option value="current-profile">Current exact profile</option><option value="i-do-not-follow-back">People who follow you that you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Compatible queue items</option></select></div>
-          <div class="field" data-role="bot-count-field"><label for="aio-bot-count">How many this run</label><input id="aio-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
-          <p class="lead" data-role="account-run-summary">Choose compatible targets, then review the exact accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          <p class="notice">To use a scanned list, choose <strong>Scanned Followers</strong> or <strong>Scanned Following</strong>. Already-correct accounts are skipped. The run stops on a rate limit, security check, or block.</p></section>
-        <section id="aio-panel-messages" class="view" role="tabpanel" aria-labelledby="aio-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend.</strong> Remove messages you sent from this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
+          <div class="field"><label for="insta-toolbox-filter">Filter results</label><input id="insta-toolbox-filter" type="search" placeholder="Search a username" data-role="result-filter"></div>
+          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Capture lists and export</summary><p class="lead">If the account check fails, open Followers or Following and scan that list.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="insta-toolbox-list-type">Raw list</label><select id="insta-toolbox-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
+        <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><p class="lead"><strong>Follow / Unfollow.</strong> Choose an action, then review the accounts. Review never clicks.</p><div class="card" data-role="queue-current"></div>
+          <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Refresh profile status</button><button class="button quiet" type="button" data-action="open-profile">Open profile</button></div><details class="settings-inline"><summary>Queue and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
+          <div class="field"><label for="insta-toolbox-bot-action">What do you want to do?</label><select id="insta-toolbox-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
+          <div class="field"><label for="insta-toolbox-bot-source">Target source</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
+          <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Count</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
+          <p class="lead" data-role="account-run-summary">Choose a source, then review the accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
+          <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p></section>
+        <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend.</strong> Remove messages you sent from this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
-          <details class="settings-inline"><summary>Advanced message options</summary><div data-role="unsend-plan"><div class="field"><label for="aio-unsend-scope">Scope</label><select id="aio-unsend-scope" data-role="unsend-scope"><option value="all">All messages you sent</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="field" data-role="unsend-count-field"><label for="aio-unsend-count">Number of messages</label><input id="aio-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">No-click exact check</button></div></details><div class="card" data-role="dm-result"></div><ul class="list" data-role="message-list"></ul><p class="notice">Only your messages are touched. The run stops on the wrong thread, an unclear menu, or any Instagram warning.</p></section>
+          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><label for="insta-toolbox-unsend-scope">Scope</label><select id="insta-toolbox-unsend-scope" data-role="unsend-scope"><option value="all">All messages you sent</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><p class="notice">Only your messages are touched. The run stops on the wrong thread, an unclear menu, or any Instagram warning.</p></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
       <button class="resize" type="button" data-role="resize" aria-label="Resize toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
     </aside>
-    <dialog class="confirm-dialog" data-role="action-confirmation" aria-labelledby="aio-confirm-title" aria-describedby="aio-confirm-message aio-confirm-detail">
+    <dialog class="confirm-dialog" data-role="action-confirmation" aria-labelledby="insta-toolbox-confirm-title" aria-describedby="insta-toolbox-confirm-message insta-toolbox-confirm-detail">
       <form>
-        <h2 id="aio-confirm-title" data-role="confirm-title">Confirm action</h2>
-        <p id="aio-confirm-message" data-role="confirm-message"></p>
+        <h2 id="insta-toolbox-confirm-title" data-role="confirm-title">Confirm action</h2>
+        <p id="insta-toolbox-confirm-message" data-role="confirm-message"></p>
         <dl data-role="confirm-facts" hidden></dl>
         <ul data-role="confirm-items" aria-label="Reviewed targets" hidden></ul>
-        <p id="aio-confirm-detail" data-role="confirm-detail"></p>
+        <p id="insta-toolbox-confirm-detail" data-role="confirm-detail"></p>
         <div class="toolbar"><button class="button quiet" type="button" data-action="confirm-cancel" data-role="confirm-cancel">Cancel</button><button class="button danger" type="button" data-action="confirm-accept" data-role="confirm-accept">Confirm</button></div>
       </form>
     </dialog>`;
@@ -4940,9 +4924,10 @@
     contextStatus = text ? { message: text, tone: tone || statusTone(text) } : null;
     clearTimeout(contextStatusTimer);
     contextStatusTimer = null;
-    if (contextStatus?.tone !== 'blocked') {
+    if (contextStatus) {
       contextStatusTimer = setTimeout(() => {
         contextStatus = null;
+        contextStatusTimer = null;
         renderContext();
       }, 10_000);
     }
@@ -4973,25 +4958,25 @@
 
   function applyLayout() {
     const size = panelSize();
-    host.style.setProperty('--aio-width', `${size.width}px`);
-    host.style.setProperty('--aio-height', `${size.height}px`);
+    host.style.setProperty('--insta-toolbox-width', `${size.width}px`);
+    host.style.setProperty('--insta-toolbox-height', `${size.height}px`);
     const renderedPanelHeight = innerWidth <= 600
       ? Math.min(innerHeight * 0.78, 720)
       : Math.min(size.height, Math.max(0, innerHeight - 74));
     const settingsMaxHeight = Math.max(44, Math.min(500, Math.floor(renderedPanelHeight - 86)));
-    host.style.setProperty('--aio-settings-max-height', `${settingsMaxHeight}px`);
+    host.style.setProperty('--insta-toolbox-settings-max-height', `${settingsMaxHeight}px`);
     const percent = Math.round(preferences.opacity * 100);
-    host.style.setProperty('--aio-alpha', `${percent}%`);
-    host.style.setProperty('--aio-alpha-strong', `${Math.min(100, percent + 8)}%`);
+    host.style.setProperty('--insta-toolbox-alpha', `${percent}%`);
+    host.style.setProperty('--insta-toolbox-alpha-strong', `${Math.min(100, percent + 8)}%`);
     if (preferences.position && innerWidth > 600) {
       const position = constrainedPosition(preferences.position, size);
       host.dataset.floating = 'true';
-      host.style.setProperty('--aio-left', `${position.x}px`);
-      host.style.setProperty('--aio-top', `${position.y}px`);
+      host.style.setProperty('--insta-toolbox-left', `${position.x}px`);
+      host.style.setProperty('--insta-toolbox-top', `${position.y}px`);
     } else {
       host.dataset.floating = 'false';
-      host.style.removeProperty('--aio-left');
-      host.style.removeProperty('--aio-top');
+      host.style.removeProperty('--insta-toolbox-left');
+      host.style.removeProperty('--insta-toolbox-top');
     }
     const opacity = query('[data-preference="opacity"]');
     if (opacity) opacity.value = String(percent);
@@ -5011,36 +4996,6 @@
     }
     for (const view of queryAll('[data-panel]')) view.hidden = view.dataset.panel !== preferences.view;
 
-  }
-
-  function renderNow() {
-    const grid = query('[data-role="tool-grid"]');
-    grid.replaceChildren();
-    const comparison = compareCapture();
-    const verifiedFollowers = verifiedCapture('followers');
-    const verifiedFollowing = verifiedCapture('following');
-    const item = currentQueueItem();
-    const tools = [
-      ['checker', 'Mutual Checker', `${formatCount(verifiedFollowers.length)} followers · ${formatCount(verifiedFollowing.length)} following · ${formatCount(comparison.notFollowingMeBack.length)} not following back`, 'read only'],
-      ['account', 'Follow / Unfollow', item ? `${item.action} @${item.account.username} is next` : 'Choose an action and compatible targets', 'review then confirm'],
-      ['messages', 'DM Unsend', dmThreadPreview ? `At least ${dmThreadPreview.detectedCount || 0} detected in this thread` : 'Confirm the open conversation once', 'confirm then stop'],
-    ];
-    for (const [view, title, detail, badge] of tools) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'tool';
-      button.dataset.goView = view;
-      const copy = document.createElement('span');
-      const strong = document.createElement('strong');
-      strong.textContent = title;
-      const description = document.createElement('span');
-      description.textContent = detail;
-      const stateBadge = document.createElement('em');
-      stateBadge.textContent = badge;
-      copy.append(strong, description);
-      button.append(copy, stateBadge);
-      grid.append(button);
-    }
   }
 
   function renderChecker() {
@@ -5071,11 +5026,11 @@
     result.replaceChildren();
     const title = document.createElement('h2');
     title.textContent = comparisonReady
-      ? authenticatedCheck ? `Account comparison${state.capture.subjectUsername ? ` · @${state.capture.subjectUsername}` : ''}` : 'List-dialog comparison'
+      ? authenticatedCheck ? `Account comparison${state.capture.subjectUsername ? ` · @${state.capture.subjectUsername}` : ''}` : 'Scanned-list comparison'
       : 'No comparison loaded';
     const detail = document.createElement('p');
     detail.textContent = comparisonReady
-      ? `${formatCount(verifiedFollowers.length)} followers · ${formatCount(verifiedFollowing.length)} following · ${formatCount(comparison.mutuals.length)} mutual · ${formatCount(comparison.notFollowingMeBack.length)} not following me back · ${formatCount(comparison.iDoNotFollowBack.length)} I don't follow back.`
+      ? `${formatCount(verifiedFollowers.length)} followers · ${formatCount(verifiedFollowing.length)} following · ${formatCount(comparison.mutuals.length)} mutual · ${formatCount(comparison.notFollowingMeBack.length)} don't follow you back · ${formatCount(comparison.iDoNotFollowBack.length)} you don't follow back.`
       : 'Confirm your username above, then load Followers and Following in one read-only check.';
     result.append(title, detail);
 
@@ -5143,17 +5098,17 @@
     const detail = document.createElement('p');
     detail.textContent = item
       ? `${item.action} · ${item.status} · ${item.reason}`
-      : 'Import an insta-aio-manual-queue JSON file.';
+      : 'Import an insta-toolbox-manual-queue JSON file.';
     current.append(title, detail);
     const result = query('[data-role="account-result"]');
     result.replaceChildren();
     const resultTitle = document.createElement('h3');
-    resultTitle.textContent = state.accountCheck?.exact ? 'Exact no-click check passed' : 'No-click check';
+    resultTitle.textContent = 'Profile status';
     const resultDetail = document.createElement('p');
     resultDetail.textContent = state.accountCheck?.result
       || (item
-        ? 'Open the exact queued profile, then run the check.'
-        : 'Open an Instagram profile, then inspect it without clicking.');
+        ? 'Open the queued profile, then refresh.'
+        : 'Open an Instagram profile, then refresh.');
     result.append(resultTitle, resultDetail);
     syncAccountComposer();
     renderAccountRunPrimary();
@@ -5173,6 +5128,13 @@
       : null;
     const result = query('[data-role="dm-result"]');
     result.replaceChildren();
+    const hasEvidence = Boolean(check || target || evidence);
+    result.hidden = !hasEvidence;
+    const list = query('[data-role="message-list"]');
+    list.replaceChildren();
+    const fragments = evidence?.fragments || [];
+    list.hidden = fragments.length === 0;
+    if (!hasEvidence) return;
     const title = document.createElement('h2');
     title.textContent = check?.exact
       ? 'Exact sent message resolved'
@@ -5188,19 +5150,12 @@
         ? 'Read visible evidence or import one reviewed DM job for this conversation.'
         : 'Open an Instagram conversation first.');
     result.append(title, detail);
-    const list = query('[data-role="message-list"]');
-    list.replaceChildren();
-    for (const fragment of (evidence?.fragments || [])) {
+    for (const fragment of fragments) {
       const row = document.createElement('li');
       row.textContent = fragment.text;
       const meta = document.createElement('small');
       meta.textContent = 'Visible fragment · ownership unknown';
       row.append(meta);
-      list.append(row);
-    }
-    if (!(evidence?.fragments || []).length) {
-      const row = document.createElement('li');
-      row.textContent = 'No visible thread evidence captured.';
       list.append(row);
     }
   }
@@ -5285,7 +5240,7 @@
 
   async function importQueue(file) {
     const parsed = await readJsonFile(file);
-    if (parsed?.kind !== 'insta-aio-manual-queue' || !Array.isArray(parsed.queue)) {
+    if (parsed?.kind !== 'insta-toolbox-manual-queue' || !Array.isArray(parsed.queue)) {
       throw new Error('Select an Insta Toolbox queue export.');
     }
     state.queue = normalizeQueue({ queue: parsed.queue, importedAt: nowIso() });
@@ -5295,7 +5250,7 @@
 
   async function importDmJob(file) {
     const parsed = await readJsonFile(file);
-    if (parsed?.kind !== 'insta-aio-reviewed-dm-job' || parsed.items?.length !== 1) {
+    if (parsed?.kind !== 'insta-toolbox-reviewed-dm-job' || parsed.items?.length !== 1) {
       throw new Error('Select one reviewed Insta Toolbox DM job with exactly one message.');
     }
     const item = parsed.items[0];
@@ -5341,8 +5296,8 @@
   let dmThreadPreview = null;
   let dmRunnerSnapshot = null;
 
-  const engine = globalThis.InstaAioInstagramInspector;
-  const dmRunner = globalThis.InstaAioDmThreadUnsender;
+  const engine = globalThis.InstaToolboxInstagramInspector;
+  const dmRunner = globalThis.InstaToolboxDmThreadUnsender;
   if (dmRunner) {
     dmRunnerSnapshot = dmRunner.snapshot();
     dmRunner.subscribe((next) => {
@@ -5770,7 +5725,7 @@
     const complete = scanState('following') === 'done' && scanState('followers') === 'done';
     if (compareStep) compareStep.dataset.state = both ? (complete ? 'done' : 'partial') : 'todo';
     setText('step-compare', both
-      ? `${formatCount(comparison.mutuals.length)} mutual · ${formatCount(comparison.notFollowingMeBack.length)} not following back${complete ? '' : ' (partial)'}`
+      ? `${formatCount(comparison.mutuals.length)} mutual · ${formatCount(comparison.notFollowingMeBack.length)} don't follow you back${complete ? '' : ' (partial)'}`
       : 'Scan both lists first');
   }
 
@@ -5963,16 +5918,16 @@
   function compatibleAccountSources(action) {
     return action === 'follow'
       ? [
-        ['current-profile', 'Current exact profile'],
-        ['i-do-not-follow-back', 'People who follow you that you do not follow'],
+        ['current-profile', 'Current profile'],
+        ['i-do-not-follow-back', 'Followers you do not follow'],
         ['scanned-followers', 'Scanned Followers'],
-        ['queue', 'Compatible queue items'],
+        ['queue', 'Queue items'],
       ]
       : [
-        ['current-profile', 'Current exact profile'],
-        ['not-following-me-back', 'People not following you back'],
+        ['current-profile', 'Current profile'],
+        ['not-following-me-back', "People who don't follow you back"],
         ['scanned-following', 'Scanned Following'],
-        ['queue', 'Compatible queue items'],
+        ['queue', 'Queue items'],
       ];
   }
 
@@ -6077,7 +6032,7 @@
       button.textContent = `Review ${plan.requested} ${label} target${plan.requested === 1 ? '' : 's'}`;
       button.classList.add('primary');
       button.classList.remove('danger');
-      setText('account-run-summary', 'Choose a source, action, and count, then review the exact targets.');
+      setText('account-run-summary', 'Choose a source, then review the accounts.');
     }
   }
 
@@ -6466,9 +6421,9 @@
     'download-list': () => {
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
       const method = state.capture.source?.[listType] || '';
-      downloadJson(`insta-aio-visible-${listType}-${Date.now()}.json`, {
+      downloadJson(`insta-toolbox-visible-${listType}-${Date.now()}.json`, {
         schemaVersion: 1,
-        kind: 'insta-aio-visible-list',
+        kind: 'insta-toolbox-visible-list',
         listType,
         capturedAt: state.capture.capturedAt[listType] || nowIso(),
         subjectUsername: state.capture.subjectUsername || '',
@@ -6493,9 +6448,9 @@
         engine.followerComparisonRecord(state.capture, compareCapture(), generatedAt),
       );
     },
-    'export-queue': () => downloadJson(`insta-aio-companion-state-${Date.now()}.json`, {
+    'export-queue': () => downloadJson(`insta-toolbox-companion-state-${Date.now()}.json`, {
       schemaVersion: 2,
-      kind: 'insta-aio-companion-state',
+      kind: 'insta-toolbox-companion-state',
       exportedAt: nowIso(),
       ...state.queue,
     }),
@@ -6577,8 +6532,8 @@
   shadow.addEventListener('input', (event) => {
     if (!event.target.matches('[data-preference="opacity"]')) return;
     const percent = Number(event.target.value);
-    host.style.setProperty('--aio-alpha', `${percent}%`);
-    host.style.setProperty('--aio-alpha-strong', `${Math.min(100, percent + 8)}%`);
+    host.style.setProperty('--insta-toolbox-alpha', `${percent}%`);
+    host.style.setProperty('--insta-toolbox-alpha-strong', `${Math.min(100, percent + 8)}%`);
     setText('opacity-output', `${percent}%`);
   });
 

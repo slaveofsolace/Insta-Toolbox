@@ -108,7 +108,7 @@ export function createReviewedDmJob(messages, selectedIds, {
   const createdIso = new Date(createdAt).toISOString();
   return {
     schemaVersion: 1,
-    kind: 'insta-aio-reviewed-dm-job',
+    kind: 'insta-toolbox-reviewed-dm-job',
     id: `dm-job-${createdIso.replace(/[:.]/g, '-')}-${digest}`,
     createdAt: createdIso,
     updatedAt: createdIso,
@@ -134,7 +134,7 @@ export function confirmDmJobReview(job, {
   settings = {},
   confirmedAt = Date.now(),
 } = {}) {
-  if (job?.kind !== 'insta-aio-reviewed-dm-job') {
+  if (job?.kind !== 'insta-toolbox-reviewed-dm-job') {
     throw new DmJobError('INVALID_JOB', 'Select a reviewed DM job.');
   }
   if (dmPreviewDigest(job.items) !== job.previewDigest) {

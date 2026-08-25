@@ -153,7 +153,7 @@ test('discard aborts only the matching reviewed execution and stale checkpoints 
 
 test('overview does not describe controlled DM removal as preview-only', async () => {
   const source = await readFile('src/app.parts/part-01.jsfrag', 'utf8');
-  assert.match(source, /before creating a finite Unsend plan/);
-  assert.match(source, /Permanent actions require fresh confirmation/);
+  assert.match(source, /Find messages you sent and create an unsend plan\./);
+  assert.match(source, /Every permanent action requires one exact confirmation on Instagram\./);
   assert.doesNotMatch(source, /Preview\/export only in this build/);
 });

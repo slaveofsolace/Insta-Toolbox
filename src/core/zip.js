@@ -339,7 +339,7 @@ export function inspectZipArchive(input, { limits: limitOverrides } = {}) {
 
   return {
     schemaVersion: 1,
-    kind: 'insta-aio-zip-manifest',
+    kind: 'insta-toolbox-zip-manifest',
     entryCount,
     entries,
     counts,

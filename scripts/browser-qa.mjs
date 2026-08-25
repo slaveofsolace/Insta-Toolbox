@@ -34,7 +34,7 @@ if (baselineVariant && !/^[a-z0-9](?:[a-z0-9_-]{0,62})$/i.test(baselineVariant))
   throw new Error('Browser QA baseline variant must contain only letters, numbers, dashes, and underscores.');
 }
 const userDataRoot = path.resolve(
-  process.env.INSTA_AIO_BROWSER_QA_USER_DATA
+  process.env.INSTA_TOOLBOX_BROWSER_QA_USER_DATA
     || path.join(resultsRoot, 'user-data', String(process.pid)),
 );
 const platformBaselineRoot = path.join(repositoryRoot, 'tests', 'baselines', 'pwa', process.platform);
@@ -90,6 +90,29 @@ function withTimeout(promise, label, timeout = 15_000) {
 
 function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function readProductEvidenceMetadata() {
+  const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, 'package.json'), 'utf8'));
+  const productVersion = String(packageJson.version || '').trim();
+  assert.match(productVersion, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, 'package version is invalid');
+
+  const changelog = await readFile(path.join(repositoryRoot, 'CHANGELOG.md'), 'utf8');
+  const releaseHeading = new RegExp(
+    `^## ${escapeRegExp(productVersion)} - (\\d{4}-\\d{2}-\\d{2})(?: \\([^\\r\\n]+\\))?$`,
+    'm',
+  );
+  const releaseDate = changelog.match(releaseHeading)?.[1] || '';
+  assert.match(releaseDate, /^\d{4}-\d{2}-\d{2}$/, `CHANGELOG release date is missing for ${productVersion}`);
+
+  return {
+    productVersion,
+    captureTimestamp: `${releaseDate}T00:00:00.000Z`,
+  };
 }
 
 function listen(server) {
@@ -417,7 +440,7 @@ async function inspectView(webContents, viewId, expectedHeading, viewport) {
 }
 
 async function captureViewport(baseUrl, viewport) {
-  const partition = `insta-aio-browser-qa-${process.pid}-${viewport.id}`;
+  const partition = `insta-toolbox-browser-qa-${process.pid}-${viewport.id}`;
   const qaSession = session.fromPartition(partition);
   qaSession.setPermissionCheckHandler(() => false);
   qaSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -542,6 +565,8 @@ async function checkBaselines(captures, manifest) {
   }
   assert.equal(expected.schemaVersion, manifest.schemaVersion, 'baseline schema changed');
   assert.equal(expected.kind, manifest.kind, 'baseline kind changed');
+  assert.equal(expected.productVersion, manifest.productVersion, 'baseline product version changed');
+  assert.equal(expected.captureTimestamp, manifest.captureTimestamp, 'baseline capture timestamp changed');
   assert.equal(expected.platform, manifest.platform, 'baseline platform changed');
   assert.equal(expected.electron, manifest.electron, 'baseline Electron version changed');
   assert.equal(expected.deviceScaleFactor, manifest.deviceScaleFactor, 'baseline scale changed');
@@ -579,9 +604,11 @@ async function runBrowserQa() {
       report(`Checking ${viewport.id} at ${viewport.width}x${viewport.height}.`);
       captures.push(...await captureViewport(baseUrl, viewport));
     }
+    const evidenceMetadata = await readProductEvidenceMetadata();
     const manifest = {
-      schemaVersion: 1,
-      kind: 'insta-aio-pwa-screenshot-baseline',
+      schemaVersion: 2,
+      kind: 'insta-toolbox-pwa-screenshot-baseline',
+      ...evidenceMetadata,
       platform: process.platform,
       electron: process.versions.electron,
       deviceScaleFactor,

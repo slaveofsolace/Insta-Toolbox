@@ -12,26 +12,21 @@ import { fileURLToPath } from 'node:url';
 
 import {
   instagramScriptOrder,
-  supportingExtensionFiles,
 } from './instagram-script-order.mjs';
+import {
+  expectedExtensionArchiveEntries,
+  extensionIconFiles,
+  extensionIcons,
+  extensionLegalFiles,
+  extensionLibraryFiles,
+  extensionSourceFiles,
+} from './extension-package-files.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceRoot = path.join(repositoryRoot, 'extension');
 const outputRoot = path.join(repositoryRoot, 'dist', 'extension');
 const checkOnly = process.argv.includes('--check');
 
-const sourceFiles = [...instagramScriptOrder, ...supportingExtensionFiles];
-const libraryFiles = [
-  'bridge-protocol.js',
-  'controlled-account-action.js',
-  'controlled-dm-unsend.js',
-];
-const legalFiles = ['LICENSE', 'THIRD_PARTY_NOTICES.md'];
-const extensionIconSizes = [16, 32, 48, 128];
-const extensionIcons = Object.freeze(Object.fromEntries(
-  extensionIconSizes.map((size) => [String(size), `icons/icon-${size}.png`]),
-));
-const extensionIconFiles = Object.values(extensionIcons);
 const liveSafetyTests = [
   'tests/content-instagram-dm-live.test.js',
   'tests/content-instagram-live.test.js',
@@ -160,7 +155,7 @@ async function validateSources() {
   if (/@import\s+url|url\(\s*['"]?https?:|<script[^>]+src=['"]https?:/i.test(overlaySource)) {
     throw new Error('Instagram overlay may not load remote UI assets.');
   }
-  if (!instagramSource.includes('insta-aio-inspect-profile')) {
+  if (!instagramSource.includes('insta-toolbox-inspect-profile')) {
     throw new Error('Instagram content script is missing profile inspection.');
   }
   const instagramEntry = manifest.content_scripts?.find((entry) => (
@@ -183,9 +178,9 @@ async function validateSources() {
     throw new Error('Instagram content script is missing exact-target DOM binding.');
   }
   if (
-    !overlaySource.includes('data-ia-section="${section}"')
+    !overlaySource.includes('data-insta-toolbox-section="${section}"')
     || !overlaySource.includes("tab('queue', 'Follow / Unfollow'")
-    || !overlaySource.includes('data-ia-view="queue"')
+    || !overlaySource.includes('data-insta-toolbox-view="queue"')
   ) {
     throw new Error('Instagram overlay is missing the in-page queue workspace.');
   }
@@ -220,7 +215,7 @@ async function validateSources() {
     || !backgroundSource.includes('dmActionLedger')
     || !backgroundSource.includes('reserveExtensionDmAction')
     || !backgroundSource.includes('verifiedControlledDmResult')
-    || !instagramSource.includes('insta-aio-perform-reviewed-dm-unsend')
+    || !instagramSource.includes('insta-toolbox-perform-reviewed-dm-unsend')
     || !instagramSource.includes('preexisting-surface-before-live-unsend')
     || !instagramSource.includes('dm-message-changed-before-final-confirmation')
     || !instagramSource.includes('surfaceBoundToControl')
@@ -228,13 +223,13 @@ async function validateSources() {
   ) {
     throw new Error('Controlled live DM-unsend gates are incomplete.');
   }
-  for (const file of sourceFiles) {
+  for (const file of extensionSourceFiles) {
     await readFile(path.join(sourceRoot, file));
   }
-  for (const file of libraryFiles) {
+  for (const file of extensionLibraryFiles) {
     await readFile(path.join(repositoryRoot, 'src', 'core', file));
   }
-  for (const file of legalFiles) {
+  for (const file of extensionLegalFiles) {
     await readFile(path.join(repositoryRoot, file));
   }
   return manifest;
@@ -266,7 +261,7 @@ if (!resolvedOutput.startsWith(`${resolvedDist}${path.sep}`)) {
 }
 await rm(resolvedOutput, { recursive: true, force: true });
 await mkdir(path.join(resolvedOutput, 'lib'), { recursive: true });
-for (const file of sourceFiles) {
+for (const file of extensionSourceFiles) {
   const target = path.join(resolvedOutput, ...file.split('/'));
   await mkdir(path.dirname(target), { recursive: true });
   await copyFile(path.join(sourceRoot, file), target);
@@ -276,29 +271,24 @@ for (const file of extensionIconFiles) {
   await mkdir(path.dirname(target), { recursive: true });
   await copyFile(path.join(sourceRoot, ...file.split('/')), target);
 }
-for (const file of libraryFiles) {
+for (const file of extensionLibraryFiles) {
   await copyFile(
     path.join(repositoryRoot, 'src', 'core', file),
     path.join(resolvedOutput, 'lib', file),
   );
 }
-for (const file of legalFiles) {
+for (const file of extensionLegalFiles) {
   await copyFile(path.join(repositoryRoot, file), path.join(resolvedOutput, file));
 }
 
 const artifactEntries = [];
-for (const file of [
-  ...sourceFiles,
-  ...extensionIconFiles,
-  ...libraryFiles.map((libraryFile) => `lib/${libraryFile}`),
-  ...legalFiles,
-].sort()) {
+for (const file of expectedExtensionArchiveEntries) {
   artifactEntries.push({
     name: file,
     data: await readFile(path.join(resolvedOutput, ...file.split('/'))),
   });
 }
-const artifact = path.join(repositoryRoot, 'dist', `insta-aio-companion-${manifest.version}.zip`);
+const artifact = path.join(repositoryRoot, 'dist', `Insta-Toolbox-Extension-${manifest.version}.zip`);
 await writeFile(artifact, storedZip(artifactEntries));
 console.log(`Built unpacked extension at ${path.relative(repositoryRoot, resolvedOutput)}.`);
 console.log(`Built extension archive at ${path.relative(repositoryRoot, artifact)}.`);

@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const checkOnly = process.argv.includes('--check');
-const output = path.join(repositoryRoot, 'userscripts', 'insta-aio-companion.user.js');
+const output = path.join(repositoryRoot, 'userscripts', 'insta-toolbox.user.js');
 const licenseFile = path.join(repositoryRoot, 'LICENSE');
 
 const parts = [
@@ -49,7 +49,7 @@ const licenseBanner = `/*\n${license.trim().split(/\r?\n/).map((line) => (line ?
 const engine = sources.join('\n');
 if (!engine.includes('performReviewedProfileAction')
   || !engine.includes('performReviewedDmUnsend')
-  || !engine.includes('InstaAioDmThreadUnsender')) {
+  || !engine.includes('InstaToolboxDmThreadUnsender')) {
   throw new Error('The shared engine no longer exports the required action paths.');
 }
 if (!engine.includes("if (!globalThis.chrome?.runtime?.onMessage?.addListener) return;")) {
@@ -81,7 +81,7 @@ const assembled = normalize(`${metadata}${banner}${licenseBanner}${engine}`);
 if (checkOnly) {
   const current = normalize(await readFile(output, 'utf8').catch(() => ''));
   if (current !== assembled) {
-    throw new Error('userscripts/insta-aio-companion.user.js is stale; run pnpm run build:userscript.');
+    throw new Error('userscripts/insta-toolbox.user.js is stale; run pnpm run build:userscript.');
   }
   console.log('Userscript bundle matches its sources.');
   process.exit(0);

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const namespace = '__instaAioActionLabels';
+  const namespace = '__instaToolboxActionLabels';
   if (globalThis[namespace]) return;
 
   const relationshipEntries = Object.freeze([
@@ -76,12 +76,12 @@
 (() => {
   'use strict';
 
-  if (globalThis.InstaAioDmThreadUnsender) return;
-  const actionLabels = globalThis.__instaAioActionLabels;
+  if (globalThis.InstaToolboxDmThreadUnsender) return;
+  const actionLabels = globalThis.__instaToolboxActionLabels;
   if (!actionLabels) return;
 
-  const ACTIVE_ATTRIBUTE = 'data-insta-aio-unsend-active';
-  const DONE_ATTRIBUTE = 'data-insta-aio-unsent';
+  const ACTIVE_ATTRIBUTE = 'data-insta-toolbox-unsend-active';
+  const DONE_ATTRIBUTE = 'data-insta-toolbox-unsent';
   const DEFAULT_MIN_DELAY_MS = 1_000;
   const DEFAULT_MAX_DELAY_MS = 2_000;
   const DEFAULT_MAX_FAILURES = 5;
@@ -315,7 +315,7 @@
   }
 
   function sessionStop(expectedThreadId = '') {
-    const observation = globalThis.InstaAioInstagramInspector?.inspectSession?.() || {};
+    const observation = globalThis.InstaToolboxInstagramInspector?.inspectSession?.() || {};
     if (observation.sessionExpired) return 'Instagram signed you out';
     if (observation.challenge) return 'Instagram opened a security check';
     if (observation.actionBlocked) return 'Instagram blocked the action';
@@ -1635,7 +1635,7 @@
   }
 
   const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe };
-  if (globalThis.__instaAioTestHooks === true) {
+  if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
       candidateRows,
       createTraversal,
@@ -1663,7 +1663,7 @@
       validatePlan,
     });
   }
-  Object.defineProperty(globalThis, 'InstaAioDmThreadUnsender', {
+  Object.defineProperty(globalThis, 'InstaToolboxDmThreadUnsender', {
     configurable: false,
     enumerable: false,
     value: Object.freeze(publicApi),

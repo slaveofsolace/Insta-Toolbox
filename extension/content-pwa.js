@@ -1,8 +1,8 @@
 (() => {
-  if (globalThis.__instaAioBridgeContentInstalled) return;
-  globalThis.__instaAioBridgeContentInstalled = true;
+  if (globalThis.__instaToolboxBridgeContentInstalled) return;
+  globalThis.__instaToolboxBridgeContentInstalled = true;
 
-  const CHANNEL = 'insta-aio-extension-bridge';
+  const CHANNEL = 'insta-toolbox-extension-bridge';
 
   window.addEventListener('message', (event) => {
     if (
@@ -17,7 +17,7 @@
 
     const requestId = event.data.message.requestId;
     chrome.runtime.sendMessage({
-      kind: 'insta-aio-bridge-request',
+      kind: 'insta-toolbox-bridge-request',
       origin: location.origin,
       message: event.data.message,
     }).then((response) => {

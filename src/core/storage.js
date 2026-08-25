@@ -1,4 +1,4 @@
-const DB_NAME = 'insta-aio-tool';
+const DB_NAME = 'insta-toolbox';
 const STORE_NAME = 'kv';
 const STATE_KEY = 'state';
 const DB_VERSION = 1;
@@ -168,13 +168,13 @@ let localUpdateTail = Promise.resolve();
 
 async function localUpdateState(updater) {
   const operation = localUpdateTail.then(() => {
-    const current = migrateState(JSON.parse(localStorage.getItem('insta-aio-state') || 'null'));
+    const current = migrateState(JSON.parse(localStorage.getItem('insta-toolbox-state') || 'null'));
     const outcome = updater(current);
     if (!outcome || !outcome.state) {
       throw new Error('Atomic state updater must return { state, result }.');
     }
     const state = migrateState(outcome.state);
-    localStorage.setItem('insta-aio-state', JSON.stringify(state));
+    localStorage.setItem('insta-toolbox-state', JSON.stringify(state));
     return { state, result: outcome.result };
   });
   localUpdateTail = operation.catch(() => {});
@@ -196,7 +196,7 @@ export async function loadState() {
     return migrateState(await idbGet(STATE_KEY));
   } catch {
     try {
-      return migrateState(JSON.parse(localStorage.getItem('insta-aio-state') || 'null'));
+      return migrateState(JSON.parse(localStorage.getItem('insta-toolbox-state') || 'null'));
     } catch {
       return defaultState();
     }
@@ -208,7 +208,7 @@ export async function saveState(state) {
   try {
     await idbSet(STATE_KEY, migrated);
   } catch {
-    localStorage.setItem('insta-aio-state', JSON.stringify(migrated));
+    localStorage.setItem('insta-toolbox-state', JSON.stringify(migrated));
   }
 }
 

@@ -12,7 +12,7 @@ function loadPreferences() {
   const context = vm.createContext({ console, Date, Intl });
   vm.runInContext(sharedSource, context);
   vm.runInContext(preferencesSource, context);
-  return context.__instaAioOverlayModules.preferences;
+  return context.__instaToolboxOverlayModules.preferences;
 }
 
 function plain(value) {
@@ -129,7 +129,7 @@ test('V2 migration preserves prior choices and adds movable translucent defaults
 test('preference loading persists one normalized V3 record', async () => {
   const preferences = loadPreferences();
   const values = {
-    instaAioOverlayPreferencesV1: { open: true, section: 'queue' },
+    instaToolboxOverlayPreferencesV1: { open: true, section: 'queue' },
   };
   const writes = [];
   const chromeLike = {
@@ -157,7 +157,7 @@ test('preference loading persists one normalized V3 record', async () => {
   assert.equal(loaded.preferences.open, true);
   assert.equal(loaded.preferences.section, 'queue');
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].instaAioOverlayPreferencesV3.schemaVersion, 3);
+  assert.equal(writes[0].instaToolboxOverlayPreferencesV3.schemaVersion, 3);
 });
 
 test('Chrome storage errors reject instead of pretending preferences persisted', async () => {

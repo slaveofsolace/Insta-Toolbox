@@ -12,7 +12,7 @@ const resultsRoot = path.resolve(repositoryRoot, 'test-results', 'extension-acce
 const userDataRoot = path.resolve(resultsRoot, 'user-data', String(process.pid));
 const acceptancePath = path.join(moduleDirectory, 'extension-acceptance.mjs');
 const hostedLinuxNoSandbox =
-  process.platform === 'linux' && process.env.INSTA_AIO_ACCEPTANCE_NO_SANDBOX === '1';
+  process.platform === 'linux' && process.env.INSTA_TOOLBOX_ACCEPTANCE_NO_SANDBOX === '1';
 
 if (!userDataRoot.startsWith(`${resultsRoot}${path.sep}`)) {
   throw new Error('Refusing to create extension acceptance data outside test-results.');
@@ -28,7 +28,7 @@ try {
       cwd: repositoryRoot,
       env: {
         ...process.env,
-        INSTA_AIO_EXTENSION_ACCEPTANCE_USER_DATA: userDataRoot,
+        INSTA_TOOLBOX_EXTENSION_ACCEPTANCE_USER_DATA: userDataRoot,
       },
       stdio: 'inherit',
       windowsHide: true,

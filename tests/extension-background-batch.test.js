@@ -11,7 +11,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 async function loadBackground({ profileResponses, performResponses, stored }) {
-  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-aio-batch-'));
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-toolbox-batch-'));
   const libraryRoot = path.join(temporaryRoot, 'lib');
   await mkdir(libraryRoot, { recursive: true });
   await Promise.all([
@@ -28,7 +28,7 @@ async function loadBackground({ profileResponses, performResponses, stored }) {
 
   globalThis.chrome = {
     runtime: {
-      getManifest: () => ({ version: '2.0.3' }),
+      getManifest: () => ({ version: '3.0.0' }),
       onMessage: { addListener(listener) { runtimeListener = listener; } },
     },
     storage: {
@@ -58,13 +58,13 @@ async function loadBackground({ profileResponses, performResponses, stored }) {
         return { id: tabId, url, status: 'complete' };
       },
       async sendMessage(_tabId, message) {
-        if (message.kind === 'insta-aio-inspect-session') return { authenticated: true };
-        if (message.kind === 'insta-aio-inspect-profile') {
+        if (message.kind === 'insta-toolbox-inspect-session') return { authenticated: true };
+        if (message.kind === 'insta-toolbox-inspect-profile') {
           const response = profileResponses[message.username];
           if (!response) throw new Error(`No profile fixture for ${message.username}`);
           return response;
         }
-        if (message.kind === 'insta-aio-perform-reviewed-profile-action') {
+        if (message.kind === 'insta-toolbox-perform-reviewed-profile-action') {
           performed.push(message.item);
           const response = performResponses[message.item.username];
           return response || { result: 'unfollowed', relationship: 'not-following' };
@@ -97,20 +97,20 @@ const sender = { url: 'https://www.instagram.com/', tab: { id: 7, url: 'https://
 
 function baseStored() {
   return {
-    bridgePairings: [],
-    bridgeReplayNonces: [],
-    pendingJobs: [],
-    accountActionLedger: [],
-    dmActionLedger: [],
-    threadUnsendLedger: [],
-    pendingLiveIntent: null,
-    liveArm: null,
-    pendingDmIntent: null,
-    dmArm: null,
-    batchArm: null,
-    batchRun: null,
+    instaToolboxBridgePairings: [],
+    instaToolboxBridgeReplayNonces: [],
+    instaToolboxPendingJobs: [],
+    instaToolboxAccountActionLedger: [],
+    instaToolboxDmActionLedger: [],
+    instaToolboxThreadUnsendLedger: [],
+    instaToolboxPendingLiveIntent: null,
+    instaToolboxLiveArm: null,
+    instaToolboxPendingDmIntent: null,
+    instaToolboxDmArm: null,
+    instaToolboxBatchArm: null,
+    instaToolboxBatchRun: null,
     // Fastest pacing the runner allows, so the test stays quick.
-    batchLimits: {
+    instaToolboxBatchLimits: {
       dailyActionLimit: 50,
       dailyDmLimit: 50,
       minDelayMs: 1,
@@ -135,7 +135,7 @@ function batchTargetDigest(kind, action, items) {
 
 function confirmedAccountBatch(action, items) {
   return {
-    kind: 'insta-aio-start-batch',
+    kind: 'insta-toolbox-start-batch',
     batchKind: 'account',
     action,
     items,
@@ -150,7 +150,7 @@ function confirmedAccountBatch(action, items) {
 
 test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicate plans', async () => {
   const stored = baseStored();
-  stored.batchLimits = {
+  stored.instaToolboxBatchLimits = {
     dailyActionLimit: 50,
     dailyDmLimit: 3,
     minDelayMs: 1_500,
@@ -175,16 +175,16 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
     expiresAt: Date.now() + 60_000,
   };
   try {
-    const reserved = await deliver({ kind: 'insta-aio-reserve-thread-unsend', plan }, threadSender);
+    const reserved = await deliver({ kind: 'insta-toolbox-reserve-thread-unsend', plan }, threadSender);
     assert.equal(reserved.error, undefined);
     assert.deepEqual(reserved.pacing, { minDelayMs: 1_000, maxDelayMs: 2_000 });
-    assert.equal(stored.threadUnsendLedger.length, 0, 'capability is memory-only before a verified removal');
+    assert.equal(stored.instaToolboxThreadUnsendLedger.length, 0, 'capability is memory-only before a verified removal');
 
-    const duplicate = await deliver({ kind: 'insta-aio-reserve-thread-unsend', plan }, threadSender);
+    const duplicate = await deliver({ kind: 'insta-toolbox-reserve-thread-unsend', plan }, threadSender);
     assert.equal(duplicate.error, 'thread-unsend-plan-already-reserved');
 
     const checkpoint = await deliver({
-      kind: 'insta-aio-checkpoint-thread-unsend',
+      kind: 'insta-toolbox-checkpoint-thread-unsend',
       reservationId: reserved.reservation.id,
       reviewedDigest: plan.reviewedDigest,
       threadId: plan.threadId,
@@ -194,11 +194,11 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
     assert.equal(checkpoint.error, undefined);
     assert.equal(checkpoint.reservation.processed, 1);
     assert.equal(checkpoint.reservation.status, 'running');
-    assert.equal(stored.threadUnsendLedger.length, 1, 'each verified removal is checkpointed immediately');
-    assert.equal(stored.threadUnsendLedger[0].processed, 1);
+    assert.equal(stored.instaToolboxThreadUnsendLedger.length, 1, 'each verified removal is checkpointed immediately');
+    assert.equal(stored.instaToolboxThreadUnsendLedger[0].processed, 1);
 
     const skippedCheckpoint = await deliver({
-      kind: 'insta-aio-checkpoint-thread-unsend',
+      kind: 'insta-toolbox-checkpoint-thread-unsend',
       reservationId: reserved.reservation.id,
       reviewedDigest: plan.reviewedDigest,
       threadId: plan.threadId,
@@ -206,10 +206,10 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
       failed: 0,
     }, threadSender);
     assert.equal(skippedCheckpoint.error, 'thread-unsend-reservation-missing');
-    assert.equal(stored.threadUnsendLedger[0].processed, 1, 'unproven increments cannot advance the ledger');
+    assert.equal(stored.instaToolboxThreadUnsendLedger[0].processed, 1, 'unproven increments cannot advance the ledger');
 
     const finalized = await deliver({
-      kind: 'insta-aio-finalize-thread-unsend',
+      kind: 'insta-toolbox-finalize-thread-unsend',
       reservationId: reserved.reservation.id,
       reviewedDigest: plan.reviewedDigest,
       threadId: plan.threadId,
@@ -222,11 +222,11 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
     assert.equal(finalized.reservation.failed, 1);
     assert.equal(finalized.reservation.status, 'stopped');
     assert.equal(finalized.reservation.recorded, true);
-    assert.equal(stored.threadUnsendLedger.length, 1, 'finalization updates the checkpoint instead of duplicating it');
-    assert.equal(stored.threadUnsendLedger[0].count, 2);
+    assert.equal(stored.instaToolboxThreadUnsendLedger.length, 1, 'finalization updates the checkpoint instead of duplicating it');
+    assert.equal(stored.instaToolboxThreadUnsendLedger[0].count, 2);
 
     const secondPlan = await deliver({
-      kind: 'insta-aio-reserve-thread-unsend',
+      kind: 'insta-toolbox-reserve-thread-unsend',
       plan: { ...plan, scope: 'all', limit: null, reviewedDigest: 'd4c3b2a1' },
     }, threadSender);
     assert.equal(secondPlan.error, undefined);
@@ -234,7 +234,7 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
     assert.equal(secondPlan.reservation.scope, 'all');
 
     const uncheckpointedJump = await deliver({
-      kind: 'insta-aio-finalize-thread-unsend',
+      kind: 'insta-toolbox-finalize-thread-unsend',
       reservationId: secondPlan.reservation.id,
       reviewedDigest: 'd4c3b2a1',
       threadId: plan.threadId,
@@ -243,10 +243,10 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
       status: 'completed',
     }, threadSender);
     assert.equal(uncheckpointedJump.error, 'thread-unsend-reservation-missing');
-    assert.equal(stored.threadUnsendLedger.length, 1, 'finalization cannot invent an uncheckpointed removal');
+    assert.equal(stored.instaToolboxThreadUnsendLedger.length, 1, 'finalization cannot invent an uncheckpointed removal');
 
     const zeroClick = await deliver({
-      kind: 'insta-aio-finalize-thread-unsend',
+      kind: 'insta-toolbox-finalize-thread-unsend',
       reservationId: secondPlan.reservation.id,
       reviewedDigest: 'd4c3b2a1',
       threadId: plan.threadId,
@@ -256,10 +256,10 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
     }, threadSender);
     assert.equal(zeroClick.error, undefined);
     assert.equal(zeroClick.reservation.recorded, false);
-    assert.equal(stored.threadUnsendLedger.length, 1, 'zero-click failure is not appended to the ledger');
+    assert.equal(stored.instaToolboxThreadUnsendLedger.length, 1, 'zero-click failure is not appended to the ledger');
 
     const wrongThread = await deliver({
-      kind: 'insta-aio-reserve-thread-unsend',
+      kind: 'insta-toolbox-reserve-thread-unsend',
       plan: { ...plan, threadId: 'thread-999', reviewedDigest: '11111111', limit: 1 },
     }, threadSender);
     assert.equal(wrongThread.error, 'thread-unsend-plan-invalid');
@@ -285,9 +285,9 @@ test('a service-worker restart can record verified removals without restoring ac
   const firstWorker = await loadBackground({ profileResponses: {}, performResponses: {}, stored });
   let reservation;
   try {
-    reservation = await firstWorker.deliver({ kind: 'insta-aio-reserve-thread-unsend', plan }, threadSender);
+    reservation = await firstWorker.deliver({ kind: 'insta-toolbox-reserve-thread-unsend', plan }, threadSender);
     assert.equal(reservation.error, undefined);
-    assert.equal(stored.threadUnsendLedger.length, 0);
+    assert.equal(stored.instaToolboxThreadUnsendLedger.length, 0);
   } finally {
     await firstWorker.cleanup();
   }
@@ -295,7 +295,7 @@ test('a service-worker restart can record verified removals without restoring ac
   const restartedWorker = await loadBackground({ profileResponses: {}, performResponses: {}, stored });
   try {
     const checkpoint = await restartedWorker.deliver({
-      kind: 'insta-aio-checkpoint-thread-unsend',
+      kind: 'insta-toolbox-checkpoint-thread-unsend',
       plan,
       reservationId: reservation.reservation.id,
       reviewedDigest: plan.reviewedDigest,
@@ -307,10 +307,10 @@ test('a service-worker restart can record verified removals without restoring ac
     assert.equal(checkpoint.reservation.processed, 1);
     assert.equal(checkpoint.reservation.recoveredAfterWorkerRestart, true);
     assert.equal(checkpoint.reservation.authorityRestored, false);
-    assert.equal(stored.threadUnsendLedger.length, 1);
+    assert.equal(stored.instaToolboxThreadUnsendLedger.length, 1);
 
     const final = await restartedWorker.deliver({
-      kind: 'insta-aio-finalize-thread-unsend',
+      kind: 'insta-toolbox-finalize-thread-unsend',
       reservationId: reservation.reservation.id,
       reviewedDigest: plan.reviewedDigest,
       threadId: plan.threadId,
@@ -320,8 +320,8 @@ test('a service-worker restart can record verified removals without restoring ac
     }, threadSender);
     assert.equal(final.error, undefined);
     assert.equal(final.reservation.status, 'stopped');
-    assert.equal(stored.threadUnsendLedger.length, 1);
-    assert.equal(stored.threadUnsendLedger[0].authorityRestored, false);
+    assert.equal(stored.instaToolboxThreadUnsendLedger.length, 1);
+    assert.equal(stored.instaToolboxThreadUnsendLedger[0].authorityRestored, false);
   } finally {
     await restartedWorker.cleanup();
   }
@@ -330,7 +330,7 @@ test('a service-worker restart can record verified removals without restoring ac
 async function waitForRun(deliver, predicate, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const status = await deliver({ kind: 'insta-aio-batch-status' }, sender);
+    const status = await deliver({ kind: 'insta-toolbox-batch-status' }, sender);
     if (predicate(status.run)) return status.run;
     await new Promise((resolve) => { setTimeout(resolve, 25); });
   }
@@ -359,7 +359,7 @@ test('batch start requires an exact finite confirmation from the active Instagra
       },
     }, sender);
     assert.equal(wrong.error, 'batch-confirmation-mismatch');
-    assert.equal(stored.batchArm, null);
+    assert.equal(stored.instaToolboxBatchArm, null);
 
     const missingTab = await deliver(
       confirmedAccountBatch('unfollow', items),
@@ -367,7 +367,7 @@ test('batch start requires an exact finite confirmation from the active Instagra
     );
     assert.equal(missingTab.error, 'instagram-tab-required');
 
-    assert.equal(stored.batchRun, null);
+    assert.equal(stored.instaToolboxBatchRun, null);
   } finally {
     await cleanup();
   }
@@ -405,9 +405,9 @@ test('batch run navigates, verifies, and acts on each account exactly once', asy
       assert.equal(item.expectedRelationship, 'following');
     }
     // The arm is consumed by the run and cannot authorise a second one.
-    assert.equal(stored.batchArm, null);
-    assert.equal(stored.accountActionLedger.length, 2);
-    assert.ok(stored.accountActionLedger.every((entry) => entry.status === 'succeeded'));
+    assert.equal(stored.instaToolboxBatchArm, null);
+    assert.equal(stored.instaToolboxAccountActionLedger.length, 2);
+    assert.ok(stored.instaToolboxAccountActionLedger.every((entry) => entry.status === 'succeeded'));
   } finally {
     await cleanup();
   }
@@ -511,7 +511,7 @@ test('starting a batch without an exact confirmation is rejected', async () => {
   });
   try {
     const response = await deliver({
-      kind: 'insta-aio-start-batch',
+      kind: 'insta-toolbox-start-batch',
       batchKind: 'account',
       action: 'unfollow',
       items: [{ id: 'i-1', username: 'alpha' }],
@@ -531,7 +531,7 @@ test('batch pacing is clamped without exposing quota controls', async () => {
   });
   try {
     const response = await deliver({
-      kind: 'insta-aio-batch-limits',
+      kind: 'insta-toolbox-batch-limits',
       limits: {
         dailyActionLimit: 100_000,
         dailyDmLimit: 100_000,

@@ -169,7 +169,7 @@ export function createUnsendPlan(messages, selectedIds, {
 
   return {
     schemaVersion: 1,
-    kind: 'insta-aio-unsend-plan',
+    kind: 'insta-toolbox-unsend-plan',
     createdAt: new Date(createdAt).toISOString(),
     total: eligible.length,
     messages: eligible,

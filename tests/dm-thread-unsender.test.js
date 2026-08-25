@@ -9,14 +9,14 @@ const shellSource = await readFile(new URL('../userscripts/src/toolbox-shell.js'
 const bridgeSource = await readFile(new URL('../extension/overlay/bridge.js', import.meta.url), 'utf8');
 const messagesSource = await readFile(new URL('../extension/overlay/views/messages.js', import.meta.url), 'utf8');
 const metadata = await readFile(new URL('../userscripts/src/metadata.txt', import.meta.url), 'utf8');
-const generated = await readFile(new URL('../userscripts/insta-aio-companion.user.js', import.meta.url), 'utf8');
+const generated = await readFile(new URL('../userscripts/insta-toolbox.user.js', import.meta.url), 'utf8');
 const extensionManifest = JSON.parse(
   await readFile(new URL('../extension/manifest.json', import.meta.url), 'utf8'),
 );
 
 function loadRunner(overrides = {}) {
   const context = vm.createContext({
-    __instaAioTestHooks: true,
+    __instaToolboxTestHooks: true,
     clearTimeout,
     console,
     Date,
@@ -35,7 +35,7 @@ function loadRunner(overrides = {}) {
     ...overrides,
   });
   vm.runInContext(labelsSource, context, { filename: 'action-labels.js' });
-  return context.InstaAioDmThreadUnsender;
+  return context.InstaToolboxDmThreadUnsender;
 }
 
 function loadOverlayModule(source, name, overrides = {}) {
@@ -46,7 +46,7 @@ function loadOverlayModule(source, name, overrides = {}) {
     },
   };
   const context = vm.createContext({
-    __instaAioOverlayModules: modules,
+    __instaToolboxOverlayModules: modules,
     clearTimeout,
     console,
     Date,
@@ -99,7 +99,7 @@ test('thread runner carries the proven 0.7.2 interaction model', () => {
 test('message-options label accepts current text-only control and rejects Reply', () => {
   const context = vm.createContext({ console });
   vm.runInContext(labelsSource, context);
-  const labels = context.__instaAioActionLabels;
+  const labels = context.__instaToolboxActionLabels;
   assert.equal(labels.isDmMessageOptionsLabel('See more options for message from demo.creator'), true);
   assert.equal(labels.isDmMessageOptionsLabel('Reply'), false);
 });
@@ -111,7 +111,7 @@ test('extension bridge rejects empty replies and ignores replies after its watch
       lastError: null,
       sendMessage(_message, callback) { callback(undefined); },
     },
-  }, { kind: 'insta-aio-reserve-thread-unsend' }, { timeoutMs: 20 });
+  }, { kind: 'insta-toolbox-reserve-thread-unsend' }, { timeoutMs: 20 });
   assert.equal(empty.error, 'extension-bridge-empty-response');
 
   let lateCallback;
@@ -120,7 +120,7 @@ test('extension bridge rejects empty replies and ignores replies after its watch
       lastError: null,
       sendMessage(_message, callback) { lateCallback = callback; },
     },
-  }, { kind: 'insta-aio-reserve-thread-unsend' }, { timeoutMs: 10 });
+  }, { kind: 'insta-toolbox-reserve-thread-unsend' }, { timeoutMs: 10 });
   const timedOut = await pending;
   assert.equal(timedOut.error, 'extension-bridge-timeout');
   lateCallback({ reservation: { id: 'thread-unsend-too-late' } });
@@ -154,7 +154,7 @@ test('DM button makes zero clicks for malformed or stalled reservation proof', a
     const quickTimer = (callback, timeout, ...args) => setTimeout(callback, Math.min(timeout, 10), ...args);
     const { module: messagesView } = loadOverlayModule(messagesSource, 'messagesView', {
       clearTimeout,
-      InstaAioDmThreadUnsender: runner,
+      InstaToolboxDmThreadUnsender: runner,
       location: { pathname: '/direct/t/thread-123/' },
       setTimeout: quickTimer,
     });
@@ -163,8 +163,8 @@ test('DM button makes zero clicks for malformed or stalled reservation proof', a
       document: { createElement: () => ({}) },
       model: {},
       query(selector) {
-        if (selector === '[data-ia-role="unsend-scope"]') return { closest: () => null, value: 'all' };
-        if (selector === '[data-ia-role="unsend-count"]') return { closest: () => null, value: '1' };
+        if (selector === '[data-insta-toolbox-role="unsend-scope"]') return { closest: () => null, value: 'all' };
+        if (selector === '[data-insta-toolbox-role="unsend-count"]') return { closest: () => null, value: '1' };
         return null;
       },
       sendBridge(message) {
@@ -221,7 +221,7 @@ test('DM reservation proof must exactly match the reviewed plan before execution
     subscribe: () => () => {},
   };
   const { module: messagesView } = loadOverlayModule(messagesSource, 'messagesView', {
-    InstaAioDmThreadUnsender: runner,
+    InstaToolboxDmThreadUnsender: runner,
     location: { pathname: '/direct/t/thread-123/' },
   });
   const plan = {
@@ -482,7 +482,7 @@ test('a recycled virtual row is eligible again when its logical message changes'
   text = 'Second logical message';
   leaf.textContent = text;
   assert.equal(runner.__test.candidateRows(scroller, traversal).length, 1);
-  assert.equal(attributes.has('data-insta-aio-unsent'), false);
+  assert.equal(attributes.has('data-insta-toolbox-unsent'), false);
 });
 
 test('newest and oldest finite scopes follow visual geometry in normal and reversed layouts', () => {
@@ -1252,11 +1252,11 @@ test('primary execution never performs a history prescan or exact-count equality
 });
 
 test('extension message view uses the shared runner and Instagram design tokens', () => {
-  assert.match(messagesSource, /globalThis\.InstaAioDmThreadUnsender/);
+  assert.match(messagesSource, /globalThis\.InstaToolboxDmThreadUnsender/);
   assert.match(messagesSource, /DM_PLAN_TTL_MS = 15 \* 60 \* 1_000/);
   assert.match(messagesSource, /threadId: inspection\.threadId/);
   assert.doesNotMatch(messagesSource, /phrase = `UNSEND|ARM UNSEND|ENABLE LIVE ACTIONS/);
-  assert.match(messagesSource, /data-ia-action="mass-unsend"/);
+  assert.match(messagesSource, /data-insta-toolbox-action="mass-unsend"/);
   assert.match(messagesSource, /'Unsend DMs'/);
   assert.match(messagesSource, /Permanently unsend \$\{scopeLabel\} in this conversation/);
   assert.match(messagesSource, /Thread \$\{plan\.threadId\}/);
@@ -1276,7 +1276,7 @@ test('extension message view uses the shared runner and Instagram design tokens'
   assert.match(labelsSource, /complete: quietRounds >= 10/);
   assert.match(labelsSource, /countExact: false/);
   assert.match(labelsSource, /MAX_HISTORY_CHECK_MS = 90_000/);
-  assert.match(messagesSource, /kind: 'insta-aio-reserve-thread-unsend'/);
+  assert.match(messagesSource, /kind: 'insta-toolbox-reserve-thread-unsend'/);
   assert.match(messagesSource, /reservation\.pacing\?\.minDelayMs/);
   assert.match(labelsSource, /const order = plan\.scope === 'oldest' \? 'oldest' : 'newest'/);
   assert.match(labelsSource, /unsendCandidates\(document\)\.filter\(\(candidate\) => !existing\.has\(candidate\)\)/);
@@ -1291,14 +1291,14 @@ test('Tampermonkey entry point auto-updates from main and embeds the shared sour
   assert.match(metadata, /@sandbox\s+DOM/);
   assert.match(metadata, /@grant\s+GM_getTab/);
   assert.match(metadata, /@grant\s+GM_saveTab/);
-  assert.match(metadata, /@downloadURL\s+https:\/\/raw\.githubusercontent\.com\/slaveofsolace\/Insta-AIO-Tool\/main\/userscripts\/insta-aio-companion\.user\.js/);
+  assert.match(metadata, /@downloadURL\s+https:\/\/github\.com\/slaveofsolace\/Insta-Toolbox\/releases\/latest\/download\/insta-toolbox\.user\.js/);
   assert.doesNotMatch(metadata, /@require|@resource/);
   assert.equal(generated.startsWith(metadata), true);
   assert.ok(generated.includes(labelsSource.trim()), 'thread runner is embedded verbatim');
   assert.ok(generated.includes(contentSource.trim()), 'exact-target engine is embedded verbatim');
   assert.ok(generated.includes(shellSource.trim()), 'toolbox shell is embedded verbatim');
   assert.match(generated, /Generated file\. Do not edit\./);
-  assert.match(generated, /InstaAioDmThreadUnsender/);
+  assert.match(generated, /InstaToolboxDmThreadUnsender/);
   assert.doesNotMatch(generated, /\bAI\b/i);
 });
 

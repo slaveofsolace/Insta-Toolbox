@@ -6,6 +6,11 @@ const harness = await readFile(new URL('../scripts/browser-qa.mjs', import.meta.
 const runner = await readFile(new URL('../scripts/run-browser-qa.mjs', import.meta.url), 'utf8');
 const server = await readFile(new URL('../scripts/serve.mjs', import.meta.url), 'utf8');
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const pwaBaseline = JSON.parse(await readFile(new URL('./baselines/pwa/win32/manifest.json', import.meta.url), 'utf8'));
+const pwaCiBaseline = JSON.parse(await readFile(
+  new URL('./baselines/pwa/win32/github-actions-windows-2025-vs2026/manifest.json', import.meta.url),
+  'utf8',
+));
 
 test('browser QA covers every PWA view at deterministic responsive sizes without live actions', () => {
   assert.equal(
@@ -44,7 +49,7 @@ test('browser QA uses an isolated renderer, denied permissions, and bounded loop
   assert.match(harness, /createAppServer\(\)/);
   assert.match(runner, /spawn\(electronPath/);
   assert.match(runner, /windowsHide: true/);
-  assert.match(runner, /INSTA_AIO_BROWSER_QA_USER_DATA/);
+  assert.match(runner, /INSTA_TOOLBOX_BROWSER_QA_USER_DATA/);
   assert.match(server, /export function createAppServer/);
   assert.match(server, /isAllowedLoopbackHost/);
   assert.match(server, /isAllowedAssetPath/);
@@ -62,4 +67,19 @@ test('browser QA hashes tracked platform baselines and keeps actual output dispo
   assert.match(harness, /screenshot regression detected/);
   assert.match(harness, /documentWidth <= metrics\.innerWidth \+ 1/);
   assert.match(harness, /headingFocused, true/);
+});
+
+test('browser QA manifests bind captures to the current product version and release timestamp', () => {
+  assert.match(harness, /readFile\(path\.join\(repositoryRoot, 'package\.json'\), 'utf8'\)/);
+  assert.match(harness, /readFile\(path\.join\(repositoryRoot, 'CHANGELOG\.md'\), 'utf8'\)/);
+  assert.match(harness, /captureTimestamp: `\$\{releaseDate\}T00:00:00\.000Z`/);
+  assert.match(harness, /schemaVersion: 2/);
+  assert.match(harness, /baseline product version changed/);
+  assert.match(harness, /baseline capture timestamp changed/);
+  for (const manifest of [pwaBaseline, pwaCiBaseline]) {
+    assert.equal(manifest.schemaVersion, 2);
+    assert.equal(manifest.kind, 'insta-toolbox-pwa-screenshot-baseline');
+    assert.equal(manifest.productVersion, packageJson.version);
+    assert.equal(manifest.captureTimestamp, '2026-08-24T00:00:00.000Z');
+  }
 });

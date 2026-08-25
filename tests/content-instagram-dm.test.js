@@ -53,8 +53,8 @@ class FakeElement {
       }
     };
     visit(this);
-    if (selector === '[data-insta-aio-message-content]') {
-      return descendants.filter((element) => element.getAttribute('data-insta-aio-message-content') != null);
+    if (selector === '[data-insta-toolbox-message-content]') {
+      return descendants.filter((element) => element.getAttribute('data-insta-toolbox-message-content') != null);
     }
     if (selector === '[dir="auto"]') {
       return descendants.filter((element) => element.getAttribute('dir') === 'auto');
@@ -90,7 +90,7 @@ function messageRow({
 } = {}) {
   const contentElement = new FakeElement({
     attributes: {
-      'data-insta-aio-message-content': '',
+      'data-insta-toolbox-message-content': '',
       dir: 'auto',
     },
     text: content,
@@ -191,7 +191,7 @@ function reviewedItem(overrides = {}) {
 test('resolves one stable sent-message identity without opening a menu', async () => {
   const harness = createHarness([messageRow()]);
   const observed = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: reviewedItem(),
   });
 
@@ -207,7 +207,7 @@ test('resolves one stable sent-message identity without opening a menu', async (
 
 test('visible message evidence is bound to one exact direct thread', async () => {
   const thread = createHarness([messageRow()]);
-  const captured = await thread.send({ kind: 'insta-aio-inspect-visible-messages' });
+  const captured = await thread.send({ kind: 'insta-toolbox-inspect-visible-messages' });
   assert.equal(captured.conversationId, '123');
   assert.equal(captured.reason, 'visible-fragments-only');
   assert.deepEqual(
@@ -216,14 +216,14 @@ test('visible message evidence is bound to one exact direct thread', async () =>
   );
 
   const inbox = createHarness([messageRow()], { pathname: '/direct/inbox/' });
-  const rejected = await inbox.send({ kind: 'insta-aio-inspect-visible-messages' });
+  const rejected = await inbox.send({ kind: 'insta-toolbox-inspect-visible-messages' });
   assert.equal(rejected.pageKind, 'messages');
   assert.equal(rejected.conversationId, '');
   assert.equal(rejected.reason, 'open-an-instagram-conversation');
   assert.equal(rejected.fragments.length, 0);
 
   const nestedRoute = createHarness([messageRow()], { pathname: '/direct/t/123/details/' });
-  const nestedRejected = await nestedRoute.send({ kind: 'insta-aio-inspect-visible-messages' });
+  const nestedRejected = await nestedRoute.send({ kind: 'insta-toolbox-inspect-visible-messages' });
   assert.equal(nestedRejected.reason, 'open-an-instagram-conversation');
   assert.equal(nestedRejected.fragments.length, 0);
 });
@@ -234,7 +234,7 @@ test('compact DM drawer resolves one visible thread and fails closed on ambiguit
     drawerRootCount: 1,
     drawerThreadHrefs: ['/direct/t/456/'],
   });
-  const captured = await drawer.send({ kind: 'insta-aio-inspect-visible-messages' });
+  const captured = await drawer.send({ kind: 'insta-toolbox-inspect-visible-messages' });
   assert.equal(captured.conversationId, '456');
   assert.equal(captured.reason, 'visible-fragments-only');
 
@@ -243,7 +243,7 @@ test('compact DM drawer resolves one visible thread and fails closed on ambiguit
     drawerRootCount: 1,
     drawerThreadHrefs: ['/direct/t/456/', '/direct/t/789/'],
   });
-  const rejected = await ambiguous.send({ kind: 'insta-aio-inspect-visible-messages' });
+  const rejected = await ambiguous.send({ kind: 'insta-toolbox-inspect-visible-messages' });
   assert.equal(rejected.conversationId, '');
   assert.equal(rejected.reason, 'open-an-instagram-conversation');
 
@@ -252,14 +252,14 @@ test('compact DM drawer resolves one visible thread and fails closed on ambiguit
     drawerRootCount: 2,
     drawerThreadHrefs: ['/direct/t/999/'],
   });
-  const routed = await routeWins.send({ kind: 'insta-aio-inspect-visible-messages' });
+  const routed = await routeWins.send({ kind: 'insta-toolbox-inspect-visible-messages' });
   assert.equal(routed.conversationId, '123');
 });
 
 test('missing stable identity and wrong conversations fail closed', async () => {
   const missing = createHarness([]);
   const missingResult = await missing.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: reviewedItem(),
   });
   assert.equal(missingResult.reason, 'exact-message-identity-unavailable');
@@ -267,7 +267,7 @@ test('missing stable identity and wrong conversations fail closed', async () => 
 
   const wrongConversation = createHarness([messageRow()], { pathname: '/direct/t/999/' });
   const wrongResult = await wrongConversation.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: reviewedItem(),
   });
   assert.equal(wrongResult.reason, 'wrong-conversation');
@@ -275,7 +275,7 @@ test('missing stable identity and wrong conversations fail closed', async () => 
 
   const inbox = createHarness([messageRow()], { pathname: '/direct/inbox/' });
   const inboxResult = await inbox.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: reviewedItem(),
   });
   assert.equal(inboxResult.reason, 'open-an-instagram-conversation');
@@ -285,21 +285,21 @@ test('missing stable identity and wrong conversations fail closed', async () => 
 test('duplicate identities, changed content, and received ownership fail closed', async () => {
   const duplicate = createHarness([messageRow(), messageRow()]);
   const duplicateResult = await duplicate.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: reviewedItem(),
   });
   assert.equal(duplicateResult.reason, 'exact-message-ambiguous');
 
   const changed = createHarness([messageRow({ content: 'Changed content' })]);
   const changedResult = await changed.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: reviewedItem(),
   });
   assert.equal(changedResult.reason, 'exact-message-not-found');
 
   const received = createHarness([messageRow({ sentByMe: false })]);
   const receivedResult = await received.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: reviewedItem(),
   });
   assert.equal(receivedResult.reason, 'received-message');
@@ -312,7 +312,7 @@ test('source-audited sent layout resolves while unknown ownership fails closed',
     sentByMe: null,
   })]);
   const sentResult = await sentLayout.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: reviewedItem(),
   });
   assert.equal(sentResult.sentByMe, true);
@@ -320,7 +320,7 @@ test('source-audited sent layout resolves while unknown ownership fails closed',
 
   const unknown = createHarness([messageRow({ sentByMe: null })]);
   const unknownResult = await unknown.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: reviewedItem(),
   });
   assert.equal(unknownResult.reason, 'message-ownership-unavailable');

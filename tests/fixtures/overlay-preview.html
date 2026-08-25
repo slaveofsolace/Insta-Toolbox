@@ -7,7 +7,7 @@
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; background: #fafafa; color: #111; font: 14px/1.4 "Segoe UI", sans-serif; }
-    #insta-aio-sidecar-root { font-family: "Segoe UI", sans-serif !important; }
+    #insta-toolbox-sidecar-root { font-family: "Segoe UI", sans-serif !important; }
     .instagram-shell { display: grid; min-height: 100vh; grid-template-columns: 244px minmax(0, 1fr); }
     .instagram-nav { padding: 34px 24px; border-right: 1px solid #ddd; background: #fff; }
     .instagram-nav strong { font: 28px cursive; }
@@ -73,7 +73,7 @@
     <a href="/charlie.studio/">charlie.studio</a>
   </section>
 
-  <script nonce="insta-aio-overlay-qa">
+  <script nonce="insta-toolbox-overlay-qa">
     const FixtureNativeDate = Date;
     const fixtureClockStartedAt = FixtureNativeDate.now();
     const fixtureClockOrigin = FixtureNativeDate.parse('2026-08-02T12:00:00.000Z');
@@ -130,12 +130,12 @@
       document.querySelector('main').innerHTML = `
         <section class="fixture-thread" ${fixtureExactDmMode ? 'data-pagelet="IGDMessagesList"' : ''}>
           <header><h1>studio_friend</h1></header>
-          <div role="row" ${fixtureExactDmMode ? 'data-message-id="received-1" data-timestamp-ms="1700000000000" data-sent-by-me="false"' : ''}><div ${fixtureExactDmMode ? 'data-insta-aio-message-content' : ''} dir="auto">Did you see the draft?</div></div>
+          <div role="row" ${fixtureExactDmMode ? 'data-message-id="received-1" data-timestamp-ms="1700000000000" data-sent-by-me="false"' : ''}><div ${fixtureExactDmMode ? 'data-insta-toolbox-message-content' : ''} dir="auto">Did you see the draft?</div></div>
           <div role="row" data-mine ${fixtureExactDmMode ? 'data-message-id="sent-1" data-timestamp-ms="1700000000100" data-sent-by-me="true"' : ''}>
-            <div ${fixtureExactDmMode ? 'data-insta-aio-message-content' : ''} dir="auto">Yes — reviewing it now.</div>
+            <div ${fixtureExactDmMode ? 'data-insta-toolbox-message-content' : ''} dir="auto">Yes — reviewing it now.</div>
             ${fixtureLiveDmMode ? '<button type="button" id="fixture-dm-action" aria-label="See more options for message" aria-haspopup="menu" aria-controls="fixture-dm-menu">More</button>' : ''}
           </div>
-          <div role="row" ${fixtureExactDmMode ? 'data-message-id="received-2" data-timestamp-ms="1700000000200" data-sent-by-me="false"' : ''}><div ${fixtureExactDmMode ? 'data-insta-aio-message-content' : ''} dir="auto">Perfect, thank you.</div></div>
+          <div role="row" ${fixtureExactDmMode ? 'data-message-id="received-2" data-timestamp-ms="1700000000200" data-sent-by-me="false"' : ''}><div ${fixtureExactDmMode ? 'data-insta-toolbox-message-content' : ''} dir="auto">Perfect, thank you.</div></div>
         </section>`;
     } else {
       history.replaceState({}, '', '/demo_creator/');
@@ -203,7 +203,7 @@
         }, { once: true });
         document.body.append(menu);
       }, { once: true });
-      const targetText = targetRow.querySelector('[data-insta-aio-message-content]').textContent.trim();
+      const targetText = targetRow.querySelector('[data-insta-toolbox-message-content]').textContent.trim();
       let targetHash = 0x811c9dc5;
       for (let index = 0; index < targetText.length; index += 1) {
         targetHash ^= targetText.charCodeAt(index);
@@ -219,7 +219,7 @@
     }
     if (fixtureExactDmMode && !globalThis.fixtureDmItem) {
       const targetRow = document.querySelector('[data-message-id="sent-1"]');
-      const targetText = targetRow.querySelector('[data-insta-aio-message-content]').textContent.trim();
+      const targetText = targetRow.querySelector('[data-insta-toolbox-message-content]').textContent.trim();
       let targetHash = 0x811c9dc5;
       for (let index = 0; index < targetText.length; index += 1) {
         targetHash ^= targetText.charCodeAt(index);
@@ -331,13 +331,13 @@
         maxDelayMs: 11000,
       },
       ...(fixturePreferences ? {
-        [fixtureFloatingLayout ? 'instaAioOverlayPreferencesV3' : 'instaAioOverlayPreferencesV2']:
+        [fixtureFloatingLayout ? 'instaToolboxOverlayPreferencesV3' : 'instaToolboxOverlayPreferencesV2']:
           fixturePreferences,
       } : {}),
       ...(fixtureMode === 'qa-following-repeat' ? {
-        instaAioOverlayCaptureWorkspaceV2: {
+        instaToolboxOverlayCaptureWorkspaceV2: {
           schemaVersion: 4,
-          kind: 'insta-aio-visible-checker-workspace',
+          kind: 'insta-toolbox-visible-checker-workspace',
           followers: [],
           following: [
             { username: 'alpha.friend', displayName: '', source: 'extension-visible-dom' },
@@ -352,9 +352,9 @@
         },
       } : {}),
       ...(fixtureMode === 'qa-checker-results' ? {
-        instaAioOverlayCaptureWorkspaceV2: {
+        instaToolboxOverlayCaptureWorkspaceV2: {
           schemaVersion: 4,
-          kind: 'insta-aio-visible-checker-workspace',
+          kind: 'insta-toolbox-visible-checker-workspace',
           followers: [
             { username: 'follower_only', displayName: 'Follower Only' },
             { username: 'mutual.friend', displayName: 'Mutual Friend' },
@@ -372,7 +372,7 @@
           verified: { followers: true, following: true },
         },
       } : {}),
-      instaAioOverlayManualQueueV1: {
+      instaToolboxOverlayManualQueueV1: {
         importedAt: '2026-07-31T07:00:00.000Z',
         queue: fixtureQueue,
       },
@@ -410,7 +410,7 @@
       for (const release of pendingThreadUnsendReservations.splice(0)) release();
     };
     if (fixtureSearch.get('shadow') !== 'closed') {
-      globalThis.__instaAioOverlayTestOpenShadow = true;
+      globalThis.__instaToolboxOverlayTestOpenShadow = true;
     }
     globalThis.chrome = {
       runtime: {
@@ -419,7 +419,7 @@
         onMessage: { addListener: (listener) => runtimeListeners.push(listener) },
         sendMessage: (request, callback) => {
           globalThis.fixtureBridgeRequests.push(structuredClone(request));
-          if (request.kind === 'insta-aio-reserve-thread-unsend') {
+          if (request.kind === 'insta-toolbox-reserve-thread-unsend') {
             const respond = () => callback(threadUnsendReservationResponse(request.plan));
             if (globalThis.fixtureHoldThreadUnsendReservation) {
               pendingThreadUnsendReservations.push(respond);
@@ -428,15 +428,15 @@
             }
             return;
           }
-          if (request.kind === 'insta-aio-checkpoint-thread-unsend') {
+          if (request.kind === 'insta-toolbox-checkpoint-thread-unsend') {
             callback({ checkpoint: { processed: request.processed, failed: request.failed } });
             return;
           }
-          if (request.kind === 'insta-aio-finalize-thread-unsend') {
+          if (request.kind === 'insta-toolbox-finalize-thread-unsend') {
             callback({ run: { status: request.status, processed: request.processed, failed: request.failed } });
             return;
           }
-          if (request.kind === 'insta-aio-overlay-state') {
+          if (request.kind === 'insta-toolbox-overlay-state') {
             callback({ state: {
               controlledAccountActionsAvailable: true,
               controlledDmUnsendAvailable: true,
@@ -449,7 +449,7 @@
               pendingDmIntent: fixtureStorage.pendingDmIntent,
               pendingLiveIntent: fixtureStorage.pendingLiveIntent,
               recentRuns: [{
-                kind: 'insta-aio-reviewed-action-job',
+                kind: 'insta-toolbox-reviewed-action-job',
                 jobId: 'fixture-job-1',
                 receivedAt: '2026-07-31T07:04:00.000Z',
                 mode: 'dry-run',
@@ -460,7 +460,7 @@
             } });
             return;
           }
-          if (request.kind === 'insta-aio-cancel-account-action') {
+          if (request.kind === 'insta-toolbox-cancel-account-action') {
             fixtureStorage.pendingLiveIntent = null;
             fixtureStorage.liveArm = null;
             callback({ state: {
@@ -478,7 +478,7 @@
             } });
             return;
           }
-          if (request.kind === 'insta-aio-cancel-dm-unsend') {
+          if (request.kind === 'insta-toolbox-cancel-dm-unsend') {
             fixtureStorage.pendingDmIntent = null;
             fixtureStorage.dmArm = null;
             callback({ state: {
@@ -496,7 +496,7 @@
             } });
             return;
           }
-          if (request.kind === 'insta-aio-batch-status') {
+          if (request.kind === 'insta-toolbox-batch-status') {
             callback({
               run: fixtureStorage.batchRun || null,
               arm: fixtureStorage.batchArm || null,
@@ -504,7 +504,7 @@
             });
             return;
           }
-          if (request.kind === 'insta-aio-arm-batch') {
+          if (request.kind === 'insta-toolbox-arm-batch') {
             const expected = request.batchKind === 'dm'
               ? `ARM MASS UNSEND ${request.count}`
               : `ARM BATCH ${String(request.action || '').toUpperCase()} ${request.count}`;
@@ -520,7 +520,7 @@
             callback({ arm: fixtureStorage.batchArm });
             return;
           }
-          if (request.kind === 'insta-aio-start-batch') {
+          if (request.kind === 'insta-toolbox-start-batch') {
             if (!fixtureStorage.batchArm) {
               callback({ error: 'batch-arm-required' });
               return;
@@ -551,7 +551,7 @@
             callback({ run: fixtureStorage.batchRun });
             return;
           }
-          if (request.kind === 'insta-aio-abort-batch') {
+          if (request.kind === 'insta-toolbox-abort-batch') {
             if (fixtureStorage.batchRun) {
               fixtureStorage.batchRun.status = 'aborted';
               fixtureStorage.batchRun.stopReason = 'stopped-by-user';
@@ -560,7 +560,7 @@
             callback({ run: fixtureStorage.batchRun });
             return;
           }
-          if (request.kind === 'insta-aio-batch-limits') {
+          if (request.kind === 'insta-toolbox-batch-limits') {
             fixtureStorage.batchLimits = {
               ...fixtureStorage.batchLimits,
               ...request.limits,
@@ -614,10 +614,10 @@
   <script src="/extension/action-confirmation.js"></script>
   <script src="/extension/action-labels.js"></script>
   <script src="/extension/content-instagram.js"></script>
-  <script nonce="insta-aio-overlay-qa">
+  <script nonce="insta-toolbox-overlay-qa">
     if (fixtureMode === 'qa-checker-api') {
-      const productionInspector = globalThis.InstaAioInstagramInspector;
-      globalThis.InstaAioInstagramInspector = Object.freeze({
+      const productionInspector = globalThis.InstaToolboxInstagramInspector;
+      globalThis.InstaToolboxInstagramInspector = Object.freeze({
         ...productionInspector,
         async fetchFollowerComparison({ onProgress, signal, username }) {
           if (signal?.aborted) {

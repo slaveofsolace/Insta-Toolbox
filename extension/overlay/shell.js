@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   const icons = modules?.icons;
   if (!shared || !icons || modules.shell) return;
@@ -9,59 +9,59 @@
   const styles = `
     :host {
       all: initial;
-      --ia-surface: #f7f8f5;
-      --ia-surface-raised: #ffffff;
-      --ia-rail: #eef0eb;
-      --ia-ink: #1d211b;
-      --ia-muted: #687064;
-      --ia-line: #d8ddd4;
-      --ia-signal: #b9ef35;
-      --ia-signal-ink: #263006;
-      --ia-warning: #9b5d09;
-      --ia-danger: #ad3025;
-      --ia-good: #27753c;
-      --ia-focus: #168cff;
-      --ia-shadow: 0 18px 54px rgba(0, 0, 0, .18);
-      --ia-panel-width: 460px;
-      --ia-panel-alpha: 88%;
-      --ia-panel-alpha-strong: 96%;
-      --ia-panel-inline-start: auto;
-      --ia-panel-inline-end: max(14px, env(safe-area-inset-right));
+      --insta-toolbox-surface: #f7f8f5;
+      --insta-toolbox-surface-raised: #ffffff;
+      --insta-toolbox-rail: #eef0eb;
+      --insta-toolbox-ink: #1d211b;
+      --insta-toolbox-muted: #687064;
+      --insta-toolbox-line: #d8ddd4;
+      --insta-toolbox-signal: #b83d67;
+      --insta-toolbox-signal-ink: #ffffff;
+      --insta-toolbox-warning: #9b5d09;
+      --insta-toolbox-danger: #ad3025;
+      --insta-toolbox-good: #27753c;
+      --insta-toolbox-focus: #168cff;
+      --insta-toolbox-shadow: 0 18px 54px rgba(0, 0, 0, .18);
+      --insta-toolbox-panel-width: 460px;
+      --insta-toolbox-panel-alpha: 88%;
+      --insta-toolbox-panel-alpha-strong: 96%;
+      --insta-toolbox-panel-inline-start: auto;
+      --insta-toolbox-panel-inline-end: max(14px, env(safe-area-inset-right));
       color-scheme: light;
       font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
     }
 
     :host([data-theme="dark"]) {
-      --ia-surface: #151714;
-      --ia-surface-raised: #1c1f1b;
-      --ia-rail: #10120f;
-      --ia-ink: #f3f5ef;
-      --ia-muted: #a9afa3;
-      --ia-line: #343a31;
-      --ia-signal-ink: #182000;
-      --ia-warning: #efb55e;
-      --ia-danger: #ff968a;
-      --ia-good: #8dd39d;
-      --ia-shadow: 0 18px 58px rgba(0, 0, 0, .52);
+      --insta-toolbox-surface: #151714;
+      --insta-toolbox-surface-raised: #1c1f1b;
+      --insta-toolbox-rail: #10120f;
+      --insta-toolbox-ink: #f3f5ef;
+      --insta-toolbox-muted: #a9afa3;
+      --insta-toolbox-line: #343a31;
+      --insta-toolbox-signal-ink: #ffffff;
+      --insta-toolbox-warning: #efb55e;
+      --insta-toolbox-danger: #ff968a;
+      --insta-toolbox-good: #8dd39d;
+      --insta-toolbox-shadow: 0 18px 58px rgba(0, 0, 0, .52);
       color-scheme: dark;
     }
 
-    :host([data-width="compact"]) { --ia-panel-width: 380px; }
-    :host([data-width="wide"]) { --ia-panel-width: 560px; }
-    :host([data-adaptive-width="reviewed-target"]) { --ia-panel-width: 380px; }
+    :host([data-width="compact"]) { --insta-toolbox-panel-width: 380px; }
+    :host([data-width="wide"]) { --insta-toolbox-panel-width: 560px; }
+    :host([data-adaptive-width="reviewed-target"]) { --insta-toolbox-panel-width: 380px; }
     :host([data-dock="left"]) {
-      --ia-panel-inline-start: max(14px, env(safe-area-inset-left));
-      --ia-panel-inline-end: auto;
+      --insta-toolbox-panel-inline-start: max(14px, env(safe-area-inset-left));
+      --insta-toolbox-panel-inline-end: auto;
     }
 
     *, *::before, *::after { box-sizing: border-box; }
     button, input, select, summary { font: inherit; }
     button, summary, label { -webkit-tap-highlight-color: transparent; }
-    button, summary, .ia-file-label { cursor: pointer; }
+    button, summary, .insta-toolbox-file-label { cursor: pointer; }
     svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
     [hidden] { display: none !important; }
 
-    .ia-launcher {
+    .insta-toolbox-launcher {
       position: fixed;
       z-index: 2147483000;
       right: max(14px, env(safe-area-inset-right));
@@ -70,268 +70,266 @@
       width: 44px;
       height: 44px;
       place-items: center;
-      border: 1px solid var(--ia-line);
+      border: 1px solid var(--insta-toolbox-line);
       border-radius: 12px;
-      background: var(--ia-surface-raised);
-      color: var(--ia-ink);
+      background: var(--insta-toolbox-surface-raised);
+      color: var(--insta-toolbox-ink);
       box-shadow: 0 8px 28px rgba(0, 0, 0, .18);
       font-weight: 800;
       transition: transform 140ms ease, box-shadow 140ms ease;
     }
-    :host([data-dock="left"]) .ia-launcher { right: auto; left: max(14px, env(safe-area-inset-left)); }
-    .ia-launcher:hover { transform: translateY(-1px); box-shadow: 0 10px 32px rgba(0, 0, 0, .22); }
-    .ia-launcher-mark { font-size: 15px; letter-spacing: -.03em; }
-    .ia-launcher-signal { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border: 2px solid var(--ia-surface-raised); border-radius: 50%; background: var(--ia-signal); }
+    :host([data-dock="left"]) .insta-toolbox-launcher { right: auto; left: max(14px, env(safe-area-inset-left)); }
+    .insta-toolbox-launcher:hover { transform: translateY(-1px); box-shadow: 0 10px 32px rgba(0, 0, 0, .22); }
+    .insta-toolbox-launcher-mark { font-size: 15px; letter-spacing: -.03em; }
+    .insta-toolbox-launcher-signal { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border: 2px solid var(--insta-toolbox-surface-raised); border-radius: 50%; background: var(--insta-toolbox-signal); }
 
-    .ia-panel {
+    .insta-toolbox-panel {
       position: fixed;
       z-index: 2147483000;
       top: max(54px, env(safe-area-inset-top));
-      left: var(--ia-panel-inline-start);
-      right: var(--ia-panel-inline-end);
-      width: min(var(--ia-panel-custom-width, var(--ia-panel-width)), calc(100vw - 28px - env(safe-area-inset-left) - env(safe-area-inset-right)));
-      height: var(--ia-panel-custom-height, auto);
+      left: var(--insta-toolbox-panel-inline-start);
+      right: var(--insta-toolbox-panel-inline-end);
+      width: min(var(--insta-toolbox-panel-custom-width, var(--insta-toolbox-panel-width)), calc(100vw - 28px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+      height: var(--insta-toolbox-panel-custom-height, auto);
       max-height: calc(100dvh - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
       overflow: hidden;
-      border: 1px solid var(--ia-line);
+      border: 1px solid var(--insta-toolbox-line);
       border-radius: 12px;
-      background: color-mix(in srgb, var(--ia-surface) var(--ia-panel-alpha), transparent);
-      color: var(--ia-ink);
-      box-shadow: var(--ia-shadow);
+      background: color-mix(in srgb, var(--insta-toolbox-surface) var(--insta-toolbox-panel-alpha), transparent);
+      color: var(--insta-toolbox-ink);
+      box-shadow: var(--insta-toolbox-shadow);
       backdrop-filter: blur(10px) saturate(.94);
       -webkit-backdrop-filter: blur(10px) saturate(.94);
       font-size: 14px;
       line-height: 1.45;
-      animation: ia-open 150ms cubic-bezier(.2, .8, .2, 1);
+      animation: insta-toolbox-open 150ms cubic-bezier(.2, .8, .2, 1);
     }
 
-    :host([data-layout="floating"]) .ia-panel {
-      top: var(--ia-panel-top);
+    :host([data-layout="floating"]) .insta-toolbox-panel {
+      top: var(--insta-toolbox-panel-top);
       right: auto;
-      left: var(--ia-panel-left);
+      left: var(--insta-toolbox-panel-left);
     }
 
-    .ia-shell { display: grid; height: 100%; max-height: inherit; grid-template-columns: 124px minmax(0, 1fr); }
-    .ia-rail { display: flex; min-height: 0; flex-direction: column; align-items: stretch; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--ia-line); background: color-mix(in srgb, var(--ia-rail) var(--ia-panel-alpha-strong), transparent); }
-    .ia-brand-mark { display: grid; width: 38px; height: 38px; margin-bottom: 8px; place-items: center; border-radius: 10px; background: var(--ia-ink); color: var(--ia-surface); font-weight: 800; }
-    .ia-tab { position: relative; display: grid; width: 100%; min-height: 44px; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 8px; border: 0; border-radius: 9px; padding: 8px; background: transparent; color: var(--ia-muted); text-align: left; }
-    .ia-tab-label { min-width: 0; overflow-wrap: break-word; font-size: 12px; font-weight: 650; line-height: 1.15; }
-    .ia-tab:hover { background: var(--ia-surface-raised); color: var(--ia-ink); }
-    .ia-tab[aria-selected="true"] { background: var(--ia-surface-raised); color: var(--ia-ink); box-shadow: inset 3px 0 0 var(--ia-signal); }
-    .ia-tab[data-ia-section="workspace"] { margin-top: auto; }
-    .ia-tab-signal { position: absolute; top: 7px; right: 6px; width: 7px; height: 7px; border: 2px solid var(--ia-rail); border-radius: 50%; background: var(--ia-signal); }
+    .insta-toolbox-shell { display: grid; height: 100%; max-height: inherit; grid-template-columns: 124px minmax(0, 1fr); }
+    .insta-toolbox-rail { display: flex; min-height: 0; flex-direction: column; align-items: stretch; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--insta-toolbox-line); background: color-mix(in srgb, var(--insta-toolbox-rail) var(--insta-toolbox-panel-alpha-strong), transparent); }
+    .insta-toolbox-brand-mark { display: grid; width: 38px; height: 38px; margin-bottom: 8px; place-items: center; border-radius: 10px; background: var(--insta-toolbox-ink); color: var(--insta-toolbox-surface); font-weight: 800; }
+    .insta-toolbox-tab { position: relative; display: grid; width: 100%; min-height: 44px; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 8px; border: 0; border-radius: 9px; padding: 8px; background: transparent; color: var(--insta-toolbox-muted); text-align: left; }
+    .insta-toolbox-tab-label { min-width: 0; overflow-wrap: break-word; font-size: 12px; font-weight: 650; line-height: 1.15; }
+    .insta-toolbox-tab:hover { background: var(--insta-toolbox-surface-raised); color: var(--insta-toolbox-ink); }
+    .insta-toolbox-tab[aria-selected="true"] { background: var(--insta-toolbox-surface-raised); color: var(--insta-toolbox-ink); box-shadow: inset 3px 0 0 var(--insta-toolbox-signal); }
+    .insta-toolbox-tab[data-insta-toolbox-section="workspace"] { margin-top: auto; }
+    .insta-toolbox-tab-signal { position: absolute; top: 7px; right: 6px; width: 7px; height: 7px; border: 2px solid var(--insta-toolbox-rail); border-radius: 50%; background: var(--insta-toolbox-signal); }
 
-    .ia-body { position: relative; display: grid; min-width: 0; min-height: 0; max-height: inherit; grid-template-rows: auto minmax(0, 1fr) auto auto; container: ia-body / inline-size; }
-    .ia-header { position: relative; z-index: 2; display: grid; min-height: 52px; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 4px 8px; border-bottom: 1px solid var(--ia-line); background: color-mix(in srgb, var(--ia-surface-raised) var(--ia-panel-alpha-strong), transparent); }
-    .ia-header-copy { min-width: 0; }
-    .ia-header h1 { margin: 0; overflow: hidden; color: var(--ia-ink); font-size: 16px; line-height: 1.2; letter-spacing: -.015em; text-overflow: ellipsis; white-space: nowrap; }
-    .ia-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
-    .ia-icon-button, .ia-settings summary { display: grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--ia-ink); list-style: none; }
-    .ia-move-handle { min-width: 44px; padding: 0; cursor: grab; touch-action: none; }
-    :host([data-layout-interaction="move"]) .ia-move-handle { cursor: grabbing; }
-    .ia-settings summary::-webkit-details-marker { display: none; }
-    .ia-icon-button:hover, .ia-settings summary:hover, .ia-settings[open] summary { background: var(--ia-surface); }
-    .ia-settings { position: relative; }
-    .ia-settings-panel { position: absolute; z-index: 5; top: 48px; right: 0; display: grid; width: 260px; max-height: min(520px, calc(100dvh - 92px)); overflow: auto; gap: 12px; padding: 14px; border: 1px solid var(--ia-line); border-radius: 10px; background: color-mix(in srgb, var(--ia-surface-raised) 96%, transparent); box-shadow: var(--ia-shadow); }
-    .ia-settings:not([open]) .ia-settings-panel { display: none; }
-    .ia-settings-panel strong { font-size: 13px; }
-    .ia-field { display: grid; gap: 5px; }
-    .ia-field label { color: var(--ia-muted); font-size: 12px; }
-    .ia-select, .ia-text-input { min-height: 44px; width: 100%; border: 1px solid var(--ia-line); border-radius: 8px; padding: 8px 10px; background: var(--ia-surface-raised); color: var(--ia-ink); }
-    .ia-range-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-    .ia-range { width: 100%; accent-color: var(--ia-good); }
-    .ia-range-output { min-width: 40px; color: var(--ia-muted); font-variant-numeric: tabular-nums; text-align: right; }
+    .insta-toolbox-body { position: relative; display: grid; min-width: 0; min-height: 0; max-height: inherit; grid-template-rows: auto minmax(0, 1fr) auto auto; container: insta-toolbox-body / inline-size; }
+    .insta-toolbox-header { position: relative; z-index: 2; display: grid; min-height: 52px; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 4px 8px; border-bottom: 1px solid var(--insta-toolbox-line); background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); }
+    .insta-toolbox-header-copy { min-width: 0; }
+    .insta-toolbox-header h1 { margin: 0; overflow: hidden; color: var(--insta-toolbox-ink); font-size: 16px; line-height: 1.2; letter-spacing: -.015em; text-overflow: ellipsis; white-space: nowrap; }
+    .insta-toolbox-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+    .insta-toolbox-icon-button, .insta-toolbox-settings summary { display: grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--insta-toolbox-ink); list-style: none; }
+    .insta-toolbox-move-handle { min-width: 44px; padding: 0; cursor: grab; touch-action: none; }
+    :host([data-layout-interaction="move"]) .insta-toolbox-move-handle { cursor: grabbing; }
+    .insta-toolbox-settings summary::-webkit-details-marker { display: none; }
+    .insta-toolbox-icon-button:hover, .insta-toolbox-settings summary:hover, .insta-toolbox-settings[open] summary { background: var(--insta-toolbox-surface); }
+    .insta-toolbox-settings { position: relative; }
+    .insta-toolbox-settings-panel { position: absolute; z-index: 5; top: 48px; right: 0; display: grid; width: 260px; max-height: min(520px, calc(100dvh - 92px)); overflow: auto; gap: 12px; padding: 14px; border: 1px solid var(--insta-toolbox-line); border-radius: 10px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) 96%, transparent); box-shadow: var(--insta-toolbox-shadow); }
+    .insta-toolbox-settings:not([open]) .insta-toolbox-settings-panel { display: none; }
+    .insta-toolbox-settings-panel strong { font-size: 13px; }
+    .insta-toolbox-field { display: grid; gap: 5px; }
+    .insta-toolbox-field label { color: var(--insta-toolbox-muted); font-size: 12px; }
+    .insta-toolbox-select, .insta-toolbox-text-input { min-height: 44px; width: 100%; border: 1px solid var(--insta-toolbox-line); border-radius: 8px; padding: 8px 10px; background: var(--insta-toolbox-surface-raised); color: var(--insta-toolbox-ink); }
+    .insta-toolbox-range-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+    .insta-toolbox-range { width: 100%; accent-color: var(--insta-toolbox-signal); }
+    .insta-toolbox-range-output { min-width: 40px; color: var(--insta-toolbox-muted); font-variant-numeric: tabular-nums; text-align: right; }
 
-    .ia-scroll { min-height: 0; overflow: auto; padding-bottom: 10px; overscroll-behavior: contain; scrollbar-color: var(--ia-muted) var(--ia-surface); }
-    .ia-view { padding: 16px; }
-    :host([data-density="compact"]) .ia-view { padding: 12px; }
-    .ia-view[role="tabpanel"]:focus { outline: none; }
-    .ia-view[role="tabpanel"]:focus-visible { outline: 3px solid var(--ia-focus); outline-offset: -3px; }
+    .insta-toolbox-scroll { min-height: 0; overflow: auto; padding-bottom: 10px; overscroll-behavior: contain; scrollbar-color: var(--insta-toolbox-muted) var(--insta-toolbox-surface); }
+    .insta-toolbox-view { padding: 16px; }
+    :host([data-density="compact"]) .insta-toolbox-view { padding: 12px; }
+    .insta-toolbox-view[role="tabpanel"]:focus { outline: none; }
+    .insta-toolbox-view[role="tabpanel"]:focus-visible { outline: 3px solid var(--insta-toolbox-focus); outline-offset: -3px; }
 
-    .ia-state-row { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 14px; }
-    .ia-state-dot { width: 8px; height: 8px; flex: 0 0 auto; margin-top: 5px; border: 1px solid color-mix(in srgb, var(--ia-signal) 55%, var(--ia-ink)); border-radius: 50%; background: var(--ia-signal); }
-    .ia-state-row[data-tone="warning"] .ia-state-dot { background: var(--ia-warning); }
-    .ia-state-row[data-tone="danger"] .ia-state-dot { background: var(--ia-danger); }
-    .ia-state-row strong, .ia-state-row span { display: block; }
-    .ia-state-row strong { font-size: 13px; }
-    .ia-state-row span { margin-top: 2px; color: var(--ia-muted); font-size: 12px; }
+    .insta-toolbox-state-row { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 14px; }
+    .insta-toolbox-state-dot { width: 8px; height: 8px; flex: 0 0 auto; margin-top: 5px; border: 1px solid color-mix(in srgb, var(--insta-toolbox-muted) 55%, var(--insta-toolbox-ink)); border-radius: 50%; background: var(--insta-toolbox-muted); }
+    .insta-toolbox-state-row[data-tone="good"] .insta-toolbox-state-dot { background: var(--insta-toolbox-good); }
+    .insta-toolbox-state-row[data-tone="warning"] .insta-toolbox-state-dot { background: var(--insta-toolbox-warning); }
+    .insta-toolbox-state-row[data-tone="danger"] .insta-toolbox-state-dot { background: var(--insta-toolbox-danger); }
+    .insta-toolbox-collision-strip .insta-toolbox-state-dot { border-color: color-mix(in srgb, var(--insta-toolbox-signal) 55%, var(--insta-toolbox-ink)); background: var(--insta-toolbox-signal); }
+    .insta-toolbox-state-row strong, .insta-toolbox-state-row span { display: block; }
+    .insta-toolbox-state-row strong { font-size: 13px; }
+    .insta-toolbox-state-row span { margin-top: 2px; color: var(--insta-toolbox-muted); font-size: 12px; }
 
-    .ia-card { border: 1px solid var(--ia-line); border-radius: 10px; background: color-mix(in srgb, var(--ia-surface-raised) var(--ia-panel-alpha-strong), transparent); }
-    .ia-card-pad { padding: 14px; }
-    .ia-target-top { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 8px 10px; align-items: center; padding: 14px; }
-    .ia-target-top > .ia-badge { grid-column: 2; justify-self: start; }
-    .ia-target-avatar { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 9px; background: var(--ia-rail); color: var(--ia-muted); font-size: 12px; font-weight: 700; }
-    .ia-target-top h2 { margin: 0; overflow-wrap: break-word; word-break: normal; font-size: 17px; line-height: 1.2; }
-    .ia-target-top p { margin: 3px 0 0; color: var(--ia-muted); font-size: 12px; }
-    .ia-badge { display: inline-flex; min-height: 26px; align-items: center; border: 1px solid var(--ia-line); border-radius: 999px; padding: 3px 8px; color: var(--ia-muted); font-size: 11px; font-weight: 650; }
-    .ia-badge[data-tone="good"] { border-color: var(--ia-good); color: var(--ia-good); }
-    .ia-badge[data-tone="warning"] { border-color: var(--ia-warning); color: var(--ia-warning); }
-    .ia-badge[data-tone="danger"] { border-color: var(--ia-danger); color: var(--ia-danger); }
-    .ia-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--ia-line); }
-    .ia-facts > div { padding: 11px 14px; }
-    .ia-facts > div + div { border-left: 1px solid var(--ia-line); }
-    .ia-facts dt { color: var(--ia-muted); font-size: 12px; }
-    .ia-facts dd { margin: 3px 0 0; overflow-wrap: break-word; word-break: normal; font-size: 13px; font-weight: 650; }
+    .insta-toolbox-card { border: 1px solid var(--insta-toolbox-line); border-radius: 10px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); }
+    .insta-toolbox-card-pad { padding: 14px; }
+    .insta-toolbox-target-top { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 8px 10px; align-items: center; padding: 14px; }
+    .insta-toolbox-target-top > .insta-toolbox-badge { grid-column: 2; justify-self: start; }
+    .insta-toolbox-target-avatar { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 9px; background: var(--insta-toolbox-rail); color: var(--insta-toolbox-muted); font-size: 12px; font-weight: 700; }
+    .insta-toolbox-target-top h2 { margin: 0; overflow-wrap: break-word; word-break: normal; font-size: 17px; line-height: 1.2; }
+    .insta-toolbox-target-top p { margin: 3px 0 0; color: var(--insta-toolbox-muted); font-size: 12px; }
+    .insta-toolbox-badge { display: inline-flex; min-height: 26px; align-items: center; border: 1px solid var(--insta-toolbox-line); border-radius: 999px; padding: 3px 8px; color: var(--insta-toolbox-muted); font-size: 11px; font-weight: 650; }
+    .insta-toolbox-badge[data-tone="good"] { border-color: var(--insta-toolbox-good); color: var(--insta-toolbox-good); }
+    .insta-toolbox-badge[data-tone="warning"] { border-color: var(--insta-toolbox-warning); color: var(--insta-toolbox-warning); }
+    .insta-toolbox-badge[data-tone="danger"] { border-color: var(--insta-toolbox-danger); color: var(--insta-toolbox-danger); }
+    .insta-toolbox-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--insta-toolbox-line); }
+    .insta-toolbox-facts > div { padding: 11px 14px; }
+    .insta-toolbox-facts > div + div { border-left: 1px solid var(--insta-toolbox-line); }
+    .insta-toolbox-facts dt { color: var(--insta-toolbox-muted); font-size: 12px; }
+    .insta-toolbox-facts dd { margin: 3px 0 0; overflow-wrap: break-word; word-break: normal; font-size: 13px; font-weight: 650; }
 
-    .ia-next { display: grid; gap: 13px; margin-top: 14px; padding: 14px; border-radius: 10px; background: var(--ia-rail); }
-    .ia-next-label { margin: 0; color: var(--ia-muted); font-size: 12px; }
-    .ia-next h2, .ia-next h3 { margin: 3px 0 0; font-size: 16px; }
-    .ia-next p:last-child { margin: 5px 0 0; color: var(--ia-muted); font-size: 12px; }
+    .insta-toolbox-next { display: grid; gap: 13px; margin-top: 14px; padding: 14px; border-radius: 10px; background: var(--insta-toolbox-rail); }
+    .insta-toolbox-next-label { margin: 0; color: var(--insta-toolbox-muted); font-size: 12px; }
+    .insta-toolbox-next h2, .insta-toolbox-next h3 { margin: 3px 0 0; font-size: 16px; }
+    .insta-toolbox-next p:last-child { margin: 5px 0 0; color: var(--insta-toolbox-muted); font-size: 12px; }
 
-    .ia-tool-heading { margin: 18px 0 8px; font-size: 13px; }
-    .ia-tool-grid { display: grid; gap: 8px; }
-    .ia-tool-card { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid var(--ia-line); border-radius: 10px; padding: 12px; background: color-mix(in srgb, var(--ia-surface-raised) var(--ia-panel-alpha-strong), transparent); color: var(--ia-ink); text-align: left; }
-    .ia-tool-card:hover { border-color: var(--ia-muted); }
-    .ia-tool-card strong, .ia-tool-card span { display: block; }
-    .ia-tool-card span { margin-top: 3px; color: var(--ia-muted); font-size: 12px; }
-    .ia-tool-card em { color: var(--ia-good); font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
+    .insta-toolbox-tool-heading { margin: 18px 0 8px; font-size: 13px; }
+    .insta-toolbox-tool-grid { display: grid; gap: 8px; }
+    .insta-toolbox-tool-card { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid var(--insta-toolbox-line); border-radius: 10px; padding: 12px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); color: var(--insta-toolbox-ink); text-align: left; }
+    .insta-toolbox-tool-card:hover { border-color: var(--insta-toolbox-muted); }
+    .insta-toolbox-tool-card strong, .insta-toolbox-tool-card span { display: block; }
+    .insta-toolbox-tool-card span { margin-top: 3px; color: var(--insta-toolbox-muted); font-size: 12px; }
+    .insta-toolbox-tool-card em { color: var(--insta-toolbox-muted); font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
 
-    .ia-first-run { margin-bottom: 14px; padding: 14px; border: 1px solid var(--ia-line); border-left: 3px solid var(--ia-signal); border-radius: 10px; background: color-mix(in srgb, var(--ia-surface-raised) var(--ia-panel-alpha-strong), transparent); }
-    .ia-first-run h2 { margin: 0; font-size: 17px; }
-    .ia-first-run > p { margin: 5px 0 0; color: var(--ia-muted); font-size: 12px; }
-    .ia-first-run ol { display: grid; gap: 8px; margin: 12px 0 0; padding-left: 22px; }
-    .ia-first-run li { padding-left: 3px; font-size: 13px; }
-    .ia-first-run li span { display: block; margin-top: 2px; color: var(--ia-muted); font-size: 12px; }
+    .insta-toolbox-first-run { margin-bottom: 14px; padding: 14px; border: 1px solid var(--insta-toolbox-line); border-radius: 10px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); }
+    .insta-toolbox-first-run h2 { margin: 0; font-size: 17px; }
+    .insta-toolbox-first-run > p { max-width: 42ch; margin: 5px 0 0; color: var(--insta-toolbox-muted); font-size: 12px; }
 
-    .ia-checker-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
-    .ia-checker-metric { padding: 11px; border: 1px solid var(--ia-line); border-radius: 9px; background: color-mix(in srgb, var(--ia-surface-raised) var(--ia-panel-alpha-strong), transparent); }
-    .ia-checker-metric span, .ia-checker-metric strong { display: block; }
-    .ia-checker-metric span { color: var(--ia-muted); font-size: 12px; }
-    .ia-checker-metric strong { margin-top: 2px; font-size: 20px; }
-    .ia-checker-result { margin-top: 12px; padding: 12px; border: 1px solid var(--ia-line); border-radius: 9px; background: color-mix(in srgb, var(--ia-rail) var(--ia-panel-alpha-strong), transparent); }
-    .ia-checker-result h2 { margin: 0 0 7px; font-size: 14px; }
-    .ia-checker-result dl { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; margin: 0; }
-    .ia-checker-result dt { color: var(--ia-muted); font-size: 12px; }
-    .ia-checker-result dd { margin: 0; font-weight: 700; }
-    .ia-checker-browser { margin-top: 12px; }
-    .ia-filter-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-    .ia-checker-browser .ia-count { margin-top: 12px; }
-    .ia-checker-browser .ia-list { max-height: 260px; overflow: auto; }
-    .ia-flow { display: grid; gap: 8px; margin-top: 12px; }
-    .ia-flow-step { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 10px; border: 1px solid var(--ia-line); border-radius: 9px; background: color-mix(in srgb, var(--ia-surface-raised) var(--ia-panel-alpha-strong), transparent); }
-    .ia-flow-step-number { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: var(--ia-rail); color: var(--ia-muted); font-size: 12px; font-weight: 700; }
-    .ia-flow-step-copy { min-width: 0; }
-    .ia-flow-step-copy strong, .ia-flow-step-copy span { display: block; }
-    .ia-flow-step-copy strong { font-size: 13px; }
-    .ia-flow-step-copy span { margin-top: 2px; color: var(--ia-muted); font-size: 12px; overflow-wrap: break-word; word-break: normal; }
-    .ia-run-review { margin-top: 12px; padding: 12px; border: 1px solid var(--ia-line); border-radius: 9px; background: var(--ia-rail); }
-    .ia-run-review > strong { display: block; font-size: 13px; }
-    .ia-run-review .ia-list { margin-top: 8px; }
-    .ia-primary-action { margin-top: 12px; padding: 14px; border: 1px solid var(--ia-line); border-radius: 10px; background: color-mix(in srgb, var(--ia-surface-raised) var(--ia-panel-alpha-strong), transparent); }
-    .ia-primary-action .ia-gate-summary { justify-content: space-between; }
-    .ia-primary-action .ia-gate-summary > span:first-child > strong,
-    .ia-primary-action .ia-gate-summary > span:first-child > .ia-note { display: block; }
-    .ia-primary-action .ia-gate-summary > span:first-child > .ia-note { margin-top: 3px; }
-    .ia-primary-action .ia-gate-detail { margin-top: 8px; }
-    .ia-primary-action .ia-button--danger { width: 100%; }
+    .insta-toolbox-checker-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+    .insta-toolbox-checker-metric { padding: 11px; border: 1px solid var(--insta-toolbox-line); border-radius: 9px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); }
+    .insta-toolbox-checker-metric span, .insta-toolbox-checker-metric strong { display: block; }
+    .insta-toolbox-checker-metric span { color: var(--insta-toolbox-muted); font-size: 12px; }
+    .insta-toolbox-checker-metric strong { margin-top: 2px; font-size: 20px; }
+    .insta-toolbox-checker-result { margin-top: 12px; padding: 12px; border: 1px solid var(--insta-toolbox-line); border-radius: 9px; background: color-mix(in srgb, var(--insta-toolbox-rail) var(--insta-toolbox-panel-alpha-strong), transparent); }
+    .insta-toolbox-checker-result h2 { margin: 0 0 7px; font-size: 14px; }
+    .insta-toolbox-checker-result dl { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; margin: 0; }
+    .insta-toolbox-checker-result dt { color: var(--insta-toolbox-muted); font-size: 12px; }
+    .insta-toolbox-checker-result dd { margin: 0; font-weight: 700; }
+    .insta-toolbox-checker-browser { margin-top: 12px; }
+    .insta-toolbox-filter-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+    .insta-toolbox-checker-browser .insta-toolbox-count { margin-top: 12px; }
+    .insta-toolbox-checker-browser .insta-toolbox-list { max-height: 260px; overflow: auto; }
+    .insta-toolbox-flow { display: grid; gap: 8px; margin-top: 12px; }
+    .insta-toolbox-flow-step { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 10px; border: 1px solid var(--insta-toolbox-line); border-radius: 9px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); }
+    .insta-toolbox-flow-step-number { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: var(--insta-toolbox-rail); color: var(--insta-toolbox-muted); font-size: 12px; font-weight: 700; }
+    .insta-toolbox-flow-step-copy { min-width: 0; }
+    .insta-toolbox-flow-step-copy strong, .insta-toolbox-flow-step-copy span { display: block; }
+    .insta-toolbox-flow-step-copy strong { font-size: 13px; }
+    .insta-toolbox-flow-step-copy span { margin-top: 2px; color: var(--insta-toolbox-muted); font-size: 12px; overflow-wrap: break-word; word-break: normal; }
+    .insta-toolbox-run-review { margin-top: 12px; padding: 12px; border: 1px solid var(--insta-toolbox-line); border-radius: 9px; background: var(--insta-toolbox-rail); }
+    .insta-toolbox-run-review > strong { display: block; font-size: 13px; }
+    .insta-toolbox-run-review .insta-toolbox-list { margin-top: 8px; }
+    .insta-toolbox-primary-action { margin-top: 12px; padding: 14px; border: 1px solid var(--insta-toolbox-line); border-radius: 10px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); }
+    .insta-toolbox-primary-action .insta-toolbox-gate-summary { justify-content: space-between; }
+    .insta-toolbox-primary-action .insta-toolbox-gate-summary > span:first-child > strong,
+    .insta-toolbox-primary-action .insta-toolbox-gate-summary > span:first-child > .insta-toolbox-note { display: block; }
+    .insta-toolbox-primary-action .insta-toolbox-gate-summary > span:first-child > .insta-toolbox-note { margin-top: 3px; }
+    .insta-toolbox-primary-action .insta-toolbox-gate-detail { margin-top: 8px; }
+    .insta-toolbox-primary-action .insta-toolbox-button--danger { width: 100%; }
 
-    .ia-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    .ia-button, .ia-link-button, .ia-file-label { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--ia-line); border-radius: 8px; padding: 9px 12px; background: var(--ia-ink); color: var(--ia-surface); font-size: 14px; font-weight: 700; line-height: 1.2; text-decoration: none; }
-    .ia-button:hover, .ia-link-button:hover, .ia-file-label:hover { filter: brightness(.92); }
-    .ia-button--quiet, .ia-link-button--quiet, .ia-file-label--quiet { background: var(--ia-surface-raised); color: var(--ia-ink); }
-    .ia-button--danger { border-color: var(--ia-danger); background: var(--ia-danger); color: #fff; }
-    .ia-button:disabled, .ia-link-button[aria-disabled="true"] { cursor: not-allowed; filter: none; opacity: .5; }
-    .ia-file-label { position: relative; overflow: hidden; }
-    .ia-file-label input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
+    .insta-toolbox-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .insta-toolbox-button, .insta-toolbox-link-button, .insta-toolbox-file-label { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--insta-toolbox-line); border-radius: 8px; padding: 9px 12px; background: var(--insta-toolbox-ink); color: var(--insta-toolbox-surface); font-size: 14px; font-weight: 700; line-height: 1.2; text-decoration: none; }
+    .insta-toolbox-button:hover, .insta-toolbox-link-button:hover, .insta-toolbox-file-label:hover { filter: brightness(.92); }
+    .insta-toolbox-button--quiet, .insta-toolbox-link-button--quiet, .insta-toolbox-file-label--quiet { background: var(--insta-toolbox-surface-raised); color: var(--insta-toolbox-ink); }
+    .insta-toolbox-button--danger { border-color: var(--insta-toolbox-danger); background: var(--insta-toolbox-danger); color: #fff; }
+    .insta-toolbox-button:disabled, .insta-toolbox-link-button[aria-disabled="true"] { cursor: not-allowed; filter: none; opacity: .5; }
+    .insta-toolbox-file-label { position: relative; overflow: hidden; }
+    .insta-toolbox-file-label input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
 
-    .ia-count { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 14px 0 8px; }
-    .ia-count strong { font-size: 26px; line-height: 1; }
-    .ia-count span { color: var(--ia-muted); font-size: 12px; text-align: right; }
-    .ia-list, .ia-fragments { display: grid; gap: 0; margin: 0; padding: 0; border-top: 1px solid var(--ia-line); list-style: none; }
-    .ia-list-item, .ia-fragments li { padding: 10px 0; border-bottom: 1px solid var(--ia-line); }
-    .ia-list-item strong, .ia-list-item small { display: block; }
-    .ia-list-item strong { overflow-wrap: anywhere; font-size: 13px; }
-    .ia-list-item small { margin-top: 2px; color: var(--ia-muted); font-size: 12px; overflow-wrap: anywhere; }
-    .ia-list-item--split { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
-    .ia-empty { padding: 14px 0; color: var(--ia-muted); font-size: 12px; }
-    .ia-note { margin: 10px 0 0; color: var(--ia-muted); font-size: 12px; }
+    .insta-toolbox-count { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 14px 0 8px; }
+    .insta-toolbox-count strong { font-size: 26px; line-height: 1; }
+    .insta-toolbox-count span { color: var(--insta-toolbox-muted); font-size: 12px; text-align: right; }
+    .insta-toolbox-list, .insta-toolbox-fragments { display: grid; gap: 0; margin: 0; padding: 0; border-top: 1px solid var(--insta-toolbox-line); list-style: none; }
+    .insta-toolbox-list-item, .insta-toolbox-fragments li { padding: 10px 0; border-bottom: 1px solid var(--insta-toolbox-line); }
+    .insta-toolbox-list-item strong, .insta-toolbox-list-item small { display: block; }
+    .insta-toolbox-list-item strong { overflow-wrap: anywhere; font-size: 13px; }
+    .insta-toolbox-list-item small { margin-top: 2px; color: var(--insta-toolbox-muted); font-size: 12px; overflow-wrap: anywhere; }
+    .insta-toolbox-list-item--split { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+    .insta-toolbox-empty { padding: 14px 0; color: var(--insta-toolbox-muted); font-size: 12px; }
+    .insta-toolbox-note { margin: 10px 0 0; color: var(--insta-toolbox-muted); font-size: 12px; }
 
-    .ia-batch-panel { padding: 12px 16px; border-top: 1px solid var(--ia-line); background: var(--ia-surface-raised, transparent); }
-    .ia-batch-panel .ia-state-row { margin-bottom: 8px; align-items: center; }
-    .ia-batch-panel .ia-state-row > div { flex: 1 1 auto; min-width: 0; }
-    .ia-progress { overflow: hidden; height: 6px; border-radius: 999px; background: var(--ia-line); }
-    .ia-progress-bar { display: block; width: 0%; height: 100%; border-radius: 999px; background: var(--ia-signal); transition: width 240ms ease; }
-    .ia-list--compact { max-height: 148px; overflow-y: auto; margin-top: 10px; }
-    .ia-list--compact .ia-list-item { padding: 6px 0; }
-    .ia-list--compact .ia-list-item[data-status="completed"] strong { color: var(--ia-good, inherit); }
-    .ia-list--compact .ia-list-item[data-status="failed"] strong,
-    .ia-list--compact .ia-list-item[data-status="stopped"] strong { color: var(--ia-danger); }
-    @media (prefers-reduced-motion: reduce) { .ia-progress-bar { transition: none; } }
+    .insta-toolbox-batch-panel { padding: 12px 16px; border-top: 1px solid var(--insta-toolbox-line); background: var(--insta-toolbox-surface-raised, transparent); }
+    .insta-toolbox-batch-panel .insta-toolbox-state-row { margin-bottom: 8px; align-items: center; }
+    .insta-toolbox-batch-panel .insta-toolbox-state-row > div { flex: 1 1 auto; min-width: 0; }
+    .insta-toolbox-progress { overflow: hidden; height: 6px; border-radius: 999px; background: var(--insta-toolbox-line); }
+    .insta-toolbox-progress-bar { display: block; width: 0%; height: 100%; border-radius: 999px; background: var(--insta-toolbox-signal); transition: width 240ms ease; }
+    .insta-toolbox-list--compact { max-height: 148px; overflow-y: auto; margin-top: 10px; }
+    .insta-toolbox-list--compact .insta-toolbox-list-item { padding: 6px 0; }
+    .insta-toolbox-list--compact .insta-toolbox-list-item[data-status="completed"] strong { color: var(--insta-toolbox-good, inherit); }
+    .insta-toolbox-list--compact .insta-toolbox-list-item[data-status="failed"] strong,
+    .insta-toolbox-list--compact .insta-toolbox-list-item[data-status="stopped"] strong { color: var(--insta-toolbox-danger); }
+    @media (prefers-reduced-motion: reduce) { .insta-toolbox-progress-bar { transition: none; } }
 
-    .ia-disclosure { margin-top: 12px; border-top: 1px solid var(--ia-line); }
-    .ia-disclosure > summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; color: var(--ia-ink); font-size: 13px; list-style: none; }
-    .ia-disclosure > summary::-webkit-details-marker { display: none; }
-    .ia-disclosure > summary::after { content: "+"; color: var(--ia-muted); font-size: 16px; }
-    .ia-disclosure[open] > summary::after { content: "−"; }
-    .ia-disclosure-body { padding: 0 0 13px; }
-    .ia-gate[open] { margin-top: 14px; padding: 0 14px; border: 1px solid var(--ia-line); border-radius: 10px; background: var(--ia-surface-raised); }
-    .ia-gate[open] > summary { min-height: 50px; }
-    .ia-gate-summary { display: flex; min-width: 0; align-items: center; gap: 8px; }
-    .ia-gate-summary strong { overflow-wrap: anywhere; }
-    .ia-gate-detail { margin: 0; color: var(--ia-muted); font-size: 12px; }
+    .insta-toolbox-disclosure { margin-top: 12px; border-top: 1px solid var(--insta-toolbox-line); }
+    .insta-toolbox-disclosure > summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; color: var(--insta-toolbox-ink); font-size: 13px; list-style: none; }
+    .insta-toolbox-disclosure > summary::-webkit-details-marker { display: none; }
+    .insta-toolbox-disclosure > summary::after { content: "+"; color: var(--insta-toolbox-muted); font-size: 16px; }
+    .insta-toolbox-disclosure[open] > summary::after { content: "−"; }
+    .insta-toolbox-disclosure-body { padding: 0 0 13px; }
+    .insta-toolbox-gate[open] { margin-top: 14px; padding: 0 14px; border: 1px solid var(--insta-toolbox-line); border-radius: 10px; background: var(--insta-toolbox-surface-raised); }
+    .insta-toolbox-gate[open] > summary { min-height: 50px; }
+    .insta-toolbox-gate-summary { display: flex; min-width: 0; align-items: center; gap: 8px; }
+    .insta-toolbox-gate-summary strong { overflow-wrap: anywhere; }
+    .insta-toolbox-gate-detail { margin: 0; color: var(--insta-toolbox-muted); font-size: 12px; }
 
-    .ia-message-row { max-width: 88%; margin: 9px 0; padding: 10px 12px; border: 1px solid var(--ia-line); border-radius: 12px 12px 12px 4px; background: var(--ia-surface-raised); white-space: pre-wrap; overflow-wrap: anywhere; }
-    .ia-message-row[data-ownership="sent"] { margin-left: auto; border-radius: 12px 12px 4px; background: var(--ia-rail); }
-    .ia-message-meta { margin-top: 4px; color: var(--ia-muted); font-size: 12px; }
+    .insta-toolbox-message-row { max-width: 88%; margin: 9px 0; padding: 10px 12px; border: 1px solid var(--insta-toolbox-line); border-radius: 12px 12px 12px 4px; background: var(--insta-toolbox-surface-raised); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .insta-toolbox-message-row[data-ownership="sent"] { margin-left: auto; border-radius: 12px 12px 4px; background: var(--insta-toolbox-rail); }
+    .insta-toolbox-message-meta { margin-top: 4px; color: var(--insta-toolbox-muted); font-size: 12px; }
 
-    .ia-operational-status { position: relative; z-index: 3; display: flex; min-height: 28px; max-height: 44px; margin: 0 50px 0 8px; align-items: center; gap: 5px; overflow: hidden; border: 1px solid var(--ia-line); border-radius: 8px; padding: 5px 8px; background: color-mix(in srgb, var(--ia-surface-raised) 96%, transparent); color: var(--ia-muted); font-size: 11px; line-height: 1.25; pointer-events: none; }
-    .ia-operational-status strong { flex: 0 0 auto; color: var(--ia-ink); font-size: inherit; }
-    .ia-operational-status[data-tone="good"] { border-color: color-mix(in srgb, var(--ia-good) 52%, var(--ia-line)); }
-    .ia-operational-status[data-tone="error"] { border-color: color-mix(in srgb, var(--ia-danger) 62%, var(--ia-line)); }
-    .ia-status-message { display: -webkit-box; min-width: 0; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-    .ia-credit { display: flex; min-height: 27px; align-items: center; padding: 3px 50px 3px 12px; border-top: 1px solid var(--ia-line); background: color-mix(in srgb, var(--ia-surface-raised) var(--ia-panel-alpha-strong), transparent); color: var(--ia-muted); font-size: 10px; line-height: 1.2; }
-    .ia-credit-link { color: inherit; text-decoration: none; }
-    .ia-credit-link:hover { color: var(--ia-ink); text-decoration: underline; text-underline-offset: 2px; }
+    .insta-toolbox-operational-status { position: absolute; z-index: 6; right: 8px; bottom: 31px; left: 8px; display: flex; min-height: 36px; max-height: 52px; align-items: center; gap: 5px; overflow: hidden; border: 1px solid var(--insta-toolbox-line); border-radius: 8px; padding: 7px 9px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) 98%, transparent); color: var(--insta-toolbox-muted); box-shadow: 0 6px 20px rgba(0, 0, 0, .16); font-size: 11px; line-height: 1.25; pointer-events: none; }
+    .insta-toolbox-operational-status strong { flex: 0 0 auto; color: var(--insta-toolbox-ink); font-size: inherit; }
+    .insta-toolbox-operational-status[data-tone="good"] { border-color: color-mix(in srgb, var(--insta-toolbox-good) 52%, var(--insta-toolbox-line)); }
+    .insta-toolbox-operational-status[data-tone="error"] { border-color: color-mix(in srgb, var(--insta-toolbox-danger) 62%, var(--insta-toolbox-line)); }
+    .insta-toolbox-status-message { display: -webkit-box; min-width: 0; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    .insta-toolbox-credit { display: flex; min-height: 27px; align-items: center; padding: 3px 50px 3px 12px; border-top: 1px solid var(--insta-toolbox-line); background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); color: var(--insta-toolbox-muted); font-size: 10px; line-height: 1.2; }
+    .insta-toolbox-credit-link { color: inherit; text-decoration: none; }
+    .insta-toolbox-credit-link:hover { color: var(--insta-toolbox-ink); text-decoration: underline; text-underline-offset: 2px; }
 
-    .ia-dialog { width: min(420px, calc(100vw - 28px)); border: 1px solid var(--ia-line); border-radius: 12px; padding: 0; background: var(--ia-surface-raised); color: var(--ia-ink); box-shadow: var(--ia-shadow); }
-    .ia-dialog::backdrop { background: rgba(0, 0, 0, .58); }
-    .ia-dialog form { display: grid; gap: 14px; padding: 18px; }
-    .ia-dialog h2 { margin: 0; font-size: 20px; }
-    .ia-dialog p { margin: 0; color: var(--ia-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; white-space: pre-line; }
-    .ia-dialog dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 13px; line-height: 19px; }
-    .ia-dialog dt { color: var(--ia-muted); font-weight: 700; }
-    .ia-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
-    .ia-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--ia-line); border-radius: 8px; font-size: 13px; line-height: 19px; }
-    .ia-dialog code { display: block; padding: 10px; border: 1px solid var(--ia-line); border-radius: 8px; background: var(--ia-surface); color: var(--ia-ink); overflow-wrap: anywhere; font-size: 13px; }
-    .ia-dialog .ia-toolbar { justify-content: flex-end; }
+    .insta-toolbox-dialog { width: min(420px, calc(100vw - 28px)); border: 1px solid var(--insta-toolbox-line); border-radius: 12px; padding: 0; background: var(--insta-toolbox-surface-raised); color: var(--insta-toolbox-ink); box-shadow: var(--insta-toolbox-shadow); }
+    .insta-toolbox-dialog::backdrop { background: rgba(0, 0, 0, .58); }
+    .insta-toolbox-dialog form { display: grid; gap: 14px; padding: 18px; }
+    .insta-toolbox-dialog h2 { margin: 0; font-size: 20px; }
+    .insta-toolbox-dialog p { margin: 0; color: var(--insta-toolbox-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; white-space: pre-line; }
+    .insta-toolbox-dialog dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 13px; line-height: 19px; }
+    .insta-toolbox-dialog dt { color: var(--insta-toolbox-muted); font-weight: 700; }
+    .insta-toolbox-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+    .insta-toolbox-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line); border-radius: 8px; font-size: 13px; line-height: 19px; }
+    .insta-toolbox-dialog code { display: block; padding: 10px; border: 1px solid var(--insta-toolbox-line); border-radius: 8px; background: var(--insta-toolbox-surface); color: var(--insta-toolbox-ink); overflow-wrap: anywhere; font-size: 13px; }
+    .insta-toolbox-dialog .insta-toolbox-toolbar { justify-content: flex-end; }
 
-    .ia-collision-strip { position: fixed; z-index: 2147483000; display: flex; min-height: 52px; width: min(320px, calc(100vw - 28px)); align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--ia-line); border-radius: 12px; background: var(--ia-surface-raised); color: var(--ia-ink); box-shadow: var(--ia-shadow); font-size: 12px; }
-    .ia-collision-copy { min-width: 0; }
-    .ia-collision-copy strong, .ia-collision-copy span { display: block; overflow-wrap: anywhere; }
-    .ia-collision-copy span { margin-top: 1px; color: var(--ia-muted); }
-    .ia-collision-strip .ia-button { min-height: 36px; margin-left: auto; padding: 6px 9px; font-size: 12px; }
-    :host([data-collision="active"]) .ia-panel, :host([data-collision="active"]) .ia-launcher { display: none !important; }
+    .insta-toolbox-collision-strip { position: fixed; z-index: 2147483000; display: flex; min-height: 52px; width: min(320px, calc(100vw - 28px)); align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--insta-toolbox-line); border-radius: 12px; background: var(--insta-toolbox-surface-raised); color: var(--insta-toolbox-ink); box-shadow: var(--insta-toolbox-shadow); font-size: 12px; }
+    .insta-toolbox-collision-copy { min-width: 0; }
+    .insta-toolbox-collision-copy strong, .insta-toolbox-collision-copy span { display: block; overflow-wrap: anywhere; }
+    .insta-toolbox-collision-copy span { margin-top: 1px; color: var(--insta-toolbox-muted); }
+    .insta-toolbox-collision-strip .insta-toolbox-button { min-height: 36px; margin-left: auto; padding: 6px 9px; font-size: 12px; }
+    :host([data-collision="active"]) .insta-toolbox-panel, :host([data-collision="active"]) .insta-toolbox-launcher { display: none !important; }
 
-    .ia-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-    .ia-resize-handle { position: absolute; z-index: 4; right: 0; bottom: 0; display: block; width: 44px; height: 44px; border: 0; border-radius: 10px 0 12px 0; padding: 0; background: transparent; color: var(--ia-muted); cursor: nwse-resize; touch-action: none; }
-    .ia-resize-handle::before { content: ""; position: absolute; right: 9px; bottom: 9px; width: 12px; height: 12px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; opacity: .9; }
-    .ia-resize-handle:hover { background: color-mix(in srgb, var(--ia-signal-soft) 72%, transparent); color: var(--ia-ink); }
+    .insta-toolbox-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+    .insta-toolbox-resize-handle { position: absolute; z-index: 4; right: 0; bottom: 0; display: block; width: 44px; height: 44px; border: 0; border-radius: 10px 0 12px 0; padding: 0; background: transparent; color: var(--insta-toolbox-muted); cursor: nwse-resize; touch-action: none; }
+    .insta-toolbox-resize-handle::before { content: ""; position: absolute; right: 9px; bottom: 9px; width: 12px; height: 12px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; opacity: .9; }
+    .insta-toolbox-resize-handle:hover { background: color-mix(in srgb, var(--insta-toolbox-signal-soft) 72%, transparent); color: var(--insta-toolbox-ink); }
 
-    .ia-launcher:focus-visible, .ia-tab:focus-visible, .ia-icon-button:focus-visible,
-    .ia-settings summary:focus-visible, .ia-select:focus-visible, .ia-text-input:focus-visible,
-    .ia-button:focus-visible, .ia-link-button:focus-visible, .ia-file-label:focus-within,
-    .ia-disclosure > summary:focus-visible, .ia-tool-card:focus-visible, .ia-range:focus-visible,
-    .ia-resize-handle:focus-visible, .ia-credit-link:focus-visible {
-      outline: 3px solid var(--ia-focus);
+    .insta-toolbox-launcher:focus-visible, .insta-toolbox-tab:focus-visible, .insta-toolbox-icon-button:focus-visible,
+    .insta-toolbox-settings summary:focus-visible, .insta-toolbox-select:focus-visible, .insta-toolbox-text-input:focus-visible,
+    .insta-toolbox-button:focus-visible, .insta-toolbox-link-button:focus-visible, .insta-toolbox-file-label:focus-within,
+    .insta-toolbox-disclosure > summary:focus-visible, .insta-toolbox-tool-card:focus-visible, .insta-toolbox-range:focus-visible,
+    .insta-toolbox-resize-handle:focus-visible, .insta-toolbox-credit-link:focus-visible {
+      outline: 3px solid var(--insta-toolbox-focus);
       outline-offset: 2px;
     }
 
-    @container ia-body (max-width: 340px) {
-      .ia-header { gap: 3px; padding-inline: 6px; }
-      .ia-header h1 { font-size: 15px; }
-      .ia-header-actions { gap: 0; }
-      .ia-operational-status { margin-left: 6px; }
-      .ia-credit { padding-left: 8px; }
+    @container insta-toolbox-body (max-width: 340px) {
+      .insta-toolbox-header { gap: 3px; padding-inline: 6px; }
+      .insta-toolbox-header h1 { font-size: 15px; }
+      .insta-toolbox-header-actions { gap: 0; }
+      .insta-toolbox-credit { padding-left: 8px; }
     }
 
-    @keyframes ia-open {
+    @keyframes insta-toolbox-open {
       from { opacity: 0; transform: translateY(5px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
     @media (max-width: 860px) {
-      :host { --ia-panel-width: auto; }
-      .ia-panel {
+      :host { --insta-toolbox-panel-width: auto; }
+      .insta-toolbox-panel {
         top: auto;
         right: max(0px, env(safe-area-inset-right));
         bottom: 0;
@@ -340,26 +338,25 @@
         max-height: min(78dvh, calc(100dvh - env(safe-area-inset-top)));
         border-radius: 14px 14px 0 0;
       }
-      .ia-filter-grid { grid-template-columns: 1fr; }
-      .ia-move-handle, .ia-resize-handle { display: none; }
-      .ia-shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
-      .ia-header { grid-template-columns: minmax(0, 1fr) auto; }
-      .ia-operational-status { margin-right: 8px; }
-      .ia-credit { padding-right: 12px; }
-      .ia-rail { grid-row: 2; display: grid; grid-template-columns: repeat(5, minmax(44px, 1fr)); padding: 4px max(4px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left)); border-top: 1px solid var(--ia-line); border-right: 0; }
-      .ia-brand-mark { display: none; }
-      .ia-tab { width: 100%; min-height: 52px; grid-template-columns: 1fr; grid-template-rows: 20px auto; place-items: center; gap: 2px; padding: 5px 2px; text-align: center; }
-      .ia-tab-label { font-size: 10px; }
-      .ia-tab[data-ia-section="workspace"] { margin-top: 0; }
-      .ia-tab[aria-selected="true"] { box-shadow: inset 0 -3px 0 var(--ia-signal); }
-      .ia-body { grid-row: 1; }
-      .ia-settings-panel { position: fixed; top: auto; right: 12px; bottom: calc(58px + env(safe-area-inset-bottom)); left: 12px; width: auto; }
-      .ia-facts { grid-template-columns: 1fr; }
-      .ia-facts > div + div { border-top: 1px solid var(--ia-line); border-left: 0; }
+      .insta-toolbox-filter-grid { grid-template-columns: 1fr; }
+      .insta-toolbox-move-handle, .insta-toolbox-resize-handle { display: none; }
+      .insta-toolbox-shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+      .insta-toolbox-header { grid-template-columns: minmax(0, 1fr) auto; }
+      .insta-toolbox-credit { padding-right: 12px; }
+      .insta-toolbox-rail { grid-row: 2; display: grid; grid-template-columns: repeat(5, minmax(44px, 1fr)); padding: 4px max(4px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left)); border-top: 1px solid var(--insta-toolbox-line); border-right: 0; }
+      .insta-toolbox-brand-mark { display: none; }
+      .insta-toolbox-tab { width: 100%; min-height: 52px; grid-template-columns: 1fr; grid-template-rows: 20px auto; place-items: center; gap: 2px; padding: 5px 2px; text-align: center; }
+      .insta-toolbox-tab-label { font-size: 10px; }
+      .insta-toolbox-tab[data-insta-toolbox-section="workspace"] { margin-top: 0; }
+      .insta-toolbox-tab[aria-selected="true"] { box-shadow: inset 0 -3px 0 var(--insta-toolbox-signal); }
+      .insta-toolbox-body { grid-row: 1; }
+      .insta-toolbox-settings-panel { position: fixed; top: auto; right: 12px; bottom: calc(58px + env(safe-area-inset-bottom)); left: 12px; width: auto; }
+      .insta-toolbox-facts { grid-template-columns: 1fr; }
+      .insta-toolbox-facts > div + div { border-top: 1px solid var(--insta-toolbox-line); border-left: 0; }
     }
 
     @media (max-width: 860px) and (max-height: 500px) and (min-aspect-ratio: 2/1) {
-      .ia-panel {
+      .insta-toolbox-panel {
         top: 8px;
         right: 8px;
         bottom: 8px;
@@ -369,51 +366,50 @@
         max-height: calc(100dvh - 16px);
         border-radius: 12px;
       }
-      :host([data-dock="left"]) .ia-panel { right: auto; left: 8px; }
-      .ia-shell { grid-template-columns: 116px minmax(0, 1fr); grid-template-rows: 1fr; }
-      .ia-rail { grid-row: auto; display: flex; padding: 8px 6px; border-top: 0; border-right: 1px solid var(--ia-line); }
-      .ia-brand-mark { display: grid; }
-      .ia-tab { width: 100%; min-height: 44px; grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: 1fr; place-items: center start; gap: 8px; padding: 8px; text-align: left; }
-      .ia-tab-label { font-size: 12px; }
-      .ia-tab[data-ia-section="workspace"] { margin-top: auto; }
-      .ia-tab[aria-selected="true"] { box-shadow: inset 3px 0 0 var(--ia-signal); }
-      .ia-body { grid-row: auto; }
-      .ia-header { grid-template-columns: minmax(0, 1fr) auto; }
-      .ia-move-handle { display: none; }
-      .ia-resize-handle { display: flex; }
-      .ia-operational-status { margin-right: 50px; }
-      .ia-credit { padding-right: 50px; }
-      .ia-settings-panel { position: absolute; top: 48px; right: 0; bottom: auto; left: auto; width: 260px; }
-      .ia-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .ia-facts > div + div { border-top: 0; border-left: 1px solid var(--ia-line); }
+      :host([data-dock="left"]) .insta-toolbox-panel { right: auto; left: 8px; }
+      .insta-toolbox-shell { grid-template-columns: 116px minmax(0, 1fr); grid-template-rows: 1fr; }
+      .insta-toolbox-rail { grid-row: auto; display: flex; padding: 8px 6px; border-top: 0; border-right: 1px solid var(--insta-toolbox-line); }
+      .insta-toolbox-brand-mark { display: grid; }
+      .insta-toolbox-tab { width: 100%; min-height: 44px; grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: 1fr; place-items: center start; gap: 8px; padding: 8px; text-align: left; }
+      .insta-toolbox-tab-label { font-size: 12px; }
+      .insta-toolbox-tab[data-insta-toolbox-section="workspace"] { margin-top: auto; }
+      .insta-toolbox-tab[aria-selected="true"] { box-shadow: inset 3px 0 0 var(--insta-toolbox-signal); }
+      .insta-toolbox-body { grid-row: auto; }
+      .insta-toolbox-header { grid-template-columns: minmax(0, 1fr) auto; }
+      .insta-toolbox-move-handle { display: none; }
+      .insta-toolbox-resize-handle { display: flex; }
+      .insta-toolbox-credit { padding-right: 50px; }
+      .insta-toolbox-settings-panel { position: absolute; top: 48px; right: 0; bottom: auto; left: auto; width: 260px; }
+      .insta-toolbox-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .insta-toolbox-facts > div + div { border-top: 0; border-left: 1px solid var(--insta-toolbox-line); }
     }
 
     @media (min-width: 861px) and (max-height: 620px) {
-      .ia-panel { top: max(8px, env(safe-area-inset-top)); max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
-      .ia-view { padding-top: 12px; padding-bottom: 12px; }
+      .insta-toolbox-panel { top: max(8px, env(safe-area-inset-top)); max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+      .insta-toolbox-view { padding-top: 12px; padding-bottom: 12px; }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .ia-panel { animation: none; }
-      .ia-launcher { transition: none; }
+      .insta-toolbox-panel { animation: none; }
+      .insta-toolbox-launcher { transition: none; }
     }
 
     @media (forced-colors: active) {
-      :host { --ia-signal: Highlight; --ia-focus: Highlight; }
-      .ia-panel, .ia-launcher, .ia-collision-strip, .ia-settings-panel, .ia-dialog { border: 2px solid CanvasText; box-shadow: none; }
-      .ia-tab[aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -3px; box-shadow: none; }
-      .ia-state-dot, .ia-launcher-signal, .ia-tab-signal { border: 2px solid CanvasText; }
-      .ia-panel, .ia-header, .ia-operational-status, .ia-credit, .ia-card, .ia-tool-card, .ia-checker-metric, .ia-checker-result { background: Canvas; }
+      :host { --insta-toolbox-signal: Highlight; --insta-toolbox-focus: Highlight; }
+      .insta-toolbox-panel, .insta-toolbox-launcher, .insta-toolbox-collision-strip, .insta-toolbox-settings-panel, .insta-toolbox-dialog { border: 2px solid CanvasText; box-shadow: none; }
+      .insta-toolbox-tab[aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -3px; box-shadow: none; }
+      .insta-toolbox-state-dot, .insta-toolbox-launcher-signal, .insta-toolbox-tab-signal { border: 2px solid CanvasText; }
+      .insta-toolbox-panel, .insta-toolbox-header, .insta-toolbox-operational-status, .insta-toolbox-credit, .insta-toolbox-card, .insta-toolbox-tool-card, .insta-toolbox-checker-metric, .insta-toolbox-checker-result { background: Canvas; }
     }
   `;
 
   function tab(section, label, icon, selected = false) {
-    return `<button class="ia-tab" id="ia-tab-${section}" type="button" role="tab" aria-controls="ia-view-${section}" aria-selected="${selected}" tabindex="${selected ? '0' : '-1'}" data-ia-section="${section}" aria-label="${label}" title="${label}">${icons.svg(icon)}<span class="ia-tab-label">${label}</span>${section === 'queue' ? '<span class="ia-tab-signal" data-ia-role="queue-signal" hidden></span>' : ''}</button>`;
+    return `<button class="insta-toolbox-tab" id="insta-toolbox-tab-${section}" type="button" role="tab" aria-controls="insta-toolbox-view-${section}" aria-selected="${selected}" tabindex="${selected ? '0' : '-1'}" data-insta-toolbox-section="${section}" aria-label="${label}" title="${label}">${icons.svg(icon)}<span class="insta-toolbox-tab-label">${label}</span>${section === 'queue' ? '<span class="insta-toolbox-tab-signal" data-insta-toolbox-role="queue-signal" hidden></span>' : ''}</button>`;
   }
 
   function create({ document: targetDocument, openShadow = false }) {
     const host = targetDocument.createElement('div');
-    host.id = 'insta-aio-sidecar-root';
+    host.id = 'insta-toolbox-sidecar-root';
     host.dataset.collision = 'inactive';
     host.dataset.density = 'comfortable';
     host.dataset.dock = 'right';
@@ -423,118 +419,117 @@
     const shadow = host.attachShadow({ mode: openShadow ? 'open' : 'closed' });
     shadow.innerHTML = `
       <style>${styles}</style>
-      <button class="ia-launcher" type="button" data-ia-action="open" aria-label="Open Insta Toolbox" aria-expanded="false">
-        <span class="ia-launcher-mark" aria-hidden="true">A</span>
-        <span class="ia-launcher-signal" data-ia-role="launcher-signal" hidden></span>
+      <button class="insta-toolbox-launcher" type="button" data-insta-toolbox-action="open" aria-label="Open Insta Toolbox" aria-expanded="false">
+        <span class="insta-toolbox-launcher-mark" aria-hidden="true">IT</span>
+        <span class="insta-toolbox-launcher-signal" data-insta-toolbox-role="launcher-signal" hidden></span>
       </button>
-      <aside class="ia-panel" aria-label="Insta Toolbox" hidden>
-        <div class="ia-shell">
-          <nav class="ia-rail" role="tablist" aria-label="Insta Toolbox tools" aria-orientation="vertical">
-            <div class="ia-brand-mark" title="Insta Toolbox" aria-hidden="true">IT</div>
+      <aside class="insta-toolbox-panel" aria-label="Insta Toolbox" hidden>
+        <div class="insta-toolbox-shell">
+          <nav class="insta-toolbox-rail" role="tablist" aria-label="Insta Toolbox tools" aria-orientation="vertical">
+            <div class="insta-toolbox-brand-mark" title="Insta Toolbox" aria-hidden="true">IT</div>
             ${tab('now', 'Toolbox', 'now', true)}
             ${tab('capture', 'Mutual Checker', 'capture')}
             ${tab('queue', 'Follow / Unfollow', 'queue')}
             ${tab('messages', 'DM Unsend', 'messages')}
             ${tab('workspace', 'Workspace', 'workspace')}
           </nav>
-          <div class="ia-body">
-            <header class="ia-header">
-              <button class="ia-icon-button ia-move-handle" type="button" data-ia-role="move-handle" aria-label="Move Insta Toolbox; use arrow keys for precise movement" title="Drag to move · Arrow keys move">${icons.svg('move')}</button>
-              <div class="ia-header-copy">
-                <h1 data-ia-role="view-title">Insta Toolbox</h1>
+          <div class="insta-toolbox-body">
+            <header class="insta-toolbox-header">
+              <button class="insta-toolbox-icon-button insta-toolbox-move-handle" type="button" data-insta-toolbox-role="move-handle" aria-label="Move Insta Toolbox; use arrow keys for precise movement" title="Drag to move · Arrow keys move">${icons.svg('move')}</button>
+              <div class="insta-toolbox-header-copy">
+                <h1 data-insta-toolbox-role="view-title">Insta Toolbox</h1>
               </div>
-              <div class="ia-header-actions">
-                <details class="ia-settings" data-ia-role="settings">
+              <div class="insta-toolbox-header-actions">
+                <details class="insta-toolbox-settings" data-insta-toolbox-role="settings">
                   <summary aria-label="Overlay preferences">${icons.svg('preferences')}</summary>
-                  <div class="ia-settings-panel">
+                  <div class="insta-toolbox-settings-panel">
                     <strong>Overlay preferences</strong>
-                    <div class="ia-field"><label for="ia-pref-dock">Dock side</label><select class="ia-select" id="ia-pref-dock" data-ia-preference="dock"><option value="right">Right</option><option value="left">Left</option></select></div>
-                    <div class="ia-field"><label for="ia-pref-width">Panel width</label><select class="ia-select" id="ia-pref-width" data-ia-preference="width"><option value="compact">Compact</option><option value="standard">Standard</option><option value="wide">Wide</option></select></div>
-                    <div class="ia-field"><label for="ia-pref-theme">Theme</label><select class="ia-select" id="ia-pref-theme" data-ia-preference="theme"><option value="auto">Match Instagram</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
-                    <div class="ia-field"><label for="ia-pref-density">Density</label><select class="ia-select" id="ia-pref-density" data-ia-preference="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
-                    <div class="ia-field"><label for="ia-pref-opacity">Surface transparency</label><div class="ia-range-row"><input class="ia-range" id="ia-pref-opacity" type="range" min="55" max="100" step="1" value="88" data-ia-preference="opacity"><output class="ia-range-output" for="ia-pref-opacity" data-ia-role="opacity-output">88%</output></div></div>
-                    <div class="ia-field"><label>Size presets</label><div class="ia-toolbar"><button class="ia-button ia-button--quiet" type="button" data-ia-action="layout-preset" data-layout-preset="compact">Compact</button><button class="ia-button ia-button--quiet" type="button" data-ia-action="layout-preset" data-layout-preset="tall">Tall</button><button class="ia-button ia-button--quiet" type="button" data-ia-action="layout-preset" data-layout-preset="wide">Wide</button></div></div>
-                    <button class="ia-button ia-button--quiet" type="button" data-ia-action="reset-layout">Reset position and size</button>
-                    <details class="ia-disclosure" data-ia-role="advanced-settings"><summary>Advanced controls</summary><div class="ia-disclosure-body" data-ia-role="advanced-settings-body"></div></details>
-                    <p class="ia-note">Drag the header handle or resize from the lower corner. Arrow keys work on both controls. Shortcut: Alt + Shift + I.</p>
+                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-dock">Dock side</label><select class="insta-toolbox-select" id="insta-toolbox-pref-dock" data-insta-toolbox-preference="dock"><option value="right">Right</option><option value="left">Left</option></select></div>
+                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-width">Panel width</label><select class="insta-toolbox-select" id="insta-toolbox-pref-width" data-insta-toolbox-preference="width"><option value="compact">Compact</option><option value="standard">Standard</option><option value="wide">Wide</option></select></div>
+                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-theme">Theme</label><select class="insta-toolbox-select" id="insta-toolbox-pref-theme" data-insta-toolbox-preference="theme"><option value="auto">Match Instagram</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-density">Density</label><select class="insta-toolbox-select" id="insta-toolbox-pref-density" data-insta-toolbox-preference="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
+                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-opacity">Surface transparency</label><div class="insta-toolbox-range-row"><input class="insta-toolbox-range" id="insta-toolbox-pref-opacity" type="range" min="55" max="100" step="1" value="88" data-insta-toolbox-preference="opacity"><output class="insta-toolbox-range-output" for="insta-toolbox-pref-opacity" data-insta-toolbox-role="opacity-output">88%</output></div></div>
+                    <div class="insta-toolbox-field"><label>Size presets</label><div class="insta-toolbox-toolbar"><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="layout-preset" data-layout-preset="compact">Compact</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="layout-preset" data-layout-preset="tall">Tall</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="layout-preset" data-layout-preset="wide">Wide</button></div></div>
+                    <button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="reset-layout">Reset position and size</button>
+                    <details class="insta-toolbox-disclosure" data-insta-toolbox-role="advanced-settings"><summary>Advanced controls</summary><div class="insta-toolbox-disclosure-body" data-insta-toolbox-role="advanced-settings-body"></div></details>
+                    <p class="insta-toolbox-note">Drag the header handle or resize from the lower corner. Arrow keys work on both controls. Shortcut: Alt + Shift + I.</p>
                   </div>
                 </details>
-                <button class="ia-icon-button" type="button" data-ia-action="close" aria-label="Collapse Insta Toolbox">${icons.svg('close')}</button>
+                <button class="insta-toolbox-icon-button" type="button" data-insta-toolbox-action="close" aria-label="Collapse Insta Toolbox">${icons.svg('close')}</button>
               </div>
             </header>
-            <div class="ia-scroll">
-              <section class="ia-view" id="ia-view-now" role="tabpanel" aria-labelledby="ia-tab-now" tabindex="0" data-ia-view="now"><div data-ia-role="first-run-slot"></div><div data-ia-role="now-content"></div></section>
-              <section class="ia-view" id="ia-view-capture" role="tabpanel" aria-labelledby="ia-tab-capture" tabindex="0" data-ia-view="capture" hidden>
-                <div class="ia-state-row" data-ia-role="capture-state" data-tone="neutral"><span class="ia-state-dot"></span><div><strong data-ia-role="capture-state-title">Ready</strong><span data-ia-role="capture-state-detail">Enter a username to compare Followers and Following.</span></div></div>
-                <section class="ia-primary-action" aria-labelledby="ia-checker-account-title"><div class="ia-gate-summary"><span><strong id="ia-checker-account-title">Check mutuals</strong><span class="ia-note">Read-only. Uses this Instagram session.</span></span><span class="ia-badge">read only</span></div><div class="ia-disclosure-body"><div class="ia-field"><label for="ia-checker-username">Instagram username</label><input class="ia-text-input" id="ia-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-ia-role="checker-username"></div><button class="ia-button" type="button" data-ia-action="check-account-relationships" data-ia-role="checker-run">Check mutuals</button></div></section>
-                <div class="ia-checker-metrics" aria-label="Mutual Checker counts"><div class="ia-checker-metric"><span>Followers</span><strong data-ia-role="followers-count">0</strong></div><div class="ia-checker-metric"><span>Following</span><strong data-ia-role="following-count">0</strong></div></div>
-                <div class="ia-checker-result" data-ia-role="checker-result"></div>
-                <div class="ia-toolbar"><a class="ia-link-button" data-ia-role="comparison-report-download" aria-disabled="true">Download comparison report</a></div>
-                <div data-ia-role="checker-browser-slot"></div>
-                <details class="ia-disclosure"><summary>Advanced: list-dialog fallback and export</summary><div class="ia-disclosure-body"><p class="ia-note">If the account check fails, open your Following or Followers dialog and scan that list. A fallback scan clears prior authenticated results.</p><ol class="ia-flow" aria-label="Mutual Checker fallback steps"><li class="ia-flow-step" data-ia-role="following-step"><span class="ia-flow-step-number">1</span><span class="ia-flow-step-copy"><strong>Scan Following</strong><span data-ia-role="following-step-detail">Open your Following list</span></span><button class="ia-button ia-button--quiet" type="button" data-ia-action="scan-full-list" data-list-type="following">Scan</button></li><li class="ia-flow-step" data-ia-role="followers-step"><span class="ia-flow-step-number">2</span><span class="ia-flow-step-copy"><strong>Scan Followers</strong><span data-ia-role="followers-step-detail">Open your Followers list</span></span><button class="ia-button ia-button--quiet" type="button" data-ia-action="scan-full-list" data-list-type="followers">Scan</button></li><li class="ia-flow-step" data-ia-role="compare-step"><span class="ia-flow-step-number">3</span><span class="ia-flow-step-copy"><strong>Compare</strong><span data-ia-role="compare-step-detail">Scan both lists first</span></span><span class="ia-badge" data-ia-role="compare-step-badge">waiting</span></li></ol><div class="ia-count"><strong data-ia-role="capture-count">0</strong><span data-ia-role="capture-detail">No draft yet</span></div><ul class="ia-list" data-ia-role="capture-list"></ul><div class="ia-field"><label for="ia-list-type-manual">List for manual capture</label><select class="ia-select" id="ia-list-type-manual" data-ia-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div><div class="ia-toolbar"><button class="ia-button ia-button--quiet" type="button" data-ia-action="capture-visible">Capture visible rows</button><a class="ia-link-button ia-link-button--quiet" data-ia-role="capture-download" aria-disabled="true">Download selected list</a><a class="ia-link-button ia-link-button--quiet" data-ia-role="comparison-json-download" aria-disabled="true">Download JSON</a><button class="ia-button ia-button--quiet" type="button" data-ia-action="reset-capture">Clear checker</button></div></div></details>
+            <div class="insta-toolbox-scroll">
+              <section class="insta-toolbox-view" id="insta-toolbox-view-now" role="tabpanel" aria-labelledby="insta-toolbox-tab-now" tabindex="0" data-insta-toolbox-view="now"><div data-insta-toolbox-role="first-run-slot"></div><div data-insta-toolbox-role="now-content"></div></section>
+              <section class="insta-toolbox-view" id="insta-toolbox-view-capture" role="tabpanel" aria-labelledby="insta-toolbox-tab-capture" tabindex="0" data-insta-toolbox-view="capture" hidden>
+                <div class="insta-toolbox-state-row" data-insta-toolbox-role="capture-state" data-tone="neutral"><span class="insta-toolbox-state-dot"></span><div><strong data-insta-toolbox-role="capture-state-title">Ready</strong><span data-insta-toolbox-role="capture-state-detail">Enter a username to compare Followers and Following.</span></div></div>
+                <section class="insta-toolbox-primary-action" aria-labelledby="insta-toolbox-checker-account-title"><div class="insta-toolbox-gate-summary"><span><strong id="insta-toolbox-checker-account-title">Check mutuals</strong><span class="insta-toolbox-note">Read-only. Uses this Instagram session.</span></span><span class="insta-toolbox-badge">read only</span></div><div class="insta-toolbox-disclosure-body"><div class="insta-toolbox-field"><label for="insta-toolbox-checker-username">Instagram username</label><input class="insta-toolbox-text-input" id="insta-toolbox-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-insta-toolbox-role="checker-username"></div><button class="insta-toolbox-button" type="button" data-insta-toolbox-action="check-account-relationships" data-insta-toolbox-role="checker-run">Check mutuals</button></div></section>
+                <div class="insta-toolbox-checker-metrics" aria-label="Mutual Checker counts"><div class="insta-toolbox-checker-metric"><span>Followers</span><strong data-insta-toolbox-role="followers-count">0</strong></div><div class="insta-toolbox-checker-metric"><span>Following</span><strong data-insta-toolbox-role="following-count">0</strong></div></div>
+                <div class="insta-toolbox-checker-result" data-insta-toolbox-role="checker-result"></div>
+                <div class="insta-toolbox-toolbar"><a class="insta-toolbox-link-button" data-insta-toolbox-role="comparison-report-download" aria-disabled="true">Download comparison report</a></div>
+                <div data-insta-toolbox-role="checker-browser-slot"></div>
+                <details class="insta-toolbox-disclosure"><summary>Capture lists and export</summary><div class="insta-toolbox-disclosure-body"><p class="insta-toolbox-note">If the account check fails, open Followers or Following and scan that list.</p><ol class="insta-toolbox-flow" aria-label="Mutual Checker fallback steps"><li class="insta-toolbox-flow-step" data-insta-toolbox-role="following-step"><span class="insta-toolbox-flow-step-number">1</span><span class="insta-toolbox-flow-step-copy"><strong>Scan Following</strong><span data-insta-toolbox-role="following-step-detail">Open your Following list</span></span><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="scan-full-list" data-list-type="following">Scan</button></li><li class="insta-toolbox-flow-step" data-insta-toolbox-role="followers-step"><span class="insta-toolbox-flow-step-number">2</span><span class="insta-toolbox-flow-step-copy"><strong>Scan Followers</strong><span data-insta-toolbox-role="followers-step-detail">Open your Followers list</span></span><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="scan-full-list" data-list-type="followers">Scan</button></li><li class="insta-toolbox-flow-step" data-insta-toolbox-role="compare-step"><span class="insta-toolbox-flow-step-number">3</span><span class="insta-toolbox-flow-step-copy"><strong>Compare</strong><span data-insta-toolbox-role="compare-step-detail">Scan both lists first</span></span><span class="insta-toolbox-badge" data-insta-toolbox-role="compare-step-badge">waiting</span></li></ol><div class="insta-toolbox-count"><strong data-insta-toolbox-role="capture-count">0</strong><span data-insta-toolbox-role="capture-detail">No draft yet</span></div><ul class="insta-toolbox-list" data-insta-toolbox-role="capture-list"></ul><div class="insta-toolbox-field"><label for="insta-toolbox-list-type-manual">List for manual capture</label><select class="insta-toolbox-select" id="insta-toolbox-list-type-manual" data-insta-toolbox-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div><div class="insta-toolbox-toolbar"><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="capture-visible">Capture visible rows</button><a class="insta-toolbox-link-button insta-toolbox-link-button--quiet" data-insta-toolbox-role="capture-download" aria-disabled="true">Download selected list</a><a class="insta-toolbox-link-button insta-toolbox-link-button--quiet" data-insta-toolbox-role="comparison-json-download" aria-disabled="true">Download JSON</a><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="reset-capture">Clear checker</button></div></div></details>
               </section>
-              <section class="ia-view" id="ia-view-queue" role="tabpanel" aria-labelledby="ia-tab-queue" tabindex="0" data-ia-view="queue" hidden>
-                <div data-ia-role="queue-current"></div>
-                <div data-ia-role="queue-controls" hidden><div class="ia-toolbar"><a class="ia-link-button" data-ia-role="queue-open" rel="noreferrer">Open profile</a></div><details class="ia-disclosure"><summary>Queue item options</summary><div class="ia-disclosure-body"><div class="ia-toolbar"><button class="ia-button ia-button--quiet" type="button" data-ia-action="queue-complete">Mark complete</button><button class="ia-button ia-button--quiet" type="button" data-ia-action="queue-skip">Skip item</button></div></div></details></div>
-                <section class="ia-primary-action" data-ia-role="bot-disclosure" aria-labelledby="ia-bot-composer-title"><div class="ia-gate-summary"><span><strong id="ia-bot-composer-title">Follow or unfollow people</strong><span class="ia-note">Choose an action, then review the accounts.</span></span><span class="ia-badge" data-ia-role="bot-badge">idle</span></div><div class="ia-disclosure-body">
-                  <div class="ia-field"><label for="ia-bot-action">What do you want to do?</label><select class="ia-select" id="ia-bot-action" data-ia-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
-                  <div class="ia-field"><label for="ia-bot-source">Choose compatible targets</label><select class="ia-select" id="ia-bot-source" data-ia-role="bot-source"><option value="current-profile">Current exact profile</option><option value="i-do-not-follow-back">People who follow you that you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Compatible queue items</option></select></div>
-                  <div class="ia-field" data-ia-role="bot-count-field"><label for="ia-bot-count">How many this run</label><input class="ia-text-input" id="ia-bot-count" type="number" min="1" max="250" value="20" data-ia-role="bot-count"></div>
-                  <p class="ia-gate-detail" data-ia-role="bot-detail">Each target is verified before action.</p>
-                  <div class="ia-toolbar"><button class="ia-button" type="button" data-ia-action="bot-review">Review 20 Follow targets</button><button class="ia-button ia-button--danger" type="button" data-ia-action="bot-start" hidden>Start Follow on reviewed accounts</button></div>
-                  <div class="ia-run-review" data-ia-role="bot-review" hidden><strong data-ia-role="bot-review-title"></strong><ul class="ia-list ia-list--compact" data-ia-role="bot-review-list"></ul><p class="ia-note" data-ia-role="bot-review-detail"></p></div>
-                  <p class="ia-note">The run stops itself on any rate limit, checkpoint, block, or unexpected screen. Instagram's terms discourage automated following; you are responsible for how you pace it.</p>
+              <section class="insta-toolbox-view" id="insta-toolbox-view-queue" role="tabpanel" aria-labelledby="insta-toolbox-tab-queue" tabindex="0" data-insta-toolbox-view="queue" hidden>
+                <div data-insta-toolbox-role="queue-current"></div>
+                <div data-insta-toolbox-role="queue-controls" hidden><div class="insta-toolbox-toolbar"><a class="insta-toolbox-link-button" data-insta-toolbox-role="queue-open" rel="noreferrer">Open profile</a></div><details class="insta-toolbox-disclosure"><summary>Queue item options</summary><div class="insta-toolbox-disclosure-body"><div class="insta-toolbox-toolbar"><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="queue-complete">Mark complete</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="queue-skip">Skip item</button></div></div></details></div>
+                <section class="insta-toolbox-primary-action" data-insta-toolbox-role="bot-disclosure" aria-labelledby="insta-toolbox-bot-composer-title"><div class="insta-toolbox-gate-summary"><span><strong id="insta-toolbox-bot-composer-title">Follow or unfollow people</strong><span class="insta-toolbox-note">Choose an action, then review the accounts.</span></span><span class="insta-toolbox-badge" data-insta-toolbox-role="bot-badge">idle</span></div><div class="insta-toolbox-disclosure-body">
+                  <div class="insta-toolbox-field"><label for="insta-toolbox-bot-action">What do you want to do?</label><select class="insta-toolbox-select" id="insta-toolbox-bot-action" data-insta-toolbox-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
+                  <div class="insta-toolbox-field"><label for="insta-toolbox-bot-source">Target source</label><select class="insta-toolbox-select" id="insta-toolbox-bot-source" data-insta-toolbox-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
+                  <div class="insta-toolbox-field" data-insta-toolbox-role="bot-count-field"><label for="insta-toolbox-bot-count">How many this run</label><input class="insta-toolbox-text-input" id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-insta-toolbox-role="bot-count"></div>
+                  <p class="insta-toolbox-gate-detail" data-insta-toolbox-role="bot-detail">Each target is verified before action.</p>
+                  <div class="insta-toolbox-toolbar"><button class="insta-toolbox-button" type="button" data-insta-toolbox-action="bot-review">Review 20 Follow targets</button><button class="insta-toolbox-button insta-toolbox-button--danger" type="button" data-insta-toolbox-action="bot-start" hidden>Start Follow on reviewed accounts</button></div>
+                  <div class="insta-toolbox-run-review" data-insta-toolbox-role="bot-review" hidden><strong data-insta-toolbox-role="bot-review-title"></strong><ul class="insta-toolbox-list insta-toolbox-list--compact" data-insta-toolbox-role="bot-review-list"></ul><p class="insta-toolbox-note" data-insta-toolbox-role="bot-review-detail"></p></div>
+                  <p class="insta-toolbox-note">Stops on blocks, rate limits, or unexpected pages. Pacing is under Advanced controls.</p>
                 </div></section>
-                <details class="ia-disclosure"><summary>Queue files</summary><div class="ia-disclosure-body"><div class="ia-toolbar"><label class="ia-file-label ia-file-label--quiet">Import queue JSON<input type="file" accept=".json,application/json" aria-label="Import Insta Toolbox queue JSON" data-ia-role="queue-file"></label><a class="ia-link-button ia-link-button--quiet" data-ia-role="queue-download" aria-disabled="true">Download queue state</a></div></div></details>
-                <details class="ia-disclosure"><summary>Signed run history</summary><div class="ia-disclosure-body"><ul class="ia-list" data-ia-role="run-list"></ul></div></details>
+                <details class="insta-toolbox-disclosure"><summary>Queue files</summary><div class="insta-toolbox-disclosure-body"><div class="insta-toolbox-toolbar"><label class="insta-toolbox-file-label insta-toolbox-file-label--quiet">Import queue JSON<input type="file" accept=".json,application/json" aria-label="Import Insta Toolbox queue JSON" data-insta-toolbox-role="queue-file"></label><a class="insta-toolbox-link-button insta-toolbox-link-button--quiet" data-insta-toolbox-role="queue-download" aria-disabled="true">Download queue state</a></div></div></details>
+                <details class="insta-toolbox-disclosure"><summary>Signed run history</summary><div class="insta-toolbox-disclosure-body"><ul class="insta-toolbox-list" data-insta-toolbox-role="run-list"></ul></div></details>
               </section>
-              <section class="ia-view" id="ia-view-messages" role="tabpanel" aria-labelledby="ia-tab-messages" tabindex="0" data-ia-view="messages" hidden>
-                <div class="ia-state-row" data-ia-role="message-state" data-tone="neutral"><span class="ia-state-dot"></span><div><strong data-ia-role="message-state-title">Open a conversation</strong><span data-ia-role="message-state-detail">Visible evidence is read-only until exact identity is available.</span></div></div>
-                <div class="ia-primary-action" data-ia-role="unsend-disclosure"><div class="ia-gate-summary"><span><strong>DM Unsend</strong></span><span class="ia-badge" data-ia-role="unsend-badge">ready</span></div><div class="ia-disclosure-body">
-                  <p class="ia-gate-detail" data-ia-role="unsend-detail">Confirm the open conversation to begin.</p>
-                  <p class="ia-note" data-ia-role="unsend-eligible">All messages you sent</p>
-                  <div class="ia-toolbar"><button class="ia-button ia-button--danger" type="button" data-ia-action="mass-unsend">Unsend DMs</button></div>
+              <section class="insta-toolbox-view" id="insta-toolbox-view-messages" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" tabindex="0" data-insta-toolbox-view="messages" hidden>
+                <div class="insta-toolbox-state-row" data-insta-toolbox-role="message-state" data-tone="neutral"><span class="insta-toolbox-state-dot"></span><div><strong data-insta-toolbox-role="message-state-title">Open a conversation</strong><span data-insta-toolbox-role="message-state-detail">Visible evidence is read-only until exact identity is available.</span></div></div>
+                <div class="insta-toolbox-primary-action" data-insta-toolbox-role="unsend-disclosure"><div class="insta-toolbox-gate-summary"><span><strong>DM Unsend</strong></span><span class="insta-toolbox-badge" data-insta-toolbox-role="unsend-badge">ready</span></div><div class="insta-toolbox-disclosure-body">
+                  <p class="insta-toolbox-gate-detail" data-insta-toolbox-role="unsend-detail">Confirm the open conversation to begin.</p>
+                  <p class="insta-toolbox-note" data-insta-toolbox-role="unsend-eligible">All messages you sent</p>
+                  <div class="insta-toolbox-toolbar"><button class="insta-toolbox-button insta-toolbox-button--danger" type="button" data-insta-toolbox-action="mass-unsend">Unsend DMs</button></div>
                 </div></div>
-                <div class="ia-count"><strong data-ia-role="message-count">0</strong><span data-ia-role="message-detail">No evidence yet</span></div>
-                <ul class="ia-fragments" data-ia-role="message-list"></ul>
-                <details class="ia-disclosure"><summary>Advanced message options</summary><div class="ia-disclosure-body"><div data-ia-role="unsend-plan"><div class="ia-field"><label for="ia-unsend-scope">Scope</label><select class="ia-select" id="ia-unsend-scope" data-ia-role="unsend-scope"><option value="all">All messages you sent</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="ia-field"><label for="ia-unsend-count">Number of messages</label><input class="ia-text-input" id="ia-unsend-count" type="number" min="1" max="250" value="1" data-ia-role="unsend-count"></div></div><div class="ia-toolbar"><button class="ia-button ia-button--quiet" type="button" data-ia-action="scan-sent-dms">Check conversation only</button><button class="ia-button ia-button--quiet" type="button" data-ia-action="inspect-messages">Read visible thread</button><a class="ia-link-button ia-link-button--quiet" data-ia-role="message-download" aria-disabled="true">Download evidence</a></div></div></details>
-                <details class="ia-disclosure"><summary>Identity and ownership details</summary><div class="ia-disclosure-body"><p class="ia-note" data-ia-role="message-identity-detail">Visible text alone cannot authorize removal.</p></div></details>
+                <div data-insta-toolbox-role="message-evidence" hidden><div class="insta-toolbox-count"><strong data-insta-toolbox-role="message-count">0</strong><span data-insta-toolbox-role="message-detail"></span></div><ul class="insta-toolbox-fragments" data-insta-toolbox-role="message-list"></ul></div>
+                <details class="insta-toolbox-disclosure"><summary>Advanced message options</summary><div class="insta-toolbox-disclosure-body"><div data-insta-toolbox-role="unsend-plan"><div class="insta-toolbox-field"><label for="insta-toolbox-unsend-scope">Scope</label><select class="insta-toolbox-select" id="insta-toolbox-unsend-scope" data-insta-toolbox-role="unsend-scope"><option value="all">All messages you sent</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="insta-toolbox-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input class="insta-toolbox-text-input" id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-insta-toolbox-role="unsend-count"></div></div><div class="insta-toolbox-toolbar"><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="scan-sent-dms">Check conversation only</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="inspect-messages">Read visible thread</button><a class="insta-toolbox-link-button insta-toolbox-link-button--quiet" data-insta-toolbox-role="message-download" aria-disabled="true">Download evidence</a></div></div></details>
+                <details class="insta-toolbox-disclosure"><summary>Identity and ownership details</summary><div class="insta-toolbox-disclosure-body"><p class="insta-toolbox-note" data-insta-toolbox-role="message-identity-detail">Visible text alone cannot authorize removal.</p></div></details>
               </section>
-              <section class="ia-view" id="ia-view-workspace" role="tabpanel" aria-labelledby="ia-tab-workspace" tabindex="0" data-ia-view="workspace" hidden>
-                <div class="ia-state-row" data-ia-role="bridge-state" data-tone="warning"><span class="ia-state-dot"></span><div><strong data-ia-role="bridge-title">Checking pairing</strong><span data-ia-role="bridge-detail">The overlay never receives Instagram credentials or cookies.</span></div></div>
-                <dl class="ia-card ia-facts" data-ia-role="bridge-facts"></dl>
-                <div class="ia-toolbar"><a class="ia-link-button" data-ia-role="workspace-link" aria-disabled="true" rel="noreferrer">Open workspace</a></div>
-                <details class="ia-disclosure"><summary>Privacy and pairing guidance</summary><div class="ia-disclosure-body"><p class="ia-note" data-ia-role="workspace-guidance">Create a code in PWA Settings, then pair the exact PWA tab from the extension setup popup.</p></div></details>
+              <section class="insta-toolbox-view" id="insta-toolbox-view-workspace" role="tabpanel" aria-labelledby="insta-toolbox-tab-workspace" tabindex="0" data-insta-toolbox-view="workspace" hidden>
+                <div class="insta-toolbox-state-row" data-insta-toolbox-role="bridge-state" data-tone="warning"><span class="insta-toolbox-state-dot"></span><div><strong data-insta-toolbox-role="bridge-title">Checking pairing</strong><span data-insta-toolbox-role="bridge-detail">The overlay never receives Instagram credentials or cookies.</span></div></div>
+                <dl class="insta-toolbox-card insta-toolbox-facts" data-insta-toolbox-role="bridge-facts"></dl>
+                <div class="insta-toolbox-toolbar"><a class="insta-toolbox-link-button" data-insta-toolbox-role="workspace-link" aria-disabled="true" rel="noreferrer">Open workspace</a></div>
+                <details class="insta-toolbox-disclosure"><summary>Privacy and pairing guidance</summary><div class="insta-toolbox-disclosure-body"><p class="insta-toolbox-note" data-insta-toolbox-role="workspace-guidance">Create a code in PWA Settings, then pair the exact PWA tab from the extension setup popup.</p></div></details>
               </section>
             </div>
-            <div class="ia-batch-panel" data-ia-role="batch-panel" hidden>
-              <div class="ia-state-row" data-ia-role="batch-state" data-tone="neutral"><span class="ia-state-dot"></span><div><strong data-ia-role="batch-title">Batch idle</strong><span data-ia-role="batch-detail"></span></div><button class="ia-button ia-button--danger" type="button" data-ia-action="batch-stop" hidden>Stop</button></div>
-              <div class="ia-progress" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="0" data-ia-role="batch-meter"><span class="ia-progress-bar" data-ia-role="batch-bar"></span></div>
-              <p class="ia-note" data-ia-role="batch-next" hidden></p>
-              <ul class="ia-list ia-list--compact" data-ia-role="batch-results"></ul>
+            <div class="insta-toolbox-batch-panel" data-insta-toolbox-role="batch-panel" hidden>
+              <div class="insta-toolbox-state-row" data-insta-toolbox-role="batch-state" data-tone="neutral"><span class="insta-toolbox-state-dot"></span><div><strong data-insta-toolbox-role="batch-title">Batch idle</strong><span data-insta-toolbox-role="batch-detail"></span></div><button class="insta-toolbox-button insta-toolbox-button--danger" type="button" data-insta-toolbox-action="batch-stop" hidden>Stop</button></div>
+              <div class="insta-toolbox-progress" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="0" data-insta-toolbox-role="batch-meter"><span class="insta-toolbox-progress-bar" data-insta-toolbox-role="batch-bar"></span></div>
+              <p class="insta-toolbox-note" data-insta-toolbox-role="batch-next" hidden></p>
+              <ul class="insta-toolbox-list insta-toolbox-list--compact" data-insta-toolbox-role="batch-results"></ul>
             </div>
-            <div class="ia-operational-status" role="status" aria-live="polite" aria-atomic="true" data-ia-role="status" data-tone="neutral"><strong data-ia-role="status-lead">Ready.</strong> <span class="ia-status-message" data-ia-role="status-text">Review before making changes.</span></div>
-            <footer class="ia-credit"><a class="ia-credit-link" href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
+            <div class="insta-toolbox-operational-status" role="status" aria-live="polite" aria-atomic="true" data-insta-toolbox-role="status" data-tone="neutral" hidden><strong data-insta-toolbox-role="status-lead">Note.</strong> <span class="insta-toolbox-status-message" data-insta-toolbox-role="status-text"></span></div>
+            <footer class="insta-toolbox-credit"><a class="insta-toolbox-credit-link" href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
           </div>
         </div>
-        <button class="ia-resize-handle" type="button" data-ia-role="resize-handle" aria-label="Resize Insta Toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
+        <button class="insta-toolbox-resize-handle" type="button" data-insta-toolbox-role="resize-handle" aria-label="Resize Insta Toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
       </aside>
-      <div class="ia-collision-strip" data-ia-role="collision-strip" hidden>
-        <span class="ia-state-dot"></span><div class="ia-collision-copy"><strong data-ia-role="collision-target">Exact target</strong><span data-ia-role="collision-state">Native action surface is visible</span></div>
+      <div class="insta-toolbox-collision-strip" data-insta-toolbox-role="collision-strip" hidden>
+        <span class="insta-toolbox-state-dot"></span><div class="insta-toolbox-collision-copy"><strong data-insta-toolbox-role="collision-target">Exact target</strong><span data-insta-toolbox-role="collision-state">Native action surface is visible</span></div>
       </div>
-      <dialog class="ia-dialog" data-ia-role="action-confirmation" aria-labelledby="ia-confirm-title" aria-describedby="ia-confirm-message ia-confirm-detail">
+      <dialog class="insta-toolbox-dialog" data-insta-toolbox-role="action-confirmation" aria-labelledby="insta-toolbox-confirm-title" aria-describedby="insta-toolbox-confirm-message insta-toolbox-confirm-detail">
         <form>
-          <h2 id="ia-confirm-title" data-ia-role="confirm-title">Confirm action</h2>
-          <p id="ia-confirm-message" data-ia-role="confirm-message"></p>
-          <dl data-ia-role="confirm-facts" hidden></dl>
-          <ul data-ia-role="confirm-items" aria-label="Reviewed targets" hidden></ul>
-          <p id="ia-confirm-detail" data-ia-role="confirm-detail"></p>
-          <div class="ia-toolbar"><button class="ia-button ia-button--quiet" type="button" data-ia-action="confirm-cancel" data-ia-role="confirm-cancel">Cancel</button><button class="ia-button ia-button--danger" type="button" data-ia-action="confirm-accept" data-ia-role="confirm-accept">Confirm</button></div>
+          <h2 id="insta-toolbox-confirm-title" data-insta-toolbox-role="confirm-title">Confirm action</h2>
+          <p id="insta-toolbox-confirm-message" data-insta-toolbox-role="confirm-message"></p>
+          <dl data-insta-toolbox-role="confirm-facts" hidden></dl>
+          <ul data-insta-toolbox-role="confirm-items" aria-label="Reviewed targets" hidden></ul>
+          <p id="insta-toolbox-confirm-detail" data-insta-toolbox-role="confirm-detail"></p>
+          <div class="insta-toolbox-toolbar"><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="confirm-cancel" data-insta-toolbox-role="confirm-cancel">Cancel</button><button class="insta-toolbox-button insta-toolbox-button--danger" type="button" data-insta-toolbox-action="confirm-accept" data-insta-toolbox-role="confirm-accept">Confirm</button></div>
         </form>
       </dialog>
-      <template data-ia-template="advanced-settings"><strong>Batch pacing</strong><div class="ia-field"><label for="ia-limit-min-delay">Min delay (seconds)</label><input class="ia-text-input" id="ia-limit-min-delay" type="number" min="2" max="600" data-ia-role="limit-min-delay"></div><div class="ia-field"><label for="ia-limit-max-delay">Max delay (seconds)</label><input class="ia-text-input" id="ia-limit-max-delay" type="number" min="2" max="900" data-ia-role="limit-max-delay"></div><button class="ia-button ia-button--quiet" type="button" data-ia-action="save-limits">Save pacing</button></template>
-      <template data-ia-template="first-run"><section class="ia-first-run" data-ia-role="first-run" aria-labelledby="ia-first-run-title"><h2 id="ia-first-run-title">Start with a read-only check</h2><p>Insta Toolbox adds three tools to Instagram.</p><ol><li><strong>Mutual Checker</strong><span>Compare Followers and Following.</span></li><li><strong>Follow / Unfollow</strong><span>Review exact targets, then confirm once.</span></li><li><strong>DM Unsend</strong><span>Confirm the open conversation once.</span></li></ol><div class="ia-toolbar"><button class="ia-button" type="button" data-ia-action="first-run-start">Open Mutual Checker</button><button class="ia-button ia-button--quiet" type="button" data-ia-action="first-run-dismiss">Not now</button></div></section></template>
-      <template data-ia-template="checker-browser"><section class="ia-checker-browser" data-ia-role="checker-browser" aria-label="Mutual Checker results"><div class="ia-filter-grid"><div class="ia-field"><label for="ia-checker-category">Show accounts</label><select class="ia-select" id="ia-checker-category" data-ia-role="checker-category"><option value="not-following-me-back">Not following me back</option><option value="i-do-not-follow-back">I do not follow back</option><option value="mutuals">Mutuals</option></select></div><div class="ia-field"><label for="ia-checker-search">Find a username</label><input class="ia-text-input" id="ia-checker-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-ia-role="checker-search"></div></div><div class="ia-count"><strong data-ia-role="checker-filter-count">0</strong><span data-ia-role="checker-filter-detail">accounts</span></div><ul class="ia-list" data-ia-role="checker-filtered-list"></ul></section></template>
+      <template data-insta-toolbox-template="advanced-settings"><strong>Batch pacing</strong><div class="insta-toolbox-field"><label for="insta-toolbox-limit-min-delay">Min delay (seconds)</label><input class="insta-toolbox-text-input" id="insta-toolbox-limit-min-delay" type="number" min="2" max="600" data-insta-toolbox-role="limit-min-delay"></div><div class="insta-toolbox-field"><label for="insta-toolbox-limit-max-delay">Max delay (seconds)</label><input class="insta-toolbox-text-input" id="insta-toolbox-limit-max-delay" type="number" min="2" max="900" data-insta-toolbox-role="limit-max-delay"></div><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="save-limits">Save pacing</button></template>
+      <template data-insta-toolbox-template="first-run"><section class="insta-toolbox-first-run" data-insta-toolbox-role="first-run" aria-labelledby="insta-toolbox-first-run-title"><h2 id="insta-toolbox-first-run-title">Start with Mutual Checker</h2><p>Compare Followers and Following without clicking an Instagram action.</p><div class="insta-toolbox-toolbar"><button class="insta-toolbox-button" type="button" data-insta-toolbox-action="first-run-start">Open Mutual Checker</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="first-run-dismiss">Not now</button></div></section></template>
+      <template data-insta-toolbox-template="checker-browser"><section class="insta-toolbox-checker-browser" data-insta-toolbox-role="checker-browser" aria-label="Mutual Checker results"><div class="insta-toolbox-filter-grid"><div class="insta-toolbox-field"><label for="insta-toolbox-checker-category">Show accounts</label><select class="insta-toolbox-select" id="insta-toolbox-checker-category" data-insta-toolbox-role="checker-category"><option value="not-following-me-back">Don't follow you back</option><option value="i-do-not-follow-back">You don't follow back</option><option value="mutuals">Mutuals</option></select></div><div class="insta-toolbox-field"><label for="insta-toolbox-checker-search">Find a username</label><input class="insta-toolbox-text-input" id="insta-toolbox-checker-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-insta-toolbox-role="checker-search"></div></div><div class="insta-toolbox-count"><strong data-insta-toolbox-role="checker-filter-count">0</strong><span data-insta-toolbox-role="checker-filter-detail">accounts</span></div><ul class="insta-toolbox-list" data-insta-toolbox-role="checker-filtered-list"></ul></section></template>
     `;
     return Object.freeze({ host, shadow });
   }

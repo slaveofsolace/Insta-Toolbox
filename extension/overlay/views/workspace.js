@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   const bridge = modules?.bridge;
   if (!shared || !bridge || modules.workspaceView) return;
@@ -21,9 +21,9 @@
       document, model, query, setText,
     } = runtime;
     const pairing = bridge.activePairing(model.bridge);
-    const state = query('[data-ia-role="bridge-state"]');
-    const facts = query('[data-ia-role="bridge-facts"]');
-    const link = query('[data-ia-role="workspace-link"]');
+    const state = query('[data-insta-toolbox-role="bridge-state"]');
+    const facts = query('[data-insta-toolbox-role="bridge-facts"]');
+    const link = query('[data-insta-toolbox-role="workspace-link"]');
     if (!state || !facts || !link) return;
     facts.replaceChildren();
 

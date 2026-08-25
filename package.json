@@ -1,23 +1,29 @@
 {
-  "name": "insta-aio-tool",
-  "version": "2.0.3",
+  "name": "insta-toolbox",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "main": "desktop/main.mjs",
-  "description": "Local Instagram mutual checks, follow reviews, and DM tools.",
+  "description": "Drop a local toolbox into Instagram—check mutuals, review follow/unfollow targets, and clean up sent DMs with Tampermonkey, Chrome, desktop, or PWA.",
   "author": "slaveofsolace (https://github.com/slaveofsolace)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/slaveofsolace/Insta-AIO-Tool.git"
+    "url": "https://github.com/slaveofsolace/Insta-Toolbox.git"
   },
   "bugs": {
-    "url": "https://github.com/slaveofsolace/Insta-AIO-Tool/issues"
+    "url": "https://github.com/slaveofsolace/Insta-Toolbox/issues"
   },
-  "homepage": "https://github.com/slaveofsolace/Insta-AIO-Tool#readme",
+  "homepage": "https://slaveofsolace.github.io/Insta-Toolbox/",
   "keywords": [
     "instagram",
+    "tampermonkey",
+    "userscript",
+    "chrome-extension",
     "local-first",
     "pwa",
+    "electron",
+    "instagram-tools",
+    "privacy",
     "relationship-analysis",
     "data-export"
   ],
@@ -39,6 +45,7 @@
     "qa:overlay:check": "pnpm run build:extension && node scripts/run-overlay-qa.mjs --check",
     "release:checksums": "node scripts/generate-release-checksums.mjs",
     "verify:desktop-archive": "node scripts/verify-desktop-archive.mjs",
+    "verify:extension-package": "node scripts/verify-extension-package.mjs",
     "verify:web-package": "node scripts/verify-web-package.mjs",
     "verify:dependencies": "node scripts/verify-dependencies.mjs",
     "verify:repo-hygiene": "node scripts/check-repository-hygiene.mjs",
@@ -47,12 +54,12 @@
     "build:userscript": "node scripts/build-userscript.mjs"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=24.0.0"
   },
   "license": "MIT",
   "packageManager": "pnpm@11.9.0",
   "build": {
-    "appId": "io.github.slaveofsolace.insta-aio-tool",
+    "appId": "com.slaveofsolace.instatoolbox",
     "productName": "Insta Toolbox",
     "asar": true,
     "files": [
@@ -112,6 +119,7 @@
       "entitlementsInherit": "build/entitlements.mac.inherit.plist"
     },
     "nsis": {
+      "differentialPackage": false,
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",

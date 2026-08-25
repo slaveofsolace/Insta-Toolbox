@@ -1,9 +1,9 @@
 (() => {
   'use strict';
 
-  if (globalThis.__instaAioOverlayInstalled) return;
+  if (globalThis.__instaToolboxOverlayInstalled) return;
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const requiredModules = [
     'shared',
     'preferences',
@@ -25,10 +25,10 @@
   ];
   if (!modules || requiredModules.some((name) => !modules[name])) return;
 
-  const inspector = globalThis.InstaAioInstagramInspector;
+  const inspector = globalThis.InstaToolboxInstagramInspector;
   const chromeApi = globalThis.chrome;
   if (!inspector || !chromeApi?.storage?.local || !chromeApi?.runtime) return;
-  if (document.getElementById('insta-aio-sidecar-root')) return;
+  if (document.getElementById('insta-toolbox-sidecar-root')) return;
 
   const {
     accessibility,
@@ -52,7 +52,7 @@
   const model = shared.createModel(extensionVersion);
   const { host, shadow } = shell.create({
     document,
-    openShadow: globalThis.__instaAioOverlayTestOpenShadow === true,
+    openShadow: globalThis.__instaToolboxOverlayTestOpenShadow === true,
   });
   const storage = preferences.createStorage(chromeApi);
   const downloadManager = downloadsModule.create({ Blob, URL });
@@ -63,26 +63,42 @@
   let lastFocusedElement = null;
   let layoutController = null;
   let routeController = null;
+  let statusHideTimer = null;
   let themeController = null;
+
+  const STATUS_VISIBLE_MS = 9_000;
 
   const query = (selector) => shadow.querySelector(selector);
   const queryAll = (selector) => [...shadow.querySelectorAll(selector)];
 
   function setText(role, value) {
-    const element = query(`[data-ia-role="${role}"]`);
+    const element = query(`[data-insta-toolbox-role="${role}"]`);
     if (element) element.textContent = String(value ?? '');
   }
 
   function status(message, tone = 'neutral') {
-    const liveRegion = query('[data-ia-role="status"]');
-    if (liveRegion) liveRegion.dataset.tone = tone;
+    const liveRegion = query('[data-insta-toolbox-role="status"]');
+    if (!liveRegion) return;
+    if (statusHideTimer) {
+      window.clearTimeout(statusHideTimer);
+      statusHideTimer = null;
+    }
+    const safeMessage = shared.safeText(message, 'Review the exact action before continuing.');
+    liveRegion.dataset.tone = tone;
+    liveRegion.hidden = false;
     setText('status-lead', tone === 'error' ? 'Stopped.' : tone === 'good' ? 'Ready.' : 'Note.');
-    setText('status-text', shared.safeText(message, 'Review the exact action before continuing.'));
+    setText('status-text', safeMessage);
+    statusHideTimer = window.setTimeout(() => {
+      statusHideTimer = null;
+      setText('status-lead', '');
+      setText('status-text', '');
+      liveRegion.hidden = true;
+    }, STATUS_VISIBLE_MS);
   }
 
   const confirmationController = globalThis.InstaToolboxActionConfirmation?.createController({
     root: shadow,
-    attribute: 'data-ia-role',
+    attribute: 'data-insta-toolbox-role',
     status,
     unavailableTone: 'error',
   });
@@ -188,14 +204,14 @@
   }
 
   function renderFirstRun() {
-    const slot = query('[data-ia-role="first-run-slot"]');
+    const slot = query('[data-insta-toolbox-role="first-run-slot"]');
     if (!slot) return;
     if (model.preferences?.firstRunComplete) {
       slot.replaceChildren();
       return;
     }
-    if (query('[data-ia-role="first-run"]')) return;
-    const template = query('template[data-ia-template="first-run"]');
+    if (query('[data-insta-toolbox-role="first-run"]')) return;
+    const template = query('template[data-insta-toolbox-template="first-run"]');
     if (template) slot.append(template.content.cloneNode(true));
   }
 
@@ -206,11 +222,11 @@
     host.dataset.density = model.preferences.density;
     host.dataset.dock = model.preferences.dock;
     host.dataset.width = model.preferences.width;
-    for (const control of queryAll('[data-ia-preference]')) {
-      const value = model.preferences[control.dataset.iaPreference];
+    for (const control of queryAll('[data-insta-toolbox-preference]')) {
+      const value = model.preferences[control.dataset.instaToolboxPreference];
       if (value !== undefined) control.value = value;
     }
-    const opacityControl = query('[data-ia-preference="opacity"]');
+    const opacityControl = query('[data-insta-toolbox-preference="opacity"]');
     if (opacityControl) opacityControl.value = String(Math.round(model.preferences.opacity * 100));
     setText('opacity-output', `${Math.round(model.preferences.opacity * 100)}%`);
     renderFirstRun();
@@ -259,19 +275,19 @@
       ? opener || shadow.activeElement || document.activeElement
       : null;
     model.open = shouldOpen;
-    const panel = query('.ia-panel');
-    const launcher = query('.ia-launcher');
+    const panel = query('.insta-toolbox-panel');
+    const launcher = query('.insta-toolbox-launcher');
     panel.hidden = !shouldOpen;
     launcher.hidden = shouldOpen;
     launcher.setAttribute('aria-expanded', String(shouldOpen));
-    if (!shouldOpen) query('[data-ia-role="settings"]').open = false;
+    if (!shouldOpen) query('[data-insta-toolbox-role="settings"]').open = false;
     if (persist) void savePreference({ open: shouldOpen });
 
     if (shouldOpen) {
       if (opening) lastFocusedElement = focusBeforeOpen;
       requestAnimationFrame(() => layoutController?.constrain());
       if (focus && !model.collision.active) {
-        requestAnimationFrame(() => query(`[data-ia-section="${model.section}"]`)?.focus());
+        requestAnimationFrame(() => query(`[data-insta-toolbox-section="${model.section}"]`)?.focus());
       }
       if (refresh) {
         void Promise.all([
@@ -305,17 +321,17 @@
   function setSection(section, { focus = false, persist = true } = {}) {
     if (!shared.SECTIONS.includes(section)) return;
     model.section = section;
-    for (const button of queryAll('[data-ia-section]')) {
-      const selected = button.dataset.iaSection === section;
+    for (const button of queryAll('[data-insta-toolbox-section]')) {
+      const selected = button.dataset.instaToolboxSection === section;
       button.setAttribute('aria-selected', String(selected));
       button.tabIndex = selected ? 0 : -1;
     }
-    for (const view of queryAll('[data-ia-view]')) {
-      view.hidden = view.dataset.iaView !== section;
+    for (const view of queryAll('[data-insta-toolbox-view]')) {
+      view.hidden = view.dataset.instaToolboxView !== section;
     }
     renderSection(section);
     if (persist) void savePreference({ section });
-    if (focus) requestAnimationFrame(() => query(`[data-ia-section="${section}"]`)?.focus());
+    if (focus) requestAnimationFrame(() => query(`[data-insta-toolbox-section="${section}"]`)?.focus());
   }
 
   function renderSignals() {
@@ -324,7 +340,7 @@
       || model.bridge.pendingDmIntent,
     );
     for (const role of ['launcher-signal', 'queue-signal']) {
-      const element = query(`[data-ia-role="${role}"]`);
+      const element = query(`[data-insta-toolbox-role="${role}"]`);
       if (element) element.hidden = !signal;
     }
   }
@@ -378,7 +394,7 @@
   }
 
   async function refreshBridge({ announce = false } = {}) {
-    const response = await sendBridge({ kind: 'insta-aio-overlay-state' });
+    const response = await sendBridge({ kind: 'insta-toolbox-overlay-state' });
     if (response.state) {
       applyBridgeState(response.state);
       if (announce) status('Paired workspace state refreshed.', 'good');
@@ -399,7 +415,7 @@
     host.removeAttribute('data-adaptive-dock');
     host.removeAttribute('data-adaptive-width');
     host.dataset.collision = next.active ? 'active' : 'inactive';
-    const strip = query('[data-ia-role="collision-strip"]');
+    const strip = query('[data-insta-toolbox-role="collision-strip"]');
     if (!strip) return;
     strip.hidden = !next.active;
     if (!next.active) {
@@ -409,7 +425,7 @@
       requestAnimationFrame(() => {
         if (!active || model.collision.active || !model.open) return;
         const target = next.reviewedRectangles?.[0];
-        const panel = query('.ia-panel');
+        const panel = query('.insta-toolbox-panel');
         if (!target || !panel || panel.hidden) return;
         const panelRectangle = panel.getBoundingClientRect();
         if (!collision.intersects(panelRectangle, target)) return;
@@ -537,37 +553,37 @@
   function onShadowClick(event) {
     const disabledLink = event.target.closest?.('[aria-disabled="true"]');
     if (disabledLink) event.preventDefault();
-    const sectionButton = event.target.closest?.('[data-ia-section]');
+    const sectionButton = event.target.closest?.('[data-insta-toolbox-section]');
     if (sectionButton) {
-      setSection(sectionButton.dataset.iaSection);
+      setSection(sectionButton.dataset.instaToolboxSection);
       return;
     }
-    const sectionLink = event.target.closest?.('[data-ia-go-section]');
+    const sectionLink = event.target.closest?.('[data-insta-toolbox-go-section]');
     if (sectionLink) {
-      setSection(sectionLink.dataset.iaGoSection, { focus: true });
+      setSection(sectionLink.dataset.instaToolboxGoSection, { focus: true });
       return;
     }
-    const target = event.target.closest?.('[data-ia-action]');
+    const target = event.target.closest?.('[data-insta-toolbox-action]');
     if (!target || target.disabled) return;
-    const handler = actionHandlers[target.dataset.iaAction];
+    const handler = actionHandlers[target.dataset.instaToolboxAction];
     if (handler) void execute(() => handler(target));
   }
 
   function onShadowKeydown(event) {
-    if (!event.target.closest?.('[data-ia-section]')) return;
-    accessibility.handleTabKey(event, queryAll('[data-ia-section]'), (section) => {
+    if (!event.target.closest?.('[data-insta-toolbox-section]')) return;
+    accessibility.handleTabKey(event, queryAll('[data-insta-toolbox-section]'), (section) => {
       setSection(section);
     });
   }
 
   function onShadowChange(event) {
-    if (['bot-source', 'bot-action', 'bot-count'].includes(event.target.dataset?.iaRole)) {
+    if (['bot-source', 'bot-action', 'bot-count'].includes(event.target.dataset?.instaToolboxRole)) {
       queueView.invalidateBotReview(runtime);
     }
-    if (['unsend-scope', 'unsend-count'].includes(event.target.dataset?.iaRole)) {
+    if (['unsend-scope', 'unsend-count'].includes(event.target.dataset?.instaToolboxRole)) {
       messagesView.renderSentScan(runtime);
     }
-    const preference = event.target.dataset?.iaPreference;
+    const preference = event.target.dataset?.instaToolboxPreference;
     if (preference) {
       const rawValue = preference === 'opacity'
         ? Number(event.target.value) / 100
@@ -582,37 +598,37 @@
       }
       return;
     }
-    if (event.target.matches?.('[data-ia-role="list-type"]')) {
+    if (event.target.matches?.('[data-insta-toolbox-role="list-type"]')) {
       captureView.render(runtime);
       return;
     }
-    if (event.target.matches?.('[data-ia-role="checker-category"]')) {
+    if (event.target.matches?.('[data-insta-toolbox-role="checker-category"]')) {
       captureView.render(runtime);
       return;
     }
-    if (!event.target.matches?.('[data-ia-role="queue-file"]')) return;
+    if (!event.target.matches?.('[data-insta-toolbox-role="queue-file"]')) return;
     const file = event.target.files?.[0];
     if (file) void execute(() => queueView.importQueue(runtime, file));
     event.target.value = '';
   }
 
   function onShadowInput(event) {
-    if (event.target.matches?.('[data-ia-role="checker-search"]')) {
+    if (event.target.matches?.('[data-insta-toolbox-role="checker-search"]')) {
       captureView.render(runtime);
       return;
     }
-    if (event.target.dataset?.iaPreference !== 'opacity') return;
+    if (event.target.dataset?.instaToolboxPreference !== 'opacity') return;
     const opacity = Number(event.target.value) / 100;
     setText('opacity-output', `${Math.round(opacity * 100)}%`);
     layoutController?.previewOpacity(opacity);
   }
 
   function onShadowToggle(event) {
-    const details = event.target.closest?.('[data-ia-role="advanced-settings"]');
+    const details = event.target.closest?.('[data-insta-toolbox-role="advanced-settings"]');
     if (!details?.open) return;
-    const body = query('[data-ia-role="advanced-settings-body"]');
+    const body = query('[data-insta-toolbox-role="advanced-settings-body"]');
     if (!body || body.childElementCount) return;
-    const template = query('[data-ia-template="advanced-settings"]');
+    const template = query('[data-insta-toolbox-template="advanced-settings"]');
     if (!template) return;
     body.append(template.content.cloneNode(true));
     void batchController.hydrate(runtime);
@@ -661,12 +677,14 @@
       nowView.render(runtime);
     }
     if ([
-      'bridgePairings',
-      'pendingJobs',
-      'pendingLiveIntent',
-      'pendingDmIntent',
-      'accountActionLedger',
-      'dmActionLedger',
+      shared.STORAGE_KEYS.bridgePairings,
+      shared.STORAGE_KEYS.pendingJobs,
+      shared.STORAGE_KEYS.pendingLiveIntent,
+      shared.STORAGE_KEYS.pendingDmIntent,
+      shared.STORAGE_KEYS.accountActionLedger,
+      shared.STORAGE_KEYS.dmActionLedger,
+      shared.STORAGE_KEYS.threadUnsendLedger,
+      shared.STORAGE_KEYS.batchRun,
     ].some((key) => changes[key])) void refreshBridge({ announce: false });
   }
 
@@ -690,6 +708,10 @@
   function teardown() {
     if (!active) return;
     active = false;
+    if (statusHideTimer) {
+      window.clearTimeout(statusHideTimer);
+      statusHideTimer = null;
+    }
     confirmationController?.destroy();
     messagesView.cancelPending?.(runtime);
     collisionController?.teardown();
@@ -706,7 +728,7 @@
     window.removeEventListener('resize', onWindowResize);
     chromeApi.storage.onChanged.removeListener?.(onStorageChanged);
     host.remove();
-    globalThis.__instaAioOverlayInstalled = false;
+    globalThis.__instaToolboxOverlayInstalled = false;
   }
 
   async function initialize() {
@@ -750,10 +772,10 @@
     });
     layoutController = layout.create({
       host,
-      moveHandle: query('[data-ia-role="move-handle"]'),
+      moveHandle: query('[data-insta-toolbox-role="move-handle"]'),
       onCommit: (patch) => { void savePreference(patch); },
-      panel: query('.ia-panel'),
-      resizeHandle: query('[data-ia-role="resize-handle"]'),
+      panel: query('.insta-toolbox-panel'),
+      resizeHandle: query('[data-insta-toolbox-role="resize-handle"]'),
       window,
     });
     layoutController.apply(model.preferences);
@@ -763,7 +785,7 @@
       window,
     });
     collisionController = collision.create({
-      actionLabels: globalThis.__instaAioActionLabels,
+      actionLabels: globalThis.__instaToolboxActionLabels,
       document,
       getExecutionState: () => ({
         accountArm: null,
@@ -803,7 +825,7 @@
   document.addEventListener('keydown', onDocumentKeydown);
   chromeApi.storage.onChanged.addListener(onStorageChanged);
   document.documentElement.append(host);
-  globalThis.__instaAioOverlayInstalled = true;
-  globalThis.__instaAioOverlayTeardown = teardown;
+  globalThis.__instaToolboxOverlayInstalled = true;
+  globalThis.__instaToolboxOverlayTeardown = teardown;
   void initialize().catch((error) => status(`Overlay initialization stopped: ${error.message}`, 'error'));
 })();

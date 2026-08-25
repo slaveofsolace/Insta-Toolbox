@@ -123,7 +123,7 @@ function createHarness(list, {
   });
   vm.runInContext(actionLabelsSource, context);
   vm.runInContext(source, context);
-  return context.InstaAioInstagramInspector;
+  return context.InstaToolboxInstagramInspector;
 }
 
 test('full-list scan pages through a lazy list instead of stopping at the first screen', async () => {

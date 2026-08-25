@@ -62,7 +62,7 @@ export async function executeReviewedActionJob(inputJob, {
   if (!driver?.inspectSession || !driver?.resolveProfile) {
     throw new Error('The reviewed action adapter requires session and profile inspection.');
   }
-  if (inputJob?.kind !== 'insta-aio-reviewed-action-job') {
+  if (inputJob?.kind !== 'insta-toolbox-reviewed-action-job') {
     throw new Error('Select a reviewed action job.');
   }
   if (!['ready', 'paused', 'running'].includes(inputJob?.status)) {

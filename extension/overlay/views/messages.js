@@ -1,11 +1,11 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   if (!shared || modules.messagesView) return;
 
-  const runner = globalThis.InstaAioDmThreadUnsender;
+  const runner = globalThis.InstaToolboxDmThreadUnsender;
   const subscriptions = new WeakMap();
   const styledShadows = new WeakSet();
   const pendingReservations = new WeakMap();
@@ -62,123 +62,123 @@
     if (styledShadows.has(runtime.shadow)) return;
     styledShadows.add(runtime.shadow);
     const style = runtime.document.createElement('style');
-    style.id = 'insta-aio-instagram-design-v2';
+    style.id = 'insta-toolbox-instagram-design';
     style.textContent = `
       :host([data-theme-preference="auto"]) {
-        --ia-surface: rgb(var(--ig-primary-background, 255, 255, 255)) !important;
-        --ia-surface-raised: rgb(var(--ig-elevated-background, 255, 255, 255)) !important;
-        --ia-rail: rgb(var(--ig-secondary-background, 250, 250, 250)) !important;
-        --ia-ink: rgb(var(--ig-primary-text, 38, 38, 38)) !important;
-        --ia-muted: rgb(var(--ig-secondary-text, 115, 115, 115)) !important;
-        --ia-line: rgb(var(--ig-separator, 219, 219, 219)) !important;
-        --ia-signal: rgb(var(--ig-primary-button, 0, 149, 246)) !important;
-        --ia-signal-ink: #fff !important;
-        --ia-focus: rgb(var(--ig-primary-button, 0, 149, 246)) !important;
-        --ia-good: rgb(var(--ig-primary-button, 0, 149, 246)) !important;
-        --ia-shadow: 0 12px 38px rgba(0, 0, 0, .18) !important;
+        --insta-toolbox-surface: rgb(var(--ig-primary-background, 255, 255, 255)) !important;
+        --insta-toolbox-surface-raised: rgb(var(--ig-elevated-background, 255, 255, 255)) !important;
+        --insta-toolbox-rail: rgb(var(--ig-secondary-background, 250, 250, 250)) !important;
+        --insta-toolbox-ink: rgb(var(--ig-primary-text, 38, 38, 38)) !important;
+        --insta-toolbox-muted: rgb(var(--ig-secondary-text, 115, 115, 115)) !important;
+        --insta-toolbox-line: rgb(var(--ig-separator, 219, 219, 219)) !important;
+        --insta-toolbox-signal: rgb(var(--ig-primary-button, 0, 149, 246)) !important;
+        --insta-toolbox-signal-ink: #fff !important;
+        --insta-toolbox-focus: rgb(var(--ig-primary-button, 0, 149, 246)) !important;
+        --insta-toolbox-good: rgb(var(--ig-primary-button, 0, 149, 246)) !important;
+        --insta-toolbox-shadow: 0 12px 38px rgba(0, 0, 0, .18) !important;
         font-family: var(--font-family-system, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif) !important;
       }
-      .ia-panel {
+      .insta-toolbox-panel {
         border-radius: 16px !important;
         backdrop-filter: blur(14px) saturate(1.02) !important;
         -webkit-backdrop-filter: blur(14px) saturate(1.02) !important;
-        animation: ia-instagram-open 160ms cubic-bezier(.2,.8,.2,1) !important;
+        animation: insta-toolbox-instagram-open 160ms cubic-bezier(.2,.8,.2,1) !important;
       }
-      .ia-brand-mark {
-        border: 1px solid var(--ia-line) !important;
-        background: var(--ia-surface-raised) !important;
-        color: var(--ia-ink) !important;
+      .insta-toolbox-brand-mark {
+        border: 1px solid var(--insta-toolbox-line) !important;
+        background: var(--insta-toolbox-surface-raised) !important;
+        color: var(--insta-toolbox-ink) !important;
         font-size: 12px !important;
       }
-      .ia-tab, .ia-icon-button, .ia-settings summary {
+      .insta-toolbox-tab, .insta-toolbox-icon-button, .insta-toolbox-settings summary {
         transition: background 140ms ease, color 140ms ease, transform 140ms ease !important;
       }
-      .ia-tab:hover, .ia-icon-button:hover, .ia-settings summary:hover { transform: translateY(-1px); }
-      .ia-tab[aria-selected="true"] {
+      .insta-toolbox-tab:hover, .insta-toolbox-icon-button:hover, .insta-toolbox-settings summary:hover { transform: translateY(-1px); }
+      .insta-toolbox-tab[aria-selected="true"] {
         box-shadow: none !important;
-        background: var(--ia-surface-raised) !important;
-        color: var(--ia-ink) !important;
+        background: var(--insta-toolbox-surface-raised) !important;
+        color: var(--insta-toolbox-ink) !important;
       }
-      .ia-tab[aria-selected="true"]::after {
+      .insta-toolbox-tab[aria-selected="true"]::after {
         position: absolute;
         bottom: 4px;
         width: 16px;
         height: 2px;
         border-radius: 999px;
-        background: var(--ia-signal);
+        background: var(--insta-toolbox-signal);
         content: "";
       }
-      .ia-card, .ia-tool-card, .ia-next, .ia-checker-metric, .ia-disclosure {
+      .insta-toolbox-card, .insta-toolbox-tool-card, .insta-toolbox-next, .insta-toolbox-checker-metric, .insta-toolbox-disclosure {
         border-radius: 12px !important;
       }
-      .ia-tool-card, .ia-button, .ia-link-button, .ia-file-label, .ia-disclosure summary {
+      .insta-toolbox-tool-card, .insta-toolbox-button, .insta-toolbox-link-button, .insta-toolbox-file-label, .insta-toolbox-disclosure summary {
         transition: background 140ms ease, border-color 140ms ease, filter 140ms ease, transform 140ms ease !important;
       }
-      .ia-tool-card:hover { transform: translateY(-1px); background: var(--ia-rail) !important; }
-      .ia-button, .ia-link-button, .ia-file-label {
+      .insta-toolbox-tool-card:hover { transform: translateY(-1px); background: var(--insta-toolbox-rail) !important; }
+      .insta-toolbox-button, .insta-toolbox-link-button, .insta-toolbox-file-label {
         min-height: 44px !important;
-        border-color: var(--ia-line) !important;
+        border-color: var(--insta-toolbox-line) !important;
         border-radius: 8px !important;
-        background: var(--ia-rail) !important;
-        color: var(--ia-ink) !important;
+        background: var(--insta-toolbox-rail) !important;
+        color: var(--insta-toolbox-ink) !important;
         font-size: var(--system-14-font-size, 14px) !important;
         line-height: var(--system-14-line-height, 18px) !important;
         font-weight: 600 !important;
       }
-      .ia-button:hover, .ia-link-button:hover, .ia-file-label:hover { filter: brightness(.97); }
-      .ia-button--signal {
-        border-color: var(--ia-signal) !important;
-        background: var(--ia-signal) !important;
+      .insta-toolbox-button:hover, .insta-toolbox-link-button:hover, .insta-toolbox-file-label:hover { filter: brightness(.97); }
+      .insta-toolbox-button--signal {
+        border-color: var(--insta-toolbox-signal) !important;
+        background: var(--insta-toolbox-signal) !important;
         color: #fff !important;
       }
-      .ia-button--danger {
-        border-color: var(--ia-danger) !important;
-        background: var(--ia-danger) !important;
+      .insta-toolbox-button--danger {
+        border-color: var(--insta-toolbox-danger) !important;
+        background: var(--insta-toolbox-danger) !important;
         color: #fff !important;
       }
-      .ia-badge { font-weight: 600 !important; }
-      .ia-message-row { border-color: var(--ia-line) !important; border-radius: 12px !important; background: var(--ia-surface-raised) !important; }
-      .ia-direct-unsend-progress {
+      .insta-toolbox-badge { font-weight: 600 !important; }
+      .insta-toolbox-message-row { border-color: var(--insta-toolbox-line) !important; border-radius: 12px !important; background: var(--insta-toolbox-surface-raised) !important; }
+      .insta-toolbox-direct-unsend-progress {
         display: grid;
         gap: 6px;
         margin-top: 10px;
         padding: 10px 12px;
-        border: 1px solid var(--ia-line);
+        border: 1px solid var(--insta-toolbox-line);
         border-radius: 10px;
-        background: var(--ia-surface-raised);
+        background: var(--insta-toolbox-surface-raised);
       }
-      .ia-direct-unsend-progress strong { font-size: 13px; }
-      .ia-direct-unsend-progress span { color: var(--ia-muted); font-size: 12px; }
-      @keyframes ia-instagram-open {
+      .insta-toolbox-direct-unsend-progress strong { font-size: 13px; }
+      .insta-toolbox-direct-unsend-progress span { color: var(--insta-toolbox-muted); font-size: 12px; }
+      @keyframes insta-toolbox-instagram-open {
         from { opacity: 0; transform: translateY(6px) scale(.99); }
         to { opacity: 1; transform: none; }
       }
       @media (prefers-reduced-motion: reduce) {
-        .ia-panel, .ia-tab, .ia-icon-button, .ia-tool-card, .ia-button, .ia-link-button, .ia-file-label { animation: none !important; transition: none !important; }
+        .insta-toolbox-panel, .insta-toolbox-tab, .insta-toolbox-icon-button, .insta-toolbox-tool-card, .insta-toolbox-button, .insta-toolbox-link-button, .insta-toolbox-file-label { animation: none !important; transition: none !important; }
       }
     `;
     runtime.shadow.append(style);
 
-    const brand = runtime.query('.ia-brand-mark');
+    const brand = runtime.query('.insta-toolbox-brand-mark');
     if (brand) brand.textContent = 'IT';
-    const scan = runtime.query('[data-ia-action="scan-sent-dms"]');
+    const scan = runtime.query('[data-insta-toolbox-action="scan-sent-dms"]');
     if (scan) scan.textContent = 'Check conversation';
-    const disclosure = runtime.query('[data-ia-role="unsend-disclosure"]');
+    const disclosure = runtime.query('[data-insta-toolbox-role="unsend-disclosure"]');
     if (disclosure) {
       disclosure.hidden = false;
       const summary = disclosure.querySelector('strong');
       if (summary) summary.textContent = 'Conversation plan';
-      let progress = disclosure.querySelector('.ia-direct-unsend-progress');
+      let progress = disclosure.querySelector('.insta-toolbox-direct-unsend-progress');
       if (!progress) {
         progress = runtime.document.createElement('div');
-        progress.className = 'ia-direct-unsend-progress';
+        progress.className = 'insta-toolbox-direct-unsend-progress';
         progress.hidden = true;
         const title = runtime.document.createElement('strong');
-        title.dataset.iaRole = 'thread-unsend-progress-title';
+        title.dataset.instaToolboxRole = 'thread-unsend-progress-title';
         const detail = runtime.document.createElement('span');
-        detail.dataset.iaRole = 'thread-unsend-progress-detail';
+        detail.dataset.instaToolboxRole = 'thread-unsend-progress-detail';
         progress.append(title, detail);
-        disclosure.querySelector('.ia-disclosure-body')?.append(progress);
+        disclosure.querySelector('.insta-toolbox-disclosure-body')?.append(progress);
       }
     }
   }
@@ -241,20 +241,20 @@
   function renderDirect(runtime) {
     applyInstagramDesign(runtime);
     const state = runnerState(runtime);
-    const disclosure = runtime.query('[data-ia-role="unsend-disclosure"]');
-    const badge = runtime.query('[data-ia-role="unsend-badge"]');
-    const detail = runtime.query('[data-ia-role="unsend-detail"]');
-    const button = runtime.query('[data-ia-action="mass-unsend"]');
-    const progress = disclosure?.querySelector('.ia-direct-unsend-progress');
+    const disclosure = runtime.query('[data-insta-toolbox-role="unsend-disclosure"]');
+    const badge = runtime.query('[data-insta-toolbox-role="unsend-badge"]');
+    const detail = runtime.query('[data-insta-toolbox-role="unsend-detail"]');
+    const button = runtime.query('[data-insta-toolbox-action="mass-unsend"]');
+    const progress = disclosure?.querySelector('.insta-toolbox-direct-unsend-progress');
     const pendingReservation = pendingReservations.has(runtime.model);
     const runnerActive = ['preparing', 'running', 'waiting', 'stopping'].includes(state.status);
     const active = pendingReservation || runnerActive;
     const readOnlyCheck = state.operation === 'check';
     const preview = currentPreview(runtime);
-    const plan = runtime.query('[data-ia-role="unsend-plan"]');
-    const eligible = runtime.query('[data-ia-role="unsend-eligible"]');
-    const scope = runtime.query('[data-ia-role="unsend-scope"]')?.value || 'all';
-    const countField = runtime.query('[data-ia-role="unsend-count"]')?.closest('.ia-field');
+    const plan = runtime.query('[data-insta-toolbox-role="unsend-plan"]');
+    const eligible = runtime.query('[data-insta-toolbox-role="unsend-eligible"]');
+    const scope = runtime.query('[data-insta-toolbox-role="unsend-scope"]')?.value || 'all';
+    const countField = runtime.query('[data-insta-toolbox-role="unsend-count"]')?.closest('.insta-toolbox-field');
     if (disclosure) disclosure.hidden = false;
     if (plan) plan.hidden = false;
     if (countField) countField.hidden = scope === 'all';
@@ -300,8 +300,8 @@
     }
     if (progress) {
       progress.hidden = !active && !['completed', 'stopped', 'error'].includes(state.status);
-      const title = progress.querySelector('[data-ia-role="thread-unsend-progress-title"]');
-      const copy = progress.querySelector('[data-ia-role="thread-unsend-progress-detail"]');
+      const title = progress.querySelector('[data-insta-toolbox-role="thread-unsend-progress-title"]');
+      const copy = progress.querySelector('[data-insta-toolbox-role="thread-unsend-progress-detail"]');
       if (title) title.textContent = pendingReservation
         ? 'Preparing conversation'
         : active
@@ -330,7 +330,7 @@
     applyInstagramDesign(runtime);
     ensureRunnerSubscription(runtime);
     const { document, downloads, model, query, setText } = runtime;
-    const list = query('[data-ia-role="message-list"]');
+    const list = query('[data-insta-toolbox-role="message-list"]');
     if (!list) return;
     list.replaceChildren();
     const result = model.messages;
@@ -339,14 +339,17 @@
     const evidenceMatches = conversationReady
       && String(result?.conversationId || '') === conversationId;
     const fragments = evidenceMatches ? (result.fragments || []) : [];
+    const evidence = query('[data-insta-toolbox-role="message-evidence"]');
+    if (evidence) evidence.hidden = !evidenceMatches || !fragments.length;
+    list.hidden = !evidenceMatches || !fragments.length;
     setText('message-count', String(fragments.length));
     setText('message-detail', evidenceMatches
-      ? shared.safeText(result.conversationLabel, 'Open conversation')
-        + ' · '
-        + shared.safeText(result.reason, 'read only')
-      : 'No evidence yet');
+      ? fragments.length
+        ? `${shared.safeText(result.conversationLabel, 'Open conversation')} · ${shared.safeText(result.reason, 'read only')}`
+        : 'No visible messages found'
+      : '');
 
-    const state = query('[data-ia-role="message-state"]');
+    const state = query('[data-insta-toolbox-role="message-state"]');
     if (state) state.dataset.tone = conversationReady ? 'good' : 'neutral';
     setText('message-state-title', conversationReady ? 'Conversation ready' : 'Open a conversation');
     setText('message-state-detail', conversationReady
@@ -355,32 +358,23 @@
 
     for (const fragment of fragments) {
       const row = document.createElement('li');
-      row.className = 'ia-message-row';
+      row.className = 'insta-toolbox-message-row';
       row.dataset.ownership = 'unknown';
       const text = document.createElement('div');
       text.textContent = fragment.text;
       const meta = document.createElement('div');
-      meta.className = 'ia-message-meta';
+      meta.className = 'insta-toolbox-message-meta';
       meta.textContent = `Visible fragment ${Number(fragment.index) + 1}`;
       row.append(text, meta);
       list.append(row);
     }
-    if (!fragments.length) {
-      const empty = document.createElement('li');
-      empty.className = 'ia-empty';
-      empty.textContent = conversationReady
-        ? 'No visible text has been read yet.'
-        : 'Open an Instagram conversation, then use the message tools.';
-      list.append(empty);
-    }
-
-    const download = query('[data-ia-role="message-download"]');
-    if (evidenceMatches) {
+    const download = query('[data-insta-toolbox-role="message-download"]');
+    if (evidenceMatches && fragments.length) {
       downloads.update('messages', download, {
-        filename: `insta-aio-visible-message-evidence-${Date.now()}.json`,
+        filename: `insta-toolbox-visible-message-evidence-${Date.now()}.json`,
         payload: {
           schemaVersion: 1,
-          kind: 'insta-aio-visible-message-evidence',
+          kind: 'insta-toolbox-visible-message-evidence',
           ...result,
           note: 'Read-only visible DOM evidence.',
         },
@@ -444,8 +438,8 @@
       pendingReviews.delete(runtime.model);
       throw new Error(inspection.reason);
     }
-    const scope = runtime.query('[data-ia-role="unsend-scope"]')?.value || 'all';
-    const requested = Math.floor(Number(runtime.query('[data-ia-role="unsend-count"]')?.value) || 1);
+    const scope = runtime.query('[data-insta-toolbox-role="unsend-scope"]')?.value || 'all';
+    const requested = Math.floor(Number(runtime.query('[data-insta-toolbox-role="unsend-count"]')?.value) || 1);
     const limit = scope === 'all' ? null : Math.max(1, requested);
     let plan;
     try {
@@ -504,8 +498,8 @@
       pendingReviews.delete(runtime.model);
       throw error;
     }
-    const confirmedScope = runtime.query('[data-ia-role="unsend-scope"]')?.value || 'all';
-    const confirmedRequested = Math.floor(Number(runtime.query('[data-ia-role="unsend-count"]')?.value) || 1);
+    const confirmedScope = runtime.query('[data-insta-toolbox-role="unsend-scope"]')?.value || 'all';
+    const confirmedRequested = Math.floor(Number(runtime.query('[data-insta-toolbox-role="unsend-count"]')?.value) || 1);
     const confirmedLimit = confirmedScope === 'all' ? null : Math.max(1, confirmedRequested);
     if (
       !confirmedInspection?.ready
@@ -532,7 +526,7 @@
     let reservation;
     try {
       reservation = await bridgeRequest(runtime, {
-        kind: 'insta-aio-reserve-thread-unsend',
+        kind: 'insta-toolbox-reserve-thread-unsend',
         plan,
       });
     } finally {
@@ -541,7 +535,7 @@
     if (reservationState.cancelled) {
       if (reservationMatchesPlan(reservation, plan)) {
         await bridgeRequest(runtime, {
-          kind: 'insta-aio-finalize-thread-unsend',
+          kind: 'insta-toolbox-finalize-thread-unsend',
           reservationId: reservation.reservation?.id,
           reviewedDigest: plan.reviewedDigest,
           threadId: plan.threadId,
@@ -570,7 +564,7 @@
         maxDelayMs: reservation.pacing?.maxDelayMs,
         onVerifiedRemoval: async (progress) => {
           const checkpoint = await bridgeRequest(runtime, {
-            kind: 'insta-aio-checkpoint-thread-unsend',
+            kind: 'insta-toolbox-checkpoint-thread-unsend',
             plan,
             reservationId: reservation.reservation?.id,
             reviewedDigest: plan.reviewedDigest,
@@ -588,7 +582,7 @@
       outcome = { processed: 0, failed: 1, status: 'error' };
     }
     const finalized = await bridgeRequest(runtime, {
-      kind: 'insta-aio-finalize-thread-unsend',
+      kind: 'insta-toolbox-finalize-thread-unsend',
       reservationId: reservation.reservation?.id,
       reviewedDigest: plan.reviewedDigest,
       threadId: plan.threadId,

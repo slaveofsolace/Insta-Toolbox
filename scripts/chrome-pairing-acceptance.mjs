@@ -224,7 +224,7 @@ async function run() {
   ];
   const hostedLinuxNoSandbox =
     process.platform === 'linux'
-    && process.env.INSTA_AIO_CHROME_ACCEPTANCE_NO_SANDBOX === '1';
+    && process.env.INSTA_TOOLBOX_CHROME_ACCEPTANCE_NO_SANDBOX === '1';
   if (hostedLinuxNoSandbox || (typeof process.getuid === 'function' && process.getuid() === 0)) {
     chromeArguments.unshift('--no-sandbox');
   }
@@ -361,7 +361,7 @@ async function run() {
     ), 'paired extension ping');
     const storedPairings = await evaluate(
       popup,
-      `chrome.storage.local.get('bridgePairings').then(({ bridgePairings }) => bridgePairings)`,
+      `chrome.storage.local.get('instaToolboxBridgePairings').then((stored) => stored.instaToolboxBridgePairings)`,
     );
     assert.equal(storedPairings.length, 1);
     assert.equal(storedPairings[0].origin, new URL(pwaUrl).origin);

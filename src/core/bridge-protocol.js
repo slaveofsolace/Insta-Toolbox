@@ -1,5 +1,5 @@
 export const BRIDGE_SCHEMA_VERSION = 1;
-export const BRIDGE_CHANNEL = 'insta-aio-extension-bridge';
+export const BRIDGE_CHANNEL = 'insta-toolbox-extension-bridge';
 export const BRIDGE_PERMISSIONS = Object.freeze(['read', 'action']);
 
 const SENSITIVE_KEYS = new Set([
@@ -77,7 +77,7 @@ export function createBridgePairing({
 } = {}) {
   const pairing = {
     schemaVersion: BRIDGE_SCHEMA_VERSION,
-    kind: 'insta-aio-bridge-pairing',
+    kind: 'insta-toolbox-bridge-pairing',
     pairingId: randomCode(12),
     secret: randomCode(32),
     origin: normalizeBridgeOrigin(origin),
@@ -115,7 +115,7 @@ export function parseBridgePairingCode(pairingCode, {
   }
   return {
     schemaVersion: BRIDGE_SCHEMA_VERSION,
-    kind: 'insta-aio-bridge-pairing',
+    kind: 'insta-toolbox-bridge-pairing',
     pairingId: parts[1],
     secret: parts[2],
     origin: normalizeBridgeOrigin(origin),
@@ -220,7 +220,7 @@ export async function deriveBridgeSessionPairing(pairing, {
   assertHandshakeNonce(extensionNonce, 'Extension pairing nonce');
   const secret = await hmac(
     pairing.secret,
-    `insta-aio-bridge-session-v1:${pairing.pairingId}:${clientNonce}:${extensionNonce}`,
+    `insta-toolbox-bridge-session-v1:${pairing.pairingId}:${clientNonce}:${extensionNonce}`,
   );
   return {
     ...pairing,

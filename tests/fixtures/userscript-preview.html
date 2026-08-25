@@ -62,7 +62,7 @@
       timestamp: 1700000000100,
     };
     globalThis.fixtureGmStore = {
-      instaAioUserscriptStateV2: {
+      instaToolboxUserscriptStateV2: {
         schemaVersion: 2,
         capture: { followers: [], following: [], capturedAt: { followers: null, following: null } },
         queue: {
@@ -106,7 +106,7 @@
         <section data-pagelet="IGDMessagesList">
           <header><h1>studio_friend</h1></header>
           <div role="row" data-message-id="received-1" data-timestamp-ms="1700000000000" data-sent-by-me="false"><div dir="auto">Did you see the draft?</div></div>
-          <div id="fixture-sent-row" role="row" data-message-id="sent-1" data-timestamp-ms="1700000000100" data-sent-by-me="true"><div data-insta-aio-message-content dir="auto">${dmText}</div><div id="fixture-message-options" role="button">See more options for message from demo_creator</div></div>
+          <div id="fixture-sent-row" role="row" data-message-id="sent-1" data-timestamp-ms="1700000000100" data-sent-by-me="true"><div data-insta-toolbox-message-content dir="auto">${dmText}</div><div id="fixture-message-options" role="button">See more options for message from demo_creator</div></div>
         </section>
         <div id="fixture-menu" hidden></div>`;
       const row = document.querySelector('#fixture-sent-row');
@@ -142,6 +142,6 @@
       });
     };
   </script>
-  <script src="/userscripts/insta-aio-companion.user.js"></script>
+  <script src="/userscripts/insta-toolbox.user.js"></script>
 </body>
 </html>

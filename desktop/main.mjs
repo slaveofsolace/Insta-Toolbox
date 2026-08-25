@@ -19,17 +19,17 @@ import path from 'node:path';
 
 import { loadWithRecovery, withTimeout } from './startup-recovery.mjs';
 
-const SCHEME = 'insta-aio';
+const SCHEME = 'insta-toolbox';
 const HOST = 'app';
 const APP_URL = `${SCHEME}://${HOST}/`;
-const PRODUCT_DATA_DIRECTORY = 'Insta AIO Tool';
-const BACKUP_DIRECTORY = 'Insta AIO Tool Backups';
+const PRODUCT_DATA_DIRECTORY = 'Insta Toolbox';
+const BACKUP_DIRECTORY = 'Insta Toolbox Backups';
 const BACKUP_RETENTION = 5;
 const MAX_DESKTOP_LOAD_ATTEMPTS = 3;
 const DESKTOP_LOAD_TIMEOUT_MS = 15_000;
 const WINDOW_REVEAL_DELAY_MS = 1_000;
 const DESKTOP_SMOKE_TEST = process.argv.includes('--smoke-test')
-  || process.env.INSTA_AIO_DESKTOP_SMOKE_TEST === '1';
+  || process.env.INSTA_TOOLBOX_DESKTOP_SMOKE_TEST === '1';
 const BACKUP_PATHS = [
   'IndexedDB',
   'Local Storage',
@@ -52,7 +52,7 @@ protocol.registerSchemesAsPrivileged([{
 function createDesktopSmokeDataRoot() {
   const temporaryRoot = realpathSync.native(path.resolve(app.getPath('temp')));
   const configuredParent = realpathSync.native(path.resolve(
-    process.env.INSTA_AIO_DESKTOP_SMOKE_PARENT || '',
+    process.env.INSTA_TOOLBOX_DESKTOP_SMOKE_PARENT || '',
   ));
   const relativeParent = path.relative(temporaryRoot, configuredParent);
   if (
@@ -60,11 +60,11 @@ function createDesktopSmokeDataRoot() {
     || relativeParent === '..'
     || relativeParent.startsWith(`..${path.sep}`)
     || path.isAbsolute(relativeParent)
-    || path.basename(configuredParent) !== 'insta-aio-desktop-smoke-parent'
+    || path.basename(configuredParent) !== 'insta-toolbox-desktop-smoke-parent'
   ) {
     throw new Error('Desktop smoke mode requires a confined disposable parent directory.');
   }
-  return mkdtempSync(path.join(configuredParent, 'insta-aio-desktop-smoke-'));
+  return mkdtempSync(path.join(configuredParent, 'insta-toolbox-desktop-smoke-'));
 }
 
 function resolveAppDataRoot() {
@@ -181,7 +181,7 @@ async function createStartupBackup() {
   }
   await writeFile(path.join(destination, 'backup.json'), JSON.stringify({
     schemaVersion: 1,
-    kind: 'insta-aio-desktop-startup-backup',
+    kind: 'insta-toolbox-desktop-startup-backup',
     createdAt: new Date().toISOString(),
     appVersion: app.getVersion(),
     paths: available,

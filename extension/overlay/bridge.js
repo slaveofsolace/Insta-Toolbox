@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   if (!shared || modules.bridge) return;
 
@@ -11,7 +11,7 @@
     return new Promise((resolve) => {
       let settled = false;
       let timer = null;
-      const isThreadUnsendWrite = /^insta-aio-(reserve|checkpoint|finalize)-thread-unsend$/u
+      const isThreadUnsendWrite = /^insta-toolbox-(reserve|checkpoint|finalize)-thread-unsend$/u
         .test(String(message?.kind || ''));
       const requestedTimeout = Number(options.timeoutMs);
       const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0

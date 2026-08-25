@@ -47,6 +47,21 @@ let activeBatchAbort = false;
 const accountCapabilities = new Map();
 const dmCapabilities = new Map();
 const threadUnsendCapabilities = new Map();
+const STORAGE_KEYS = Object.freeze({
+  bridgePairings: 'instaToolboxBridgePairings',
+  bridgeReplayNonces: 'instaToolboxBridgeReplayNonces',
+  pendingJobs: 'instaToolboxPendingJobs',
+  accountActionLedger: 'instaToolboxAccountActionLedger',
+  dmActionLedger: 'instaToolboxDmActionLedger',
+  threadUnsendLedger: 'instaToolboxThreadUnsendLedger',
+  pendingLiveIntent: 'instaToolboxPendingLiveIntent',
+  liveArm: 'instaToolboxLiveArm',
+  pendingDmIntent: 'instaToolboxPendingDmIntent',
+  dmArm: 'instaToolboxDmArm',
+  batchArm: 'instaToolboxBatchArm',
+  batchRun: 'instaToolboxBatchRun',
+  batchLimits: 'instaToolboxBatchLimits',
+});
 
 function clampInteger(value, fallback, min, max) {
   const numeric = Number(value);
@@ -84,61 +99,52 @@ function normalizeBatchLimits(limits) {
 }
 
 async function loadBridgeState() {
-  const stored = await chrome.storage.local.get([
-    'bridgePairings',
-    'bridgeReplayNonces',
-    'pendingJobs',
-    'accountActionLedger',
-    'dmActionLedger',
-    'threadUnsendLedger',
-    'pendingLiveIntent',
-    'liveArm',
-    'pendingDmIntent',
-    'dmArm',
-    'batchArm',
-    'batchRun',
-    'batchLimits',
-  ]);
+  const stored = await chrome.storage.local.get(Object.values(STORAGE_KEYS));
   return {
-    pairings: Array.isArray(stored.bridgePairings) ? stored.bridgePairings : [],
-    replayNonces: Array.isArray(stored.bridgeReplayNonces) ? stored.bridgeReplayNonces : [],
-    pendingJobs: Array.isArray(stored.pendingJobs) ? stored.pendingJobs : [],
-    accountActionLedger: Array.isArray(stored.accountActionLedger)
-      ? stored.accountActionLedger
+    pairings: Array.isArray(stored[STORAGE_KEYS.bridgePairings])
+      ? stored[STORAGE_KEYS.bridgePairings]
       : [],
-    dmActionLedger: Array.isArray(stored.dmActionLedger)
-      ? stored.dmActionLedger
+    replayNonces: Array.isArray(stored[STORAGE_KEYS.bridgeReplayNonces])
+      ? stored[STORAGE_KEYS.bridgeReplayNonces]
       : [],
-    threadUnsendLedger: Array.isArray(stored.threadUnsendLedger)
-      ? stored.threadUnsendLedger
+    pendingJobs: Array.isArray(stored[STORAGE_KEYS.pendingJobs])
+      ? stored[STORAGE_KEYS.pendingJobs]
       : [],
-    pendingLiveIntent: stored.pendingLiveIntent || null,
-    // Retained storage keys are migration-only. Authority is never restored
-    // from disk in 2.0.0.
+    accountActionLedger: Array.isArray(stored[STORAGE_KEYS.accountActionLedger])
+      ? stored[STORAGE_KEYS.accountActionLedger]
+      : [],
+    dmActionLedger: Array.isArray(stored[STORAGE_KEYS.dmActionLedger])
+      ? stored[STORAGE_KEYS.dmActionLedger]
+      : [],
+    threadUnsendLedger: Array.isArray(stored[STORAGE_KEYS.threadUnsendLedger])
+      ? stored[STORAGE_KEYS.threadUnsendLedger]
+      : [],
+    pendingLiveIntent: stored[STORAGE_KEYS.pendingLiveIntent] || null,
+    // Stored intent records never restore live authority after a worker restart.
     liveArm: null,
-    pendingDmIntent: stored.pendingDmIntent || null,
+    pendingDmIntent: stored[STORAGE_KEYS.pendingDmIntent] || null,
     dmArm: null,
     batchArm: null,
-    batchRun: stored.batchRun || null,
-    batchLimits: normalizeBatchLimits(stored.batchLimits),
+    batchRun: stored[STORAGE_KEYS.batchRun] || null,
+    batchLimits: normalizeBatchLimits(stored[STORAGE_KEYS.batchLimits]),
   };
 }
 
 async function saveBridgeState(state) {
   await chrome.storage.local.set({
-    bridgePairings: state.pairings,
-    bridgeReplayNonces: state.replayNonces.slice(-MAX_REPLAY_NONCES),
-    pendingJobs: state.pendingJobs.slice(0, MAX_PENDING_JOBS),
-    accountActionLedger: state.accountActionLedger.slice(0, MAX_ACCOUNT_ACTION_LEDGER),
-    dmActionLedger: state.dmActionLedger.slice(0, MAX_DM_ACTION_LEDGER),
-    threadUnsendLedger: state.threadUnsendLedger.slice(0, MAX_THREAD_UNSEND_LEDGER),
-    pendingLiveIntent: state.pendingLiveIntent || null,
-    liveArm: state.liveArm || null,
-    pendingDmIntent: state.pendingDmIntent || null,
-    dmArm: state.dmArm || null,
-    batchArm: state.batchArm || null,
-    batchRun: state.batchRun || null,
-    batchLimits: normalizeBatchLimits(state.batchLimits),
+    [STORAGE_KEYS.bridgePairings]: state.pairings,
+    [STORAGE_KEYS.bridgeReplayNonces]: state.replayNonces.slice(-MAX_REPLAY_NONCES),
+    [STORAGE_KEYS.pendingJobs]: state.pendingJobs.slice(0, MAX_PENDING_JOBS),
+    [STORAGE_KEYS.accountActionLedger]: state.accountActionLedger.slice(0, MAX_ACCOUNT_ACTION_LEDGER),
+    [STORAGE_KEYS.dmActionLedger]: state.dmActionLedger.slice(0, MAX_DM_ACTION_LEDGER),
+    [STORAGE_KEYS.threadUnsendLedger]: state.threadUnsendLedger.slice(0, MAX_THREAD_UNSEND_LEDGER),
+    [STORAGE_KEYS.pendingLiveIntent]: state.pendingLiveIntent || null,
+    [STORAGE_KEYS.liveArm]: state.liveArm || null,
+    [STORAGE_KEYS.pendingDmIntent]: state.pendingDmIntent || null,
+    [STORAGE_KEYS.dmArm]: state.dmArm || null,
+    [STORAGE_KEYS.batchArm]: state.batchArm || null,
+    [STORAGE_KEYS.batchRun]: state.batchRun || null,
+    [STORAGE_KEYS.batchLimits]: normalizeBatchLimits(state.batchLimits),
   });
 }
 
@@ -170,7 +176,7 @@ async function dmIntentInstagramTab() { return activeInstagramTab(); }
 async function inspectProfileInTab(tabId, username) {
   try {
     return await chrome.tabs.sendMessage(tabId, {
-      kind: 'insta-aio-inspect-profile',
+      kind: 'insta-toolbox-inspect-profile',
       username,
     });
   } catch {
@@ -181,7 +187,7 @@ async function inspectProfileInTab(tabId, username) {
 async function inspectDmItemInTab(tabId, item) {
   try {
     return await chrome.tabs.sendMessage(tabId, {
-      kind: 'insta-aio-inspect-reviewed-dm-item',
+      kind: 'insta-toolbox-inspect-reviewed-dm-item',
       item: {
         conversationId: item.conversationId,
         contentDigest: item.contentDigest,
@@ -420,10 +426,10 @@ function validateReviewedJob(job, expectedKind) {
   }
   if (job.mode !== 'dry-run') return 'live-execution-disabled';
   if (job.status !== 'ready' || !job.items.length) return 'job-not-ready';
-  if (expectedKind === 'insta-aio-reviewed-action-job' && !job.confirmedAt) {
+  if (expectedKind === 'insta-toolbox-reviewed-action-job' && !job.confirmedAt) {
     return 'job-not-confirmed';
   }
-  if (expectedKind === 'insta-aio-reviewed-dm-job' && !job.reviewConfirmedAt) {
+  if (expectedKind === 'insta-toolbox-reviewed-dm-job' && !job.reviewConfirmedAt) {
     return 'job-not-confirmed';
   }
   return null;
@@ -444,7 +450,7 @@ async function inspectAccountJob(job) {
     let observation;
     try {
       observation = await chrome.tabs.sendMessage(tab.id, {
-        kind: 'insta-aio-inspect-profile',
+        kind: 'insta-toolbox-inspect-profile',
         username: item.username,
       });
     } catch {
@@ -496,7 +502,7 @@ async function inspectDmJob(job) {
     let observation;
     try {
       observation = await chrome.tabs.sendMessage(tab.id, {
-        kind: 'insta-aio-inspect-reviewed-dm-item',
+        kind: 'insta-toolbox-inspect-reviewed-dm-item',
         item: {
           conversationId: item.conversationId,
           contentDigest: item.contentDigest,
@@ -775,7 +781,7 @@ async function performLiveDmUnsend(state, pairing, jobId, item) {
   let result;
   try {
     result = await chrome.tabs.sendMessage(tab.id, {
-      kind: 'insta-aio-perform-reviewed-dm-unsend',
+      kind: 'insta-toolbox-perform-reviewed-dm-unsend',
       item: {
         conversationId: intent.conversationId,
         contentDigest: intent.contentDigest,
@@ -792,7 +798,7 @@ async function performLiveDmUnsend(state, pairing, jobId, item) {
   const succeeded = verifiedControlledDmResult(intent, result);
   finalizeExtensionDmAction(state, reservation.record.id, result, succeeded);
   state.pendingJobs.unshift({
-    kind: 'insta-aio-reviewed-dm-job',
+    kind: 'insta-toolbox-reviewed-dm-job',
     jobId,
     receivedAt: new Date().toISOString(),
     mode: 'live',
@@ -891,7 +897,7 @@ async function performLiveAccountAction(state, pairing, jobId, item) {
   let result;
   try {
     result = await chrome.tabs.sendMessage(tab.id, {
-      kind: 'insta-aio-perform-reviewed-profile-action',
+      kind: 'insta-toolbox-perform-reviewed-profile-action',
       item: {
         action: intent.action,
         expectedRelationship: item.expectedRelationship,
@@ -912,7 +918,7 @@ async function performLiveAccountAction(state, pairing, jobId, item) {
     && !result?.rateLimited;
   finalizeExtensionAction(state, reservation.record.id, result, succeeded);
   state.pendingJobs.unshift({
-    kind: 'insta-aio-reviewed-action-job',
+    kind: 'insta-toolbox-reviewed-action-job',
     jobId,
     receivedAt: new Date().toISOString(),
     mode: 'live',
@@ -1064,7 +1070,7 @@ async function runBatchAccountItem(state, tabId, jobId, item, limits) {
   let result;
   try {
     result = await chrome.tabs.sendMessage(tabId, {
-      kind: 'insta-aio-perform-reviewed-profile-action',
+      kind: 'insta-toolbox-perform-reviewed-profile-action',
       item: {
         action: item.action,
         expectedRelationship,
@@ -1144,7 +1150,7 @@ async function runBatchDmItem(state, pairingId, tabId, jobId, item, limits) {
   let result;
   try {
     result = await chrome.tabs.sendMessage(tabId, {
-      kind: 'insta-aio-perform-reviewed-dm-unsend',
+      kind: 'insta-toolbox-perform-reviewed-dm-unsend',
       item: {
         conversationId: intent.conversationId,
         contentDigest: intent.contentDigest,
@@ -1416,7 +1422,7 @@ async function routeVerifiedRequest(request, pairing, state) {
     let result;
     try {
       result = tab?.id
-        ? await chrome.tabs.sendMessage(tab.id, { kind: 'insta-aio-inspect-session' })
+        ? await chrome.tabs.sendMessage(tab.id, { kind: 'insta-toolbox-inspect-session' })
         : { unexpectedUi: true, reason: 'instagram-tab-unavailable' };
     } catch {
       result = { unexpectedUi: true, reason: 'inspector-unavailable' };
@@ -1488,7 +1494,7 @@ async function routeVerifiedRequest(request, pairing, state) {
     let result;
     try {
       result = tab?.id
-        ? await chrome.tabs.sendMessage(tab.id, { kind: 'insta-aio-inspect-session' })
+        ? await chrome.tabs.sendMessage(tab.id, { kind: 'insta-toolbox-inspect-session' })
         : { unexpectedUi: true, reason: 'instagram-tab-unavailable' };
     } catch {
       result = { unexpectedUi: true, reason: 'inspector-unavailable' };
@@ -1582,7 +1588,7 @@ async function routeVerifiedRequest(request, pairing, state) {
     let result;
     try {
       result = await chrome.tabs.sendMessage(tab.id, {
-        kind: 'insta-aio-capture-visible-accounts',
+        kind: 'insta-toolbox-capture-visible-accounts',
       });
     } catch {
       result = { error: 'inspector-unavailable', accounts: [] };
@@ -1595,7 +1601,7 @@ async function routeVerifiedRequest(request, pairing, state) {
 
   if (request.type === 'action.account-job') {
     const job = request.payload?.job;
-    const invalid = validateReviewedJob(job, 'insta-aio-reviewed-action-job');
+    const invalid = validateReviewedJob(job, 'insta-toolbox-reviewed-action-job');
     if (invalid) {
       return {
         responseType: 'action.bridge-error',
@@ -1618,7 +1624,7 @@ async function routeVerifiedRequest(request, pairing, state) {
 
   if (request.type === 'action.dm-job') {
     const job = request.payload?.job;
-    const invalid = validateReviewedJob(job, 'insta-aio-reviewed-dm-job');
+    const invalid = validateReviewedJob(job, 'insta-toolbox-reviewed-dm-job');
     if (invalid) {
       return {
         responseType: 'action.bridge-error',
@@ -1746,7 +1752,7 @@ function isInstagramSender(sender) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request?.kind === 'insta-aio-overlay-state') {
+  if (request?.kind === 'insta-toolbox-overlay-state') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1760,7 +1766,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(() => sendResponse({ error: 'overlay-state-unavailable' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-cancel-account-action') {
+  if (request?.kind === 'insta-toolbox-cancel-account-action') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1770,7 +1776,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     operation.then(sendResponse).catch(() => sendResponse({ error: 'live-intent-cancel-failed' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-cancel-dm-unsend') {
+  if (request?.kind === 'insta-toolbox-cancel-dm-unsend') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1780,7 +1786,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     operation.then(sendResponse).catch(() => sendResponse({ error: 'dm-live-intent-cancel-failed' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-start-batch') {
+  if (request?.kind === 'insta-toolbox-start-batch') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1790,7 +1796,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     operation.then(sendResponse).catch(() => sendResponse({ error: 'batch-start-unavailable' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-batch-status') {
+  if (request?.kind === 'insta-toolbox-batch-status') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1800,7 +1806,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(() => sendResponse({ error: 'batch-status-unavailable' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-abort-batch') {
+  if (request?.kind === 'insta-toolbox-abort-batch') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1810,7 +1816,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(() => sendResponse({ error: 'batch-abort-unavailable' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-batch-limits') {
+  if (request?.kind === 'insta-toolbox-batch-limits') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1820,7 +1826,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     operation.then(sendResponse).catch(() => sendResponse({ error: 'batch-limits-unavailable' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-reserve-thread-unsend') {
+  if (request?.kind === 'insta-toolbox-reserve-thread-unsend') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1830,7 +1836,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     operation.then(sendResponse).catch(() => sendResponse({ error: 'thread-unsend-reservation-unavailable' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-finalize-thread-unsend') {
+  if (request?.kind === 'insta-toolbox-finalize-thread-unsend') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1840,7 +1846,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     operation.then(sendResponse).catch(() => sendResponse({ error: 'thread-unsend-finalization-unavailable' }));
     return true;
   }
-  if (request?.kind === 'insta-aio-checkpoint-thread-unsend') {
+  if (request?.kind === 'insta-toolbox-checkpoint-thread-unsend') {
     if (!isInstagramSender(sender)) {
       sendResponse({ error: 'instagram-origin-required' });
       return false;
@@ -1850,7 +1856,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     operation.then(sendResponse).catch(() => sendResponse({ error: 'thread-unsend-checkpoint-unavailable' }));
     return true;
   }
-  if (request?.kind !== 'insta-aio-bridge-request') return false;
+  if (request?.kind !== 'insta-toolbox-bridge-request') return false;
   const origin = bridgeSenderOrigin(sender);
   if (!origin || origin !== request.origin) {
     sendResponse({ error: 'origin-mismatch' });

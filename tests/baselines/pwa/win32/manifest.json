@@ -1,6 +1,8 @@
 {
-  "schemaVersion": 1,
-  "kind": "insta-aio-pwa-screenshot-baseline",
+  "schemaVersion": 2,
+  "kind": "insta-toolbox-pwa-screenshot-baseline",
+  "productVersion": "3.0.0",
+  "captureTimestamp": "2026-08-24T00:00:00.000Z",
   "platform": "win32",
   "electron": "43.2.0",
   "deviceScaleFactor": 1,
@@ -28,7 +30,7 @@
       "width": 1134,
       "height": 700,
       "view": "overview",
-      "sha256": "afad98086247248250fdc4a2d0283ef243f50bc8ecb27aafd0848df9b7bb7bbb"
+      "sha256": "344ad642b91e02ea4f860bdf559c943d11c3e206d9faec5fd6d789269182df9e"
     },
     {
       "file": "desktop-messages.png",
@@ -36,7 +38,7 @@
       "width": 1134,
       "height": 700,
       "view": "messages",
-      "sha256": "23355889b0ac1bc212d4b906f0d48ddb97ecaf223694f3e2e81c13f22d37e152"
+      "sha256": "ba2697e164bc282b3bf31f162c2d95821fbdb52b9ce2990acd2303a76709336f"
     },
     {
       "file": "desktop-settings.png",
@@ -44,7 +46,7 @@
       "width": 1134,
       "height": 700,
       "view": "settings",
-      "sha256": "f55900f231fba058cc714fd3971dc71c981bcffe5a5f82d1053c7d0273716bb9"
+      "sha256": "5b70d0a6b27b0302d76db9add8e39df37c43c87ea353507f45f71831a9f7280b"
     },
     {
       "file": "zoom-200-settings-clear-confirmation.png",
@@ -64,7 +66,7 @@
       "width": 820,
       "height": 900,
       "view": "overview",
-      "sha256": "358280773737ec111ba543198b0a1bd1a5fd35c784e0dafa831513677718bbd7"
+      "sha256": "bc297cc2c39128e94bffe529225dcf998591e150eea03eea5e845a5835bc92c4"
     },
     {
       "file": "tablet-messages.png",
@@ -72,7 +74,7 @@
       "width": 820,
       "height": 900,
       "view": "messages",
-      "sha256": "4e471c3001ba8c4f6bfc5c8beaea8fddc744a2401597f197367969b13758dd48"
+      "sha256": "2e3c988bf87d0049468daa86b6d3113f1bbb4a04c710e297f3f42a9d0e905c12"
     },
     {
       "file": "tablet-settings.png",
@@ -80,7 +82,7 @@
       "width": 820,
       "height": 900,
       "view": "settings",
-      "sha256": "29faa50dd830e6e78d2ca18baf28fce453ffa90276de22428322838b417ca846"
+      "sha256": "996cf2fc97362ebb8acc909d8de70a6a6bbb222d31727e6590504ae7bcdef941"
     },
     {
       "file": "mobile-overview.png",
@@ -88,7 +90,7 @@
       "width": 390,
       "height": 844,
       "view": "overview",
-      "sha256": "737f7a38bd0735fee7864ceb5673fcebad245e8f68d04b2dd0c5233bf8b58a1c"
+      "sha256": "a6c7d7a80bda500aa7444dd63474d66467ec19cf26452ccfe0dfc2701cbdcec7"
     },
     {
       "file": "mobile-messages.png",
@@ -96,7 +98,7 @@
       "width": 390,
       "height": 844,
       "view": "messages",
-      "sha256": "f6d03c0aca502c9129d013c0a43b1219db91ba3d0a55d689d376ff7ad728b904"
+      "sha256": "6da50d74ceedc752b44b98a1b5c142737f7f3937729b814cee52f5879cde24f6"
     },
     {
       "file": "mobile-settings.png",
@@ -104,7 +106,7 @@
       "width": 390,
       "height": 844,
       "view": "settings",
-      "sha256": "989af8b97143e802260fd4faa448b7abfc0c82090af3b8fbafa1a98a064eaab3"
+      "sha256": "4b51ba030f98496b6401aa2aef9d59f027fe2f5a0bae5714e031ac1f76020532"
     },
     {
       "file": "mobile-settings-clear-confirmation.png",
@@ -116,7 +118,7 @@
       "zoomFactor": 1,
       "cssWidth": 390,
       "cssHeight": 844,
-      "sha256": "11b83f522147e5f63804c9aa096261b873b0650fdebc39bdad60246de5b1bf82"
+      "sha256": "c35f0c69a06d841b35c02752c4e95fdccaa85e23e8a52dd254fb916a63e1989d"
     }
   ]
 }

@@ -215,11 +215,11 @@ for (const artifact of [...dmgFiles, ...zipFiles]) {
 }
 await run('/usr/bin/unzip', ['-t', zipFiles[0]]);
 
-const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-aio-macos-package-'));
+const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-toolbox-macos-package-'));
 const mountPoint = path.join(temporaryRoot, 'mounted-dmg');
 const zipRoot = path.join(temporaryRoot, 'zip');
 const installRoot = path.join(temporaryRoot, 'Applications');
-const smokeParent = path.join(temporaryRoot, 'insta-aio-desktop-smoke-parent');
+const smokeParent = path.join(temporaryRoot, 'insta-toolbox-desktop-smoke-parent');
 await mkdir(mountPoint);
 await mkdir(zipRoot);
 await mkdir(installRoot);
@@ -247,7 +247,7 @@ try {
   const smoke = await run(executable, ['--smoke-test'], {
     env: {
       ...process.env,
-      INSTA_AIO_DESKTOP_SMOKE_PARENT: smokeParent,
+      INSTA_TOOLBOX_DESKTOP_SMOKE_PARENT: smokeParent,
     },
     timeoutMs: 45_000,
   });
@@ -263,7 +263,7 @@ try {
   const resolvedSystemTemp = path.resolve(tmpdir());
   if (
     resolvedTemporaryRoot.startsWith(`${resolvedSystemTemp}${path.sep}`)
-    && path.basename(resolvedTemporaryRoot).startsWith('insta-aio-macos-package-')
+    && path.basename(resolvedTemporaryRoot).startsWith('insta-toolbox-macos-package-')
   ) {
     await rm(resolvedTemporaryRoot, { recursive: true, force: true });
   }

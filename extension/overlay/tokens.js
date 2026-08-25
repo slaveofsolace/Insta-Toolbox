@@ -18,61 +18,61 @@
 
   function palette() {
     return {
-      '--aio-bg': 'rgb(var(--ig-primary-background, 255 255 255))',
-      '--aio-bg-raised': 'rgb(var(--ig-elevated-background, 255 255 255))',
-      '--aio-bg-sunken': 'rgb(var(--ig-secondary-background, 250 250 250))',
-      '--aio-text': 'rgb(var(--ig-primary-text, 0 0 0))',
-      '--aio-text-muted': 'rgb(var(--ig-secondary-text, 115 115 115))',
-      '--aio-line': 'rgb(var(--ig-separator, 219 219 219))',
-      '--aio-accent': 'rgb(var(--ig-primary-button, 0 149 246))',
-      '--aio-on-accent': '#fff',
-      '--aio-success': 'rgb(var(--ig-success, 0 148 84))',
-      '--aio-warning': '#b26a00',
-      '--aio-danger': 'rgb(var(--ig-error-or-destructive, 237 73 86))',
+      '--insta-toolbox-bg': 'rgb(var(--ig-primary-background, 255 255 255))',
+      '--insta-toolbox-bg-raised': 'rgb(var(--ig-elevated-background, 255 255 255))',
+      '--insta-toolbox-bg-sunken': 'rgb(var(--ig-secondary-background, 250 250 250))',
+      '--insta-toolbox-text': 'rgb(var(--ig-primary-text, 0 0 0))',
+      '--insta-toolbox-text-muted': 'rgb(var(--ig-secondary-text, 115 115 115))',
+      '--insta-toolbox-line': 'rgb(var(--ig-separator, 219 219 219))',
+      '--insta-toolbox-accent': '#b83d67',
+      '--insta-toolbox-on-accent': '#fff',
+      '--insta-toolbox-success': 'rgb(var(--ig-success, 0 148 84))',
+      '--insta-toolbox-warning': '#b26a00',
+      '--insta-toolbox-danger': 'rgb(var(--ig-error-or-destructive, 237 73 86))',
       // Deliberately not the danger colour: an uncertain outcome may well have
       // succeeded, and colouring it as a failure would assert what we do not know.
-      '--aio-uncertain': '#7a5cc4',
-      '--aio-focus': 'rgb(var(--ig-primary-button, 0 149 246))',
+      '--insta-toolbox-uncertain': '#7a5cc4',
+      '--insta-toolbox-focus': '#b83d67',
     };
   }
 
   function scale(density) {
     const tight = density === 'compact';
     return {
-      '--aio-space-1': SPACE[1],
-      '--aio-space-2': SPACE[2],
-      '--aio-space-3': SPACE[3],
-      '--aio-space-4': SPACE[4],
-      '--aio-space-5': SPACE[5],
-      '--aio-space-6': SPACE[6],
+      '--insta-toolbox-space-1': SPACE[1],
+      '--insta-toolbox-space-2': SPACE[2],
+      '--insta-toolbox-space-3': SPACE[3],
+      '--insta-toolbox-space-4': SPACE[4],
+      '--insta-toolbox-space-5': SPACE[5],
+      '--insta-toolbox-space-6': SPACE[6],
       // Compact trims vertical rhythm only. Hit targets and font sizes are
       // never reduced, so a denser panel stays as usable as a roomy one.
-      '--aio-pad-y': tight ? SPACE[2] : SPACE[3],
-      '--aio-pad-x': tight ? SPACE[3] : SPACE[4],
-      '--aio-gap': tight ? SPACE[2] : SPACE[3],
-      '--aio-radius-sm': '6px',
-      '--aio-radius-md': '8px',
-      '--aio-radius-lg': '16px',
-      '--aio-border': '1px',
-      '--aio-target': '44px',
-      '--aio-text-lg': '15px',
-      '--aio-text-md': '14px',
-      '--aio-text-sm': '13px',
-      '--aio-text-xs': '12px',
-      '--aio-leading-lg': '20px',
-      '--aio-leading-md': '20px',
-      '--aio-leading-sm': '18px',
-      '--aio-leading-xs': '16px',
-      '--aio-weight-normal': '400',
-      '--aio-weight-strong': '600',
-      '--aio-font': 'var(--ig-font-family, "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif)',
-      '--aio-shadow-panel': '0 12px 40px rgba(0, 0, 0, .18)',
-      '--aio-shadow-popover': '0 8px 24px rgba(0, 0, 0, .16)',
-      '--aio-shadow-none': 'none',
-      '--aio-motion-fast': '120ms',
-      '--aio-motion-base': '180ms',
-      '--aio-motion-slow': '240ms',
-      '--aio-ease': 'cubic-bezier(.2, .7, .3, 1)',
+      '--insta-toolbox-pad-y': tight ? SPACE[2] : SPACE[3],
+      '--insta-toolbox-pad-x': tight ? SPACE[3] : SPACE[4],
+      '--insta-toolbox-gap': tight ? SPACE[2] : SPACE[3],
+      '--insta-toolbox-radius-sm': '6px',
+      '--insta-toolbox-radius-md': '8px',
+      '--insta-toolbox-radius-lg': '16px',
+      '--insta-toolbox-border': '1px',
+      '--insta-toolbox-target': '44px',
+      '--insta-toolbox-text-lg': '15px',
+      '--insta-toolbox-text-md': '14px',
+      '--insta-toolbox-text-sm': '13px',
+      '--insta-toolbox-text-xs': '12px',
+      '--insta-toolbox-leading-lg': '20px',
+      '--insta-toolbox-leading-md': '20px',
+      '--insta-toolbox-leading-sm': '18px',
+      '--insta-toolbox-leading-xs': '16px',
+      '--insta-toolbox-weight-normal': '400',
+      '--insta-toolbox-weight-strong': '600',
+      '--insta-toolbox-font': 'var(--ig-font-family, "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif)',
+      '--insta-toolbox-shadow-panel': '0 12px 40px rgba(0, 0, 0, .18)',
+      '--insta-toolbox-shadow-popover': '0 8px 24px rgba(0, 0, 0, .16)',
+      '--insta-toolbox-shadow-none': 'none',
+      '--insta-toolbox-motion-fast': '120ms',
+      '--insta-toolbox-motion-base': '180ms',
+      '--insta-toolbox-motion-slow': '240ms',
+      '--insta-toolbox-ease': 'cubic-bezier(.2, .7, .3, 1)',
     };
   }
 
@@ -86,21 +86,21 @@
   // decides colour, focus, target size, or motion lives here.
   function primitives() {
     return `
-    .aio-focusable:focus { outline: none; }
-    .aio-focusable:focus-visible {
-      outline: 2px solid var(--aio-focus);
+    .insta-toolbox-focusable:focus { outline: none; }
+    .insta-toolbox-focusable:focus-visible {
+      outline: 2px solid var(--insta-toolbox-focus);
       outline-offset: 2px;
     }
     /* A control may look small but must never be small to hit. */
-    .aio-target { min-width: var(--aio-target); min-height: var(--aio-target); }
-    .aio-state-locked { color: var(--aio-text-muted); }
-    .aio-state-armed { border-color: var(--aio-danger); color: var(--aio-danger); }
-    .aio-state-running { border-color: var(--aio-warning); color: var(--aio-warning); }
-    .aio-state-paused { border-color: var(--aio-line); color: var(--aio-text-muted); }
-    .aio-state-stopped { border-color: var(--aio-danger); color: var(--aio-danger); }
-    .aio-state-uncertain { border-color: var(--aio-uncertain); color: var(--aio-uncertain); }
-    .aio-state-success { color: var(--aio-success); }
-    .aio-state-selected { color: var(--aio-accent); }
+    .insta-toolbox-target { min-width: var(--insta-toolbox-target); min-height: var(--insta-toolbox-target); }
+    .insta-toolbox-state-locked { color: var(--insta-toolbox-text-muted); }
+    .insta-toolbox-state-armed { border-color: var(--insta-toolbox-danger); color: var(--insta-toolbox-danger); }
+    .insta-toolbox-state-running { border-color: var(--insta-toolbox-warning); color: var(--insta-toolbox-warning); }
+    .insta-toolbox-state-paused { border-color: var(--insta-toolbox-line); color: var(--insta-toolbox-text-muted); }
+    .insta-toolbox-state-stopped { border-color: var(--insta-toolbox-danger); color: var(--insta-toolbox-danger); }
+    .insta-toolbox-state-uncertain { border-color: var(--insta-toolbox-uncertain); color: var(--insta-toolbox-uncertain); }
+    .insta-toolbox-state-success { color: var(--insta-toolbox-success); }
+    .insta-toolbox-state-selected { color: var(--insta-toolbox-accent); }
     [disabled], [aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 
     @media (prefers-reduced-motion: reduce) {
@@ -115,10 +115,10 @@
 
     @media (forced-colors: active) {
       /* Structure has to survive without colour, so every edge becomes real. */
-      .aio-surface, .aio-raised, .aio-sunken { background: Canvas; color: CanvasText; }
-      .aio-surface, .aio-raised, .aio-sunken, .aio-card { border: 1px solid CanvasText; }
-      .aio-focusable:focus-visible { outline-color: Highlight; }
-      .aio-state-selected { color: Highlight; }
+      .insta-toolbox-surface, .insta-toolbox-raised, .insta-toolbox-sunken { background: Canvas; color: CanvasText; }
+      .insta-toolbox-surface, .insta-toolbox-raised, .insta-toolbox-sunken, .insta-toolbox-card { border: 1px solid CanvasText; }
+      .insta-toolbox-focusable:focus-visible { outline-color: Highlight; }
+      .insta-toolbox-state-selected { color: Highlight; }
     }`;
   }
 
@@ -136,7 +136,7 @@
     steps: Object.freeze(Object.keys(scale('comfortable'))),
   });
 
-  Object.defineProperty(globalThis, 'InstaAioTokens', {
+  Object.defineProperty(globalThis, 'InstaToolboxTokens', {
     configurable: false,
     enumerable: false,
     value: api,

@@ -1,6 +1,8 @@
 {
-  "schemaVersion": 1,
-  "kind": "insta-aio-pwa-screenshot-baseline",
+  "schemaVersion": 2,
+  "kind": "insta-toolbox-pwa-screenshot-baseline",
+  "productVersion": "3.0.0",
+  "captureTimestamp": "2026-08-24T00:00:00.000Z",
   "platform": "win32",
   "electron": "43.2.0",
   "deviceScaleFactor": 1,

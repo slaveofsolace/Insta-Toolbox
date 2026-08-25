@@ -92,7 +92,7 @@ app.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'export-current-list') {
-    downloadText(`insta-aio-${relationshipTab}.csv`, accountsToCsv(currentRelationshipAccounts()), 'text/csv');
+    downloadText(`insta-toolbox-${relationshipTab}.csv`, accountsToCsv(currentRelationshipAccounts()), 'text/csv');
     logActivity('export', `Exported ${relationshipTab} CSV.`);
     await persist({ rerender: false });
     return;
@@ -365,7 +365,7 @@ app.addEventListener('click', async (event) => {
   if (action === 'export-reviewed-action-job') {
     const job = state.actionJobs?.[0];
     if (!job?.confirmedAt) return;
-    downloadJson(`insta-aio-reviewed-action-job-${Date.now()}.json`, job);
+    downloadJson(`insta-toolbox-reviewed-action-job-${Date.now()}.json`, job);
     logActivity('export', `Exported reviewed ${job.mode} action job.`, {
       jobId: job.id,
       previewDigest: job.previewDigest,
@@ -621,7 +621,7 @@ app.addEventListener('click', async (event) => {
   if (action === 'export-reviewed-dm-job') {
     const job = state.dmJobs?.[0];
     if (!job?.reviewConfirmedAt) return;
-    downloadJson(`insta-aio-reviewed-dm-job-${Date.now()}.json`, job);
+    downloadJson(`insta-toolbox-reviewed-dm-job-${Date.now()}.json`, job);
     logActivity('export', `Exported reviewed ${job.mode} DM job.`, {
       jobId: job.id,
       previewDigest: job.previewDigest,
@@ -669,16 +669,16 @@ app.addEventListener('click', async (event) => {
   }
   if (action === 'export-unsend-plan') {
     const plan = createUnsendPlan(state.messages, state.selectedMessageIds);
-    downloadJson(`insta-aio-unsend-plan-${Date.now()}.json`, plan);
+    downloadJson(`insta-toolbox-unsend-plan-${Date.now()}.json`, plan);
     logActivity('export', `Exported unsend plan containing ${plan.total} sent messages.`);
     await persist({ rerender: false });
     return;
   }
   if (action === 'export-companion-queue') {
     const queue = state.queue.filter((item) => ['pending', 'ready', 'waiting', 'paused', 'failed'].includes(item.status));
-    downloadJson(`insta-aio-manual-queue-${Date.now()}.json`, {
+    downloadJson(`insta-toolbox-manual-queue-${Date.now()}.json`, {
       schemaVersion: 1,
-      kind: 'insta-aio-manual-queue',
+      kind: 'insta-toolbox-manual-queue',
       exportedAt: new Date().toISOString(),
       queue,
     });
@@ -687,18 +687,18 @@ app.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'export-state') {
-    downloadJson(`insta-aio-workspace-${Date.now()}.json`, { kind: 'insta-aio-workspace', state });
+    downloadJson(`insta-toolbox-workspace-${Date.now()}.json`, { kind: 'insta-toolbox-workspace', state });
     logActivity('export', 'Exported full workspace backup.');
     await persist({ rerender: false });
     return;
   }
   if (action === 'export-current-snapshot') {
     const snapshot = activeSnapshot();
-    if (snapshot) downloadJson(`insta-aio-snapshot-${Date.now()}.json`, { kind: 'insta-aio-snapshot', snapshot });
+    if (snapshot) downloadJson(`insta-toolbox-snapshot-${Date.now()}.json`, { kind: 'insta-toolbox-snapshot', snapshot });
     return;
   }
   if (action === 'export-activity') {
-    downloadJson(`insta-aio-activity-${Date.now()}.json`, state.activity);
+    downloadJson(`insta-toolbox-activity-${Date.now()}.json`, state.activity);
     return;
   }
   if (action === 'create-extension-pairing') {
@@ -826,7 +826,7 @@ app.addEventListener('change', async (event) => {
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      if (!data?.state || data.kind !== 'insta-aio-workspace') throw new Error('Not an Insta Toolbox workspace backup.');
+      if (!data?.state || data.kind !== 'insta-toolbox-workspace') throw new Error('Not an Insta Toolbox workspace backup.');
       state = migrateState(data.state);
       logActivity('import', 'Restored workspace backup.');
       await persist();
@@ -871,8 +871,8 @@ app.addEventListener('input', (event) => {
   if (event.target.id !== 'message-search') return;
   messageFilters.keyword = event.target.value;
   messageScrollTop = 0;
-  clearTimeout(globalThis.__instaAioSearchTimer);
-  globalThis.__instaAioSearchTimer = setTimeout(render, 120);
+  clearTimeout(globalThis.__instaToolboxSearchTimer);
+  globalThis.__instaToolboxSearchTimer = setTimeout(render, 120);
 });
 
 app.addEventListener('scroll', (event) => {
@@ -893,9 +893,9 @@ app.addEventListener('scroll', (event) => {
     return;
   }
   if (Math.floor(previousTop / rowHeight) === Math.floor(nextTop / rowHeight)) return;
-  if (globalThis.__instaAioVirtualFrame) return;
-  globalThis.__instaAioVirtualFrame = requestAnimationFrame(() => {
-    globalThis.__instaAioVirtualFrame = null;
+  if (globalThis.__instaToolboxVirtualFrame) return;
+  globalThis.__instaToolboxVirtualFrame = requestAnimationFrame(() => {
+    globalThis.__instaToolboxVirtualFrame = null;
     render();
   });
 }, true);
