@@ -1,7 +1,5 @@
 # Insta Toolbox
 
-**[Install the Tampermonkey userscript](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**
-
 ![Insta Toolbox workspace overview](docs/media/insta-toolbox-preview.png)
 
 Instagram utilities that run locally in your browser. Check mutuals, review follow or unfollow targets, and unsend your own messages from the conversation you have open.
@@ -9,10 +7,11 @@ Instagram utilities that run locally in your browser. Check mutuals, review foll
 ## Install in one or two minutes
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) for your browser.
-2. In Chrome, open `chrome://extensions`, select **Details** for Tampermonkey, and enable **Allow User Scripts**. Skip this step if your browser does not show it.
-3. Open the **Install the Tampermonkey userscript** link above.
-4. Choose **Install** in Tampermonkey.
-5. Open or reload [instagram.com](https://www.instagram.com/). Press `Alt+Shift+I` if the panel is hidden.
+2. In Chrome, open `chrome://extensions`, select **Details** for Tampermonkey, and enable **Allow User Scripts**. Or right click the extension at the top right of your browser, scroll down, and enable it that way.
+3. **[Install the Tampermonkey userscript](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**
+4. Open the **Install the Tampermonkey userscript** link above.
+5. Choose **Install** in Tampermonkey.
+6. Open or reload [instagram.com](https://www.instagram.com/). Press `Alt+Shift+I` if the panel is hidden.
 
 Version 3.0 uses a new userscript identity. Remove any 2.x userscript before
 installing 3.0 so only one panel loads. Version 3.0 starts clean and leaves 2.x
