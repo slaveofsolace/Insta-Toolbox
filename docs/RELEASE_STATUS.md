@@ -23,7 +23,7 @@ Version 3.0 intentionally replaces the 2.x userscript identity and repository fi
 
 The 3.0 account-free matrix contains:
 
-- 343 automated tests;
+- 346 automated tests;
 - 45 overlay screenshot states;
 - 11 PWA screenshot states;
 - service-worker cache generation `insta-toolbox-v300`.

@@ -77,7 +77,7 @@ the authenticated Instagram session.
 
 Focused regressions live in `tests/app-shell-safety.test.js`,
 `tests/static-asset-policy.test.js`, and `tests/browser-qa-harness.test.js`. The
-3.0 repository suite contains 343 tests. Record the final pass against the exact
+3.0 repository suite contains 346 tests. Record the final pass against the exact
 release commit in [acceptance/3.0.0.md](./acceptance/3.0.0.md).
 
 ## Representative screenshots
@@ -98,10 +98,10 @@ UTC capture timestamp derived from that version's dated changelog entry. A
 non-updating check rejects stale product or capture metadata before accepting
 the reviewed screenshot hashes.
 
-The GitHub-hosted Windows variant was refreshed from PR #27 run `32797322245`
-after full-resolution review of all nine PWA captures. The prior variant still
-showed version-2 copy; the accepted images show the 3.0 interface. Screenshot
-tolerances were not changed.
+The GitHub-hosted Windows variant was refreshed from PR #27 run `32800964667`
+after exact-dimension and full-resolution review of all nine PWA captures. The
+accepted files match the local 3.0 baseline byte for byte. Screenshot tolerances
+were not changed.
 
 - [Desktop Overview](../tests/baselines/pwa/win32/desktop-overview.png)
 - [Tablet Messages](../tests/baselines/pwa/win32/tablet-messages.png)

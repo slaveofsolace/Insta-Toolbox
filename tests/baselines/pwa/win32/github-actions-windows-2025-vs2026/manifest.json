@@ -30,7 +30,7 @@
       "width": 1134,
       "height": 700,
       "view": "overview",
-      "sha256": "ebf5816a093158297be512ac70021019bf11d0fad60f663ac6e9020fd8015ce0"
+      "sha256": "344ad642b91e02ea4f860bdf559c943d11c3e206d9faec5fd6d789269182df9e"
     },
     {
       "file": "desktop-messages.png",
@@ -38,7 +38,7 @@
       "width": 1134,
       "height": 700,
       "view": "messages",
-      "sha256": "a987b762f0835a817906ffa1909214c8934902258750712423466826a9a17892"
+      "sha256": "ba2697e164bc282b3bf31f162c2d95821fbdb52b9ce2990acd2303a76709336f"
     },
     {
       "file": "desktop-settings.png",
@@ -46,7 +46,7 @@
       "width": 1134,
       "height": 700,
       "view": "settings",
-      "sha256": "44487d5dfa9b5ac70b07cf8124a7e9aa25c32976af772b6282f84d42a44c5608"
+      "sha256": "5b70d0a6b27b0302d76db9add8e39df37c43c87ea353507f45f71831a9f7280b"
     },
     {
       "file": "tablet-overview.png",
@@ -54,7 +54,7 @@
       "width": 820,
       "height": 900,
       "view": "overview",
-      "sha256": "a3b526537ef5388022ee9695e9fadd3d92d7da46a4e8615f850f20b19becc9c5"
+      "sha256": "bc297cc2c39128e94bffe529225dcf998591e150eea03eea5e845a5835bc92c4"
     },
     {
       "file": "tablet-messages.png",
@@ -62,7 +62,7 @@
       "width": 820,
       "height": 900,
       "view": "messages",
-      "sha256": "edf76c6650254379900925506e210057fa96568c0482e5cfb3af69d176a40286"
+      "sha256": "2e3c988bf87d0049468daa86b6d3113f1bbb4a04c710e297f3f42a9d0e905c12"
     },
     {
       "file": "tablet-settings.png",
@@ -70,7 +70,7 @@
       "width": 820,
       "height": 900,
       "view": "settings",
-      "sha256": "74eb2c3f683f214e951b130963bd6060e0000529c6d7cc75cf54f41873cda08e"
+      "sha256": "996cf2fc97362ebb8acc909d8de70a6a6bbb222d31727e6590504ae7bcdef941"
     },
     {
       "file": "mobile-overview.png",
@@ -78,7 +78,7 @@
       "width": 390,
       "height": 844,
       "view": "overview",
-      "sha256": "d057bb2ffa55560adddb49b7a55cf7cc474380a3b5cf24a1bb2aa4369911c994"
+      "sha256": "a6c7d7a80bda500aa7444dd63474d66467ec19cf26452ccfe0dfc2701cbdcec7"
     },
     {
       "file": "mobile-messages.png",
@@ -86,7 +86,7 @@
       "width": 390,
       "height": 844,
       "view": "messages",
-      "sha256": "bbfd85933adcd79b54ffc9e07139759af7037ed624a724124ae264811bf8a892"
+      "sha256": "6da50d74ceedc752b44b98a1b5c142737f7f3937729b814cee52f5879cde24f6"
     },
     {
       "file": "mobile-settings.png",
@@ -94,7 +94,7 @@
       "width": 390,
       "height": 844,
       "view": "settings",
-      "sha256": "e85b37acc563f0c29c186179aff0f5b7b80baa6888b3bfba1c786ea6528a8b97"
+      "sha256": "4b51ba030f98496b6401aa2aef9d59f027fe2f5a0bae5714e031ac1f76020532"
     }
   ],
   "variant": "github-actions-windows-2025-vs2026"

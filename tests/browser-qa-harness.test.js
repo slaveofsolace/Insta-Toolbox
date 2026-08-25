@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 
 import { assertPngDimensions, readPngDimensions } from '../scripts/png-dimensions.mjs';
 
@@ -93,6 +93,31 @@ test('PNG dimension reader rejects malformed and incorrectly sized captures', as
   );
   assert.throws(() => readPngDimensions(Buffer.from('not a png')), /not a readable PNG/);
   assert.throws(() => readPngDimensions(desktop.subarray(0, 24)), /not a readable PNG/);
+});
+
+test('every tracked PWA baseline PNG matches its manifest viewport', async () => {
+  const baselineCases = [
+    [pwaBaseline, new URL('./baselines/pwa/win32/', import.meta.url)],
+    [pwaCiBaseline, new URL('./baselines/pwa/win32/github-actions-windows-2025-vs2026/', import.meta.url)],
+  ];
+  for (const [manifest, directory] of baselineCases) {
+    const viewportById = new Map(manifest.viewports.map((viewport) => [viewport.id, viewport]));
+    const expectedFiles = manifest.captures.map(({ file }) => file).sort();
+    assert.equal(new Set(expectedFiles).size, expectedFiles.length, 'baseline capture filenames must be unique');
+    const trackedFiles = (await readdir(directory)).filter((file) => file.endsWith('.png')).sort();
+    assert.deepEqual(trackedFiles, expectedFiles, 'baseline PNG files must exactly match the manifest');
+    for (const capture of manifest.captures) {
+      const viewport = viewportById.get(capture.viewport);
+      assert.ok(viewport, `${capture.file}: viewport ${capture.viewport} is not declared`);
+      assert.deepEqual(
+        { width: capture.width, height: capture.height },
+        { width: viewport.width, height: viewport.height },
+        `${capture.file}: capture metadata differs from its viewport`,
+      );
+      const png = await readFile(new URL(capture.file, directory));
+      assertPngDimensions(png, capture, capture.file);
+    }
+  }
 });
 
 test('browser QA manifests bind captures to the current product version and release timestamp', () => {

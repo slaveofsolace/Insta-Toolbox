@@ -594,20 +594,23 @@ async function captureViewport(baseUrl, viewport) {
     assert.deepEqual(problems, [], `${viewport.id}: browser console or renderer problems`);
     return captures;
   } finally {
-    if (browserWindow.webContents.debugger.isAttached()) {
-      try {
-        await withTimeout(
-          browserWindow.webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride'),
-          `${viewport.id}: clear Chromium viewport`,
-          5_000,
-        );
-      } finally {
-        browserWindow.webContents.debugger.detach();
+    try {
+      if (browserWindow.webContents.debugger.isAttached()) {
+        try {
+          await withTimeout(
+            browserWindow.webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride'),
+            `${viewport.id}: clear Chromium viewport`,
+            5_000,
+          );
+        } finally {
+          browserWindow.webContents.debugger.detach();
+        }
       }
+    } finally {
+      if (!browserWindow.isDestroyed()) browserWindow.destroy();
+      await withTimeout(qaSession.clearStorageData(), `${viewport.id}: storage cleanup`, 5_000);
+      await withTimeout(qaSession.clearCache(), `${viewport.id}: cache cleanup`, 5_000);
     }
-    if (!browserWindow.isDestroyed()) browserWindow.destroy();
-    await withTimeout(qaSession.clearStorageData(), `${viewport.id}: storage cleanup`, 5_000);
-    await withTimeout(qaSession.clearCache(), `${viewport.id}: cache cleanup`, 5_000);
   }
 }
 

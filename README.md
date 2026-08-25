@@ -99,7 +99,7 @@ pnpm run qa:overlay:check
 pnpm run verify:repo-hygiene
 ```
 
-The 3.0 account-free regression matrix contains 343 tests, 45 overlay states, and 11 PWA states. The service worker uses cache generation `insta-toolbox-v300`. Authenticated Instagram behavior still depends on the current site and must be accepted separately with disposable content.
+The 3.0 account-free regression matrix contains 346 tests, 45 overlay states, and 11 PWA states. The service worker uses cache generation `insta-toolbox-v300`. Authenticated Instagram behavior still depends on the current site and must be accepted separately with disposable content.
 
 See [Contributing](CONTRIBUTING.md), [Maintainer Guide](docs/MAINTAINER_GUIDE.md), [3.0 compatibility](docs/compatibility/3.0.0.md), and [3.0 acceptance](docs/acceptance/3.0.0.md).
 
