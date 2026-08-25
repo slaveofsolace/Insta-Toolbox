@@ -1,6 +1,6 @@
 # Browser QA
 
-Last reviewed: 2026-08-23
+Last reviewed: 2026-08-24
 
 ## Scope and safety boundary
 
@@ -97,6 +97,11 @@ The generated manifest records the current package version and a deterministic
 UTC capture timestamp derived from that version's dated changelog entry. A
 non-updating check rejects stale product or capture metadata before accepting
 the reviewed screenshot hashes.
+
+The GitHub-hosted Windows variant was refreshed from PR #27 run `32797322245`
+after full-resolution review of all nine PWA captures. The prior variant still
+showed version-2 copy; the accepted images show the 3.0 interface. Screenshot
+tolerances were not changed.
 
 - [Desktop Overview](../tests/baselines/pwa/win32/desktop-overview.png)
 - [Tablet Messages](../tests/baselines/pwa/win32/tablet-messages.png)
