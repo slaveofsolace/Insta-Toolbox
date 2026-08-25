@@ -1422,6 +1422,41 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(initial.unsendPlanHidden, false);
   assert.deepEqual(initial.engineExecutors, ['function', 'function']);
 
+  await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot;
+      return shadow?.activeElement?.dataset?.view === 'checker';
+    })()`,
+    'userscript initial panel focus',
+  );
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    shadow.querySelector('[data-action="close"]').click();
+  })()`, true);
+  await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot;
+      return shadow?.querySelector('.panel')?.hidden === true
+        && shadow?.activeElement === shadow?.querySelector('.launcher');
+    })()`,
+    'userscript launcher focus restoration',
+  );
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    shadow.querySelector('.launcher').click();
+  })()`, true);
+  await waitForPageValue(
+    webContents,
+    `(() => {
+      const shadow = document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot;
+      return shadow?.querySelector('.panel')?.hidden === false
+        && shadow?.activeElement?.dataset?.view === 'checker';
+    })()`,
+    'userscript selected-tab focus after reopen',
+  );
+
   await webContents.executeJavaScript(`(() => {
     const root = document.documentElement;
     const values = {

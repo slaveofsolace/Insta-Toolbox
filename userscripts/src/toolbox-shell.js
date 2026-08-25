@@ -293,6 +293,7 @@
   const managerTabStorageAvailable = managerTab !== null;
   let state = loadState(managerTab);
   let preferences = normalizePreferences(GM_getValue(PREFERENCES_KEY, preferencesDefaults()));
+  let lastFocusedElement = null;
 
   function saveState() {
     GM_setValue(STATE_KEY, { ...state, run: null });
@@ -851,6 +852,9 @@
   function renderShellState() {
     const panel = query('.panel');
     const launcher = query('.launcher');
+    const opening = preferences.open && panel.hidden;
+    const closing = !preferences.open && !panel.hidden;
+    if (opening) lastFocusedElement = shadow.activeElement || document.activeElement;
     panel.hidden = !preferences.open;
     launcher.hidden = preferences.open;
     launcher.setAttribute('aria-expanded', String(preferences.open));
@@ -860,7 +864,25 @@
       tab.tabIndex = selected ? 0 : -1;
     }
     for (const view of queryAll('[data-panel]')) view.hidden = view.dataset.panel !== preferences.view;
-
+    if (opening) {
+      requestAnimationFrame(() => {
+        if (!preferences.open) return;
+        query(`[data-view="${preferences.view}"]`)?.focus({ preventScroll: true });
+      });
+    } else if (closing) {
+      setTimeout(() => {
+        if (preferences.open) return;
+        const restoreTarget = (
+          lastFocusedElement
+          && typeof lastFocusedElement.focus === 'function'
+          && lastFocusedElement.isConnected
+          && lastFocusedElement !== document.body
+          && lastFocusedElement !== document.documentElement
+        ) ? lastFocusedElement : launcher;
+        restoreTarget.focus({ preventScroll: true });
+        lastFocusedElement = null;
+      }, 0);
+    }
   }
 
   function renderChecker() {

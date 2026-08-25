@@ -363,6 +363,59 @@ test('the tablist keeps one selected tab and moves with the arrow keys', () => {
   assert.match(shell, /next\.focus\(\)/);
 });
 
+test('the userscript moves focus into the panel and restores a safe opener', () => {
+  const focusLog = [];
+  const panel = { hidden: true };
+  const launcher = {
+    hidden: false,
+    isConnected: true,
+    setAttribute() {},
+    focus() { focusLog.push('launcher'); },
+  };
+  const selectedTab = {
+    dataset: { view: 'checker' },
+    setAttribute() {},
+    focus() { focusLog.push('checker'); },
+  };
+  const otherTab = { dataset: { view: 'messages' }, setAttribute() {} };
+  const views = [{ dataset: { panel: 'checker' } }, { dataset: { panel: 'messages' } }];
+  const disconnectedOpener = { isConnected: false, focus() { focusLog.push('disconnected'); } };
+  const documentState = { activeElement: disconnectedOpener, body: {}, documentElement: {} };
+  const preferences = { open: true, view: 'checker' };
+  const globals = {
+    preferences,
+    lastFocusedElement: null,
+    shadow: { activeElement: null },
+    document: documentState,
+    requestAnimationFrame(callback) { callback(); },
+    setTimeout(callback) { callback(); },
+    query(selector) {
+      if (selector === '.panel') return panel;
+      if (selector === '.launcher') return launcher;
+      if (selector === '[data-view="checker"]') return selectedTab;
+      return null;
+    },
+    queryAll(selector) {
+      if (selector === '[data-view]') return [selectedTab, otherTab];
+      if (selector === '[data-panel]') return views;
+      return [];
+    },
+  };
+  const renderShellState = loadShellFunction('renderShellState', globals);
+
+  renderShellState();
+  assert.deepEqual(focusLog, ['checker']);
+  assert.equal(panel.hidden, false);
+  assert.equal(launcher.hidden, true);
+
+  preferences.open = false;
+  renderShellState();
+  assert.deepEqual(focusLog, ['checker', 'launcher']);
+  assert.equal(panel.hidden, true);
+  assert.equal(launcher.hidden, false);
+  assert.doesNotMatch(focusLog.join(','), /disconnected/);
+});
+
 test('motion is tied to state and removed under reduced motion', () => {
   assert.match(shell, /transition: border-color var\(--insta-toolbox-motion-base/);
   assert.match(shell, /transition: width var\(--insta-toolbox-motion-base/);
