@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
+import { assertPngDimensions, readPngDimensions } from '../scripts/png-dimensions.mjs';
+
 const harness = await readFile(new URL('../scripts/browser-qa.mjs', import.meta.url), 'utf8');
 const runner = await readFile(new URL('../scripts/run-browser-qa.mjs', import.meta.url), 'utf8');
 const server = await readFile(new URL('../scripts/serve.mjs', import.meta.url), 'utf8');
@@ -56,7 +58,13 @@ test('browser QA uses an isolated renderer, denied permissions, and bounded loop
 });
 
 test('browser QA hashes tracked platform baselines and keeps actual output disposable', () => {
-  assert.match(harness, /capturePage\(\)/);
+  assert.match(harness, /browserWindow\.setContentSize\(viewport\.width, viewport\.height\)/);
+  assert.match(harness, /browserWindow\.getContentSize\(\)/);
+  assert.match(harness, /browserWindow\.webContents\.capturePage\(\)/);
+  assert.match(harness, /assertPngDimensions\(png, viewport, label\)/);
+  assert.match(harness, /const candidates = \[\]/);
+  assert.match(harness, /assertPngDimensions\(actual, capture/);
+  assert.match(harness, /assertPngDimensions\(baseline, expectedCapture/);
   assert.match(harness, /webContents\.once\('paint', resolve\)/);
   assert.match(harness, /createHash\('sha256'\)/);
   assert.match(harness, /'test-results', 'browser-qa'/);
@@ -67,6 +75,23 @@ test('browser QA hashes tracked platform baselines and keeps actual output dispo
   assert.match(harness, /screenshot regression detected/);
   assert.match(harness, /documentWidth <= metrics\.innerWidth \+ 1/);
   assert.match(harness, /headingFocused, true/);
+  assert.match(harness, /metrics\.innerWidth,[\s\S]*viewport\.width/);
+  assert.match(harness, /metrics\.innerHeight,[\s\S]*viewport\.height/);
+});
+
+test('PNG dimension reader rejects malformed and incorrectly sized captures', async () => {
+  const desktop = await readFile(new URL('./baselines/pwa/win32/desktop-overview.png', import.meta.url));
+  assert.deepEqual(readPngDimensions(desktop), { width: 1134, height: 700 });
+  assert.deepEqual(
+    assertPngDimensions(desktop, { width: 1134, height: 700 }, 'desktop fixture'),
+    { width: 1134, height: 700 },
+  );
+  assert.throws(
+    () => assertPngDimensions(desktop, { width: 1024, height: 700 }, 'clipped fixture'),
+    /clipped fixture: PNG is 1134x700; expected exactly 1024x700/,
+  );
+  assert.throws(() => readPngDimensions(Buffer.from('not a png')), /not a readable PNG/);
+  assert.throws(() => readPngDimensions(desktop.subarray(0, 24)), /not a readable PNG/);
 });
 
 test('browser QA manifests bind captures to the current product version and release timestamp', () => {

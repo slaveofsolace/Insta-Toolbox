@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow, session } from 'electron';
 
+import { assertPngDimensions } from './png-dimensions.mjs';
 import { createAppServer } from './serve.mjs';
 
 const mode = process.argv.includes('--update')
@@ -159,6 +160,22 @@ async function waitForPaint(webContents, label) {
   }), `${label}: fresh paint`, 5_000);
 }
 
+async function captureExactViewportPng(browserWindow, viewport, label) {
+  assert.deepEqual(
+    browserWindow.getContentSize(),
+    [viewport.width, viewport.height],
+    `${label}: BrowserWindow content size changed before capture`,
+  );
+  const image = await withTimeout(
+    browserWindow.webContents.capturePage(),
+    `${label}: exact screenshot`,
+    10_000,
+  );
+  const png = image.toPNG();
+  assertPngDimensions(png, viewport, label);
+  return png;
+}
+
 function recordConsoleProblem(problems, detailsOrLevel, legacyMessage) {
   const details = typeof detailsOrLevel === 'object' && detailsOrLevel !== null
     ? detailsOrLevel
@@ -296,6 +313,14 @@ async function captureClearWorkspaceConfirmation(browserWindow, viewport, {
   assert.equal(metrics.dialogOpen, true, `${id}: dialog is not open`);
   assert.equal(metrics.dialogModal, true, `${id}: dialog is not modal`);
   assert.equal(metrics.dialogName, 'Clear local workspace?', `${id}: accessible dialog name mismatch`);
+  assert.ok(
+    Math.abs(metrics.innerWidth - (viewport.width / zoomFactor)) <= 1,
+    `${id}: zoomed Chromium viewport width changed`,
+  );
+  assert.ok(
+    Math.abs(metrics.innerHeight - (viewport.height / zoomFactor)) <= 1,
+    `${id}: zoomed Chromium viewport height changed`,
+  );
   assert.deepEqual(
     metrics.describedIds,
     ['action-confirmation-message', 'action-confirmation-facts'],
@@ -332,8 +357,7 @@ async function captureClearWorkspaceConfirmation(browserWindow, viewport, {
 
   const captures = [];
   if (captureImage) {
-    const image = await webContents.capturePage();
-    const png = image.toPNG();
+    const png = await captureExactViewportPng(browserWindow, viewport, id);
     const file = `${id}.png`;
     await mkdir(actualRoot, { recursive: true });
     await writeFile(path.join(actualRoot, file), png);
@@ -401,6 +425,8 @@ async function inspectView(webContents, viewId, expectedHeading, viewport) {
       activeView: active?.dataset.view || '',
       headingFocused: document.activeElement === heading,
       innerWidth,
+      innerHeight,
+      devicePixelRatio,
       documentWidth: document.documentElement.scrollWidth,
       bodyWidth: document.body.scrollWidth,
       sidebar: bounds(sidebar),
@@ -414,6 +440,21 @@ async function inspectView(webContents, viewId, expectedHeading, viewport) {
   assert.equal(metrics.heading, expectedHeading, `${viewId}: heading mismatch`);
   assert.equal(metrics.activeView, viewId, `${viewId}: active navigation mismatch`);
   assert.equal(metrics.headingFocused, true, `${viewId}: focus did not move to the page heading`);
+  assert.equal(
+    metrics.innerWidth,
+    viewport.width,
+    `${viewId}: Chromium viewport width is not exactly ${viewport.width}px`,
+  );
+  assert.equal(
+    metrics.innerHeight,
+    viewport.height,
+    `${viewId}: Chromium viewport height is not exactly ${viewport.height}px`,
+  );
+  assert.equal(
+    metrics.devicePixelRatio,
+    deviceScaleFactor,
+    `${viewId}: Chromium device scale factor changed`,
+  );
   assert.ok(
     metrics.documentWidth <= metrics.innerWidth + 1,
     `${viewId}: document overflows ${metrics.documentWidth}px into a ${metrics.innerWidth}px viewport`,
@@ -475,6 +516,12 @@ async function captureViewport(baseUrl, viewport) {
 
   const captures = [];
   try {
+    browserWindow.setContentSize(viewport.width, viewport.height);
+    assert.deepEqual(
+      browserWindow.getContentSize(),
+      [viewport.width, viewport.height],
+      `${viewport.id}: BrowserWindow refused the exact content size`,
+    );
     await withTimeout(browserWindow.loadURL(baseUrl), `${viewport.id}: page load`);
     await waitForHeading(browserWindow.webContents, 'Overview');
     await browserWindow.webContents.executeJavaScript(`(() => {
@@ -493,8 +540,11 @@ async function captureViewport(baseUrl, viewport) {
       if (!screenshotViews.has(viewId)) continue;
       await browserWindow.webContents.executeJavaScript('window.scrollTo(0, 0)', true);
       await waitForPaint(browserWindow.webContents, `${viewport.id}/${viewId}`);
-      const image = await browserWindow.webContents.capturePage();
-      const png = image.toPNG();
+      const png = await captureExactViewportPng(
+        browserWindow,
+        viewport,
+        `${viewport.id}/${viewId}`,
+      );
       const file = `${viewport.id}-${viewId}.png`;
       await mkdir(actualRoot, { recursive: true });
       await writeFile(path.join(actualRoot, file), png);
@@ -533,9 +583,15 @@ async function captureViewport(baseUrl, viewport) {
 }
 
 async function updateBaselines(captures, manifest) {
-  await mkdir(baselineRoot, { recursive: true });
+  const candidates = [];
   for (const capture of captures) {
     const png = await readFile(path.join(actualRoot, capture.file));
+    assertPngDimensions(png, capture, `${capture.file}: captured baseline candidate`);
+    assert.equal(sha256(png), capture.sha256, `${capture.file}: captured baseline candidate changed`);
+    candidates.push({ capture, png });
+  }
+  await mkdir(baselineRoot, { recursive: true });
+  for (const { capture, png } of candidates) {
     await writeFile(path.join(baselineRoot, capture.file), png);
   }
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
@@ -585,7 +641,11 @@ async function checkBaselines(captures, manifest) {
   for (const capture of captures) {
     const expectedCapture = expected.captures.find(({ file }) => file === capture.file);
     assert.ok(expectedCapture, `${capture.file}: missing from baseline manifest`);
+    const actual = await readFile(path.join(actualRoot, capture.file));
+    assertPngDimensions(actual, capture, `${capture.file}: current capture`);
+    assert.equal(sha256(actual), capture.sha256, `${capture.file}: current capture changed`);
     const baseline = await readFile(path.join(baselineRoot, capture.file));
+    assertPngDimensions(baseline, expectedCapture, `${capture.file}: tracked baseline`);
     assert.equal(sha256(baseline), expectedCapture.sha256, `${capture.file}: baseline hash is corrupt`);
     assert.equal(capture.sha256, expectedCapture.sha256, `${capture.file}: screenshot regression detected`);
   }
