@@ -16,8 +16,8 @@ The dispatcher in `src/adapters/legacy-components.js` identifies supported data 
 
 Extension version 0.4.0 migrates the proven in-page workflow from the preserved
 Tampermonkey companion into the Manifest V3 Instagram sidecar. The migration
-retains the existing `insta-aio-visible-list`, `insta-aio-manual-queue`, and
-`insta-aio-companion-state` shapes. It adds repeated capture deduplication,
+uses the `insta-toolbox-visible-list`, `insta-toolbox-manual-queue`, and
+`insta-toolbox-companion-state` shapes. It adds repeated capture deduplication,
 current-page inspection, sanitized bridge dry-run history, and read-only DM
 evidence. The userscript remains a first-class in-page delivery surface; it was
 not removed or replaced.

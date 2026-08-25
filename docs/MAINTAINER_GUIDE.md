@@ -17,7 +17,8 @@
   proven sent ownership; a visual-text similarity alone must safe-stop.
 - Keep `content-instagram.js` loaded before `instagram-overlay.js`.
 - Keep Instagram-side pairing state sanitized; never expose bridge secrets, signatures, or nonces.
-- Preserve `insta-aio-visible-list` and `insta-aio-manual-queue` compatibility.
+- Preserve the documented `insta-toolbox-visible-list` and
+  `insta-toolbox-manual-queue` contracts.
 - Never infer exact identity from a visually similar profile or message.
 - For signed PWA one-item jobs, reserve both the PWA ledger and extension mirror
   before the destructive driver call.
@@ -31,6 +32,8 @@
   Mutual Checker exception is limited to its tested fixed Instagram GET-route allowlist.
 
 ## Change workflow
+
+Use Node.js 24 and the lockfile-pinned pnpm version.
 
 1. Start from an up-to-date branch.
 2. Inspect the current state schema and relevant source tests.
@@ -46,6 +49,7 @@ Required gate:
 pnpm run assemble
 pnpm run verify:repo-hygiene
 pnpm test
+git diff --check
 ```
 
 Additional gates:
@@ -105,6 +109,32 @@ the ticket, and repeat the lifecycle checks.
 For the portable web artifact, run `pnpm run build:web` and
 `pnpm run verify:web-package`. The ZIP is a static-hosting package, not a
 double-click application; verify it through HTTPS or localhost.
+
+## Release promotion
+
+The `Release` workflow promotes tested artifacts; it does not rebuild them.
+
+1. Merge the candidate into `main` and wait for the complete CI workflow.
+2. Record the successful CI run ID and its exact commit.
+3. Run the `Release` workflow manually with that run ID and the
+   `v<package.version>` tag.
+4. Approve the protected `release` environment after reviewing the run and
+   [acceptance record](./acceptance/3.0.0.md).
+5. Confirm that the workflow rejects a stale, non-`main`, non-push, failed, or
+   version-mismatched CI run.
+6. Verify every promoted file against `SHA256SUMS.txt`, then inspect the SBOM,
+   provenance attestation, tag target, and release notes.
+
+Configure the `release` environment with required reviewers. Configure GitHub
+Pages to use GitHub Actions; the Pages workflow extracts the exact successful
+`main` web artifact instead of rebuilding it.
+
+Keep the repository description, homepage, and topics aligned with
+[GITHUB_METADATA.md](./GITHUB_METADATA.md).
+
+Version 3.0 publishes `insta-toolbox.user.js`,
+`Insta-Toolbox-Extension-3.0.0.zip`, and `insta-toolbox-web-3.0.0.zip`. Do not
+publish old-name aliases or a raw-branch userscript update channel.
 
 ## Source integrations
 
@@ -173,6 +203,9 @@ Any uncertainty stops the job.
 - [ ] Destructive confirmations and safe-stop errors exercised
 - [ ] Public documentation contains no local paths, temporary notes, or credentials
 - [ ] Dependency and third-party license review completed
+- [ ] CodeQL and dependency review passed for the release commit
 - [ ] `SHA256SUMS.txt` covers the userscript, extension, web, and desktop artifacts
+- [ ] SBOM and provenance attestation cover the promoted release files
+- [ ] GitHub Pages serves the exact successful `main` web artifact
 - [ ] Secret scan completed
 - [ ] Repository metadata and issue titles are current
