@@ -6,7 +6,7 @@ Security fixes are applied to the latest `main` branch and the most recent publi
 
 ## Reporting
 
-Please report suspected vulnerabilities privately through GitHub's security-advisory feature for this repository. Do not include Instagram credentials, browser-session values, exported message content, or another person's private data in a report.
+Report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/slaveofsolace/Insta-Toolbox/security/advisories/new). Do not include Instagram credentials, browser-session values, exported message content, or another person's private data.
 
 Include:
 
@@ -75,3 +75,7 @@ limits stop the read.
 
 The latest dependency and application-boundary review is documented in
 [`docs/SECURITY_REVIEW.md`](docs/SECURITY_REVIEW.md).
+
+Every pull request receives dependency review. CodeQL runs on pull requests,
+`main`, and a weekly schedule. These checks supplement review; they do not prove
+current authenticated Instagram behavior or operating-system package trust.

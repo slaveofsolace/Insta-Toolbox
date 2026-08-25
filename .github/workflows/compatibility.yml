@@ -1,0 +1,82 @@
+name: Weekly account-free compatibility
+
+on:
+  schedule:
+    - cron: "17 8 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Assemble and test
+        run: |
+          pnpm run assemble
+          pnpm test
+      - name: Extension and userscript fixtures
+        env:
+          INSTA_TOOLBOX_ACCEPTANCE_NO_SANDBOX: "1"
+        run: xvfb-run --auto-servernum pnpm run qa:extension
+      - name: Install Chrome for Testing
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@e574b4b3a21156ab45dd6b5f67e884fd26eed829 # v2.1.2
+        with:
+          chrome-version: stable
+      - name: Extension and PWA pairing
+        env:
+          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
+          INSTA_TOOLBOX_CHROME_ACCEPTANCE_NO_SANDBOX: "1"
+        run: xvfb-run --auto-servernum pnpm run qa:chrome
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: weekly-browser-failure-${{ github.run_id }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 7
+
+  visuals-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check 45 overlay states
+        env:
+          INSTA_TOOLBOX_OVERLAY_QA_CI_WINDOWS_RASTER_TOLERANCE: "1"
+        run: pnpm run qa:overlay:check
+      - name: Check 11 PWA states
+        env:
+          INSTA_TOOLBOX_BROWSER_QA_BASELINE_VARIANT: github-actions-windows-2025-vs2026
+        run: pnpm run qa:browser:check
+      - name: Upload visual failure evidence
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: weekly-visual-failure-${{ github.run_id }}
+          path: |
+            test-results/overlay-qa
+            test-results/browser-qa
+          if-no-files-found: warn
+          retention-days: 7
