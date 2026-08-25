@@ -58,9 +58,9 @@ test('browser QA uses an isolated renderer, denied permissions, and bounded loop
 });
 
 test('browser QA hashes tracked platform baselines and keeps actual output disposable', () => {
-  assert.match(harness, /browserWindow\.setContentSize\(viewport\.width, viewport\.height\)/);
-  assert.match(harness, /browserWindow\.getContentSize\(\)/);
-  assert.match(harness, /browserWindow\.webContents\.capturePage\(\)/);
+  assert.match(harness, /Emulation\.setDeviceMetricsOverride/);
+  assert.match(harness, /Page\.captureScreenshot/);
+  assert.match(harness, /captureBeyondViewport: false/);
   assert.match(harness, /assertPngDimensions\(png, viewport, label\)/);
   assert.match(harness, /screenshot did not stabilize after four full repaints/);
   assert.match(harness, /const candidates = \[\]/);

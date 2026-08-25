@@ -161,21 +161,20 @@ async function waitForPaint(webContents, label) {
 }
 
 async function captureExactViewportPng(browserWindow, viewport, label) {
-  assert.deepEqual(
-    browserWindow.getContentSize(),
-    [viewport.width, viewport.height],
-    `${label}: BrowserWindow content size changed before capture`,
-  );
   let priorHash = '';
   let priorPng = null;
   for (let attempt = 1; attempt <= 4; attempt += 1) {
     await waitForPaint(browserWindow.webContents, `${label}: stable capture ${attempt}`);
-    const image = await withTimeout(
-      browserWindow.webContents.capturePage(),
+    const screenshot = await withTimeout(
+      browserWindow.webContents.debugger.sendCommand('Page.captureScreenshot', {
+        format: 'png',
+        fromSurface: true,
+        captureBeyondViewport: false,
+      }),
       `${label}: exact screenshot ${attempt}`,
       10_000,
     );
-    const png = image.toPNG();
+    const png = Buffer.from(screenshot.data, 'base64');
     assertPngDimensions(png, viewport, label);
     const currentHash = sha256(png);
     if (priorPng && currentHash === priorHash) return png;
@@ -499,8 +498,8 @@ async function captureViewport(baseUrl, viewport) {
     show: false,
     frame: false,
     useContentSize: true,
-    width: viewport.width,
-    height: viewport.height,
+    width: Math.min(viewport.width, 800),
+    height: Math.min(viewport.height, 600),
     backgroundColor: '#f5f5f2',
     webPreferences: {
       backgroundThrottling: false,
@@ -525,14 +524,24 @@ async function captureViewport(baseUrl, viewport) {
 
   const captures = [];
   try {
-    browserWindow.setContentSize(viewport.width, viewport.height);
-    assert.deepEqual(
-      browserWindow.getContentSize(),
-      [viewport.width, viewport.height],
-      `${viewport.id}: BrowserWindow refused the exact content size`,
-    );
-    await withTimeout(browserWindow.loadURL(baseUrl), `${viewport.id}: page load`);
+    await withTimeout(browserWindow.loadURL(baseUrl), `${viewport.id}: page bootstrap`);
     await waitForHeading(browserWindow.webContents, 'Overview');
+    browserWindow.webContents.debugger.attach('1.3');
+    await withTimeout(
+      browserWindow.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor,
+        mobile: false,
+        screenWidth: viewport.width,
+        screenHeight: viewport.height,
+        positionX: 0,
+        positionY: 0,
+      }),
+      `${viewport.id}: exact Chromium viewport`,
+      5_000,
+    );
+    await waitForPaint(browserWindow.webContents, `${viewport.id}: exact viewport applied`);
     await browserWindow.webContents.executeJavaScript(`(() => {
       const style = document.createElement('style');
       style.dataset.browserQa = 'true';
@@ -585,6 +594,17 @@ async function captureViewport(baseUrl, viewport) {
     assert.deepEqual(problems, [], `${viewport.id}: browser console or renderer problems`);
     return captures;
   } finally {
+    if (browserWindow.webContents.debugger.isAttached()) {
+      try {
+        await withTimeout(
+          browserWindow.webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride'),
+          `${viewport.id}: clear Chromium viewport`,
+          5_000,
+        );
+      } finally {
+        browserWindow.webContents.debugger.detach();
+      }
+    }
     if (!browserWindow.isDestroyed()) browserWindow.destroy();
     await withTimeout(qaSession.clearStorageData(), `${viewport.id}: storage cleanup`, 5_000);
     await withTimeout(qaSession.clearCache(), `${viewport.id}: cache cleanup`, 5_000);
