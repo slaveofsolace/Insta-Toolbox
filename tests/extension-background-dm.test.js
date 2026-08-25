@@ -23,7 +23,7 @@ import {
 import { messageSelectionKey } from '../src/core/messages.js';
 
 test('background completes an exact DM dry run without exposing an Unsend path', async () => {
-  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-aio-background-dm-'));
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-toolbox-background-dm-'));
   const libraryRoot = path.join(temporaryRoot, 'lib');
   await mkdir(libraryRoot, { recursive: true });
   await Promise.all([
@@ -64,12 +64,12 @@ test('background completes an exact DM dry run without exposing an Unsend path',
   const item = job.items[0];
 
   const stored = {
-    bridgePairings: [pairing],
-    bridgeReplayNonces: [],
-    pendingJobs: [],
-    accountActionLedger: [],
-    pendingLiveIntent: null,
-    liveArm: null,
+    instaToolboxBridgePairings: [pairing],
+    instaToolboxBridgeReplayNonces: [],
+    instaToolboxPendingJobs: [],
+    instaToolboxAccountActionLedger: [],
+    instaToolboxPendingLiveIntent: null,
+    instaToolboxLiveArm: null,
   };
   let runtimeListener = null;
   let inspectionCalls = 0;
@@ -100,7 +100,7 @@ test('background completes an exact DM dry run without exposing an Unsend path',
         return [{ id: 7, active: true, url: 'https://www.instagram.com/direct/t/123/' }];
       },
       async sendMessage(_tabId, message) {
-        assert.equal(message.kind, 'insta-aio-inspect-reviewed-dm-item');
+        assert.equal(message.kind, 'insta-toolbox-inspect-reviewed-dm-item');
         inspectionCalls += 1;
         assert.deepEqual(message.item, {
           conversationId: item.conversationId,
@@ -140,7 +140,7 @@ test('background completes an exact DM dry run without exposing an Unsend path',
 
     const request = await createSignedBridgeMessage(pairing, 'action.dm-job', { job });
     const response = await deliver({
-      kind: 'insta-aio-bridge-request',
+      kind: 'insta-toolbox-bridge-request',
       origin,
       message: request,
     }, {
@@ -158,9 +158,9 @@ test('background completes an exact DM dry run without exposing an Unsend path',
     assert.equal(verified.message.payload.stopReason, null);
     assert.equal(verified.message.payload.results[0].status, 'resolved-no-click');
     assert.equal(inspectionCalls, 1);
-    assert.equal(stored.pendingJobs.length, 1);
-    assert.equal(stored.pendingJobs[0].mode, 'dry-run');
-    assert.equal(stored.pendingJobs[0].result.status, 'dry-run-complete');
+    assert.equal(stored.instaToolboxPendingJobs.length, 1);
+    assert.equal(stored.instaToolboxPendingJobs[0].mode, 'dry-run');
+    assert.equal(stored.instaToolboxPendingJobs[0].result.status, 'dry-run-complete');
   } finally {
     delete globalThis.chrome;
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -168,7 +168,7 @@ test('background completes an exact DM dry run without exposing an Unsend path',
 });
 
 test('background reserves and consumes one transient exact DM confirmation before dispatch', async () => {
-  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-aio-background-dm-live-'));
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-toolbox-background-dm-live-'));
   const libraryRoot = path.join(temporaryRoot, 'lib');
   await mkdir(libraryRoot, { recursive: true });
   await Promise.all([
@@ -215,15 +215,15 @@ test('background reserves and consumes one transient exact DM confirmation befor
   const item = job.items[0];
 
   const stored = {
-    bridgePairings: [pairing],
-    bridgeReplayNonces: [],
-    pendingJobs: [],
-    accountActionLedger: [],
-    dmActionLedger: [],
-    pendingLiveIntent: null,
-    liveArm: null,
-    pendingDmIntent: null,
-    dmArm: null,
+    instaToolboxBridgePairings: [pairing],
+    instaToolboxBridgeReplayNonces: [],
+    instaToolboxPendingJobs: [],
+    instaToolboxAccountActionLedger: [],
+    instaToolboxDmActionLedger: [],
+    instaToolboxPendingLiveIntent: null,
+    instaToolboxLiveArm: null,
+    instaToolboxPendingDmIntent: null,
+    instaToolboxDmArm: null,
   };
   let runtimeListener = null;
   let inspectionCount = 0;
@@ -257,7 +257,7 @@ test('background reserves and consumes one transient exact DM confirmation befor
       },
       async sendMessage(tabId, message) {
         assert.equal(tabId, 7);
-        if (message.kind === 'insta-aio-inspect-session') {
+        if (message.kind === 'insta-toolbox-inspect-session') {
           return {
             sessionExpired: false,
             challenge: false,
@@ -265,7 +265,7 @@ test('background reserves and consumes one transient exact DM confirmation befor
             rateLimited: false,
           };
         }
-        if (message.kind === 'insta-aio-inspect-reviewed-dm-item') {
+        if (message.kind === 'insta-toolbox-inspect-reviewed-dm-item') {
           inspectionCount += 1;
           if (messageRemoved) {
             return {
@@ -288,11 +288,11 @@ test('background reserves and consumes one transient exact DM confirmation befor
             timestamp: item.timestamp,
           };
         }
-        if (message.kind === 'insta-aio-perform-reviewed-dm-unsend') {
+        if (message.kind === 'insta-toolbox-perform-reviewed-dm-unsend') {
           performCount += 1;
-          assert.equal(stored.pendingDmIntent, null);
-          assert.equal(stored.dmArm, null);
-          assert.equal(stored.dmActionLedger[0].status, 'reserved');
+          assert.equal(stored.instaToolboxPendingDmIntent, null);
+          assert.equal(stored.instaToolboxDmArm, null);
+          assert.equal(stored.instaToolboxDmActionLedger[0].status, 'reserved');
           assert.equal(message.item.resolutionToken, 'dm-token-1');
           messageRemoved = true;
           return {
@@ -332,7 +332,7 @@ test('background reserves and consumes one transient exact DM confirmation befor
     async function bridge(type, payload) {
       const request = await createSignedBridgeMessage(pairing, type, payload);
       const response = await deliver({
-        kind: 'insta-aio-bridge-request',
+        kind: 'insta-toolbox-bridge-request',
         origin,
         message: request,
       }, pwaSender);
@@ -386,8 +386,8 @@ test('background reserves and consumes one transient exact DM confirmation befor
     });
     assert.equal(performed.message.payload.result, 'unsent');
     assert.equal(performCount, 1);
-    assert.equal(stored.dmActionLedger[0].status, 'succeeded');
-    assert.equal(stored.pendingJobs[0].mode, 'live');
+    assert.equal(stored.instaToolboxDmActionLedger[0].status, 'succeeded');
+    assert.equal(stored.instaToolboxPendingJobs[0].mode, 'live');
 
     const postcheck = await bridge('action.dm-message', { jobId: job.id, item });
     assert.equal(postcheck.message.payload.missing, true);

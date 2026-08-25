@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const namespace = '__instaAioOverlayModules';
+  const namespace = '__instaToolboxOverlayModules';
   if (globalThis[namespace]) return;
 
   const modules = Object.create(null);
@@ -24,21 +24,22 @@
   }
 
   const STORAGE_KEYS = Object.freeze({
-    capture: 'instaAioOverlayCaptureDraftV1',
-    captureV2: 'instaAioOverlayCaptureWorkspaceV2',
-    manualQueue: 'instaAioOverlayManualQueueV1',
-    preferencesV1: 'instaAioOverlayPreferencesV1',
-    preferencesV2: 'instaAioOverlayPreferencesV2',
-    preferencesV3: 'instaAioOverlayPreferencesV3',
+    capture: 'instaToolboxOverlayCaptureDraftV1',
+    captureV2: 'instaToolboxOverlayCaptureWorkspaceV2',
+    manualQueue: 'instaToolboxOverlayManualQueueV1',
+    preferencesV1: 'instaToolboxOverlayPreferencesV1',
+    preferencesV2: 'instaToolboxOverlayPreferencesV2',
+    preferencesV3: 'instaToolboxOverlayPreferencesV3',
+    bridgePairings: 'instaToolboxBridgePairings',
+    pendingJobs: 'instaToolboxPendingJobs',
+    pendingLiveIntent: 'instaToolboxPendingLiveIntent',
+    pendingDmIntent: 'instaToolboxPendingDmIntent',
+    accountActionLedger: 'instaToolboxAccountActionLedger',
+    dmActionLedger: 'instaToolboxDmActionLedger',
+    threadUnsendLedger: 'instaToolboxThreadUnsendLedger',
+    batchRun: 'instaToolboxBatchRun',
   });
   const SECTIONS = Object.freeze(['now', 'capture', 'queue', 'messages', 'workspace']);
-  const SECTION_COPY = Object.freeze({
-    now: Object.freeze(['Instagram tools', 'Mutual Checker, account review, and DM Unsend.']),
-    capture: Object.freeze(['Mutual Checker', 'Compare Followers and Following locally.']),
-    queue: Object.freeze(['Follow / Unfollow', 'Review one exact account with a true no-click check first.']),
-    messages: Object.freeze(['DM Unsend', 'Inspect visible evidence or resolve one exact reviewed sent message.']),
-    workspace: Object.freeze(['Workspace', 'Pairing, permissions, and the durable PWA ledger.']),
-  });
   const ACTIONABLE_QUEUE_STATUSES = new Set(['pending', 'ready', 'failed', 'paused']);
   const ALLOWED_QUEUE_STATUSES = new Set([
     ...ACTIONABLE_QUEUE_STATUSES,
@@ -131,7 +132,7 @@
     }
     return {
       schemaVersion: 1,
-      kind: 'insta-aio-visible-list',
+      kind: 'insta-toolbox-visible-list',
       listType,
       capturedAt: safeText(value?.capturedAt) || now(),
       [listType]: [...accounts.values()],
@@ -142,7 +143,7 @@
   function captureWorkspaceDefaults() {
     return {
       schemaVersion: 5,
-      kind: 'insta-aio-visible-checker-workspace',
+      kind: 'insta-toolbox-visible-checker-workspace',
       subjectUsername: '',
       followers: [],
       following: [],
@@ -194,7 +195,7 @@
       : {};
     return {
       schemaVersion: 5,
-      kind: 'insta-aio-visible-checker-workspace',
+      kind: 'insta-toolbox-visible-checker-workspace',
       subjectUsername: normalizeUsername(source.subjectUsername),
       followers: normalizeCaptureAccounts(source.followers, normalizeUsername),
       following: normalizeCaptureAccounts(source.following, normalizeUsername),
@@ -251,7 +252,7 @@
       : '';
     return {
       schemaVersion: 1,
-      kind: 'insta-aio-visible-list',
+      kind: 'insta-toolbox-visible-list',
       listType: normalizedType,
       capturedAt: safeText(source.capturedAt?.[normalizedType]) || now(),
       [normalizedType]: Array.isArray(source[normalizedType]) ? source[normalizedType] : [],
@@ -379,7 +380,6 @@
     COMPARISON_CATEGORIES,
     MAX_CAPTURE_ACCOUNTS,
     MAX_QUEUE_ITEMS,
-    SECTION_COPY,
     SECTIONS,
     STORAGE_KEYS,
     armRemainingMs,

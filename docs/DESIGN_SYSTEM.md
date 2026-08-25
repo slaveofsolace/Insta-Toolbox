@@ -16,7 +16,7 @@ stylesheets found:
 | Hardcoded colour literals | 28 | 76 |
 | Instagram CSS variables used | 0 | 14 |
 
-Two independent palettes, two naming schemes (`.ia-*` against `.panel`/`.tab`),
+Two independent palettes, two naming schemes (`.insta-toolbox-*` against `.panel`/`.tab`),
 104 colour literals between them, and only one of the two integrating with
 Instagram's own theme at all. A change to one surface never reached the other,
 and dark mode was correct in one place and approximated in the other.
@@ -28,9 +28,9 @@ tokens read those first and fall back to fixed values, so the panel follows the
 page's light and dark treatment without needing to detect the theme:
 
 ```css
---aio-accent: rgb(var(--ig-primary-button, 0 149 246));
---aio-text:   rgb(var(--ig-primary-text, 0 0 0));
---aio-line:   rgb(var(--ig-separator, 219 219 219));
+--insta-toolbox-accent: #b83d67;
+--insta-toolbox-text: rgb(var(--ig-primary-text, 0 0 0));
+--insta-toolbox-line: rgb(var(--ig-separator, 219 219 219));
 ```
 
 If Instagram renames a variable the fallback keeps the panel readable rather
@@ -40,25 +40,25 @@ Instagram assets, marks, or proprietary styling.
 
 ## Semantic colour roles
 
-Roles, never raw colours. A component asks for `--aio-danger`, not a hex value.
+Roles, never raw colours. A component asks for `--insta-toolbox-danger`, not a hex value.
 
 | Role | Token | Used for |
 |---|---|---|
-| Surface | `--aio-bg` | Panel body |
-| Raised surface | `--aio-bg-raised` | Header, footer, cards |
-| Sunken surface | `--aio-bg-sunken` | Tab strip, track fills |
-| Text | `--aio-text` | Primary copy |
-| Muted text | `--aio-text-muted` | Secondary copy, captions |
-| Separator | `--aio-line` | Borders and rules |
-| Accent | `--aio-accent` | Primary action, selected tab |
-| On accent | `--aio-on-accent` | Text and icons on an accent or danger fill |
-| Success | `--aio-success` | Completed, proven removal |
-| Warning | `--aio-warning` | Running, paused, incomplete scan |
-| Danger | `--aio-danger` | Destructive action, failed, blocked |
-| Uncertain | `--aio-uncertain` | Postcondition not proven |
-| Focus ring | `--aio-focus` | Keyboard focus |
+| Surface | `--insta-toolbox-bg` | Panel body |
+| Raised surface | `--insta-toolbox-bg-raised` | Header, footer, cards |
+| Sunken surface | `--insta-toolbox-bg-sunken` | Tab strip, track fills |
+| Text | `--insta-toolbox-text` | Primary copy |
+| Muted text | `--insta-toolbox-text-muted` | Secondary copy, captions |
+| Separator | `--insta-toolbox-line` | Borders and rules |
+| Accent | `--insta-toolbox-accent` | Primary action, selected tab |
+| On accent | `--insta-toolbox-on-accent` | Text and icons on an accent or danger fill |
+| Success | `--insta-toolbox-success` | Completed, proven removal |
+| Warning | `--insta-toolbox-warning` | Running, paused, incomplete scan |
+| Danger | `--insta-toolbox-danger` | Destructive action, failed, blocked |
+| Uncertain | `--insta-toolbox-uncertain` | Postcondition not proven |
+| Focus ring | `--insta-toolbox-focus` | Keyboard focus |
 
-`--aio-uncertain` is deliberately distinct from `--aio-danger`. An uncertain
+`--insta-toolbox-uncertain` is deliberately distinct from `--insta-toolbox-danger`. An uncertain
 outcome is not a failure: the action may have happened. Colouring the two the
 same would tell the reader something the tool does not know.
 
@@ -94,37 +94,37 @@ font. Four sizes only.
 
 | Step | Size / line height | Used for |
 |---|---|---|
-| `--aio-text-lg` | 15px / 20px | Panel title, run headline |
-| `--aio-text-md` | 14px / 20px | Body, controls |
-| `--aio-text-sm` | 13px / 18px | Secondary copy |
-| `--aio-text-xs` | 12px / 16px | Captions, counts |
+| `--insta-toolbox-text-lg` | 15px / 20px | Panel title, run headline |
+| `--insta-toolbox-text-md` | 14px / 20px | Body, controls |
+| `--insta-toolbox-text-sm` | 13px / 18px | Secondary copy |
+| `--insta-toolbox-text-xs` | 12px / 16px | Captions, counts |
 
 Weights: 400 body, 600 emphasis and controls. No other weights, so the panel
 never competes with post content beside it.
 
 ## Spacing, radii, borders
 
-A 4px scale: `--aio-space-1` 4px through `--aio-space-6` 24px. Nothing between
+A 4px scale: `--insta-toolbox-space-1` 4px through `--insta-toolbox-space-6` 24px. Nothing between
 steps.
 
-Radii follow Instagram's own shapes: `--aio-radius-sm` 6px for inputs,
-`--aio-radius-md` 8px for buttons and cards, `--aio-radius-lg` 16px for the
+Radii follow Instagram's own shapes: `--insta-toolbox-radius-sm` 6px for inputs,
+`--insta-toolbox-radius-md` 8px for buttons and cards, `--insta-toolbox-radius-lg` 16px for the
 panel.
 
-Borders are always 1px `--aio-line`. Emphasis comes from colour, not thickness.
+Borders are always 1px `--insta-toolbox-line`. Emphasis comes from colour, not thickness.
 
 ## Elevation
 
 Three levels. The panel floats over Instagram, so shadows stay soft and shallow
 to avoid reading as a modal.
 
-- `--aio-shadow-panel` — the panel against the page
-- `--aio-shadow-popover` — settings and menus above the panel
-- `--aio-shadow-none` — flat cards inside the panel
+- `--insta-toolbox-shadow-panel` — the panel against the page
+- `--insta-toolbox-shadow-popover` — settings and menus above the panel
+- `--insta-toolbox-shadow-none` — flat cards inside the panel
 
 ## Focus and hit targets
 
-Focus is a 2px `--aio-focus` ring at 2px offset, applied through
+Focus is a 2px `--insta-toolbox-focus` ring at 2px offset, applied through
 `:focus-visible` so pointer users do not see it. It is never removed, only
 repositioned.
 
@@ -150,11 +150,11 @@ Motion explains a state change. It never decorates.
 
 | Token | Duration | Used for |
 |---|---|---|
-| `--aio-motion-fast` | 120ms | Hover, focus |
-| `--aio-motion-base` | 180ms | Tabs, disclosures |
-| `--aio-motion-slow` | 240ms | Panel open and close |
+| `--insta-toolbox-motion-fast` | 120ms | Hover, focus |
+| `--insta-toolbox-motion-base` | 180ms | Tabs, disclosures |
+| `--insta-toolbox-motion-slow` | 240ms | Panel open and close |
 
-Easing is `--aio-ease` `cubic-bezier(.2,.7,.3,1)` — quick to start, settling at
+Easing is `--insta-toolbox-ease` `cubic-bezier(.2,.7,.3,1)` — quick to start, settling at
 the end.
 
 Rules:
@@ -179,7 +179,7 @@ Both surfaces call the same function and inject the result into their shadow
 root:
 
 ```js
-const styles = globalThis.InstaAioTokens.css({ density: 'comfortable' });
+const styles = globalThis.InstaToolboxTokens.css({ density: 'comfortable' });
 ```
 
 Rules for contributors:

@@ -74,7 +74,7 @@ function createInspector({
   });
   vm.runInContext(actionLabelsSource, context);
   vm.runInContext(inspectorSource, context);
-  return context.InstaAioInstagramInspector;
+  return context.InstaToolboxInstagramInspector;
 }
 
 test('authenticated follower check uses only bounded exact read endpoints and paginates both lists', async () => {
@@ -742,7 +742,7 @@ test('follower comparison export provides a readable UTF-8 report and preserves 
 
   const record = inspector.followerComparisonRecord(workspace, comparison, generatedAt);
   assert.equal(record.schemaVersion, 1);
-  assert.equal(record.kind, 'insta-aio-comparison');
+  assert.equal(record.kind, 'insta-toolbox-comparison');
   assert.equal(record.generatedAt, generatedAt);
   assert.equal(record.notFollowingMeBack[0].username, 'outgoing.only');
 });

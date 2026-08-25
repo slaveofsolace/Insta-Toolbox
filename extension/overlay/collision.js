@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   if (!shared || modules.collision) return;
 

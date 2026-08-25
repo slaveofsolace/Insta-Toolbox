@@ -24,7 +24,7 @@ tokens, or private Instagram screenshots in the repository.
 ## 1. Install and prove the safe default
 
 1. Follow [Installation](./INSTALLATION.md) and update the companion.
-2. In Tampermonkey, confirm **Insta Toolbox 2.0.3** or later. If
+2. In Tampermonkey, confirm **Insta Toolbox 3.0.0**. If
    Chrome is used, open Tampermonkey's extension details and enable
    **Allow User Scripts**.
 3. Reload `https://www.instagram.com/`, then press **Alt + Shift + I**.
@@ -150,3 +150,6 @@ Issues #3 and #4 can close only after their matching one-item live record exists
 Issue #5 can close only after sections 1–4 and any selected release-signing
 requirements pass. Issue #12 can close only after the human screen-reader
 findings are recorded and the corrected persistent-profile UI is accepted.
+
+Use [acceptance/TEMPLATE.md](./acceptance/TEMPLATE.md) for later releases. Record
+the sanitized 3.0 result in [acceptance/3.0.0.md](./acceptance/3.0.0.md).

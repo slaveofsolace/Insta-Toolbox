@@ -170,7 +170,7 @@ UI integration.
 
 Authenticated results enter the existing checker workspace only after both
 lists finish. Schema 5 adds the subject username and per-list provenance without
-changing the legacy migration report or `insta-aio-visible-list` export kind.
+changing the legacy migration report or `insta-toolbox-visible-list` export kind.
 
 ## instagram-dm-unsender 0.7.2
 

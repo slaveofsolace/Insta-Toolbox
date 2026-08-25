@@ -4,11 +4,12 @@ const form = document.querySelector('#pairing-form');
 const originLabel = document.querySelector('#active-origin');
 const status = document.querySelector('#status');
 const list = document.querySelector('#pairings');
+const BRIDGE_PAIRINGS_KEY = 'instaToolboxBridgePairings';
 let activeTab = null;
 let activeOrigin = null;
 
 function scriptId(pairingId) {
-  return `insta-aio-${String(pairingId).replace(/[^a-z0-9_-]/gi, '-')}`;
+  return `insta-toolbox-${String(pairingId).replace(/[^a-z0-9_-]/gi, '-')}`;
 }
 
 function originPattern(origin) {
@@ -16,8 +17,8 @@ function originPattern(origin) {
 }
 
 async function pairings() {
-  const stored = await chrome.storage.local.get('bridgePairings');
-  return Array.isArray(stored.bridgePairings) ? stored.bridgePairings : [];
+  const stored = await chrome.storage.local.get(BRIDGE_PAIRINGS_KEY);
+  return Array.isArray(stored[BRIDGE_PAIRINGS_KEY]) ? stored[BRIDGE_PAIRINGS_KEY] : [];
 }
 
 async function renderPairings() {
@@ -44,7 +45,7 @@ async function renderPairings() {
       const remaining = (await pairings()).filter((candidate) => (
         candidate.pairingId !== pairing.pairingId
       ));
-      await chrome.storage.local.set({ bridgePairings: remaining });
+      await chrome.storage.local.set({ [BRIDGE_PAIRINGS_KEY]: remaining });
       try {
         await chrome.scripting.unregisterContentScripts({ ids: [scriptId(pairing.pairingId)] });
       } catch {
@@ -107,7 +108,7 @@ form.addEventListener('submit', async (event) => {
     });
     if (!granted) throw new Error('Origin access was not granted.');
     await chrome.storage.local.set({
-      bridgePairings: [pairing, ...existing].slice(0, 20),
+      [BRIDGE_PAIRINGS_KEY]: [pairing, ...existing].slice(0, 20),
     });
     await installOriginBridge(pairing);
     document.querySelector('#pairing-code').value = '';

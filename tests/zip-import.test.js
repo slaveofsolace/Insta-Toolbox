@@ -29,7 +29,7 @@ test('inspects and imports a split current-layout Instagram archive offline', as
   const archive = createZip(await currentExportFixtureEntries());
   const manifest = inspectZipArchive(archive);
 
-  assert.equal(manifest.kind, 'insta-aio-zip-manifest');
+  assert.equal(manifest.kind, 'insta-toolbox-zip-manifest');
   assert.equal(manifest.counts.followers, 2);
   assert.equal(manifest.counts.following, 1);
   assert.equal(manifest.counts.messages, 2);

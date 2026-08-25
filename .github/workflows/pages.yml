@@ -1,0 +1,88 @@
+name: Deploy PWA to GitHub Pages
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      pages: write
+    steps:
+      - name: Verify the CI run is still current main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_SHA" =~ ^[0-9a-f]{40}$ ]]
+          main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          test "$RUN_SHA" = "$main_sha" || { echo "CI run is not for the current main commit" >&2; exit 1; }
+
+      - name: Download tested web archive
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: insta-toolbox-web-${{ github.event.workflow_run.head_sha }}
+          path: incoming/web
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Download tested checksum manifest
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: insta-toolbox-checksums-${{ github.event.workflow_run.head_sha }}
+          path: incoming/checksums
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify and extract the tested web archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' archives < <(find incoming/web -type f -name 'insta-toolbox-web-*.zip' -print0)
+          mapfile -d '' manifests < <(find incoming/checksums -type f -name SHA256SUMS.txt -print0)
+          test "${#archives[@]}" -eq 1
+          test "${#manifests[@]}" -eq 1
+          archive="${archives[0]}"
+          expected="$(grep -E "  $(basename "$archive")$" "${manifests[0]}")"
+          test -n "$expected"
+          (cd "$(dirname "$archive")" && printf '%s\n' "$expected" | sha256sum --check --strict -)
+          mkdir site
+          unzip -q "$archive" -d site-root
+          test -f site-root/insta-toolbox-web/index.html
+          test -f site-root/insta-toolbox-web/sw.js
+          cp -a site-root/insta-toolbox-web/. site/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

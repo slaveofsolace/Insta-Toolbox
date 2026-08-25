@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow, session } from 'electron';
 
+import { assertPngDimensions } from './png-dimensions.mjs';
 import { createAppServer } from './serve.mjs';
 
 const mode = process.argv.includes('--update')
@@ -34,7 +35,7 @@ if (baselineVariant && !/^[a-z0-9](?:[a-z0-9_-]{0,62})$/i.test(baselineVariant))
   throw new Error('Browser QA baseline variant must contain only letters, numbers, dashes, and underscores.');
 }
 const userDataRoot = path.resolve(
-  process.env.INSTA_AIO_BROWSER_QA_USER_DATA
+  process.env.INSTA_TOOLBOX_BROWSER_QA_USER_DATA
     || path.join(resultsRoot, 'user-data', String(process.pid)),
 );
 const platformBaselineRoot = path.join(repositoryRoot, 'tests', 'baselines', 'pwa', process.platform);
@@ -92,6 +93,29 @@ function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function readProductEvidenceMetadata() {
+  const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, 'package.json'), 'utf8'));
+  const productVersion = String(packageJson.version || '').trim();
+  assert.match(productVersion, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, 'package version is invalid');
+
+  const changelog = await readFile(path.join(repositoryRoot, 'CHANGELOG.md'), 'utf8');
+  const releaseHeading = new RegExp(
+    `^## ${escapeRegExp(productVersion)} - (\\d{4}-\\d{2}-\\d{2})(?: \\([^\\r\\n]+\\))?$`,
+    'm',
+  );
+  const releaseDate = changelog.match(releaseHeading)?.[1] || '';
+  assert.match(releaseDate, /^\d{4}-\d{2}-\d{2}$/, `CHANGELOG release date is missing for ${productVersion}`);
+
+  return {
+    productVersion,
+    captureTimestamp: `${releaseDate}T00:00:00.000Z`,
+  };
+}
+
 function listen(server) {
   return new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -134,6 +158,30 @@ async function waitForPaint(webContents, label) {
     webContents.once('paint', resolve);
     webContents.invalidate();
   }), `${label}: fresh paint`, 5_000);
+}
+
+async function captureExactViewportPng(browserWindow, viewport, label) {
+  let priorHash = '';
+  let priorPng = null;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    await waitForPaint(browserWindow.webContents, `${label}: stable capture ${attempt}`);
+    const screenshot = await withTimeout(
+      browserWindow.webContents.debugger.sendCommand('Page.captureScreenshot', {
+        format: 'png',
+        fromSurface: true,
+        captureBeyondViewport: false,
+      }),
+      `${label}: exact screenshot ${attempt}`,
+      10_000,
+    );
+    const png = Buffer.from(screenshot.data, 'base64');
+    assertPngDimensions(png, viewport, label);
+    const currentHash = sha256(png);
+    if (priorPng && currentHash === priorHash) return png;
+    priorPng = png;
+    priorHash = currentHash;
+  }
+  throw new Error(`${label}: screenshot did not stabilize after four full repaints.`);
 }
 
 function recordConsoleProblem(problems, detailsOrLevel, legacyMessage) {
@@ -273,6 +321,14 @@ async function captureClearWorkspaceConfirmation(browserWindow, viewport, {
   assert.equal(metrics.dialogOpen, true, `${id}: dialog is not open`);
   assert.equal(metrics.dialogModal, true, `${id}: dialog is not modal`);
   assert.equal(metrics.dialogName, 'Clear local workspace?', `${id}: accessible dialog name mismatch`);
+  assert.ok(
+    Math.abs(metrics.innerWidth - (viewport.width / zoomFactor)) <= 1,
+    `${id}: zoomed Chromium viewport width changed`,
+  );
+  assert.ok(
+    Math.abs(metrics.innerHeight - (viewport.height / zoomFactor)) <= 1,
+    `${id}: zoomed Chromium viewport height changed`,
+  );
   assert.deepEqual(
     metrics.describedIds,
     ['action-confirmation-message', 'action-confirmation-facts'],
@@ -309,8 +365,7 @@ async function captureClearWorkspaceConfirmation(browserWindow, viewport, {
 
   const captures = [];
   if (captureImage) {
-    const image = await webContents.capturePage();
-    const png = image.toPNG();
+    const png = await captureExactViewportPng(browserWindow, viewport, id);
     const file = `${id}.png`;
     await mkdir(actualRoot, { recursive: true });
     await writeFile(path.join(actualRoot, file), png);
@@ -378,6 +433,8 @@ async function inspectView(webContents, viewId, expectedHeading, viewport) {
       activeView: active?.dataset.view || '',
       headingFocused: document.activeElement === heading,
       innerWidth,
+      innerHeight,
+      devicePixelRatio,
       documentWidth: document.documentElement.scrollWidth,
       bodyWidth: document.body.scrollWidth,
       sidebar: bounds(sidebar),
@@ -391,6 +448,21 @@ async function inspectView(webContents, viewId, expectedHeading, viewport) {
   assert.equal(metrics.heading, expectedHeading, `${viewId}: heading mismatch`);
   assert.equal(metrics.activeView, viewId, `${viewId}: active navigation mismatch`);
   assert.equal(metrics.headingFocused, true, `${viewId}: focus did not move to the page heading`);
+  assert.equal(
+    metrics.innerWidth,
+    viewport.width,
+    `${viewId}: Chromium viewport width is not exactly ${viewport.width}px`,
+  );
+  assert.equal(
+    metrics.innerHeight,
+    viewport.height,
+    `${viewId}: Chromium viewport height is not exactly ${viewport.height}px`,
+  );
+  assert.equal(
+    metrics.devicePixelRatio,
+    deviceScaleFactor,
+    `${viewId}: Chromium device scale factor changed`,
+  );
   assert.ok(
     metrics.documentWidth <= metrics.innerWidth + 1,
     `${viewId}: document overflows ${metrics.documentWidth}px into a ${metrics.innerWidth}px viewport`,
@@ -417,7 +489,7 @@ async function inspectView(webContents, viewId, expectedHeading, viewport) {
 }
 
 async function captureViewport(baseUrl, viewport) {
-  const partition = `insta-aio-browser-qa-${process.pid}-${viewport.id}`;
+  const partition = `insta-toolbox-browser-qa-${process.pid}-${viewport.id}`;
   const qaSession = session.fromPartition(partition);
   qaSession.setPermissionCheckHandler(() => false);
   qaSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -426,8 +498,8 @@ async function captureViewport(baseUrl, viewport) {
     show: false,
     frame: false,
     useContentSize: true,
-    width: viewport.width,
-    height: viewport.height,
+    width: Math.min(viewport.width, 800),
+    height: Math.min(viewport.height, 600),
     backgroundColor: '#f5f5f2',
     webPreferences: {
       backgroundThrottling: false,
@@ -452,8 +524,24 @@ async function captureViewport(baseUrl, viewport) {
 
   const captures = [];
   try {
-    await withTimeout(browserWindow.loadURL(baseUrl), `${viewport.id}: page load`);
+    await withTimeout(browserWindow.loadURL(baseUrl), `${viewport.id}: page bootstrap`);
     await waitForHeading(browserWindow.webContents, 'Overview');
+    browserWindow.webContents.debugger.attach('1.3');
+    await withTimeout(
+      browserWindow.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor,
+        mobile: false,
+        screenWidth: viewport.width,
+        screenHeight: viewport.height,
+        positionX: 0,
+        positionY: 0,
+      }),
+      `${viewport.id}: exact Chromium viewport`,
+      5_000,
+    );
+    await waitForPaint(browserWindow.webContents, `${viewport.id}: exact viewport applied`);
     await browserWindow.webContents.executeJavaScript(`(() => {
       const style = document.createElement('style');
       style.dataset.browserQa = 'true';
@@ -470,8 +558,11 @@ async function captureViewport(baseUrl, viewport) {
       if (!screenshotViews.has(viewId)) continue;
       await browserWindow.webContents.executeJavaScript('window.scrollTo(0, 0)', true);
       await waitForPaint(browserWindow.webContents, `${viewport.id}/${viewId}`);
-      const image = await browserWindow.webContents.capturePage();
-      const png = image.toPNG();
+      const png = await captureExactViewportPng(
+        browserWindow,
+        viewport,
+        `${viewport.id}/${viewId}`,
+      );
       const file = `${viewport.id}-${viewId}.png`;
       await mkdir(actualRoot, { recursive: true });
       await writeFile(path.join(actualRoot, file), png);
@@ -503,16 +594,36 @@ async function captureViewport(baseUrl, viewport) {
     assert.deepEqual(problems, [], `${viewport.id}: browser console or renderer problems`);
     return captures;
   } finally {
-    if (!browserWindow.isDestroyed()) browserWindow.destroy();
-    await withTimeout(qaSession.clearStorageData(), `${viewport.id}: storage cleanup`, 5_000);
-    await withTimeout(qaSession.clearCache(), `${viewport.id}: cache cleanup`, 5_000);
+    try {
+      if (browserWindow.webContents.debugger.isAttached()) {
+        try {
+          await withTimeout(
+            browserWindow.webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride'),
+            `${viewport.id}: clear Chromium viewport`,
+            5_000,
+          );
+        } finally {
+          browserWindow.webContents.debugger.detach();
+        }
+      }
+    } finally {
+      if (!browserWindow.isDestroyed()) browserWindow.destroy();
+      await withTimeout(qaSession.clearStorageData(), `${viewport.id}: storage cleanup`, 5_000);
+      await withTimeout(qaSession.clearCache(), `${viewport.id}: cache cleanup`, 5_000);
+    }
   }
 }
 
 async function updateBaselines(captures, manifest) {
-  await mkdir(baselineRoot, { recursive: true });
+  const candidates = [];
   for (const capture of captures) {
     const png = await readFile(path.join(actualRoot, capture.file));
+    assertPngDimensions(png, capture, `${capture.file}: captured baseline candidate`);
+    assert.equal(sha256(png), capture.sha256, `${capture.file}: captured baseline candidate changed`);
+    candidates.push({ capture, png });
+  }
+  await mkdir(baselineRoot, { recursive: true });
+  for (const { capture, png } of candidates) {
     await writeFile(path.join(baselineRoot, capture.file), png);
   }
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
@@ -542,6 +653,8 @@ async function checkBaselines(captures, manifest) {
   }
   assert.equal(expected.schemaVersion, manifest.schemaVersion, 'baseline schema changed');
   assert.equal(expected.kind, manifest.kind, 'baseline kind changed');
+  assert.equal(expected.productVersion, manifest.productVersion, 'baseline product version changed');
+  assert.equal(expected.captureTimestamp, manifest.captureTimestamp, 'baseline capture timestamp changed');
   assert.equal(expected.platform, manifest.platform, 'baseline platform changed');
   assert.equal(expected.electron, manifest.electron, 'baseline Electron version changed');
   assert.equal(expected.deviceScaleFactor, manifest.deviceScaleFactor, 'baseline scale changed');
@@ -560,7 +673,11 @@ async function checkBaselines(captures, manifest) {
   for (const capture of captures) {
     const expectedCapture = expected.captures.find(({ file }) => file === capture.file);
     assert.ok(expectedCapture, `${capture.file}: missing from baseline manifest`);
+    const actual = await readFile(path.join(actualRoot, capture.file));
+    assertPngDimensions(actual, capture, `${capture.file}: current capture`);
+    assert.equal(sha256(actual), capture.sha256, `${capture.file}: current capture changed`);
     const baseline = await readFile(path.join(baselineRoot, capture.file));
+    assertPngDimensions(baseline, expectedCapture, `${capture.file}: tracked baseline`);
     assert.equal(sha256(baseline), expectedCapture.sha256, `${capture.file}: baseline hash is corrupt`);
     assert.equal(capture.sha256, expectedCapture.sha256, `${capture.file}: screenshot regression detected`);
   }
@@ -579,9 +696,11 @@ async function runBrowserQa() {
       report(`Checking ${viewport.id} at ${viewport.width}x${viewport.height}.`);
       captures.push(...await captureViewport(baseUrl, viewport));
     }
+    const evidenceMetadata = await readProductEvidenceMetadata();
     const manifest = {
-      schemaVersion: 1,
-      kind: 'insta-aio-pwa-screenshot-baseline',
+      schemaVersion: 2,
+      kind: 'insta-toolbox-pwa-screenshot-baseline',
+      ...evidenceMetadata,
       platform: process.platform,
       electron: process.versions.electron,
       deviceScaleFactor,

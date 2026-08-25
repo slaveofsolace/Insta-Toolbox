@@ -1,393 +1,156 @@
-# Installation
-
-Pick one:
-
-- [Userscript](#option-1--userscript-one-click) — fastest, no build step, full tools.
-- [Browser extension](#option-2--browser-extension) — same tools, plus pairing with the app.
-- [Web / desktop app](#option-3--web-or-desktop-app) — the full workspace for imported Instagram exports.
-
-The userscript is **built from the extension's own Instagram engine**, so both
-run identical code for scanning, following, unfollowing, and unsending. The
-extension additionally pairs with the app for signed, recorded jobs.
-
-## Ready-made downloads
-
-Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest), expand **Assets**, and choose one file:
-
-The 2.0.3 files appear there together after publication. Before then, the
-commit-named CI artifacts are review builds, not a public release.
-
-| Platform | Download | What to do |
-|---|---|---|
-| Windows 64-bit | `Insta-Toolbox-Setup-2.0.3.exe` | Open it and follow the short installer. |
-| macOS (Intel + Apple Silicon) | `Insta-Toolbox-2.0.3-universal.dmg` | Open it and drag Insta Toolbox to Applications. |
-| Web / PWA hosting | `insta-toolbox-web-2.0.3.zip` | Extract and serve the folder over HTTPS or localhost. |
-| Chrome extension | `insta-aio-companion-2.0.3.zip` | Extract it, then load the extracted folder as an unpacked extension. |
-
-No Node.js or command line is required for the Windows or macOS downloads.
-The Windows installer is unsigned. The universal macOS app is ad-hoc signed,
-not Developer ID signed or notarized. Verify the file against
-`SHA256SUMS.txt` on the release before opening it.
-
----
-
-## Option 1 — Userscript (one click)
-
-This gives you all three tools in a movable, resizable, translucent panel on
-Instagram. Live Follow, Unfollow, and Unsend are inactive on every page load.
-Read-only tools require no unlock; each destructive run uses one exact finite
-confirmation when it starts.
-
-1. Install [Tampermonkey](https://www.tampermonkey.net/) for your browser.
-2. Open the install link:
-
-   **[Install Insta Toolbox](https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js)**
-
-   Tampermonkey recognises the `.user.js` address and opens its install screen.
-3. Select **Install**.
-4. Right-click Tampermonkey in the browser toolbar, choose **Manage extension**,
-   then enable **Allow User Scripts**.
-5. Open or reload `https://www.instagram.com/`.
-6. Use the panel, or press **Alt + Shift + I** to show and hide it.
-
-Tampermonkey is the supported manager for paced account runs. The script asks
-for an isolated DOM sandbox and `GM_getTab`/`GM_saveTab` so a confirmed
-batch remains owned by one Instagram tab. A different userscript manager may
-still provide scanning, local comparison, and no-click checks, but the account
-batch controls deliberately stay disabled unless those tab APIs are available.
-
-### Using it
-
-**Mutual Checker** — confirm the username and choose **Check Followers +
-Following**. The checker reads both paginated lists through the signed-in
-Instagram tab and compares them locally. It never opens a page control. If
-Instagram rejects that read, use the exact-dialog scanner under **Advanced:
-list-dialog fallback and export**.
-
-**Follow / Unfollow** — choose **Follow people** or **Unfollow people**, select a
-compatible target source and count, then choose the explicit **Review N …
-targets** action. Exact targets, duplicates, already-correct relationships,
-protected/skipped reasons, and omissions are frozen for inspection; **Start**
-appears only while that review matches the current controls. The script
-opens each profile when its turn comes and resolves the exact relationship
-control again before acting.
-
-**DM Unsend** — open a conversation and choose the always-visible **Unsend DMs**.
-It asks once for the exact open thread and selected scope, then starts one
-streaming traversal. All messages you sent is the default; `newest N` and
-`oldest N` are under Advanced. The runner processes only rows proven sent by the
-current account and uses the source-audited menu and confirmation sequence. The
-thread-bound capability is transient, checked before every message, and each
-verified removal is recorded immediately. **Check conversation** remains an
-optional read-only diagnostic; its estimate is not an authorization count.
-Cancel changes nothing. This cannot be undone.
-
-**Starting a finite action** — review the exact target list or conversation,
-then use the ordinary confirmation naming its action, targets or thread, and
-finite count. There is no global unlock, enable-live toggle, arm button, or typed
-phrase. The resulting non-persistent capability cannot be widened or replayed
-and is checked before every later item; expiry stops the run. Scanning,
-comparison, evidence reading, and no-click checks require no confirmation.
-
-Pacing lives under the gear icon. Account runs pause
-longer every 20 items, stop on any rate limit or security check, skip targets
-that changed, and end immediately on **Stop**. DM Unsend uses adaptive one-to-two
-second action pacing and has no daily usage quota. A DM run is discarded on reload.
-An already-confirmed account run may continue across the profile navigations it
-causes in the same manager tab, but only while its original finite capability
-remains valid. Thread-wide Unsend is bound to the open thread and
-accepts only the newly surfaced menu and confirmation controls for each item.
-
-Updates are automatic. Tampermonkey re-checks the same address and offers new
-versions as they are published.
-
-Confirm the Tampermonkey dashboard shows **2.0.3 or later** after updating. A
-panel that asks you to enable live actions, arm a run, or type an authorization
-phrase is an older build. The current panel has a compact **Insta Toolbox**
-header and a creator credit at the bottom.
-
-### Using the exact CI-tested review bundle
-
-Every pull-request CI run publishes a seven-day artifact named
-`insta-toolbox-browser-companions-<head-commit>` after the real unpacked extension
-has loaded and paired read-only in disposable Chrome for Testing. Push-triggered
-runs use the pushed commit. Download that artifact from the workflow run when
-reviewing an unmerged commit. It contains:
-
-- `insta-aio-companion-<version>.zip` for **Load unpacked** after extraction
-- `insta-aio-companion.user.js` for Tampermonkey
-
-The same run publishes `insta-toolbox-web-<head-commit>` with the verified static
-web ZIP. These short-lived CI artifacts are for reviewing an unmerged commit;
-normal downloads belong on the GitHub release page.
-
-Use the artifact whose commit matches the reviewed pull-request head. After
-installation, reload Instagram and verify the compact **Insta Toolbox** header
-before any read-only
-walkthrough. The artifact proves which bytes passed CI; it does not replace the
-persistent-profile, authenticated, or human acceptance checks.
-
-Use the [operator acceptance runbook](./OPERATOR_ACCEPTANCE.md) for the
-persistent-profile, screen-reader, PWA-pairing, and separately authorized
-one-item live checks. A general installation test is not authorization for an
-Instagram mutation.
-
-### Installing from the repository page instead
-
-Tampermonkey can also install straight from GitHub's file view:
-
-1. Enable the GitHub integration on the
-   [Tampermonkey scripts page](https://www.tampermonkey.net/scripts.php#gh).
-2. Browse to `userscripts/insta-aio-companion.user.js` in the repository.
-3. Select **Raw**. Tampermonkey intercepts it and offers to install.
-
-### If nothing happens
-
-- Confirm Tampermonkey is enabled and allowed to run in your browser's
-  extension settings.
-- Some browsers require developer mode for extensions to handle `.user.js`
-  addresses. Enable it, then retry the link.
-- If you land on a page of source code instead of an install screen, Tampermonkey
-  did not intercept it. Select all of that code, then paste it into a new script
-  in the Tampermonkey dashboard and save.
-
----
-
-## Option 2 — Browser extension (full features)
-
-### Build and load it
-
-1. Run `pnpm run build:extension`.
-2. Open your browser's extension manager.
-3. Turn on developer mode.
-4. Choose **Load unpacked** and select the **`dist/extension`** folder.
-5. Open or reload `https://www.instagram.com/`.
-6. Press **Alt + Shift + I** to open the panel.
-
-Select `dist/extension`, not the `extension/` source folder. The build copies
-shared code into `dist/extension/lib/`, and the extension will not start without it.
-
-After rebuilding, reload the extension in the extension manager **and** reload
-any open Instagram tabs, or you will keep running the previous version.
-The extension manager should show **2.0.3 or later**.
-
-On a fresh install Instagram shows only a small launcher; opening it reveals the
-tools. On desktop, drag the header to move the panel and use the marked
-lower-right handle to resize it. Surface opacity ranges from 55% to 100%, with a readable 88% default;
-the Instagram page remains visible underneath at lower values. Dock side, width,
-theme, density, position, size, and opacity stay on your machine. Narrow screens
-use a fitted bottom sheet instead of an off-screen floating panel.
-
-### Using the three tools
-
-No pairing is needed for these. Open the panel on Instagram and use:
-
-**Mutual Checker.** Confirm the username and choose **Check Followers +
-Following**. The checker resolves the exact account and reads both paginated
-lists from Instagram without opening or clicking any relationship control. A
-successful run replaces both prior lists atomically. A stopped or failed run
-keeps the prior comparison. The Advanced exact-dialog fallback remains available
-if Instagram changes or rejects its authenticated read interface.
-
-**Follow / Unfollow.** Choose the action first, then a compatible current-profile,
-checker-result, scanned-list, or queue source and a finite count. Choose the
-explicit **Review N … targets** action to inspect and freeze exact targets,
-duplicates, already-correct relationships, protected/skipped reasons, and
-omissions. **Start**
-appears only while the review remains current. Each account is opened, re-checked,
-and acted on individually.
-
-**DM Unsend.** Open a conversation and choose **Unsend DMs**. The first click
-asks once for the exact thread and selected scope, then starts one traversal
-without a preliminary count scan. It defaults to all messages you sent; choose
-`newest N` or `oldest N` under Advanced when needed. The 15-minute plan is
-checked before each message, protected against replay, and paced at one to two
-seconds after successful actions. The optional read-only check reports only a
-detected minimum and never gates the run.
-**Unsending cannot be undone.**
-
-### Batch runs, pacing, and stopping
-
-Batch runs use one exact finite action/target/count confirmation. Every item
-still gets its own full check before anything happens.
-
-- Delays between items are randomised, with a longer pause every 20 items.
-- Delays are under **Settings → Batch pacing**, with a 1.5-second minimum gap.
-- The run stops on its own at the first rate limit, security checkpoint, block,
-  expired session, or screen it does not recognise.
-- An account whose relationship changed since the scan is skipped, not forced.
-- **Stop** ends the run before the next item.
-
-Bulk activity and automated following go against Instagram's terms and can get an
-account restricted. Start with one or two items and increase slowly.
-
-### Pairing with the app (optional)
-
-Pairing is only needed for the signed job workflow described below, where the web
-app reviews and records actions:
-
-1. Open the app and create a pairing code in Settings.
-2. Open the extension popup on that same app tab and complete pairing.
-
-The extension requests access only to the exact paired PWA origin at pairing time.
-Instagram host access is declared for the visible sidecar, no-click inspection,
-and separately gated one-item drivers. The sidecar can import a PWA manual
-queue, navigate to the profile selected by the user, and update its own local
-completion/skip state. It does not auto-scroll Instagram. Dry runs never use an
-Instagram page control. Controlled live Follow, Unfollow, and exact
-sent-message Unsend are available only through the separate one-item workflows
-below and remain inactive until their exact confirmations.
-
-Reviewed DM dry runs can report `resolved-no-click` only while the exact thread
-is open and one visible sent row exposes every stable identity field required by
-the reviewed job. Current Instagram DOMs that omit any field will stop safely;
-this is expected.
-
-After updating an unpacked build, reload the extension in the browser extension
-manager and reload existing Instagram tabs so both content scripts are current.
-
-### Controlled account action
-
-This workflow changes the selected Instagram relationship. Use it only for one
-account the operator has explicitly reviewed:
-
-1. Pair the extension with **action** permission.
-2. Select exactly one queue record, create its reviewed preview, and complete the no-click dry run first.
-3. Create a fresh preview if needed and choose controlled live mode.
-4. Open the exact target profile and verify the username, action, and relationship in **Insta Toolbox → Queue**.
-5. Select **Continue controlled live action** and accept the ordinary confirmation naming that exact profile and action. The signed intent, transient capability, and durable reservation are consumed as one bounded operation.
-6. Review the job checkpoint, queue result, activity entry, and action-ledger record before doing anything else.
-
-The transient capability is scoped to one job item, username, action, Instagram
-tab, and short expiry. It is consumed before the page-control request, including
-on uncertain outcomes. A new review and exact confirmation are required for any
-later attempt.
-
-### Controlled one-message Unsend
-
-This workflow removes one exact sent message. Do not use it until the operator
-has reviewed that specific message and accepts that Unsend is destructive:
-
-1. Pair the extension with **action** permission.
-2. The extension path accepts exactly one message even if exported core jobs use another reviewed limit.
-3. Select one sent message, create its reviewed preview, and complete the no-click dry run first.
-4. Create a fresh preview if needed and choose controlled live mode.
-5. Open the exact conversation and keep the exact sent message rendered. In **Insta Toolbox → Messages**, verify the message identity.
-6. Select **Continue controlled live Unsend** and accept the ordinary confirmation naming the exact thread and message. The signed intent, transient capability, and durable reservations are consumed as one bounded operation.
-7. Stop immediately if the PWA reports any ambiguity or uncertain outcome. Review the DM job checkpoint plus both ledger records before any later attempt.
-
-The transient capability is scoped to one job, item, conversation, message, and
-Instagram tab. The extension reserves and consumes it before the first page control. The PWA
-separately reserves its durable ledger, and the row token is one-use. A new
-fresh review and exact confirmation are required for any later attempt. Deterministic
-fixtures do not replace authenticated selector and action acceptance.
-If Instagram does not expose explicit control/surface relationships or another
-stable message identity for post-removal proof, the driver stops uncertain. Do
-not retry or weaken those checks; record the DOM acceptance blocker instead.
-
----
-
-## Option 3 — Workspace app
-
-The workspace app handles imported Instagram exports, snapshots, comparisons,
-message search, queue history, ledgers, and backups:
-
-### Windows 64-bit
-
-1. Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest).
-2. Under **Assets**, download `Insta-Toolbox-Setup-2.0.3.exe`.
-3. Open it, choose an install folder, and finish the installer.
-
-The installer is one ready-made file; Node.js and pnpm are not needed. The
-uninstaller removes program files and shortcuts but keeps workspace data for an
-upgrade or reinstall. Export a workspace backup before uninstalling if you need
-to move that data elsewhere.
-
-If SmartScreen appears after the checksum matches the release, choose **More
-info → Run anyway** to open this unsigned build.
-
-### macOS (Intel + Apple Silicon)
-
-1. Open the [latest release](https://github.com/slaveofsolace/Insta-AIO-Tool/releases/latest).
-2. Under **Assets**, download `Insta-Toolbox-2.0.3-universal.dmg`.
-3. Open the DMG and drag Insta Toolbox to Applications.
-
-This build runs on both Intel and Apple Silicon. It has an ad-hoc integrity
-signature but is not Developer ID signed or notarized, so macOS may show a
-Gatekeeper warning. Verify its SHA-256 value before deciding whether to open it.
-The `Insta-Toolbox-2.0.3-universal.zip` asset contains the same app in ZIP form;
-it is mainly useful for controlled deployment and troubleshooting.
-
-After the checksum matches, Control-click Insta Toolbox and choose **Open**. If
-macOS still blocks it, open **System Settings → Privacy & Security**, choose
-**Open Anyway**, and confirm the same app.
-
-### Web / PWA package
-
-The release includes `insta-toolbox-web-2.0.3.zip` for static hosting. It cannot
-be opened by double-clicking `index.html`; browser modules and offline support
-require HTTPS or `http://localhost`.
-
-1. Download and extract the web ZIP.
-2. Publish the extracted `insta-toolbox-web` folder with a static HTTPS host, or serve it from localhost.
-3. Open the root address. In Chrome or Edge, use **Install Insta Toolbox** from the address bar or browser menu.
-
-For a quick local preview with Python installed, open a terminal in the folder
-that contains `insta-toolbox-web`, run one command, then open
-`http://127.0.0.1:4173`:
-
-Windows:
+# Install Insta Toolbox 3.0
+
+Tampermonkey is the quickest way to put the toolbox on Instagram. Desktop and web builds provide the larger local workspace for imports, comparisons, reviewed plans, ledgers, and exports.
+
+## Tampermonkey: one to two minutes
+
+1. Install [Tampermonkey](https://www.tampermonkey.net/) for Chrome or another Chromium browser. Chrome is the verified 3.0 target.
+2. In Chrome, open `chrome://extensions`, select **Details** for Tampermonkey, and enable **Allow User Scripts**. Skip this step if your browser does not show it.
+3. Open **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**.
+4. Review the metadata and select **Install**.
+5. Open or reload [instagram.com](https://www.instagram.com/). Press `Alt+Shift+I` if the panel is hidden.
+
+The panel should show **Mutual Checker**, **Follow / Unfollow**, and **DM Unsend**.
+
+### Upgrade from 2.x
+
+Version 3.0 has a new userscript identity and update channel. Remove any 2.x userscript before installing 3.0. Do not keep both enabled: duplicate scripts can create two panels and competing runners.
+
+Export important local data before upgrading. Version 3.0 does not read,
+migrate, or delete 2.x browser or desktop state. It starts clean and leaves the
+older local data untouched.
+
+### Update
+
+Tampermonkey checks the stable release URL in the script metadata. To update immediately, open the Tampermonkey dashboard, select **Insta Toolbox**, and choose **Check for updates**. You can also reopen the install link above.
+
+### Remove
+
+Open the Tampermonkey dashboard, locate **Insta Toolbox**, and choose **Delete**. Clear storage for `instagram.com` only if you also intend to remove locally saved overlay preferences and data.
+
+## Chrome extension
+
+1. Download `Insta-Toolbox-Extension-3.0.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+2. Verify its SHA-256 checksum as described below.
+3. Extract the ZIP to a permanent folder.
+4. Open `chrome://extensions` and enable **Developer mode**.
+5. Select **Load unpacked** and choose the extracted folder.
+6. Open or reload Instagram.
+
+Chrome does not load an unpacked extension directly from the ZIP. Keep the extracted folder in place while the extension is installed.
+
+To remove it, open `chrome://extensions`, select **Remove**, and delete the extracted folder if you no longer need it.
+
+## Windows desktop app
+
+1. Download `Insta-Toolbox-Setup-3.0.0.exe` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+2. Verify the checksum.
+3. Double-click the installer.
+
+The release provides one installer file. The setup wizard lets you choose an
+installation directory. It may show a Windows SmartScreen warning because public
+builds are unsigned. Check the release checksum and repository source before
+choosing **More info** and **Run anyway**.
+
+Uninstall from **Settings > Apps > Installed apps > Insta Toolbox**.
+
+## macOS desktop app
+
+1. Download the recommended `Insta-Toolbox-3.0.0-universal.dmg` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+2. Verify the checksum.
+3. Open the DMG and drag **Insta Toolbox** to Applications.
+
+The universal package targets Intel and Apple Silicon. Public builds are not notarized unless the release notes explicitly say they are. On first launch, control-click the app, choose **Open**, then confirm the macOS warning.
+
+The release also includes `Insta-Toolbox-3.0.0-universal.zip` as a portable alternative. Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
+
+To remove it, quit the app and move **Insta Toolbox** from Applications to Trash. Remove its application data separately only if you want to erase local workspace history.
+
+## Web app and PWA
+
+Open the hosted workspace at:
+
+**[slaveofsolace.github.io/Insta-Toolbox](https://slaveofsolace.github.io/Insta-Toolbox/)**
+
+Use the browser's **Install app** command for a standalone PWA window. Browser wording varies.
+
+To self-host it:
+
+1. Download `insta-toolbox-web-3.0.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+2. Verify its checksum.
+3. Extract the ZIP.
+4. Serve the extracted `insta-toolbox-web` directory over HTTPS or a loopback HTTP origin.
+
+Do not open `index.html` through a `file:` URL. Service workers and PWA installation require a secure or loopback web origin.
+
+To remove an installed PWA, use the browser's app menu. Clear that site's storage if you also want to erase its local data.
+
+## Verify release checksums
+
+Download `SHA256SUMS.txt` from the same release as the package.
+
+### Windows PowerShell
 
 ```powershell
-cd insta-toolbox-web
-py -m http.server 4173 --bind 127.0.0.1
+Get-FileHash .\Insta-Toolbox-Setup-3.0.0.exe -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Extension-3.0.0.zip -Algorithm SHA256
 ```
 
-macOS:
+### macOS or Linux
 
-```bash
-cd insta-toolbox-web
-python3 -m http.server 4173 --bind 127.0.0.1
+```sh
+shasum -a 256 Insta-Toolbox-3.0.0-universal.dmg
+shasum -a 256 insta-toolbox-web-3.0.0.zip
 ```
 
-Keep the terminal open while using the app. Press `Ctrl+C` there to stop it.
+The printed hash must match the corresponding line in `SHA256SUMS.txt`. A mismatch means the file should not be opened.
 
-Workspace data stays in that browser profile. A public hosted URL is not bundled
-with this release. Hosts should reproduce the repository server's framing,
-content-type, and `nosniff` response headers; the ZIP itself cannot set headers.
+## Build from source
 
-### Build from source
+Install Git and Node.js 24, then run:
 
-Install Node.js 22.12.0 or newer and pnpm 11.9.0, then run:
-
-```bash
+```sh
+git clone https://github.com/slaveofsolace/Insta-Toolbox.git
+cd Insta-Toolbox
 corepack enable
 pnpm install --frozen-lockfile
 pnpm run assemble
-pnpm run serve
+pnpm test
 ```
 
-The local server listens only on your machine. To create distributable files:
+Build outputs are generated from source. Do not edit the generated userscript by hand.
 
-```bash
-pnpm run build:web
-pnpm run verify:web-package
+Common package commands:
+
+```sh
 pnpm run dist:win
 pnpm run dist:mac
+pnpm run verify:desktop-archive
+pnpm run qa:mac-package
 ```
 
-`dist:win` must run on Windows. `dist:mac` and `qa:mac-package` must run on macOS.
-The shipped macOS app is universal and ad-hoc signed. Package QA inspects both
-architectures, the bundle icon, and the signature on the exact packaged app; it
-does not modify or re-sign that app. Developer ID signing and notarization
-require release credentials and are not part of this build.
+## Troubleshooting
 
-## Upgrade
+### The Instagram panel is missing
 
-1. Export a workspace backup from Settings.
-2. Close all running application windows.
-3. Install the new release over the existing application.
-4. Open the application and inspect the active snapshot, queue, messages, and settings.
-5. Run a fresh export after the upgrade is accepted.
+- Confirm that only the 3.0 script or extension is enabled.
+- Confirm that the page URL begins with `https://www.instagram.com/`.
+- Reload the tab after installation.
+- For Tampermonkey on Chrome, enable **Allow User Scripts**.
+- Open the script metadata and confirm that it came from the stable release URL in this guide.
 
-The desktop shell creates a bounded startup backup before opening the renderer when local browser storage exists.
+### The desktop app opens with an unsigned-app warning
+
+Verify the SHA-256 checksum first. Follow the Windows or macOS steps above only when the hash matches the release manifest.
+
+### A live action stops
+
+Read the reason shown in the active tool. Challenge, rate-limit, wrong-thread, changed-target, ambiguous-control, and uncertain-result states intentionally stop the run. Reloading does not re-enable a previous action capability.
+
+## Acceptance and support
+
+- [3.0 acceptance record](acceptance/3.0.0.md)
+- [3.0 compatibility](compatibility/3.0.0.md)
+- [Operator acceptance guide](OPERATOR_ACCEPTANCE.md)
+- [Security policy](../SECURITY.md)
+- [Open an issue](https://github.com/slaveofsolace/Insta-Toolbox/issues)

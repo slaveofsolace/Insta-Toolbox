@@ -43,7 +43,7 @@ The downloaded record remains import-compatible:
 ```json
 {
   "schemaVersion": 1,
-  "kind": "insta-aio-visible-list",
+  "kind": "insta-toolbox-visible-list",
   "capturedAt": "2026-07-31T00:00:00.000Z",
   "following": [],
   "note": "Only rows rendered in Instagram were captured."
@@ -52,7 +52,7 @@ The downloaded record remains import-compatible:
 
 ### Queue
 
-Imports the existing `insta-aio-manual-queue` JSON export. It selects the next
+Imports the `insta-toolbox-manual-queue` JSON export. It selects the next
 pending, ready, paused, or failed item. **Open profile** is the single primary
 control; secondary options expose:
 
@@ -61,7 +61,7 @@ control; secondary options expose:
 - Skip the extension-local item
 
 Completion and skip do not mutate the PWA automatically. The sidecar can
-download `insta-aio-companion-state` JSON for review or archiving. Signed dry-run
+download `insta-toolbox-companion-state` JSON for review or archiving. Signed dry-run
 and controlled live results sent through the PWA bridge appear in a separate
 read-only history.
 

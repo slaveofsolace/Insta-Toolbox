@@ -2,292 +2,99 @@
 
 Last reviewed: 2026-08-24
 
-## Application boundaries
+## Boundaries
 
-The application is local-first and does not request Instagram credentials or
-browser-session values. The PWA and desktop shell process user-selected data
-locally. The optional extension uses exact-origin permissions, signed
-short-lived requests, nonce replay protection, separate read/action
-permissions, and explicit rejection of credential-like payload fields.
+Insta Toolbox is local-first. The PWA and desktop app process selected files and saved workspace data on the user's machine. The Instagram companion uses the session already active in the browser tab. It does not request a password, read or export cookies, send analytics, or use a remote control service.
 
-There is no global live switch. Reviewed account and message jobs use no-click
-dry runs by default, exact action-specific confirmation material, transactional
-reservations, durable checkpoints, and safe stops for ambiguous state.
-Execution adapters revalidate the confirmed preview, transient capability, and
-exact finite target list before entering an account live path.
+Required extension host access is limited to Instagram. Pairing requests optional access only to the exact workspace origin the user approves; requests are signed, short-lived, nonce-protected, and split into read and action permissions. Sender origin comes from browser metadata, not the page's claim. Credential-like bridge fields are rejected.
 
-The local account toolbox also separates review from authority. A deterministic
-review signature freezes the selected source, action, limit, and exact target
-list. Any input change discards the draft and hides Start; live authorization is
-checked only after a matching review exists.
+Workspace exports can contain imported account data and pairing secrets. Treat them as private backups. Revoke pairings before sharing a backup.
 
-The injected toolbox surfaces follow the same default-off rule. Tampermonkey
-does not persist a general live preference, switch, arm control, or typed phrase.
-Each already-reviewed account run requires one ordinary confirmation naming its
-exact action, targets, and count, then receives a capability bound only to that
-finite run. An account run
-persists only its original expiry across the profile navigations it causes.
-That resumable run is stored through `GM_getTab`/`GM_saveTab`, not the shared GM
-record; a manager without tab storage leaves account batches disabled. The
-metadata explicitly selects the DOM sandbox so page code does not share
-the toolbox's API globals. DM runs are dropped on reload. The shared thread-wide
-Unsend runner requires one confirmation for the exact thread and scope, then a
-versioned plan bound to the exact thread, scope, optional finite limit, digest,
-and future expiry. It begins one streaming traversal without a preliminary count
-scan and checks expiry before every page control. The plan receives a transient
-capability and uses one-to-two second successful-action pacing. It
-snapshots existing menu and dialog
-candidates and accepts exactly one newly surfaced control. The extension's
-thread tool requires one ordinary permanent-action confirmation for the exact
-thread and scope. Verified removals are checkpointed as they happen; the
-optional read-only check is not an authorization count and there is no daily
-Unsend quota. Failed preflight and zero-click failures record zero removals.
-That DM patch added no host permission, remote dependency,
-credential field, private endpoint, or network request.
+## Action authority
 
-The extension and userscript now share an in-overlay confirmation controller.
-It copies and freezes the reviewed binding, checks its expiry at settlement,
-focuses Cancel first, and cancels pending authority on route changes, panel
-closure, or teardown. Affirmative settlement accepts only a browser-generated
-trusted click on the exact Confirm button; synthetic `.click()` and dispatched
-events are ignored. The controller exposes no raw affirmative-settlement API.
-After approval, account runs revalidate action, kind, count, target digest, and
-expiry. DM runs revalidate thread, scope, optional limit, reviewed digest, and
-expiry before reservation. The PWA uses its own first-party dialog and rereads
-job, item, preview, status, and current state after approval; workspace clearing
-also requires the same state object and active Settings view. All rendered facts
-use text nodes rather than HTML interpolation.
+There is no global live switch, persistent arm state, or typed authorization phrase. Dry runs cannot reach the page-control activator.
 
-Mutual Checker uses a narrow authenticated read client for the reviewed legacy
-checker behavior. It can call only
-`www.instagram.com/api/v1/web/search/topsearch/`,
-`www.instagram.com/api/v1/users/web_profile_info/?username=<exact-username>`, and the exact
-`www.instagram.com/api/v1/friendships/<numeric-id>/(followers|following)/`
-GET routes. It uses browser-managed credentials without reading them, a fixed
-application header, 50-row pages, unique pagination tokens, 800–1499 ms pacing,
-25,000-account and 1,000-page limits per list, a shared 20-minute deadline, and
-user cancellation. Non-Instagram origins, arbitrary paths, invalid schemas,
-login loss, challenges, blocks, rate limits, repeated tokens, and request errors
-stop. The profile response must repeat the exact normalized username and numeric
-ID resolved by search, and must provide both relationship totals. Search counters
-cannot authorize a completeness claim. Exact total equality and stable profile
-totals before and after traversal are required. Conflicting exact-profile DOM
-counters leave the affected list partial. Results replace both saved lists
-atomically and are never sent through the extension bridge.
+Every Follow, Unfollow, or Unsend mutation requires:
 
-The PWA service worker uses network-first handling for same-origin GET requests,
-caches only successful same-origin responses, bypasses the HTTP cache while
-checking for service-worker updates, and deletes earlier cache versions. When
-the current origin is reachable, stale cached application code therefore cannot
-silently retain an older safety policy.
+1. an exact reviewed target or thread and scope;
+2. an action-specific confirmation;
+3. a short-lived capability bound to that reviewed material;
+4. reservation before page control;
+5. revalidation immediately before each click;
+6. a verified postcondition before a success ledger entry.
 
-Each running PWA account or DM execution owns a matching `AbortController` and
-an immutable reviewed-job identity. Discard aborts only that matching execution.
-The adapters recheck cancellation after every awaited pre-dispatch inspection,
-authorization, and reservation boundary. A cancellation after reservation but
-before the page driver is durably finalized as `canceled`; the driver is not
-called. Atomic checkpoint writers reject a job that no longer exists, so a late
-callback cannot resurrect a discarded preview. Once a browser mutation has
-already been dispatched it cannot be rolled back: the adapter completes its
-postcondition check and records the observed durable outcome instead of
-mislabeling it as canceled.
+Capabilities expire and cannot be replayed. Route changes, panel closure, Stop, challenge, block, rate limit, wrong target, pre-existing dialog, ambiguous controls, or an uncertain postcondition stop the run. Failed preflight and zero-click failure record zero removals.
 
-The distributed extension exposes controlled paths for exactly one reviewed
-account action or sent-message Unsend. Both require signed action permission, a
-fresh reviewed item, matching Instagram context, and one ordinary exact
-confirmation. That confirmation mints a short-lived tab capability. The PWA
-revalidates it before reserving its ledger. The background worker persists an
-independent reservation, then consumes the capability and signed intent before
-sending the page-control request.
+The in-overlay confirmation controller freezes the reviewed binding, focuses Cancel first, and accepts only a trusted browser click on its exact Confirm button. Synthetic `.click()` and dispatched events do not mint authority. Rendered facts use text nodes rather than HTML interpolation.
 
-The account content driver requires a short-lived exact DOM token and one
-relationship control owned by a verified profile header. It stops before any
-click when a dialog is already visible and accepts only a newly surfaced
-Unfollow dialog that names the reviewed username.
+Thread-wide DM Unsend has an internal runaway watchdog, not a daily action limit. Version 3 does not read, migrate, or delete version 2 browser or desktop state.
 
-The separate reviewed-DM dry-run route requires the matching open direct
-thread, one allowlisted
-stable rendered message ID, exact timestamp and content digest, a unique
-candidate, and sent ownership before recording `resolved-no-click`. Missing,
-changed, duplicate, received, wrong-thread, and unknown-ownership states stop
-without opening a menu. The route returns no raw message text and cannot reach
-the live control activator. The controlled live consumer additionally requires
-one ordinary confirmation naming the exact thread and message, exactly one
-reviewed item, a matching-thread transient capability, an independent finite
-extension ledger, and a one-use row token. It
-rejects pre-existing menus or dialogs, revalidates the same row before each
-stage, accepts only new ARIA-bound interactive menu/dialog controls with exact
-localized Unsend labels, and reports success only when the same thread remains
-open, both retained exact nodes disconnect, the exact message is absent, and
-other stable identity evidence remains available. Wrong-thread, identity-loss,
-unbound-surface, noninteractive-text, and descendant-toolbar ownership fixtures
-all fail closed.
+## Follow and Unfollow
 
-Visible DM evidence is scoped to one exact /direct/t/<id> route. The inbox,
-feed, profiles, and a different direct thread hide previously captured
-fragments immediately and clear the extension's evidence download exposure.
-The Tampermonkey shell also filters every saved sent-message batch against the
-currently open exact thread before it can show a destructive confirmation.
-Client-side Instagram route changes trigger a state rerender; they never inherit
-the prior thread's visible evidence or Unsend candidates.
+An account run is bound to a reviewed action, finite count, target list digest, and expiry. Each profile navigation revalidates the exact profile header and its owned relationship control. A pre-existing dialog stops the run. Unfollow accepts only the newly surfaced confirmation that names the reviewed account. Duplicate controls or a changed relationship stop before another action.
 
-There is no daily action quota. Restored legacy limit fields are normalized for
-migration compatibility but are not enforced. Capability replay, stale
-confirmation, changed controls, wrong profiles or messages, duplicate attempts,
-and ambiguous UI fail closed for both controlled paths.
+The userscript may retain the original run expiry across navigation through tab-scoped manager storage. It does not put action authority in shared userscript storage. A manager without the required tab-scoped API keeps account batches disabled.
 
-The reviewed locale surface is isolated in `extension/action-labels.js`, loaded
-before the inspector and frozen after initialization. Labels are Unicode NFKC
-normalized and compared only against the documented exact allowlists; the
-German `zurücknehmen` value is stored as valid UTF-8 and covered by an executable
-fixture. Profile and message capability tokens require Web Crypto. Missing,
-throwing, invalid, or non-producing `randomUUID`/`getRandomValues` sources return
-`secure-random-unavailable`, store no resolution, and cannot reach a page driver.
+## DM Unsend
 
-The extension background derives the requesting origin from Chrome's sender
-metadata and rejects a mismatched page claim. The loopback development server
-accepts only loopback Host headers and an explicit application-asset allowlist;
-repository metadata, tests, documentation, and Git internals are not served.
-It sends framing protection as response headers. The PWA meta policy intentionally
-omits `frame-ancestors` because browsers ignore that directive in meta-delivered
-policies; deployed hosting must likewise supply framing policy as an HTTP header.
+Thread-wide Unsend binds a versioned plan to the exact open thread, scope (`all`, `newest`, or `oldest`), optional finite limit, digest, and expiry. After one confirmation it performs one streaming traversal; a read-only mounted-row count is not authorization.
 
-Workspace exports can contain imported private data and bridge pairing
-secrets. They are explicit user-created backups, not sanitized sharing
-artifacts. Pairings should be revoked before a backup is shared.
+Before each removal the runner rechecks:
 
-## Local-patch review closure
+- the exact `/direct/t/<id>` route;
+- expiry and Stop state;
+- proof that the message was sent by the current user;
+- one newly surfaced, interactive Unsend menu item;
+- one newly surfaced matching confirmation dialog;
+- verified message removal in the same thread.
 
-The 2026-08-01 controlled-action review found and remediated four low-severity
-issues before release: profile controls were not structurally bound to the
-reviewed header, an existing Unfollow dialog could be mistaken for a newly
-opened target dialog, the extension lacked its own durable reservation, and
-malformed restored safety fields could fail open. Regression tests exercise each
-fixed boundary. Legacy daily-limit fields now remain only for migration
-compatibility and are not enforced. The 2026-08-02 exact-message DM local-patch review reproduced
-three bounded live-path defects and one packaging-gate hardening gap. All four
-were remediated during the scan, every changed source file received a full-file
-receipt, and no reportable finding survives in the current patch. The complete
-routing recovery review also reproduced a low-severity discard race across the
-PWA handler, asynchronous authorization/reservation, and checkpoint store. The
-current patch closes all three layers and adds pre-dispatch, post-reservation,
-post-dispatch, non-resurrection, and legitimate-control regressions. The complete
-patch also centralizes exact localized action labels as valid UTF-8 and refuses
-to issue a profile or message capability when Web Crypto cannot supply entropy.
-The 2026-08-08 workflow patch received a complete diff-focused review over ten
-changed files plus two supporting safety-contract files. All twelve review
-receipts were closed and no plausible security candidate survived discovery.
-The 2026-08-20 usability correction received a complete diff-focused review of
-all six changed source-like files. It makes the DM plan discoverable and removes
-the unrelated global authorization phrase, while keeping the default
-no-authority state,
-exact action confirmation, finite plan, reservation, pacing, safe-stop, and
-postcondition boundaries. No plausible security candidate survived discovery.
-The 2026-08-22 follower-checker pass received route-allowlist, response-shape,
-pagination-bound, provenance, atomic-replacement, and fallback-isolation tests.
-Authenticated acceptance remains an external release gate; fixture success does
-not prove that Instagram still serves these unsupported web routes.
-The final 2.0.0 diff review covered the 27 source-like release files in the
-security inventory plus all four PWA source fragments. Manifest and package
-changes are version-only; no host permission or production dependency was
-added. The new credentialed request is confined to the tested same-origin
-Followers/Following GET allowlist, and the added userscript anchor activation is
-the local comparison download path rather than an Instagram control. Every
-destructive entry point remains behind a finite exact confirmation, transient
-capability, target revalidation, reservation, pacing, Stop path, and
-postcondition check. No plausible security candidate survived discovery.
-The repository test suite, extension fixture acceptance, real disposable-Chrome
-pairing, nine PWA baselines, the 43-state overlay check, the production
-dependency audit, and the 10,000-message ZIP benchmark passed. Native installer
-lifecycle and additional-platform gates remain release/CI requirements;
-extension packaging independently runs the executable controlled-live safety
-subset before creating artifacts.
+The traversal handles virtualized rows, normal and reversed layouts, scroller replacement, DOM shrinkage, bounded retries, and stable-empty exhaustion. Successful actions use adaptive one-to-two-second pacing. The runner records only verified removals and never reports the mounted DOM window as the conversation total.
 
-The 2026-08-23 2.0.2 review covered all changed source-like files across the
-userscript, extension, PWA, build, release, and fixture surfaces. Permissions,
-production dependencies, and network access did not expand. The initial review
-found a finite `oldest N` boundary defect; the runner now proves a stable oldest
-edge before opening any message menu and reproves it after delayed history,
-scroll-height shrinkage, or scroller replacement in normal and reversed layouts.
+Visible DM evidence is scoped to the exact open thread. Navigating to the inbox, feed, a profile, or a different thread hides and clears previously exposed candidates.
 
-The final review then found two additional release-blocking defects. First, the
-open userscript surface allowed page code to dispatch a synthetic affirmative
-click. Trusted-event enforcement and removal of the raw settlement API now keep
-synthetic clicks at zero reservations, runner starts, fixture clicks, and
-removals. Second, a replacement scroller could briefly expose a mounted row
-before the reviewed newest or oldest edge was restored. Traversal now invalidates
-that proof on replacement or shrinkage and re-establishes the requested edge
-before selecting another row. Focused regressions, 301/301 local tests, the
-extension/userscript acceptance matrix, 45 overlay states, and 11 PWA baselines
-pass. Exact-head GitHub CI and corrected-build authenticated acceptance remain
-release gates.
+## Mutual Checker
 
-An authenticated DM acceptance attempt did perform an unintended action before
-these repairs: a native `window.confirm` was accepted outside the requested
-browser-control flow, and Stop ended the run after 72 verified removals. This is
-irreversible and is retained here as incident evidence. All Instagram automation
-was stopped immediately; no further authenticated action has been performed.
-The corrected build has only fixture/browser proof so far. Authenticated
-Follow/Unfollow compatibility, corrected-build disposable-message Unsend, and
-human screen-reader acceptance remain unproven and require fresh action-specific
-authorization where a mutation is involved.
+Mutual Checker is the narrow authenticated-read exception. It can call only these same-origin GET routes:
 
-## 2.0.3 desktop package boundary
+- `/api/v1/web/search/topsearch/`
+- `/api/v1/users/web_profile_info/?username=<exact-username>`
+- `/api/v1/friendships/<numeric-id>/followers/`
+- `/api/v1/friendships/<numeric-id>/following/`
 
-The macOS package is a universal Electron application with an ad-hoc integrity
-signature. It is not Developer ID signed or notarized. The bundle enables
-`com.apple.security.cs.disable-library-validation` because this ad-hoc build has
-no Developer ID Team ID for library validation. This weakens macOS library
-validation inside the desktop process, so it is treated as a disclosed packaging
-exception rather than an Apple trust claim.
+The client uses browser-managed credentials without reading them, a fixed application header, bounded pagination, paced requests, a 20-minute deadline, and user cancellation. The profile response must repeat the exact normalized username and numeric ID. Complete results require exact total equality and stable totals before and after traversal. Login loss, challenge, block, rate limit, repeated pagination tokens, invalid schemas, conflicting totals, and request failures leave the result incomplete or stop the scan.
 
-Package verification does not rewrite the artifact. It rejects unexpected DMG
-or ZIP root content, checks every bundled Mach-O file for `arm64` and `x86_64`
-slices plus the hardened-runtime flag, and requires the exact documented main-app
-entitlements with no unapproved nested entitlement. It verifies the ad-hoc
-signature and declared bundle icon, then launches the exact app copied from the
-DMG. Desktop startup has one bounded retry and shows the final failure instead of
-leaving a hidden process. Archive checks require the complete renderer, desktop
-entry point, startup-recovery module, license notices, and icon resources.
+Results replace Followers and Following atomically and are not sent through the extension bridge. Instagram can change these unsupported web routes without notice.
 
-When Developer ID credentials are available, remove the library-validation
-exception, sign every nested binary with the release identity, notarize the DMG
-and ZIP, staple the notarization ticket, and rerun the same package checks.
+## Local app and web delivery
 
-## Dependency review
+The PWA service worker uses network-first same-origin GET handling, caches only successful same-origin responses, bypasses the HTTP cache for service-worker update checks, and removes earlier cache generations. Version 3.0 uses `insta-toolbox-v300`.
 
-`pnpm audit --json` reports zero known vulnerabilities across production,
-development, and optional dependencies. Runtime application code has no
-third-party production dependencies.
+The loopback development server accepts only loopback Host headers and serves an explicit asset allowlist. Repository metadata, tests, documentation, and Git internals are not served. Framing protection is sent as HTTP headers because `frame-ancestors` is ineffective in a meta policy.
 
-The lockfile uses the latest major-compatible backports:
+Running PWA jobs own an `AbortController` and immutable reviewed identity. Discard aborts only the matching run. Cancellation is checked around every awaited inspection, authorization, and reservation boundary. A job removed from storage cannot be recreated by a late callback. If a browser mutation was already dispatched, the adapter completes its postcondition check and records the observed result rather than calling it canceled.
 
-- `brace-expansion` 1.1.18
-- `brace-expansion` 2.1.4
-- `brace-expansion` 5.0.9
+## Desktop packages
 
-All three installed releases contain the aggregate expansion-length bound for
-CVE-2026-14257 and enforce it at runtime. Replacing older-major consumers with
-5.x would break their CommonJS API contract, so the repository keeps the
-major-compatible releases. `pnpm run verify:dependencies`, which is also part of
-`pnpm test`, verifies the exact lockfile resolutions, source markers, exported
-API, and length-bound behavior.
+The Windows installer is unsigned. SmartScreen trust is not claimed.
 
-## License review
+The universal macOS package is ad-hoc signed, not Developer ID signed or notarized. It currently needs `com.apple.security.cs.disable-library-validation` because the Electron bundle has no Developer ID Team ID. Package QA treats that entitlement as a disclosed exception and rejects other unexpected entitlements. It checks both `arm64` and `x86_64` slices, hardened-runtime flags, bundle contents, icon, signature, archive roots, and exact-app launch.
 
-The application is MIT licensed. Migrated source provenance and applicable
-notices are recorded in `THIRD_PARTY_NOTICES.md`. Development dependencies use
-permissive licenses, including MIT, ISC, BSD, Apache-2.0, Python-2.0, BlueOak,
-0BSD, and dual-license variants.
+When release credentials are available, remove the library-validation exception, sign every nested binary with the release identity, notarize the artifacts, staple the ticket, and repeat the exact-package checks.
 
-## Release checks
+## Review history
 
-Before publishing a release:
+Earlier reviews fixed structural profile-control binding, pre-existing-dialog confusion, missing extension reservations, malformed migration fields, discard races, weak message identity, unbound or noninteractive DM controls, synthetic confirmation acceptance, and incomplete oldest-edge traversal. Regression fixtures cover these boundaries.
 
-1. Install from the committed lockfile with `pnpm install --frozen-lockfile`.
-2. Run `pnpm run assemble` and `pnpm test`.
-3. Run `pnpm run qa:browser:check` on a platform with a committed baseline.
-4. Run `pnpm audit --prod --audit-level high`.
-5. Run the ZIP-import benchmark.
-6. Build and smoke-test the target installer on its native operating system.
-7. Review the generated artifacts and release notes for private data.
+Historical releases retain their own acceptance records. They are not evidence that the current 3.0 build passed authenticated acceptance. Current authenticated compatibility, human screen-reader use, Windows publisher trust, Apple notarization, and physical Intel Mac behavior require fresh acceptance.
+
+## Dependencies and supply chain
+
+Runtime application code has no third-party production dependencies. The lockfile keeps major-compatible patched `brace-expansion` releases and executable tests verify their expansion-length bounds.
+
+CI actions are pinned to full commit SHAs. Pull requests receive dependency review; CodeQL runs on pull requests, `main`, and weekly. Dependabot proposes npm and action updates. Release promotion accepts only artifacts from the successful current `main` CI run, rechecks versions and checksums, generates an SBOM, and requests GitHub provenance attestation without rebuilding.
+
+The 3.0 account-free matrix contains 347 tests, 45 overlay states, and 11 PWA states. Final pass links and hashes belong in [the 3.0 acceptance record](./acceptance/3.0.0.md). Fixtures do not prove current authenticated Instagram behavior.
+
+## License
+
+The application is MIT licensed. Source provenance and third-party licenses are recorded in `THIRD_PARTY_NOTICES.md`. Release archives include the license and notices.

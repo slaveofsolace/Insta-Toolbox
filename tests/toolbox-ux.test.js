@@ -6,7 +6,11 @@ import vm from 'node:vm';
 const shell = await readFile(new URL('../userscripts/src/toolbox-shell.js', import.meta.url), 'utf8');
 const labels = await readFile(new URL('../extension/action-labels.js', import.meta.url), 'utf8');
 const confirmation = await readFile(new URL('../extension/action-confirmation.js', import.meta.url), 'utf8');
-const generated = await readFile(new URL('../userscripts/insta-aio-companion.user.js', import.meta.url), 'utf8');
+const generated = await readFile(new URL('../userscripts/insta-toolbox.user.js', import.meta.url), 'utf8');
+const pwaOverview = await readFile(new URL('../src/app.parts/part-01.jsfrag', import.meta.url), 'utf8');
+const pwaTools = await readFile(new URL('../src/app.parts/part-02.jsfrag', import.meta.url), 'utf8');
+const pwaSettings = await readFile(new URL('../src/app.parts/part-03.jsfrag', import.meta.url), 'utf8');
+const pwaStyles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 function loadShellFunction(name, globals = {}) {
   const match = shell.match(new RegExp(`  function ${name}\\([\\s\\S]*?\\n  \\}`));
@@ -14,15 +18,14 @@ function loadShellFunction(name, globals = {}) {
   return vm.runInNewContext(`(${match[0].trim()})`, globals);
 }
 
-test('first use explains the tools, local storage, and the read-only boundary', () => {
+test('first use gives one clear read-only starting point', () => {
   assert.match(generated, /data-role="intro"/);
   assert.match(generated, /Mutual Checker/);
   assert.match(generated, /Follow \/ Unfollow/);
   assert.match(generated, /DM Unsend/);
-  assert.match(generated, /Data stays in this browser/);
-  // The distinction a first-time user most needs: checks read, actions change.
-  assert.match(generated, /Checks are read-only/);
-  assert.match(generated, /Changes require one exact confirmation/);
+  assert.match(generated, /Compare Followers and Following without clicking an Instagram action/);
+  assert.match(generated, />Open Mutual Checker<\/button>/);
+  assert.doesNotMatch(generated, /Data stays in this browser|Checks are read-only|Changes require one exact confirmation/);
   // It is dismissible and remembered, not shown on every load.
   assert.match(shell, /'intro-done':/);
   assert.match(shell, /introDone: value\.introDone === true/);
@@ -31,6 +34,51 @@ test('first use explains the tools, local storage, and the read-only boundary', 
     /'intro-done': \(\) => \{[\s\S]*?savePreferences\(\{ view: 'checker' \}\);[\s\S]*?query\('\[data-view="checker"\]'\)\?\.focus\(\);/,
     'the button labelled Start with the checker must actually select the checker',
   );
+});
+
+test('first use stays inside the panel scroll owner', () => {
+  assert.match(shell, /\.intro \{ flex: 0 0 auto; min-height: 0; overflow: visible; \}/);
+  assert.doesNotMatch(generated, /Three Instagram tools|Data stays in this browser/);
+  assert.doesNotMatch(shell, /function renderNow\(|\.tool-grid|\.live-toggle/);
+});
+
+test('the PWA Messages page uses a compact inline summary', () => {
+  const messagesBody = pwaTools.slice(
+    pwaTools.indexOf('function renderMessages()'),
+    pwaTools.indexOf('function renderActivity()'),
+  );
+  assert.match(messagesBody, /class="message-summary" aria-label="Message summary"/);
+  assert.doesNotMatch(messagesBody, /class="grid metrics"/);
+  assert.match(pwaStyles, /\.message-summary \{[^}]*display: flex;[^}]*flex-wrap: wrap;/s);
+  assert.match(messagesBody, /Create unsend plan/);
+  assert.doesNotMatch(messagesBody, /Create reviewed Unsend plan|Export reviewed plan/);
+});
+
+test('public relationship and settings copy uses plain labels', () => {
+  assert.match(pwaTools, /Don't follow you back/);
+  assert.match(pwaTools, /You don't follow back/);
+  assert.match(pwaOverview, /Build an exact target list before opening Instagram/);
+  assert.match(pwaSettings, /Unfollow review delay/);
+  assert.match(pwaSettings, /Always-protected accounts/);
+  assert.match(pwaSettings, /You don't follow back/);
+  assert.match(pwaSettings, /Don't follow you back/);
+  assert.doesNotMatch(pwaSettings, /Waiting period before unfollow review|Your sender\/display names|I do not follow back|Not following me back/);
+});
+
+test('every userscript operational notice expires without hiding persistent page safety state', () => {
+  assert.match(
+    shell,
+    /contextStatus = text \? \{ message: text, tone: tone \|\| statusTone\(text\) \} : null;[\s\S]*?if \(contextStatus\) \{\s*contextStatusTimer = setTimeout/,
+  );
+  assert.doesNotMatch(shell, /contextStatus\?\.tone !== 'blocked'/);
+  assert.match(shell, /const blockedContext = context\.tone === 'blocked'/);
+});
+
+test('PWA state colors reserve green for completed work', () => {
+  assert.match(pwaStyles, /\.badge\.completed \{ color: var\(--success\)/);
+  assert.match(pwaStyles, /\.badge\.waiting, \.badge\.processing \{ color: var\(--warning\)/);
+  assert.doesNotMatch(pwaStyles, /\.badge\.ready[^\n]*var\(--success\)|\.badge\.protected[^\n]*var\(--success\)|\.badge\.pending[^\n]*var\(--info\)/);
+  assert.match(pwaStyles, /\.notice \{[^}]*border: 1px solid var\(--border\);[^}]*color: var\(--muted\)/);
 });
 
 test('the panel names the current Instagram context for every handled state', () => {
@@ -159,16 +207,16 @@ test('the userscript migrates the old opaque default while preserving explicit c
 });
 
 test('the settings popover uses the resized layout viewport on every desktop', () => {
-  assert.match(shell, /\.settings-panel \{[^}]*max-height: var\(--aio-settings-max-height\)/);
+  assert.match(shell, /\.settings-panel \{[^}]*max-height: var\(--insta-toolbox-settings-max-height\)/);
   assert.match(shell, /const renderedPanelHeight = innerWidth <= 600/);
   assert.match(shell, /Math\.min\(size\.height, Math\.max\(0, innerHeight - 74\)\)/);
-  assert.match(shell, /host\.style\.setProperty\('--aio-settings-max-height', `\$\{settingsMaxHeight\}px`\)/);
+  assert.match(shell, /host\.style\.setProperty\('--insta-toolbox-settings-max-height', `\$\{settingsMaxHeight\}px`\)/);
   assert.doesNotMatch(shell, /\.settings-panel \{[^}]*max-height:[^;}]*dvh/);
 });
 
 test('the context strip keeps explicit readable text in dark Instagram themes', () => {
-  assert.match(shell, /\.context \{[^}]*background: var\(--aio-bg-sunken[^}]*color: var\(--aio-text/);
-  assert.match(shell, /\.context-copy strong \{[^}]*color: var\(--aio-text[^}]*!important/);
+  assert.match(shell, /\.context \{[^}]*background: var\(--insta-toolbox-bg-sunken[^}]*color: var\(--insta-toolbox-text/);
+  assert.match(shell, /\.context-copy strong \{[^}]*color: var\(--insta-toolbox-text[^}]*!important/);
 });
 
 test('a partial scan is never presented as a complete comparison', () => {
@@ -197,8 +245,14 @@ test('a run shows its targets and skip reasons before it starts', () => {
   assert.ok(startBody.indexOf('approvedTargets: [...queue]') < startBody.indexOf('await continueAccountRun()'));
 });
 
+test('extension run review keeps the action name explicit in its primary label', async () => {
+  const queueView = await readFile(new URL('../extension/overlay/views/queue.js', import.meta.url), 'utf8');
+  assert.match(queueView, /`Review \$\{plan\.requested\} \$\{label\} target/);
+  assert.doesNotMatch(queueView, /label\.toLocaleLowerCase\(\)/);
+});
+
 test('the open exact profile is the direct bounded Follow or Unfollow source', () => {
-  assert.match(generated, /<option value="current-profile">Current exact profile<\/option>/);
+  assert.match(generated, /<option value="current-profile">Current profile<\/option>/);
   assert.match(shell, /const source = query\('\[data-role="bot-source"\]'\)\?\.value \|\| 'current-profile'/);
   assert.match(shell, /const count = source === 'current-profile' \? 1 : requestedCount/);
   assert.match(shell, /'current-profile': \(\) => \{/);
@@ -242,6 +296,9 @@ test('the primary Unsend action requires an explicit in-overlay second click wit
   assert.match(shell, /No sent messages found/);
   // The optional check stays advisory because Instagram virtualizes the thread.
   assert.match(shell, /Read-only estimate\. Instagram may load more while Unsend runs/);
+  assert.match(generated, /data-role="dm-result" hidden/);
+  assert.match(generated, /data-role="message-list" hidden/);
+  assert.doesNotMatch(generated, /No visible thread evidence captured/);
 });
 
 test('the userscript starts the confirmed Unsend plan and surfaces async failures', () => {
@@ -274,7 +331,7 @@ test('the userscript starts the confirmed Unsend plan and surfaces async failure
 test('finite run confirmation replaces global unlock controls and phrases', () => {
   assert.doesNotMatch(shell, /ENABLE LIVE ACTIONS|LIVE_AUTHORIZATION_PHRASE/);
   assert.doesNotMatch(shell, /Type .*unlock Follow, Unfollow, and Unsend/);
-  assert.doesNotMatch(shell, /setLiveActionsUnlocked|InstaAioUserscriptLiveAuthority|data-role="live-actions"/);
+  assert.doesNotMatch(shell, /setLiveActionsUnlocked|InstaToolboxUserscriptLiveAuthority|data-role="live-actions"/);
   assert.match(shell, /InstaToolboxActionConfirmation\?\.createController/);
   assert.match(confirmation, /function createController\(/);
   assert.match(confirmation, /dialog\.showModal\(\)/);
@@ -306,9 +363,62 @@ test('the tablist keeps one selected tab and moves with the arrow keys', () => {
   assert.match(shell, /next\.focus\(\)/);
 });
 
+test('the userscript moves focus into the panel and restores a safe opener', () => {
+  const focusLog = [];
+  const panel = { hidden: true };
+  const launcher = {
+    hidden: false,
+    isConnected: true,
+    setAttribute() {},
+    focus() { focusLog.push('launcher'); },
+  };
+  const selectedTab = {
+    dataset: { view: 'checker' },
+    setAttribute() {},
+    focus() { focusLog.push('checker'); },
+  };
+  const otherTab = { dataset: { view: 'messages' }, setAttribute() {} };
+  const views = [{ dataset: { panel: 'checker' } }, { dataset: { panel: 'messages' } }];
+  const disconnectedOpener = { isConnected: false, focus() { focusLog.push('disconnected'); } };
+  const documentState = { activeElement: disconnectedOpener, body: {}, documentElement: {} };
+  const preferences = { open: true, view: 'checker' };
+  const globals = {
+    preferences,
+    lastFocusedElement: null,
+    shadow: { activeElement: null },
+    document: documentState,
+    requestAnimationFrame(callback) { callback(); },
+    setTimeout(callback) { callback(); },
+    query(selector) {
+      if (selector === '.panel') return panel;
+      if (selector === '.launcher') return launcher;
+      if (selector === '[data-view="checker"]') return selectedTab;
+      return null;
+    },
+    queryAll(selector) {
+      if (selector === '[data-view]') return [selectedTab, otherTab];
+      if (selector === '[data-panel]') return views;
+      return [];
+    },
+  };
+  const renderShellState = loadShellFunction('renderShellState', globals);
+
+  renderShellState();
+  assert.deepEqual(focusLog, ['checker']);
+  assert.equal(panel.hidden, false);
+  assert.equal(launcher.hidden, true);
+
+  preferences.open = false;
+  renderShellState();
+  assert.deepEqual(focusLog, ['checker', 'launcher']);
+  assert.equal(panel.hidden, true);
+  assert.equal(launcher.hidden, false);
+  assert.doesNotMatch(focusLog.join(','), /disconnected/);
+});
+
 test('motion is tied to state and removed under reduced motion', () => {
-  assert.match(shell, /transition: border-color var\(--aio-motion-base/);
-  assert.match(shell, /transition: width var\(--aio-motion-base/);
+  assert.match(shell, /transition: border-color var\(--insta-toolbox-motion-base/);
+  assert.match(shell, /transition: width var\(--insta-toolbox-motion-base/);
   assert.match(shell, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(shell, /\.intro \{ animation: none; \}/);
   // No ambient motion: nothing loops.

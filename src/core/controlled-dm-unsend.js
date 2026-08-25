@@ -126,7 +126,7 @@ function freshConfirmation(value, now) {
 
 export function validateControlledDmJob(job, now = Date.now()) {
   if (
-    job?.kind !== 'insta-aio-reviewed-dm-job'
+    job?.kind !== 'insta-toolbox-reviewed-dm-job'
     || !job.id
     || job.mode !== 'live'
     || job.status !== 'ready'

@@ -1,6 +1,6 @@
 (() => {
-  if (globalThis.__instaAioInspectorInstalled) return;
-  const actionLabels = globalThis.__instaAioActionLabels;
+  if (globalThis.__instaToolboxInspectorInstalled) return;
+  const actionLabels = globalThis.__instaToolboxActionLabels;
   if (
     !actionLabels
     || typeof actionLabels.isDmUnsendLabel !== 'function'
@@ -8,7 +8,7 @@
     || typeof actionLabels.normalizeActionLabel !== 'function'
     || typeof actionLabels.relationshipForLabel !== 'function'
   ) return;
-  globalThis.__instaAioInspectorInstalled = true;
+  globalThis.__instaToolboxInspectorInstalled = true;
 
   const RESERVED = new Set([
     'accounts', 'about', 'api', 'developer', 'direct', 'emails', 'explore',
@@ -678,7 +678,7 @@
   function followerComparisonRecord(workspace, comparison, generatedAt = new Date().toISOString()) {
     return {
       schemaVersion: 1,
-      kind: 'insta-aio-comparison',
+      kind: 'insta-toolbox-comparison',
       generatedAt,
       subjectUsername: normalizeUsername(workspace?.subjectUsername),
       source: workspace?.source && typeof workspace.source === 'object' ? workspace.source : {},
@@ -861,7 +861,7 @@
   }
 
   function dmContentCandidates(row) {
-    const explicitlyMarked = [...(row?.querySelectorAll?.('[data-insta-aio-message-content]') || [])];
+    const explicitlyMarked = [...(row?.querySelectorAll?.('[data-insta-toolbox-message-content]') || [])];
     const nodes = explicitlyMarked.length
       ? explicitlyMarked
       : [...(row?.querySelectorAll?.('[dir="auto"]') || [])]
@@ -2022,7 +2022,7 @@
     };
   }
 
-  globalThis.InstaAioInstagramInspector = Object.freeze({
+  globalThis.InstaToolboxInstagramInspector = Object.freeze({
     captureVisibleAccounts,
     collectAccountList,
     detectAuthenticatedUsername,
@@ -2050,48 +2050,48 @@
   if (!globalThis.chrome?.runtime?.onMessage?.addListener) return;
 
   chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-    if (request?.kind === 'insta-aio-inspect-profile') {
+    if (request?.kind === 'insta-toolbox-inspect-profile') {
       sendResponse(inspectProfile(request.username));
       return;
     }
-    if (request?.kind === 'insta-aio-inspect-session') {
+    if (request?.kind === 'insta-toolbox-inspect-session') {
       sendResponse(inspectSession());
       return;
     }
-    if (request?.kind === 'insta-aio-capture-visible-accounts') {
+    if (request?.kind === 'insta-toolbox-capture-visible-accounts') {
       sendResponse({
         capturedAt: new Date().toISOString(),
         accounts: captureVisibleAccounts(),
       });
       return;
     }
-    if (request?.kind === 'insta-aio-collect-account-list') {
+    if (request?.kind === 'insta-toolbox-collect-account-list') {
       collectAccountList(request.options || {})
         .then(sendResponse)
         .catch(() => sendResponse({ unexpectedUi: true, reason: 'account-list-collection-failed' }));
       return true;
     }
-    if (request?.kind === 'insta-aio-enumerate-sent-dms') {
+    if (request?.kind === 'insta-toolbox-enumerate-sent-dms') {
       enumerateSentDms(request.options || {})
         .then(sendResponse)
         .catch(() => sendResponse({ unexpectedUi: true, reason: 'sent-dm-enumeration-failed' }));
       return true;
     }
-    if (request?.kind === 'insta-aio-inspect-visible-messages') {
+    if (request?.kind === 'insta-toolbox-inspect-visible-messages') {
       sendResponse(inspectVisibleMessages());
       return;
     }
-    if (request?.kind === 'insta-aio-inspect-reviewed-dm-item') {
+    if (request?.kind === 'insta-toolbox-inspect-reviewed-dm-item') {
       sendResponse(inspectReviewedDmItem(request.item));
       return;
     }
-    if (request?.kind === 'insta-aio-perform-reviewed-profile-action') {
+    if (request?.kind === 'insta-toolbox-perform-reviewed-profile-action') {
       performReviewedProfileAction(request.item)
         .then(sendResponse)
         .catch(() => sendResponse({ unexpectedUi: true, reason: 'live-action-driver-error' }));
       return true;
     }
-    if (request?.kind === 'insta-aio-perform-reviewed-dm-unsend') {
+    if (request?.kind === 'insta-toolbox-perform-reviewed-dm-unsend') {
       performReviewedDmUnsend(request.item)
         .then(sendResponse)
         .catch(() => sendResponse({ unexpectedUi: true, reason: 'live-dm-driver-error' }));

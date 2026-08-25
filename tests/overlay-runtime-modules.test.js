@@ -30,14 +30,14 @@ const queueViewSource = await readFile(
 function loadModules() {
   const context = vm.createContext({ console, Date, Intl });
   for (const name of moduleNames) vm.runInContext(sources[name], context);
-  return context.__instaAioOverlayModules;
+  return context.__instaToolboxOverlayModules;
 }
 
 function loadQueueModules() {
   const context = vm.createContext({ console, Date, Intl });
   vm.runInContext(sources.shared, context);
   vm.runInContext(queueViewSource, context);
-  return context.__instaAioOverlayModules;
+  return context.__instaToolboxOverlayModules;
 }
 
 test('route observer emits one debounced change and installs no location polling', async () => {
@@ -296,7 +296,7 @@ test('Mutual Checker migrates the legacy draft and compares both rendered lists 
     comparison.iDoNotFollowBack.map((item) => item.username),
   )), ['follower_only']);
   const exported = shared.captureRecord(workspace, 'followers', () => 'fallback');
-  assert.equal(exported.kind, 'insta-aio-visible-list');
+  assert.equal(exported.kind, 'insta-toolbox-visible-list');
   assert.equal(exported.followers.length, 2);
   assert.equal(exported.verifiedDialog, true);
   assert.equal('following' in exported, false);
@@ -307,7 +307,7 @@ test('schema 3 list confidence is quarantined until a count-reconciled rescan', 
   const normalizeUsername = (value) => String(value || '').replace(/^@/, '').toLowerCase();
   const migrated = shared.normalizeCaptureWorkspace({
     schemaVersion: 3,
-    kind: 'insta-aio-visible-checker-workspace',
+    kind: 'insta-toolbox-visible-checker-workspace',
     followers: [],
     following: [{ username: 'alpha' }, { username: 'beta' }],
     capturedAt: { followers: null, following: '2026-08-20T00:00:00.000Z' },
@@ -339,7 +339,7 @@ test('authenticated checker provenance is additive and supports an exact empty c
   const normalizeUsername = (value) => String(value || '').replace(/^@/, '').toLowerCase();
   const workspace = shared.normalizeCaptureWorkspace({
     schemaVersion: 5,
-    kind: 'insta-aio-visible-checker-workspace',
+    kind: 'insta-toolbox-visible-checker-workspace',
     subjectUsername: '@demo.creator',
     followers: [],
     following: [],
@@ -364,7 +364,7 @@ test('authenticated checker provenance is additive and supports an exact empty c
     notFollowingMeBack: [],
   });
   const exported = shared.captureRecord(workspace, 'followers');
-  assert.equal(exported.kind, 'insta-aio-visible-list', 'the established export kind stays compatible');
+  assert.equal(exported.kind, 'insta-toolbox-visible-list', 'the established export kind stays compatible');
   assert.equal(exported.subjectUsername, 'demo.creator');
   assert.equal(exported.verificationMethod, 'authenticated-web');
   assert.equal(exported.verifiedDialog, false);

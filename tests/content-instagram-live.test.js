@@ -165,7 +165,7 @@ for (const scenario of [
   test(`reviewed ${scenario.action} consumes one exact profile token and verifies completion`, async () => {
     const harness = createHarness(scenario.action);
     const observed = await harness.send({
-      kind: 'insta-aio-inspect-profile',
+      kind: 'insta-toolbox-inspect-profile',
       username: 'demo_creator',
     });
     assert.equal(observed.username, 'demo_creator');
@@ -176,7 +176,7 @@ for (const scenario of [
     assert.equal(harness.clickCount(), 0);
 
     const result = await harness.send({
-      kind: 'insta-aio-perform-reviewed-profile-action',
+      kind: 'insta-toolbox-perform-reviewed-profile-action',
       item: {
         action: scenario.action,
         expectedRelationship: scenario.before,
@@ -189,7 +189,7 @@ for (const scenario of [
     assert.equal(harness.clickCount(), scenario.clicks);
 
     const replay = await harness.send({
-      kind: 'insta-aio-perform-reviewed-profile-action',
+      kind: 'insta-toolbox-perform-reviewed-profile-action',
       item: {
         action: scenario.action,
         expectedRelationship: scenario.before,
@@ -207,7 +207,7 @@ test('duplicate relationship controls make inspection ambiguous and issue no tok
   const harness = createHarness('follow');
   harness.addControl('Follow');
   const observed = await harness.send({
-    kind: 'insta-aio-inspect-profile',
+    kind: 'insta-toolbox-inspect-profile',
     username: 'demo_creator',
   });
   assert.equal(observed.ambiguous, true);
@@ -221,7 +221,7 @@ test('a sole suggested-account control cannot impersonate the reviewed profile c
   harness.profileControl.isConnected = false;
   const suggestedControl = harness.addSuggestedControl('Follow');
   const observed = await harness.send({
-    kind: 'insta-aio-inspect-profile',
+    kind: 'insta-toolbox-inspect-profile',
     username: 'demo_creator',
   });
   assert.equal(observed.ambiguous, true);
@@ -235,13 +235,13 @@ test('a sole suggested-account control cannot impersonate the reviewed profile c
 test('a pre-existing unrelated dialog safe-stops before either live control is clicked', async () => {
   const harness = createHarness('unfollow');
   const observed = await harness.send({
-    kind: 'insta-aio-inspect-profile',
+    kind: 'insta-toolbox-inspect-profile',
     username: 'demo_creator',
   });
   harness.addStaleUnfollowDialog('other_account');
 
   const result = await harness.send({
-    kind: 'insta-aio-perform-reviewed-profile-action',
+    kind: 'insta-toolbox-perform-reviewed-profile-action',
     item: {
       action: 'unfollow',
       expectedRelationship: 'following',
@@ -259,7 +259,7 @@ test('a pre-existing unrelated dialog safe-stops before either live control is c
 test('profile inspection issues no capability when secure randomness is unavailable', async () => {
   const harness = createHarness('follow', { secureCrypto: {} });
   const observed = await harness.send({
-    kind: 'insta-aio-inspect-profile',
+    kind: 'insta-toolbox-inspect-profile',
     username: 'demo_creator',
   });
 

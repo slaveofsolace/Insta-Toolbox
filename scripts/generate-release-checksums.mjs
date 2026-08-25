@@ -14,16 +14,18 @@ import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { crc32, inspectZipArchive } from '../src/core/zip.js';
+import { expectedExtensionArchiveEntries } from './extension-package-files.mjs';
 import { webRuntimeFiles } from './web-package-files.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepositoryRoot = path.resolve(scriptDirectory, '..');
-const desktopArtifactExtensions = new Set(['.blockmap', '.dmg', '.exe', '.zip']);
+const desktopArtifactExtensions = new Set(['.dmg', '.exe', '.zip']);
 const requiredExtensionEntries = Object.freeze([
   'LICENSE',
   'THIRD_PARTY_NOTICES.md',
   'manifest.json',
 ]);
+const expectedExtensionEntries = new Set(expectedExtensionArchiveEntries);
 const webArchiveRoot = 'insta-toolbox-web';
 const requiredWebEntries = Object.freeze([
   `${webArchiveRoot}/LICENSE`,
@@ -134,7 +136,18 @@ export function verifyExtensionReleaseArchive(input, version) {
   for (const required of requiredExtensionEntries) {
     if (!entries.has(required)) throw new Error(`Extension archive is missing ${required}.`);
   }
-  for (const entry of archive.entries) storedEntryBytes(archiveBytes, entry);
+  for (const expected of expectedExtensionArchiveEntries) {
+    if (!entries.has(expected)) throw new Error(`Extension archive is missing ${expected}.`);
+  }
+  for (const entry of archive.entries) {
+    if (!expectedExtensionEntries.has(entry.path)) {
+      throw new Error(`Extension archive contains an unexpected entry: ${entry.path}`);
+    }
+    storedEntryBytes(archiveBytes, entry);
+  }
+  if (archive.entries.length !== expectedExtensionEntries.size) {
+    throw new Error('Extension archive does not contain the exact generated file set.');
+  }
 
   const decoder = new TextDecoder('utf-8', { fatal: true });
   const license = decoder.decode(storedEntryBytes(archiveBytes, entries.get('LICENSE')));
@@ -232,6 +245,11 @@ async function availableDesktopArtifacts(root, version) {
     throw new Error(`Unable to inspect desktop release artifacts (${error?.code || 'filesystem-error'}).`);
   }
 
+  const blockmaps = entries.filter((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === '.blockmap');
+  if (blockmaps.length) {
+    throw new Error('Desktop release artifacts must not include updater blockmaps.');
+  }
+
   const recognized = entries.filter((entry) => desktopArtifactExtensions.has(path.extname(entry.name).toLowerCase()));
   if (recognized.length > maxArtifactCount - 2) {
     throw new Error(`Too many desktop release artifacts; maximum is ${maxArtifactCount - 2}.`);
@@ -262,8 +280,8 @@ export async function generateReleaseChecksums({
   const resolvedOutput = path.resolve(outputFile);
   safeRelativePath(root, resolvedOutput, 'Checksum output');
   const version = await packageVersion(root);
-  const userscriptPath = path.join(root, 'userscripts', 'insta-aio-companion.user.js');
-  const extensionPath = path.join(root, 'dist', `insta-aio-companion-${version}.zip`);
+  const userscriptPath = path.join(root, 'userscripts', 'insta-toolbox.user.js');
+  const extensionPath = path.join(root, 'dist', `Insta-Toolbox-Extension-${version}.zip`);
   const webPath = path.join(root, 'dist', `insta-toolbox-web-${version}.zip`);
   const userscript = await releaseFile(root, userscriptPath, { maxBytes: maxCoreArtifactBytes });
   const extension = await releaseFile(root, extensionPath, { maxBytes: maxCoreArtifactBytes });

@@ -50,8 +50,8 @@ function renderRelationships() {
   const diff = activeDiff();
   const tabs = {
     mutuals: ['Mutuals', relationships.mutuals],
-    notFollowingBack: ['Not following back', relationships.notFollowingBack],
-    iDoNotFollowBack: ['I do not follow back', relationships.iDoNotFollowBack],
+    notFollowingBack: ["Don't follow you back", relationships.notFollowingBack],
+    iDoNotFollowBack: ["You don't follow back", relationships.iDoNotFollowBack],
     newFollowers: ['New followers', diff.newFollowers],
     lostFollowers: ['Recent unfollows', diff.lostFollowers],
     newlyFollowing: ['Newly following', diff.newlyFollowing],
@@ -62,7 +62,7 @@ function renderRelationships() {
 
   return pageHead(
     'Relationships',
-    'Compare imported follower and following snapshots without sending account credentials anywhere.',
+    'Compare imported Followers and Following locally.',
     '<button class="primary" data-action="pick-data-files">Import snapshot</button>',
   ) + `
     <section class="panel">
@@ -108,8 +108,8 @@ function renderQueue() {
 
   return pageHead(
     'Action Queue',
-    'Plan follow and unfollow reviews, preserve history, and export a manual companion queue.',
-    '<button class="primary" data-action="create-action-preview">Create reviewed preview</button><button data-action="refresh-queue">Refresh schedules</button><button data-action="export-companion-queue">Export companion queue</button>',
+    'Review Follow and Unfollow targets before opening Instagram.',
+    '<button class="primary" data-action="create-action-preview">Create preview</button><button data-action="refresh-queue">Refresh</button><button data-action="export-companion-queue">Export queue</button>',
   ) + `
     <section class="grid metrics">
       ${metric('Pending', summary.pending || 0)}
@@ -119,7 +119,7 @@ function renderQueue() {
     </section>
 
     <section class="panel">
-      <div class="panel-head"><div><h2>Add follow targets</h2><p>One username per line or separated by commas. Actions are queued, not executed.</p></div></div>
+      <div class="panel-head"><div><h2>Add Follow targets</h2><p>One username per line. Nothing runs here.</p></div></div>
       <div class="field">
         <textarea id="follow-targets" placeholder="username_one\nusername_two"></textarea>
       </div>
@@ -157,7 +157,7 @@ function renderQueue() {
         ` : ''}
         ${latestActionJob.status === 'ready' && latestActionJob.mode === 'live' ? `
           <div class="notice warning" style="margin-top:14px">
-            Controlled extension execution accepts exactly one reviewed account. One ordinary confirmation names the exact action and target; the extension then revalidates that profile before reserving the durable ledger entry.
+            One account at a time. Confirm the action and account; the extension checks the profile again before it starts.
           </div>
         ` : ''}
         ${bridgeStatus ? `<div class="notice" style="margin-top:14px">${escapeHtml(bridgeStatus)}</div>` : ''}
@@ -233,21 +233,21 @@ function renderMessages() {
 
   return pageHead(
     'Messages',
-    'View imported Instagram message data, filter messages you sent, and create a reviewed unsend plan.',
-    '<button class="primary" data-action="create-dm-preview">Create reviewed Unsend plan</button><button data-action="pick-data-files">Import message JSON</button><button data-action="export-unsend-plan">Export reviewed plan</button>',
+    'Filter messages you sent and create an unsend plan.',
+    '<button class="primary" data-action="create-dm-preview">Create unsend plan</button><button data-action="pick-data-files">Import message JSON</button><button data-action="export-unsend-plan">Export plan</button>',
   ) + `
-    <section class="grid metrics">
-      ${metric('All messages', state.messages.length)}
-      ${metric('Sent by you', sentTotal, state.settings.ownerNames.length ? `Owner names: ${state.settings.ownerNames.join(', ')}` : 'Set owner names before importing Meta exports')}
-      ${metric('Filtered', filtered.length)}
-      ${metric('Selected', state.selectedMessageIds.length)}
+    <section class="message-summary" aria-label="Message summary">
+      <span><strong>${state.messages.length}</strong> loaded</span>
+      <span><strong>${sentTotal}</strong> sent by you</span>
+      <span><strong>${filtered.length}</strong> shown</span>
+      <span><strong>${state.selectedMessageIds.length}</strong> selected</span>
     </section>
 
     ${latestDmJob ? `
       <section class="panel" aria-labelledby="dm-preview-heading">
         <div class="panel-head">
           <div>
-            <h2 id="dm-preview-heading">Reviewed DM Unsend plan</h2>
+            <h2 id="dm-preview-heading">DM Unsend plan</h2>
             <p>${latestDmJob.items.length} eligible sent message${latestDmJob.items.length === 1 ? '' : 's'} · ${latestDmJob.blockedItems.length} blocked · ${escapeHtml(latestDmJob.status)}</p>
           </div>
           <span class="badge ${latestDmJob.mode === 'live' ? 'failed' : 'protected'}">${escapeHtml(latestDmJob.mode)}</span>
@@ -274,7 +274,7 @@ function renderMessages() {
         ` : ''}
         ${latestDmJob.status === 'ready' && latestDmJob.mode === 'live' && latestDmJob.items.length === 1 ? `
           <div class="notice warning" style="margin-top:14px">
-            Controlled extension execution accepts exactly one reviewed sent message. One ordinary confirmation names the exact thread and message; the extension revalidates both before reserving either durable ledger.
+            One sent message at a time. Confirm the conversation and message; the extension checks both again before it starts.
           </div>
         ` : ''}
         ${bridgeStatus ? `<div class="notice" style="margin-top:14px">${escapeHtml(bridgeStatus)}</div>` : ''}

@@ -92,7 +92,7 @@ export async function executeReviewedDmJob(inputJob, {
   if (!driver?.inspectSession || !driver?.resolveConversation || !driver?.resolveMessage) {
     throw new Error('The reviewed DM adapter requires session, conversation, and message inspection.');
   }
-  if (inputJob?.kind !== 'insta-aio-reviewed-dm-job') {
+  if (inputJob?.kind !== 'insta-toolbox-reviewed-dm-job') {
     throw new Error('Select a reviewed DM job.');
   }
   if (!['ready', 'paused', 'running'].includes(inputJob?.status)) {

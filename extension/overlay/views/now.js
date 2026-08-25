@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   if (!shared || modules.nowView) return;
 
@@ -28,8 +28,8 @@
       return {
         badge: relationship,
         heading: context.username ? `@${context.username}` : 'Profile not resolved',
-        nextAction: 'Refresh no-click inspection',
-        nextDetail: 'Re-read the exact profile header and relationship control without activating it.',
+        nextAction: 'Refresh profile status',
+        nextDetail: 'Checks the relationship without clicking Follow or Unfollow.',
         nextCommand: 'refresh-context',
         subtitle: 'Profile review',
       };
@@ -38,8 +38,8 @@
       return {
         badge: 'read only',
         heading: 'Open conversation',
-        nextAction: 'Read visible thread',
-        nextDetail: 'Capture rendered text evidence without opening a message menu.',
+        nextAction: 'Read visible messages',
+        nextDetail: 'Reads the open conversation without opening a message menu.',
         nextCommand: 'inspect-messages',
         subtitle: 'Message evidence',
       };
@@ -48,7 +48,7 @@
       badge: shared.safeText(context?.pageKind, 'waiting'),
       heading: 'No exact target on this route',
       nextAction: 'Refresh page context',
-      nextDetail: 'Inspection remains available; account and message actions stay unavailable.',
+      nextDetail: 'Account and message actions stay unavailable until an exact target is open.',
       nextCommand: 'refresh-context',
       subtitle: 'Instagram context',
     };
@@ -56,15 +56,15 @@
 
   function render(runtime) {
     const { document, model, query } = runtime;
-    const content = query('[data-ia-role="now-content"]');
+    const content = query('[data-insta-toolbox-role="now-content"]');
     if (!content) return;
     content.replaceChildren();
 
     const context = model.context || {};
     const [stateTitle, stateDetail, stateTone] = shared.sessionState(context);
-    const state = make(document, 'div', 'ia-state-row');
+    const state = make(document, 'div', 'insta-toolbox-state-row');
     state.dataset.tone = stateTone;
-    const stateDot = make(document, 'span', 'ia-state-dot');
+    const stateDot = make(document, 'span', 'insta-toolbox-state-dot');
     stateDot.setAttribute('aria-hidden', 'true');
     const stateCopy = document.createElement('div');
     stateCopy.append(
@@ -74,75 +74,75 @@
     state.append(stateDot, stateCopy);
 
     const copy = routeCopy(context);
-    const card = make(document, 'article', 'ia-card');
-    const targetTop = make(document, 'div', 'ia-target-top');
-    const avatar = make(document, 'div', 'ia-target-avatar', context.username ? '@' : 'IG');
+    const card = make(document, 'article', 'insta-toolbox-card');
+    const targetTop = make(document, 'div', 'insta-toolbox-target-top');
+    const avatar = make(document, 'div', 'insta-toolbox-target-avatar', context.username ? '@' : 'IG');
     avatar.setAttribute('aria-hidden', 'true');
     const targetCopy = document.createElement('div');
     targetCopy.append(
       make(document, 'h2', '', copy.heading),
       make(document, 'p', '', copy.subtitle),
     );
-    const badge = make(document, 'span', 'ia-badge', copy.badge);
-    badge.dataset.tone = context.profile?.ambiguous ? 'danger' : 'good';
+    const badge = make(document, 'span', 'insta-toolbox-badge', copy.badge);
+    badge.dataset.tone = context.profile?.ambiguous
+      ? 'danger'
+      : context.pageKind === 'profile'
+        && context.profile?.profileIdentityVerified
+        && context.profile?.relationship
+        ? 'good'
+        : 'neutral';
     targetTop.append(avatar, targetCopy, badge);
 
-    const facts = make(document, 'dl', 'ia-facts');
+    const facts = make(document, 'dl', 'insta-toolbox-facts');
     const queueItem = shared.currentQueueItem(model);
     const queueMatch = queueItem && context.username === queueItem.account.username
-      ? `Matches ${queueItem.action}`
+      ? `Ready to ${queueItem.action}`
       : queueItem
-        ? `Next: @${queueItem.account.username}`
-        : 'No item loaded';
-    addFact(document, facts, 'Route', shared.safeText(context.pageKind, 'unknown'));
+        ? `Next @${queueItem.account.username}`
+        : 'No queued account';
+    const pageLabel = context.pageKind === 'profile'
+      ? 'Profile'
+      : context.pageKind === 'messages'
+        ? 'Conversation'
+        : 'Instagram page';
+    addFact(document, facts, 'Page', pageLabel);
     addFact(document, facts, 'Queue', queueMatch);
     card.append(targetTop, facts);
 
-    const next = make(document, 'section', 'ia-next');
+    const next = make(document, 'section', 'insta-toolbox-next');
     const nextCopy = document.createElement('div');
-    nextCopy.append(
-      make(document, 'p', 'ia-next-label', 'Next safe step'),
-      make(document, 'h3', '', copy.nextAction),
-      make(document, 'p', '', copy.nextDetail),
-    );
-    const button = make(document, 'button', 'ia-button', copy.nextAction);
+    nextCopy.append(make(document, 'p', '', copy.nextDetail));
+    const button = make(document, 'button', 'insta-toolbox-button', copy.nextAction);
     button.type = 'button';
-    button.dataset.iaAction = copy.nextCommand;
+    button.dataset.instaToolboxAction = copy.nextCommand;
     next.append(nextCopy, button);
 
-    const observed = make(
-      document,
-      'p',
-      'ia-note',
-      `Observed ${shared.shortDate(context.capturedAt || Date.now())}. Inspection is no-click.`,
-    );
-
-    const toolHeading = make(document, 'h2', 'ia-tool-heading', 'Installed Instagram tools');
-    const toolGrid = make(document, 'div', 'ia-tool-grid');
+    const toolHeading = make(document, 'h2', 'insta-toolbox-tool-heading', 'Tools');
+    const toolGrid = make(document, 'div', 'insta-toolbox-tool-grid');
     const tools = [
       {
         section: 'capture',
         title: 'Mutual Checker',
-        detail: 'Capture Followers and Following separately, then compare the rendered rows locally.',
+        detail: 'Compare Followers and Following.',
         state: 'read only',
       },
       {
         section: 'queue',
         title: 'Follow / Unfollow',
-        detail: 'Import a reviewed queue and inspect one exact profile without clicking first.',
+        detail: 'Review exact accounts before starting.',
         state: model.bridge.pendingLiveIntent ? 'intent ready' : 'review then confirm',
       },
       {
         section: 'messages',
         title: 'DM Unsend',
-        detail: 'Read visible evidence or resolve one exact reviewed sent message without opening its menu.',
+        detail: 'Unsend messages from the open conversation.',
         state: model.bridge.pendingDmIntent ? 'intent ready' : 'scan then confirm',
       },
     ];
     for (const tool of tools) {
-      const button = make(document, 'button', 'ia-tool-card');
+      const button = make(document, 'button', 'insta-toolbox-tool-card');
       button.type = 'button';
-      button.dataset.iaGoSection = tool.section;
+      button.dataset.instaToolboxGoSection = tool.section;
       const copyElement = document.createElement('span');
       copyElement.append(
         make(document, 'strong', '', tool.title),
@@ -151,7 +151,7 @@
       button.append(copyElement, make(document, 'em', '', tool.state));
       toolGrid.append(button);
     }
-    content.append(state, card, next, observed, toolHeading, toolGrid);
+    content.append(state, card, next, toolHeading, toolGrid);
   }
 
   shared.install('nowView', { render });

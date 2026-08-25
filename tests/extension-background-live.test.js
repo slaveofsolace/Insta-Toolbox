@@ -22,7 +22,7 @@ import {
 import { createQueueItem } from '../src/core/queue.js';
 
 test('background consumes one transient exact confirmation before dispatching a live action', async () => {
-  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-aio-background-'));
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-toolbox-background-'));
   const libraryRoot = path.join(temporaryRoot, 'lib');
   await mkdir(libraryRoot, { recursive: true });
   await Promise.all([
@@ -54,13 +54,17 @@ test('background consumes one transient exact confirmation before dispatching a 
     settings,
   });
 
+  const legacyBridgePairings = [{ pairingId: 'legacy-v2-pairing' }];
+  const legacyPendingJobs = [{ jobId: 'legacy-v2-job' }];
   const stored = {
-    bridgePairings: [pairing],
-    bridgeReplayNonces: [],
-    pendingJobs: [],
-    accountActionLedger: [],
-    pendingLiveIntent: null,
-    liveArm: null,
+    bridgePairings: structuredClone(legacyBridgePairings),
+    pendingJobs: structuredClone(legacyPendingJobs),
+    instaToolboxBridgePairings: [pairing],
+    instaToolboxBridgeReplayNonces: [],
+    instaToolboxPendingJobs: [],
+    instaToolboxAccountActionLedger: [],
+    instaToolboxPendingLiveIntent: null,
+    instaToolboxLiveArm: null,
   };
   let runtimeListener = null;
   let liveDispatches = 0;
@@ -91,22 +95,22 @@ test('background consumes one transient exact confirmation before dispatching a 
         return [{ id: 7, active: true, url: 'https://www.instagram.com/controlled_target/' }];
       },
       async sendMessage(_tabId, message) {
-        if (message.kind === 'insta-aio-inspect-session') return { authenticated: true };
-        if (message.kind === 'insta-aio-inspect-profile') {
+        if (message.kind === 'insta-toolbox-inspect-session') return { authenticated: true };
+        if (message.kind === 'insta-toolbox-inspect-profile') {
           return {
             username: 'controlled_target',
             relationship: 'not-following',
             resolutionToken: 'exact-profile-token',
           };
         }
-        if (message.kind === 'insta-aio-perform-reviewed-profile-action') {
+        if (message.kind === 'insta-toolbox-perform-reviewed-profile-action') {
           liveDispatches += 1;
-          assert.equal(stored.liveArm, null);
-          assert.equal(stored.pendingLiveIntent, null);
-          assert.equal(stored.accountActionLedger.length, 1);
-          assert.equal(stored.accountActionLedger[0].status, 'reserved');
-          assert.equal(stored.accountActionLedger[0].username, 'controlled_target');
-          assert.equal(stored.accountActionLedger[0].action, 'follow');
+          assert.equal(stored.instaToolboxLiveArm, null);
+          assert.equal(stored.instaToolboxPendingLiveIntent, null);
+          assert.equal(stored.instaToolboxAccountActionLedger.length, 1);
+          assert.equal(stored.instaToolboxAccountActionLedger[0].status, 'reserved');
+          assert.equal(stored.instaToolboxAccountActionLedger[0].username, 'controlled_target');
+          assert.equal(stored.instaToolboxAccountActionLedger[0].action, 'follow');
           assert.deepEqual(message.item, {
             action: 'follow',
             expectedRelationship: 'not-following',
@@ -135,7 +139,7 @@ test('background consumes one transient exact confirmation before dispatching a 
   async function bridge(type, payload = {}) {
     const message = await createSignedBridgeMessage(pairing, type, payload);
     const response = await deliver({
-      kind: 'insta-aio-bridge-request',
+      kind: 'insta-toolbox-bridge-request',
       origin,
       message,
     }, {
@@ -155,7 +159,7 @@ test('background consumes one transient exact confirmation before dispatching a 
   assert.equal(intentResponse.type, 'action.account-live-intent-result');
   assert.equal(intentResponse.payload.ready, true);
 
-  const beforeConfirmation = await deliver({ kind: 'insta-aio-overlay-state' }, {
+  const beforeConfirmation = await deliver({ kind: 'insta-toolbox-overlay-state' }, {
     url: 'https://www.instagram.com/controlled_target/',
     tab: { id: 7, url: 'https://www.instagram.com/controlled_target/' },
   });
@@ -198,13 +202,15 @@ test('background consumes one transient exact confirmation before dispatching a 
   })).payload;
   assert.equal(performed.result, 'followed');
   assert.equal(liveDispatches, 1);
-  assert.equal(stored.liveArm, null);
-  assert.equal(stored.pendingLiveIntent, null);
-  assert.equal(stored.pendingJobs[0].mode, 'live');
-  assert.equal(stored.pendingJobs[0].result.status, 'completed');
-  assert.equal(stored.accountActionLedger.length, 1);
-  assert.equal(stored.accountActionLedger[0].status, 'succeeded');
-  assert.equal(stored.accountActionLedger[0].result, 'followed');
+  assert.equal(stored.instaToolboxLiveArm, null);
+  assert.equal(stored.instaToolboxPendingLiveIntent, null);
+  assert.equal(stored.instaToolboxPendingJobs[0].mode, 'live');
+  assert.equal(stored.instaToolboxPendingJobs[0].result.status, 'completed');
+  assert.equal(stored.instaToolboxAccountActionLedger.length, 1);
+  assert.equal(stored.instaToolboxAccountActionLedger[0].status, 'succeeded');
+  assert.equal(stored.instaToolboxAccountActionLedger[0].result, 'followed');
+  assert.deepEqual(stored.bridgePairings, legacyBridgePairings, 'v3 leaves legacy pairings untouched');
+  assert.deepEqual(stored.pendingJobs, legacyPendingJobs, 'v3 leaves legacy jobs untouched');
 
   const replayReadiness = (await bridge('action.account-live-readiness', {
     jobId: job.id,

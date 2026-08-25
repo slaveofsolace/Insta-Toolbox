@@ -109,7 +109,7 @@ function renderImports() {
     <section class="panel">
       <div class="panel-head"><div><h2>Partial relationship reports</h2><p>Checker results remain read-only and cannot create queue actions.</p></div></div>
       ${relationshipReports.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Source file</th><th>I do not follow back</th><th>Not following me back</th><th>Complete</th><th>Actionable</th></tr></thead>
+        <thead><tr><th>Source file</th><th>You don't follow back</th><th>Don't follow you back</th><th>Complete</th><th>Actionable</th></tr></thead>
         <tbody>${relationshipReports.slice(0, 100).map((report) => `
           <tr>
             <td>${escapeHtml(report.sourceFile || 'unknown')}</td>
@@ -147,20 +147,20 @@ function renderSettings() {
     : '';
   return pageHead(
     'Settings',
-    'Configure local classification, scheduling, and protection rules.',
+    'Set review timing, account protection, and message ownership.',
     '<button class="primary" data-action="save-settings">Save settings</button>',
   ) + `
     <section class="panel">
       <div class="form-grid">
-        <div class="field"><label for="waiting-days">Waiting period before unfollow review</label><input id="waiting-days" type="number" min="1" max="365" value="${escapeHtml(state.settings.waitingDays)}"></div>
-        <div class="field"><label for="owner-names">Your sender/display names in message exports</label><input id="owner-names" value="${escapeHtml(state.settings.ownerNames.join(', '))}" placeholder="Your Instagram display name, username"></div>
+        <div class="field"><label for="waiting-days">Unfollow review delay</label><input id="waiting-days" type="number" min="1" max="365" value="${escapeHtml(state.settings.waitingDays)}"></div>
+        <div class="field"><label for="owner-names">Names that identify your sent messages</label><input id="owner-names" value="${escapeHtml(state.settings.ownerNames.join(', '))}" placeholder="Instagram display name or username"></div>
         <div class="field full"><label for="whitelist">Whitelist usernames</label><textarea id="whitelist" placeholder="one username per line">${escapeHtml(state.settings.whitelist.join('\n'))}</textarea></div>
-        <div class="field full"><label for="preexisting">Protected accounts followed before this tool</label><textarea id="preexisting" placeholder="one username per line">${escapeHtml(state.settings.preexistingFollowing.join('\n'))}</textarea></div>
-        <label class="checkbox"><input id="protect-mutuals" type="checkbox" ${state.settings.protectMutuals ? 'checked' : ''}> Protect mutual followers from unfollow review</label>
-        <label class="checkbox"><input id="dry-run" type="checkbox" ${state.settings.dryRun ? 'checked' : ''}> Dry-run planning mode</label>
+        <div class="field full"><label for="preexisting">Always-protected accounts</label><textarea id="preexisting" placeholder="one username per line">${escapeHtml(state.settings.preexistingFollowing.join('\n'))}</textarea></div>
+        <label class="checkbox"><input id="protect-mutuals" type="checkbox" ${state.settings.protectMutuals ? 'checked' : ''}> Protect mutuals from unfollow review</label>
+        <label class="checkbox"><input id="dry-run" type="checkbox" ${state.settings.dryRun ? 'checked' : ''}> Plan without actions</label>
       </div>
       <div class="toolbar" style="margin-top:14px">
-        <button data-action="protect-current-following">Protect all accounts in active following snapshot</button>
+        <button data-action="protect-current-following">Protect everyone in the active Following snapshot</button>
       </div>
     </section>
 
@@ -179,7 +179,7 @@ function renderSettings() {
           ${pairingCode ? `<div class="field full"><label for="bridge-pairing-code">One-time pairing code</label><textarea id="bridge-pairing-code" readonly spellcheck="false">${escapeHtml(pairingCode)}</textarea></div>` : ''}
         </div>
         <div class="toolbar" style="margin-top:14px">
-          ${bridgePairing.pairedAt ? '<button data-action="ping-extension">Check extension connection</button>' : '<button class="primary" data-action="complete-extension-pairing">Complete pairing handshake</button>'}
+          ${bridgePairing.pairedAt ? '<button data-action="ping-extension">Check extension connection</button>' : '<button class="primary" data-action="complete-extension-pairing">Finish pairing</button>'}
           <button class="danger" data-action="revoke-extension-pairing">${bridgePairing.pairedAt ? 'Revoke PWA pairing' : 'Discard pairing code'}</button>
         </div>
       ` : `

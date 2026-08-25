@@ -33,7 +33,7 @@ const evidenceRoot = path.join(
   repositoryRoot,
   'docs',
   'evidence',
-  'overlay-ui-2026-08-02',
+  'overlay-ui-3.0.0-2026-08-24',
   'after',
   process.platform,
 );
@@ -42,7 +42,7 @@ const fidelityPath = path.join(evidenceRoot, 'fidelity-ledger.json');
 const runnerLogPath = path.join(resultsRoot, 'runner.log');
 const rasterProblems = [];
 const userDataRoot = path.resolve(
-  process.env.INSTA_AIO_OVERLAY_QA_USER_DATA
+  process.env.INSTA_TOOLBOX_OVERLAY_QA_USER_DATA
     || path.join(resultsRoot, 'user-data', String(process.pid)),
 );
 
@@ -180,7 +180,7 @@ function fixtureServer() {
         'Cache-Control': 'no-store',
         'Content-Security-Policy': [
           "default-src 'none'",
-          "script-src 'self' 'nonce-insta-aio-overlay-qa'",
+          "script-src 'self' 'nonce-insta-toolbox-overlay-qa'",
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: blob:",
           "connect-src 'none'",
@@ -270,9 +270,9 @@ function scenarioUrl(baseUrl, scenario) {
 async function applyAfterState(webContents, scenario) {
   if (scenario.after === 'check-account-relationships') {
     await webContents.executeJavaScript(`(() => {
-      const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
-      const username = shadow.querySelector('[data-ia-role="checker-username"]');
-      const control = shadow.querySelector('[data-ia-action="check-account-relationships"]');
+      const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+      const username = shadow.querySelector('[data-insta-toolbox-role="checker-username"]');
+      const control = shadow.querySelector('[data-insta-toolbox-action="check-account-relationships"]');
       if (!username || !control) throw new Error('Mutual Checker controls are missing.');
       username.value = 'demo_creator';
       username.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
@@ -280,52 +280,52 @@ async function applyAfterState(webContents, scenario) {
     })()`, true);
     await waitForValue(
       webContents,
-      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="capture-state-title"]')?.textContent === 'Mutual comparison complete for @demo_creator'`,
+      `document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('[data-insta-toolbox-role="capture-state-title"]')?.textContent === 'Mutual comparison complete for @demo_creator'`,
       `${scenario.id}: authenticated follower comparison`,
     );
   }
   if (scenario.after === 'capture-visible' || scenario.after === 'inspect-messages') {
     const action = scenario.after;
     await webContents.executeJavaScript(`(() => {
-      const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+      const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
       const captureListType = ${JSON.stringify(scenario.captureListType)};
       if (${JSON.stringify(action)} === 'capture-visible' && captureListType) {
-        const listType = shadow.querySelector('[data-ia-role="list-type"]');
+        const listType = shadow.querySelector('[data-insta-toolbox-role="list-type"]');
         if (!listType) throw new Error('Capture list-type control is missing.');
         listType.value = captureListType;
         listType.dispatchEvent(new Event('change', { bubbles: true }));
       }
-      const control = shadow.querySelector('[data-ia-action=${JSON.stringify(action)}]');
+      const control = shadow.querySelector('[data-insta-toolbox-action=${JSON.stringify(action)}]');
       if (!control) throw new Error(${JSON.stringify(`${scenario.id}: ${action} control is missing`)});
       control.click();
     })()`, true);
     const role = action === 'capture-visible' ? 'capture-count' : 'message-count';
     await waitForValue(
       webContents,
-      `Number(document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="${role}"]').textContent) > 0`,
+      `Number(document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('[data-insta-toolbox-role="${role}"]').textContent) > 0`,
       `${scenario.id}: ${action}`,
     );
   }
   if (scenario.after === 'open-dm-confirmation') {
     await webContents.executeJavaScript(`(() => {
-      const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
-      const control = shadow.querySelector('[data-ia-action="mass-unsend"]');
+      const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+      const control = shadow.querySelector('[data-insta-toolbox-action="mass-unsend"]');
       if (!control) throw new Error('DM Unsend control is missing.');
       control.click();
     })()`, true);
     await waitForValue(
       webContents,
-      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="action-confirmation"]')?.open`,
+      `document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('[data-insta-toolbox-role="action-confirmation"]')?.open`,
       `${scenario.id}: in-overlay DM confirmation`,
     );
   }
   if (scenario.after === 'bot-review') {
     await webContents.executeJavaScript(`(() => {
-      const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
-      const disclosure = shadow.querySelector('[data-ia-role="bot-disclosure"]');
-      const action = shadow.querySelector('[data-ia-role="bot-action"]');
-      const source = shadow.querySelector('[data-ia-role="bot-source"]');
-      const control = shadow.querySelector('[data-ia-action="bot-review"]');
+      const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+      const disclosure = shadow.querySelector('[data-insta-toolbox-role="bot-disclosure"]');
+      const action = shadow.querySelector('[data-insta-toolbox-role="bot-action"]');
+      const source = shadow.querySelector('[data-insta-toolbox-role="bot-source"]');
+      const control = shadow.querySelector('[data-insta-toolbox-action="bot-review"]');
       if (!disclosure || !action || !source || !control) throw new Error('Follow / Unfollow review controls are missing.');
       disclosure.open = true;
       action.value = 'unfollow';
@@ -336,22 +336,22 @@ async function applyAfterState(webContents, scenario) {
     })()`, true);
     await waitForValue(
       webContents,
-      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="bot-review"]')?.hidden === false`,
+      `document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('[data-insta-toolbox-role="bot-review"]')?.hidden === false`,
       `${scenario.id}: read-only target review`,
     );
   }
   if (scenario.after === 'filter-checker-results') {
     await webContents.executeJavaScript(`(() => {
-      const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
-      const search = shadow.querySelector('[data-ia-role="checker-search"]');
+      const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+      const search = shadow.querySelector('[data-insta-toolbox-role="checker-search"]');
       if (!search) throw new Error('Mutual Checker search control is missing.');
       search.value = 'beta';
       search.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
-      shadow.querySelector('[data-ia-role="checker-browser"]')?.scrollIntoView({ block: 'center' });
+      shadow.querySelector('[data-insta-toolbox-role="checker-browser"]')?.scrollIntoView({ block: 'center' });
     })()`, true);
     await waitForValue(
       webContents,
-      `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="checker-filter-count"]')?.textContent === '1'`,
+      `document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('[data-insta-toolbox-role="checker-filter-count"]')?.textContent === '1'`,
       `${scenario.id}: local follower result filter`,
     );
   }
@@ -360,21 +360,21 @@ async function applyAfterState(webContents, scenario) {
 async function inspectScenario(webContents, scenario) {
   const semanticSelectors = scenario.semantics.map(({ selector }) => selector);
   return webContents.executeJavaScript(`(() => {
-    const host = document.querySelector('#insta-aio-sidecar-root');
+    const host = document.querySelector('#insta-toolbox-sidecar-root');
     const shadow = host.shadowRoot;
-    const panel = shadow.querySelector('.ia-panel');
-    const strip = shadow.querySelector('[data-ia-role="collision-strip"]');
-    const launcher = shadow.querySelector('.ia-launcher');
-    const selected = shadow.querySelector('[data-ia-view="${scenario.section}"]');
-    const scroller = shadow.querySelector('.ia-scroll');
-    const header = shadow.querySelector('.ia-header');
-    const headerActions = shadow.querySelector('.ia-header-actions');
-    const headerCopy = shadow.querySelector('.ia-header-copy');
-    const footer = shadow.querySelector('.ia-credit');
-    const statusRegion = shadow.querySelector('[data-ia-role="status"]');
-    const confirmationDialog = shadow.querySelector('[data-ia-role="action-confirmation"]');
-    const confirmationCancel = shadow.querySelector('[data-ia-role="confirm-cancel"]');
-    const confirmationAccept = shadow.querySelector('[data-ia-role="confirm-accept"]');
+    const panel = shadow.querySelector('.insta-toolbox-panel');
+    const strip = shadow.querySelector('[data-insta-toolbox-role="collision-strip"]');
+    const launcher = shadow.querySelector('.insta-toolbox-launcher');
+    const selected = shadow.querySelector('[data-insta-toolbox-view="${scenario.section}"]');
+    const scroller = shadow.querySelector('.insta-toolbox-scroll');
+    const header = shadow.querySelector('.insta-toolbox-header');
+    const headerActions = shadow.querySelector('.insta-toolbox-header-actions');
+    const headerCopy = shadow.querySelector('.insta-toolbox-header-copy');
+    const footer = shadow.querySelector('.insta-toolbox-credit');
+    const statusRegion = shadow.querySelector('[data-insta-toolbox-role="status"]');
+    const confirmationDialog = shadow.querySelector('[data-insta-toolbox-role="action-confirmation"]');
+    const confirmationCancel = shadow.querySelector('[data-insta-toolbox-role="confirm-cancel"]');
+    const confirmationAccept = shadow.querySelector('[data-insta-toolbox-role="confirm-accept"]');
     const target = ${JSON.stringify(scenario.targetSelector)}
       ? document.querySelector(${JSON.stringify(scenario.targetSelector)})
       : null;
@@ -452,54 +452,54 @@ async function inspectScenario(webContents, scenario) {
       }];
     }));
     const touchTargets = [...shadow.querySelectorAll(
-      '.ia-launcher, .ia-tab, .ia-icon-button, .ia-button, .ia-link-button, .ia-settings summary, .ia-select, .ia-text-input',
-    )].filter(visible).filter((element) => !element.closest('.ia-collision-strip')).map((element) => {
+      '.insta-toolbox-launcher, .insta-toolbox-tab, .insta-toolbox-icon-button, .insta-toolbox-button, .insta-toolbox-link-button, .insta-toolbox-settings summary, .insta-toolbox-select, .insta-toolbox-text-input',
+    )].filter(visible).filter((element) => !element.closest('.insta-toolbox-collision-strip')).map((element) => {
       const value = element.getBoundingClientRect();
       return { height: value.height, label: element.getAttribute('aria-label') || element.textContent.trim(), width: value.width };
     });
     return {
-      activeElementSection: shadow.activeElement?.dataset?.iaSection || null,
+      activeElementSection: shadow.activeElement?.dataset?.instaToolboxSection || null,
       adaptiveDock: host.dataset.adaptiveDock || null,
       adaptiveWidth: host.dataset.adaptiveWidth || null,
       bodyWidth: document.body.scrollWidth,
       collision: host.dataset.collision,
       collisionPlacement: host.dataset.collisionPlacement || null,
       ...(${JSON.stringify(scenario.confirmationOpen)} ? {
-        activeElementRole: shadow.activeElement?.dataset?.iaRole || null,
+        activeElementRole: shadow.activeElement?.dataset?.instaToolboxRole || null,
         confirmation: {
           accept: rect(confirmationAccept),
           acceptLabel: confirmationAccept?.textContent.trim() || '',
           cancel: rect(confirmationCancel),
           cancelLabel: confirmationCancel?.textContent.trim() || '',
           controlOrder: confirmationDialog
-            ? [...confirmationDialog.querySelectorAll('[data-ia-role="confirm-cancel"], [data-ia-role="confirm-accept"]')]
-              .map((element) => element.dataset.iaRole)
+            ? [...confirmationDialog.querySelectorAll('[data-insta-toolbox-role="confirm-cancel"], [data-insta-toolbox-role="confirm-accept"]')]
+              .map((element) => element.dataset.instaToolboxRole)
             : [],
-          detail: shadow.querySelector('[data-ia-role="confirm-detail"]')?.textContent.trim() || '',
+          detail: shadow.querySelector('[data-insta-toolbox-role="confirm-detail"]')?.textContent.trim() || '',
           dialog: rect(confirmationDialog),
-          facts: [...shadow.querySelectorAll('[data-ia-role="confirm-facts"] dt')]
+          facts: [...shadow.querySelectorAll('[data-insta-toolbox-role="confirm-facts"] dt')]
             .map((term) => [term.textContent.trim(), term.nextElementSibling?.textContent.trim() || '']),
           horizontalOverflow: confirmationDialog
             ? confirmationDialog.scrollWidth - confirmationDialog.clientWidth
             : 0,
-          message: shadow.querySelector('[data-ia-role="confirm-message"]')?.textContent.trim() || '',
+          message: shadow.querySelector('[data-insta-toolbox-role="confirm-message"]')?.textContent.trim() || '',
           open: Boolean(confirmationDialog?.open),
-          title: shadow.querySelector('[data-ia-role="confirm-title"]')?.textContent.trim() || '',
+          title: shadow.querySelector('[data-insta-toolbox-role="confirm-title"]')?.textContent.trim() || '',
         },
         destructiveActivity: {
           dmClicks: Number(globalThis.fixtureDmClickCount || 0),
           reservations: Array.isArray(globalThis.fixtureBridgeRequests)
-            ? globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-aio-reserve-thread-unsend').length
+            ? globalThis.fixtureBridgeRequests.filter((request) => request.kind === 'insta-toolbox-reserve-thread-unsend').length
             : 0,
-          runnerStatus: globalThis.InstaAioDmThreadUnsender?.snapshot?.().status || 'idle',
+          runnerStatus: globalThis.InstaToolboxDmThreadUnsender?.snapshot?.().status || 'idle',
           unsent: Number(globalThis.fixtureUnsentCount || 0),
         },
       } : {}),
       credit: {
-        href: shadow.querySelector('.ia-credit-link')?.getAttribute('href') || '',
-        rel: shadow.querySelector('.ia-credit-link')?.getAttribute('rel') || '',
-        target: shadow.querySelector('.ia-credit-link')?.getAttribute('target') || '',
-        text: shadow.querySelector('.ia-credit-link')?.textContent || '',
+        href: shadow.querySelector('.insta-toolbox-credit-link')?.getAttribute('href') || '',
+        rel: shadow.querySelector('.insta-toolbox-credit-link')?.getAttribute('rel') || '',
+        target: shadow.querySelector('.insta-toolbox-credit-link')?.getAttribute('target') || '',
+        text: shadow.querySelector('.insta-toolbox-credit-link')?.textContent || '',
       },
       documentWidth: document.documentElement.scrollWidth,
       dock: host.dataset.dock,
@@ -514,14 +514,14 @@ async function inspectScenario(webContents, scenario) {
       innerWidth,
       layout: host.dataset.layout,
       launcher: rect(launcher),
-      opacity: host.style.getPropertyValue('--ia-panel-alpha'),
+      opacity: host.style.getPropertyValue('--insta-toolbox-panel-alpha'),
       overflowing: [...panel.querySelectorAll('*')]
         .filter((element) => element.scrollWidth - element.clientWidth > 1)
         .slice(0, 10)
         .map((element) => ({
           className: element.className || null,
           overflow: element.scrollWidth - element.clientWidth,
-          role: element.dataset?.iaRole || null,
+          role: element.dataset?.instaToolboxRole || null,
           tagName: element.tagName,
         })),
       panel: rect(panel),
@@ -541,12 +541,12 @@ async function inspectScenario(webContents, scenario) {
         atomic: statusRegion?.getAttribute('aria-atomic') || '',
         live: statusRegion?.getAttribute('aria-live') || '',
       },
-      workspaceExtensionVersion: shadow.querySelector('[data-ia-role="bridge-facts"] div:nth-child(3) dd')?.textContent.trim() || '',
+      workspaceExtensionVersion: shadow.querySelector('[data-insta-toolbox-role="bridge-facts"] div:nth-child(3) dd')?.textContent.trim() || '',
       strip: rect(strip),
       target: targetRect,
       theme: host.dataset.theme,
       touchTargets,
-      viewTitle: shadow.querySelector('[data-ia-role="view-title"]')?.textContent || '',
+      viewTitle: shadow.querySelector('[data-insta-toolbox-role="view-title"]')?.textContent || '',
       width: host.dataset.width,
     };
   })()`, true);
@@ -812,20 +812,20 @@ async function captureScenario(browserWindow, baseUrl, scenario, expectedManifes
   await withTimeout(webContents.loadURL(scenarioUrl(baseUrl, scenario)), `${scenario.id}: fixture load`);
   await waitForValue(
     webContents,
-    `Boolean(document.querySelector('#insta-aio-sidecar-root')?.shadowRoot
-        && document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Review the exact target'))`,
+    `Boolean(document.querySelector('#insta-toolbox-sidecar-root')?.shadowRoot
+        && document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('[data-insta-toolbox-role="status-text"]')?.textContent.includes('Review the exact target'))`,
     `${scenario.id}: production overlay initialization`,
   );
   await applyAfterState(webContents, scenario);
   const presentationSelector = scenario.presentation === 'strip'
-    ? '[data-ia-role="collision-strip"]'
+    ? '[data-insta-toolbox-role="collision-strip"]'
     : scenario.presentation === 'launcher'
-      ? '.ia-launcher'
-      : '.ia-panel';
+      ? '.insta-toolbox-launcher'
+      : '.insta-toolbox-panel';
   await waitForValue(
     webContents,
     `(() => {
-      const element = document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector(${JSON.stringify(presentationSelector)});
+      const element = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector(${JSON.stringify(presentationSelector)});
       if (!element || element.hidden) return false;
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
@@ -884,10 +884,10 @@ async function performanceMetrics(webContents) {
   await new Promise((resolve) => setTimeout(resolve, 400));
   const collapsedTaskMs = ((await taskDuration()) - collapsedStart) * 1_000;
 
-  await webContents.executeJavaScript(`document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('.ia-launcher').click()`, true);
+  await webContents.executeJavaScript(`document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('.insta-toolbox-launcher').click()`, true);
   await waitForValue(
     webContents,
-    `!document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('.ia-panel').hidden`,
+    `!document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('.insta-toolbox-panel').hidden`,
     'performance open overlay',
   );
   await waitForPaint(webContents, 'performance open idle settle');
@@ -902,7 +902,7 @@ async function performanceMetrics(webContents) {
   })()`, true);
   await waitForValue(
     webContents,
-    `document.querySelector('#insta-aio-sidecar-root').shadowRoot.querySelector('[data-ia-role="now-content"]')?.textContent.includes('@other_creator')`,
+    `document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('[data-insta-toolbox-role="now-content"]')?.textContent.includes('@other_creator')`,
     'performance route transition',
   );
   const routeTransitionMs = await webContents.executeJavaScript(`performance.now() - ${routeStart}`, true);
@@ -917,13 +917,13 @@ async function performanceMetrics(webContents) {
     }));
     const started = performance.now();
     await new Promise((resolve) => chrome.storage.local.set({
-      instaAioOverlayManualQueueV1: { importedAt: new Date().toISOString(), queue },
+      instaToolboxOverlayManualQueueV1: { importedAt: new Date().toISOString(), queue },
     }, resolve));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const shadow = document.querySelector('#insta-aio-sidecar-root').shadowRoot;
+    const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
     return {
       durationMs: performance.now() - started,
-      renderedItems: shadow.querySelectorAll('[data-ia-role="queue-current"] h2').length,
+      renderedItems: shadow.querySelectorAll('[data-insta-toolbox-role="queue-current"] h2').length,
       totalOverlayNodes: shadow.querySelectorAll('*').length,
     };
   })()`, true);
@@ -946,7 +946,7 @@ function fidelityLedger(results, performance) {
     capturedAt: new Date().toISOString(),
     platform: process.platform,
     source: {
-      current: `docs/evidence/overlay-ui-2026-08-02/after/${process.platform}`,
+      current: `docs/evidence/overlay-ui-3.0.0-2026-08-24/after/${process.platform}`,
     },
     comparison: [
     { area: 'shell', before: 'Default-open, visually dominant overlay panel', after: `Fresh collapsed launcher; standard open share ${(standard.metrics.panelAreaShare * 100).toFixed(2)}%`, status: 'MEASURED' },
@@ -971,7 +971,7 @@ function fidelityLedger(results, performance) {
 
 async function run() {
   const server = fixtureServer();
-  const isolatedSession = session.fromPartition(`insta-aio-overlay-qa-${process.pid}`);
+  const isolatedSession = session.fromPartition(`insta-toolbox-overlay-qa-${process.pid}`);
   isolatedSession.setPermissionCheckHandler(() => false);
   isolatedSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   const problems = [];
@@ -989,7 +989,7 @@ async function run() {
       offscreen: true,
       sandbox: true,
       webSecurity: true,
-      partition: `insta-aio-overlay-qa-${process.pid}`,
+      partition: `insta-toolbox-overlay-qa-${process.pid}`,
     },
   });
   browserWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -1051,7 +1051,7 @@ async function run() {
     );
     await waitForValue(
       browserWindow.webContents,
-      `document.querySelector('#insta-aio-sidecar-root')?.shadowRoot?.querySelector('[data-ia-role="status-text"]')?.textContent.includes('Review the exact target')`,
+      `document.querySelector('#insta-toolbox-sidecar-root')?.shadowRoot?.querySelector('[data-insta-toolbox-role="status-text"]')?.textContent.includes('Review the exact target')`,
       'performance overlay initialization',
     );
     const performance = await performanceMetrics(browserWindow.webContents);

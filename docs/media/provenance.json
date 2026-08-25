@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "productVersion": "3.0.0",
+  "capturedAt": "2026-08-24T00:00:00.000Z",
+  "sourceCommit": "54ec472f5e19e7f4d6a0691f3dec368d696df8a8",
+  "assets": [
+    {
+      "file": "insta-toolbox-preview.png",
+      "scenario": "PWA overview",
+      "sha256": "344ad642b91e02ea4f860bdf559c943d11c3e206d9faec5fd6d789269182df9e"
+    },
+    {
+      "file": "mutual-checker.png",
+      "scenario": "Mutual Checker results",
+      "sha256": "097144834d26d1ceef1d28124f5d4cd683034a50a52c0b820923016747c2f00e"
+    },
+    {
+      "file": "dm-unsend.png",
+      "scenario": "DM Unsend review",
+      "sha256": "369f05dc03de409e4ba6383ddcfb32feed31fa7a79f1b42b5f44ba4abc310d8d"
+    },
+    {
+      "file": "overlay-narrow.png",
+      "scenario": "Narrow overlay",
+      "sha256": "eb79b9d81d512a7b412423da614a15420d2937e75cd7925e3ba78e6533709e81"
+    },
+    {
+      "file": "overlay-zoom-200.png",
+      "scenario": "Overlay at 200% zoom",
+      "sha256": "45016c9f770f71b3d8fa74ade7ef4f4343f7be3a4b1f07817c770fc9553bc150"
+    }
+  ]
+}

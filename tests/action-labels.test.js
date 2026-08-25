@@ -11,7 +11,7 @@ const source = await readFile(
 function loadLabels() {
   const context = vm.createContext({});
   vm.runInContext(source, context);
-  return context.__instaAioActionLabels;
+  return context.__instaToolboxActionLabels;
 }
 
 test('reviewed action labels normalize exact Unicode without broad text guessing', () => {

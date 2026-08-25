@@ -84,7 +84,7 @@ export function accountArmMatchesIntent(arm, intent) {
 
 export function validateControlledAccountJob(job, now = Date.now()) {
   if (
-    job?.kind !== 'insta-aio-reviewed-action-job'
+    job?.kind !== 'insta-toolbox-reviewed-action-job'
     || !job.id
     || job.mode !== 'live'
     || job.status !== 'ready'

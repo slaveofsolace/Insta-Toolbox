@@ -1,14 +1,14 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   if (!shared || modules.captureView) return;
   let relationshipController = null;
   const formatCount = (value) => Number(value || 0).toLocaleString('en-US');
 
   function setState(runtime, title, detail, tone = 'neutral') {
-    const state = runtime.query('[data-ia-role="capture-state"]');
+    const state = runtime.query('[data-insta-toolbox-role="capture-state"]');
     if (state) state.dataset.tone = tone;
     runtime.setText('capture-state-title', title);
     runtime.setText('capture-state-detail', detail);
@@ -18,38 +18,34 @@
     const {
       document, query, setText,
     } = runtime;
-    const slot = query('[data-ia-role="checker-browser-slot"]');
+    const slot = query('[data-insta-toolbox-role="checker-browser-slot"]');
     if (!slot) return;
     if (!ready) {
       slot.replaceChildren();
       return;
     }
-    if (!query('[data-ia-role="checker-browser"]')) {
-      const template = query('template[data-ia-template="checker-browser"]');
+    if (!query('[data-insta-toolbox-role="checker-browser"]')) {
+      const template = query('template[data-insta-toolbox-template="checker-browser"]');
       if (template) slot.append(template.content.cloneNode(true));
     }
-    const list = query('[data-ia-role="checker-filtered-list"]');
+    const list = query('[data-insta-toolbox-role="checker-filtered-list"]');
     if (!list) return;
     list.replaceChildren();
 
-    const categoryControl = query('[data-ia-role="checker-category"]');
-    const searchControl = query('[data-ia-role="checker-search"]');
+    const categoryControl = query('[data-insta-toolbox-role="checker-category"]');
+    const searchControl = query('[data-insta-toolbox-role="checker-search"]');
     const result = shared.filterComparisonResults(
       comparison,
       categoryControl?.value,
       searchControl?.value,
     );
-    const selectedLabel = categoryControl?.selectedOptions?.[0]?.textContent || 'accounts';
     const hasQuery = Boolean(String(searchControl?.value || '').trim());
     setText('checker-filter-count', String(result.total));
-    setText(
-      'checker-filter-detail',
-      hasQuery ? `matching ${selectedLabel.toLocaleLowerCase()}` : selectedLabel.toLocaleLowerCase(),
-    );
+    setText('checker-filter-detail', result.total === 1 ? 'account' : 'accounts');
 
     for (const account of result.accounts) {
       const row = document.createElement('li');
-      row.className = 'ia-list-item';
+      row.className = 'insta-toolbox-list-item';
       const title = document.createElement('strong');
       title.textContent = `@${account.username}`;
       const detail = document.createElement('small');
@@ -59,14 +55,14 @@
     }
     if (!result.total) {
       const empty = document.createElement('li');
-      empty.className = 'ia-empty';
+      empty.className = 'insta-toolbox-empty';
       empty.textContent = hasQuery
         ? 'No captured username matches this search.'
         : 'No accounts are in this comparison group.';
       list.append(empty);
     } else if (result.truncated) {
       const more = document.createElement('li');
-      more.className = 'ia-list-item';
+      more.className = 'insta-toolbox-list-item';
       more.textContent = `+ ${result.total - result.accounts.length} more; narrow the username search to see them.`;
       list.append(more);
     }
@@ -76,24 +72,24 @@
     const {
       document, downloads, inspector, model, query, setText,
     } = runtime;
-    const list = query('[data-ia-role="capture-list"]');
+    const list = query('[data-insta-toolbox-role="capture-list"]');
     if (!list) return;
     list.replaceChildren();
     const workspace = model.capture || shared.captureWorkspaceDefaults();
-    const usernameInput = query('[data-ia-role="checker-username"]');
+    const usernameInput = query('[data-insta-toolbox-role="checker-username"]');
     if (usernameInput && document.activeElement !== usernameInput && !usernameInput.value) {
       usernameInput.value = workspace.subjectUsername
         || runtime.inspector.detectAuthenticatedUsername?.()
         || '';
     }
-    const runButton = query('[data-ia-role="checker-run"]');
+    const runButton = query('[data-insta-toolbox-role="checker-run"]');
     if (runButton) {
       runButton.textContent = relationshipController
         ? 'Stop mutual check'
         : 'Check Followers + Following';
-      runButton.classList.toggle('ia-button--danger', Boolean(relationshipController));
+      runButton.classList.toggle('insta-toolbox-button--danger', Boolean(relationshipController));
     }
-    const listType = query('[data-ia-role="list-type"]')?.value === 'followers'
+    const listType = query('[data-insta-toolbox-role="list-type"]')?.value === 'followers'
       ? 'followers'
       : 'following';
     const accounts = workspace[listType] || [];
@@ -103,8 +99,8 @@
     const followingVerified = workspace.verified?.following === true;
     const selectedVerified = workspace.verified?.[listType] === true;
     const comparisonReady = followersVerified && followingVerified;
-    const reportDownload = query('[data-ia-role="comparison-report-download"]');
-    const jsonDownload = query('[data-ia-role="comparison-json-download"]');
+    const reportDownload = query('[data-insta-toolbox-role="comparison-report-download"]');
+    const jsonDownload = query('[data-insta-toolbox-role="comparison-json-download"]');
     if (comparisonReady
       && typeof inspector.followerComparisonReport === 'function'
       && typeof inspector.followerComparisonRecord === 'function') {
@@ -143,9 +139,9 @@
       ? `${formatCount(workspace.followers.length)} unique · ${!followersVerified ? 'rescan required' : followersComplete ? 'complete' : 'partial'}`
       : 'Open your Followers list next');
     setText('compare-step-detail', comparisonReady
-      ? `${formatCount(comparison.mutuals.length)} mutual · ${formatCount(comparison.notFollowingMeBack.length)} not following back`
+      ? `${formatCount(comparison.mutuals.length)} mutual · ${formatCount(comparison.notFollowingMeBack.length)} don't follow you back`
       : 'Scan both lists first');
-    const compareBadge = query('[data-ia-role="compare-step-badge"]');
+    const compareBadge = query('[data-insta-toolbox-role="compare-step-badge"]');
     if (compareBadge) {
       compareBadge.textContent = comparisonComplete ? 'complete' : comparisonReady ? 'partial' : 'waiting';
       compareBadge.dataset.tone = comparisonComplete ? 'good' : comparisonReady ? 'warning' : 'neutral';
@@ -163,7 +159,7 @@
       setState(
         runtime,
         comparisonComplete ? `Mutual comparison complete${workspace.subjectUsername ? ` for @${workspace.subjectUsername}` : ''}` : 'Partial mutual comparison ready',
-        `Followers ${formatCount(workspace.followers.length)} · Following ${formatCount(workspace.following.length)} · Not following you back ${formatCount(comparison.notFollowingMeBack.length)}.`,
+        `Followers ${formatCount(workspace.followers.length)} · Following ${formatCount(workspace.following.length)} · Don't follow you back ${formatCount(comparison.notFollowingMeBack.length)}.`,
         comparisonComplete ? 'good' : 'warning',
       );
     } else {
@@ -174,20 +170,20 @@
       );
     }
 
-    const checker = query('[data-ia-role="checker-result"]');
+    const checker = query('[data-insta-toolbox-role="checker-result"]');
     if (checker) {
       checker.replaceChildren();
       const heading = document.createElement('h2');
       heading.textContent = comparisonReady
-        ? authenticatedCheck ? 'Authenticated account comparison' : 'List-dialog comparison'
+        ? authenticatedCheck ? 'Account comparison' : 'Scanned-list comparison'
         : 'No comparison loaded';
       checker.append(heading);
       if (comparisonReady) {
         const facts = document.createElement('dl');
         for (const [label, value] of [
           ['Mutuals', comparison.mutuals.length],
-          ['Not following me back', comparison.notFollowingMeBack.length],
-          ["I don't follow back", comparison.iDoNotFollowBack.length],
+          ["Don't follow you back", comparison.notFollowingMeBack.length],
+          ["You don't follow back", comparison.iDoNotFollowBack.length],
         ]) {
           const term = document.createElement('dt');
           term.textContent = label;
@@ -198,7 +194,7 @@
         checker.append(facts);
       } else {
         const detail = document.createElement('p');
-        detail.className = 'ia-note';
+        detail.className = 'insta-toolbox-note';
         detail.textContent = 'Enter a username to compare Followers and Following.';
         checker.append(detail);
       }
@@ -220,7 +216,7 @@
 
     for (const account of accounts.slice(0, 12)) {
       const row = document.createElement('li');
-      row.className = 'ia-list-item';
+      row.className = 'insta-toolbox-list-item';
       const title = document.createElement('strong');
       title.textContent = `@${account.username}`;
       const detail = document.createElement('small');
@@ -230,30 +226,30 @@
     }
     if (accounts.length > 12) {
       const more = document.createElement('li');
-      more.className = 'ia-list-item';
+      more.className = 'insta-toolbox-list-item';
       more.textContent = `+ ${accounts.length - 12} more in the download`;
       list.append(more);
     }
     if (accounts.length) {
-      downloads.update('capture', query('[data-ia-role="capture-download"]'), {
-        filename: `insta-aio-visible-${listType}-${Date.now()}.json`,
+      downloads.update('capture', query('[data-insta-toolbox-role="capture-download"]'), {
+        filename: `insta-toolbox-visible-${listType}-${Date.now()}.json`,
         payload: shared.captureRecord(workspace, listType),
       });
     } else {
       const empty = document.createElement('li');
-      empty.className = 'ia-empty';
+      empty.className = 'insta-toolbox-empty';
       empty.textContent = 'Instagram is not auto-scrolled and hidden accounts are not inferred.';
       list.append(empty);
-      downloads.clear('capture', query('[data-ia-role="capture-download"]'));
+      downloads.clear('capture', query('[data-insta-toolbox-role="capture-download"]'));
     }
   }
 
   async function captureVisible(runtime) {
     const { inspector, model, query, status } = runtime;
-    const listType = query('[data-ia-role="list-type"]')?.value === 'followers'
+    const listType = query('[data-insta-toolbox-role="list-type"]')?.value === 'followers'
       ? 'followers'
       : 'following';
-    const source = query('[data-ia-role="list-type"]');
+    const source = query('[data-insta-toolbox-role="list-type"]');
     if (source) source.value = listType;
     const visible = inspector.captureVisibleAccounts(listType);
     if (!visible.length) {
@@ -345,10 +341,10 @@
       ? 'followers'
       : requestedListType === 'following'
         ? 'following'
-        : query('[data-ia-role="list-type"]')?.value === 'followers'
+        : query('[data-insta-toolbox-role="list-type"]')?.value === 'followers'
           ? 'followers'
           : 'following';
-    const source = query('[data-ia-role="list-type"]');
+    const source = query('[data-insta-toolbox-role="list-type"]');
     if (source) source.value = listType;
     if (typeof inspector.collectAccountList !== 'function') {
       status('This page is running an older content script. Reload Instagram and try again.', 'error');
@@ -386,7 +382,7 @@
       status('This page is running an older checker engine. Reload Instagram and try again.', 'error');
       return;
     }
-    const input = query('[data-ia-role="checker-username"]');
+    const input = query('[data-insta-toolbox-role="checker-username"]');
     const username = inspector.normalizeUsername(input?.value)
       || inspector.detectAuthenticatedUsername?.()
       || '';

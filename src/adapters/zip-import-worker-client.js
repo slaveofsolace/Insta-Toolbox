@@ -42,7 +42,7 @@ export async function importZipArchive(input, {
 
   const createWorker = workerFactory || (() => new Worker(
     new URL('../workers/zip-import-worker.js', import.meta.url),
-    { type: 'module', name: 'insta-aio-zip-import' },
+    { type: 'module', name: 'insta-toolbox-zip-import' },
   ));
   const worker = createWorker();
 

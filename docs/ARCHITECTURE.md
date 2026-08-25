@@ -108,8 +108,8 @@ The sidecar owns only browser-local field state:
 
 - A bounded relationship-check workspace that atomically stores both lists,
   subject username, completeness, and authenticated-web or list-dialog provenance
-- Backward-compatible `insta-aio-visible-list` exports for individual raw lists
-- An imported `insta-aio-manual-queue` and extension-local completion/skip updates
+- `insta-toolbox-visible-list` exports for individual raw lists
+- An imported `insta-toolbox-manual-queue` and extension-local completion/skip updates
 - Read-only visible-message evidence plus conditional stable-identity DM dry runs
 - Sanitized pairing and recent dry-run summaries returned by the background worker
 - Sanitized pending one-item account and exact-message intents; transient

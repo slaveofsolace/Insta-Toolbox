@@ -64,7 +64,7 @@ export function migrateFollowerCheckerResult(
 
   const relationshipReport = {
     schemaVersion: 1,
-    kind: 'insta-aio-partial-relationship-report',
+    kind: 'insta-toolbox-partial-relationship-report',
     source: 'abir-taheer-follower-checker',
     sourceFile: sourceName,
     sourceUsername: sourceUsername || null,

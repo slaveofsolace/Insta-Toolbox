@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   if (!shared || modules.queueView) return;
   const botDrafts = new WeakMap();
@@ -11,17 +11,17 @@
       document, downloads, model, query,
     } = runtime;
     const current = shared.currentQueueItem(model);
-    const container = query('[data-ia-role="queue-current"]');
-    const controls = query('[data-ia-role="queue-controls"]');
+    const container = query('[data-insta-toolbox-role="queue-current"]');
+    const controls = query('[data-insta-toolbox-role="queue-controls"]');
     if (!container || !controls) return;
     container.replaceChildren();
-    container.className = 'ia-card ia-card-pad';
+    container.className = 'insta-toolbox-card insta-toolbox-card-pad';
 
     if (!current) {
       const title = document.createElement('strong');
       title.textContent = model.manualQueue.queue.length ? 'Queue reviewed' : 'No queue loaded';
       const detail = document.createElement('p');
-      detail.className = 'ia-note';
+      detail.className = 'insta-toolbox-note';
       detail.textContent = model.manualQueue.queue.length
         ? 'No pending, ready, paused, or failed items remain.'
         : 'Export a manual queue from the PWA, then import it here.';
@@ -29,31 +29,31 @@
       controls.hidden = true;
     } else {
       const meta = document.createElement('p');
-      meta.className = 'ia-next-label';
+      meta.className = 'insta-toolbox-next-label';
       const remaining = shared.queueRemaining(model);
       meta.textContent = `${remaining} actionable item${remaining === 1 ? '' : 's'} remaining`;
       const handle = document.createElement('h2');
       handle.textContent = `@${current.account.username}`;
       const detail = document.createElement('p');
-      detail.className = 'ia-note';
+      detail.className = 'insta-toolbox-note';
       detail.textContent = `${current.action} · ${current.status} · ${current.reason}`;
       container.append(meta, handle, detail);
-      const open = query('[data-ia-role="queue-open"]');
+      const open = query('[data-insta-toolbox-role="queue-open"]');
       open.href = `https://www.instagram.com/${encodeURIComponent(current.account.username)}/`;
       open.target = '_self';
       controls.hidden = false;
     }
 
-    const anchor = query('[data-ia-role="queue-download"]');
+    const anchor = query('[data-insta-toolbox-role="queue-download"]');
     if (!model.manualQueue.queue.length) {
       downloads.clear('queue', anchor);
       return;
     }
     downloads.update('queue', anchor, {
-      filename: `insta-aio-companion-state-${Date.now()}.json`,
+      filename: `insta-toolbox-companion-state-${Date.now()}.json`,
       payload: {
         schemaVersion: 1,
-        kind: 'insta-aio-companion-state',
+        kind: 'insta-toolbox-companion-state',
         exportedAt: new Date().toISOString(),
         ...model.manualQueue,
       },
@@ -62,23 +62,23 @@
 
   function renderRuns(runtime) {
     const { document, model, query } = runtime;
-    const list = query('[data-ia-role="run-list"]');
+    const list = query('[data-insta-toolbox-role="run-list"]');
     if (!list) return;
     list.replaceChildren();
     const runs = (model.bridge.recentRuns || []).slice(0, 12);
     if (!runs.length) {
       const empty = document.createElement('li');
-      empty.className = 'ia-empty';
+      empty.className = 'insta-toolbox-empty';
       empty.textContent = 'No signed dry run or controlled live result has reached this extension yet.';
       list.append(empty);
       return;
     }
     for (const run of runs) {
       const row = document.createElement('li');
-      row.className = 'ia-list-item ia-list-item--split';
+      row.className = 'insta-toolbox-list-item insta-toolbox-list-item--split';
       const copy = document.createElement('div');
       const title = document.createElement('strong');
-      const isDm = run.kind === 'insta-aio-reviewed-dm-job';
+      const isDm = run.kind === 'insta-toolbox-reviewed-dm-job';
       title.textContent = isDm
         ? 'DM identity check'
         : run.mode === 'live'
@@ -94,7 +94,7 @@
       detail.textContent = `${target} · ${shared.shortDate(run.receivedAt)}${run.stopReason ? ` · ${run.stopReason}` : ''}`;
       copy.append(title, detail);
       const badge = document.createElement('span');
-      badge.className = 'ia-badge';
+      badge.className = 'insta-toolbox-badge';
       const succeeded = run.status === 'dry-run-complete' || run.status === 'completed';
       badge.dataset.tone = succeeded ? 'good' : 'danger';
       badge.textContent = run.status === 'completed'
@@ -117,7 +117,7 @@
   async function importQueue(runtime, file) {
     if (file.size > 5_000_000) throw new Error('Queue imports are limited to five megabytes.');
     const parsed = JSON.parse(await file.text());
-    if (parsed?.kind !== 'insta-aio-manual-queue' || !Array.isArray(parsed.queue)) {
+    if (parsed?.kind !== 'insta-toolbox-manual-queue' || !Array.isArray(parsed.queue)) {
       throw new Error('Select an Insta Toolbox queue export.');
     }
     const next = shared.normalizeManualQueue({
@@ -154,23 +154,23 @@
   function compatibleSources(action) {
     return action === 'follow'
       ? [
-        ['current-profile', 'Current exact profile'],
-        ['i-do-not-follow-back', 'People who follow you that you do not follow'],
+        ['current-profile', 'Current profile'],
+        ['i-do-not-follow-back', 'Followers you do not follow'],
         ['scanned-followers', 'Scanned Followers'],
-        ['queue', 'Compatible queue items'],
+        ['queue', 'Queue items'],
       ]
       : [
-        ['current-profile', 'Current exact profile'],
-        ['not-following-me-back', 'People not following you back'],
+        ['current-profile', 'Current profile'],
+        ['not-following-me-back', "People who don't follow you back"],
         ['scanned-following', 'Scanned Following'],
-        ['queue', 'Compatible queue items'],
+        ['queue', 'Queue items'],
       ];
   }
 
   function syncBotComposer(runtime) {
     const { document, query } = runtime;
-    const action = query('[data-ia-role="bot-action"]')?.value === 'unfollow' ? 'unfollow' : 'follow';
-    const sourceControl = query('[data-ia-role="bot-source"]');
+    const action = query('[data-insta-toolbox-role="bot-action"]')?.value === 'unfollow' ? 'unfollow' : 'follow';
+    const sourceControl = query('[data-insta-toolbox-role="bot-source"]');
     if (!sourceControl) return;
     const previous = sourceControl.value;
     const sources = compatibleSources(action);
@@ -183,9 +183,9 @@
     }
     sourceControl.value = sources.some(([value]) => value === previous) ? previous : sources[0][0];
     const currentProfile = sourceControl.value === 'current-profile';
-    const countField = query('[data-ia-role="bot-count-field"]');
+    const countField = query('[data-insta-toolbox-role="bot-count-field"]');
     if (countField) countField.hidden = currentProfile;
-    const count = query('[data-ia-role="bot-count"]');
+    const count = query('[data-insta-toolbox-role="bot-count"]');
     if (currentProfile && count) count.value = '1';
   }
 
@@ -255,11 +255,11 @@
 
   function botPlan(runtime) {
     const { query } = runtime;
-    const source = query('[data-ia-role="bot-source"]')?.value || 'current-profile';
-    const action = query('[data-ia-role="bot-action"]')?.value === 'follow' ? 'follow' : 'unfollow';
+    const source = query('[data-insta-toolbox-role="bot-source"]')?.value || 'current-profile';
+    const action = query('[data-insta-toolbox-role="bot-action"]')?.value === 'follow' ? 'follow' : 'unfollow';
     const requested = source === 'current-profile'
       ? 1
-      : Math.max(1, Math.min(250, Number(query('[data-ia-role="bot-count"]')?.value) || 20));
+      : Math.max(1, Math.min(250, Number(query('[data-insta-toolbox-role="bot-count"]')?.value) || 20));
     const targetSet = botTargets(runtime, source, action);
     const pool = targetSet.pool;
     const unique = [...new Set(pool)];
@@ -278,10 +278,10 @@
 
   function renderBotDraft(runtime, draft) {
     const { document, query, setText } = runtime;
-    const review = query('[data-ia-role="bot-review"]');
-    const reviewButton = query('[data-ia-action="bot-review"]');
-    const startButton = query('[data-ia-action="bot-start"]');
-    const badge = query('[data-ia-role="bot-badge"]');
+    const review = query('[data-insta-toolbox-role="bot-review"]');
+    const reviewButton = query('[data-insta-toolbox-action="bot-review"]');
+    const startButton = query('[data-insta-toolbox-action="bot-start"]');
+    const badge = query('[data-insta-toolbox-role="bot-badge"]');
     if (review) review.hidden = !draft;
     if (reviewButton) reviewButton.hidden = Boolean(draft);
     if (startButton) {
@@ -299,7 +299,7 @@
       const plan = botPlan(runtime);
       const label = plan.action === 'follow' ? 'Follow' : 'Unfollow';
       if (reviewButton) reviewButton.textContent = `Review ${plan.requested} ${label} target${plan.requested === 1 ? '' : 's'}`;
-      setText('bot-detail', 'Each target is opened, verified, and acted on one at a time with randomised pacing.');
+      setText('bot-detail', 'One profile at a time. Stops on blocks, rate limits, or unexpected pages.');
       return;
     }
     const preview = draft.selected.slice(0, 3).map((username) => `@${username}`).join(', ');
@@ -312,18 +312,18 @@
       'bot-review-detail',
       `Duplicates removed: ${draft.removed}. Outside this run: ${draft.omitted}. Skipped: ${draft.skipped.reduce((total, entry) => total + entry.count, 0)}. Every profile is rechecked before action.`,
     );
-    const list = query('[data-ia-role="bot-review-list"]');
+    const list = query('[data-insta-toolbox-role="bot-review-list"]');
     if (!list) return;
     list.replaceChildren();
     for (const username of draft.selected) {
       const row = document.createElement('li');
-      row.className = 'ia-list-item';
+      row.className = 'insta-toolbox-list-item';
       row.textContent = `@${username}`;
       list.append(row);
     }
     for (const entry of draft.skipped) {
       const row = document.createElement('li');
-      row.className = 'ia-list-item';
+      row.className = 'insta-toolbox-list-item';
       row.textContent = `${entry.count} skipped — ${entry.reason}`;
       list.append(row);
     }
@@ -352,8 +352,8 @@
     }
     botDrafts.set(runtime.model, draft);
     renderBotDraft(runtime, draft);
-    const start = runtime.query('[data-ia-action="bot-start"]');
-    const scroll = start?.closest('.ia-scroll');
+    const start = runtime.query('[data-insta-toolbox-action="bot-start"]');
+    const scroll = start?.closest('.insta-toolbox-scroll');
     const startRect = start?.getBoundingClientRect?.();
     const scrollRect = scroll?.getBoundingClientRect?.();
     if (startRect && scrollRect && startRect.bottom > scrollRect.bottom - 12) {

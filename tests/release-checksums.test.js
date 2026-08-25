@@ -17,6 +17,7 @@ import {
   verifyWebReleaseArchive,
 } from '../scripts/generate-release-checksums.mjs';
 import { createZip } from './support/zip-fixture.js';
+import { expectedExtensionArchiveEntries } from '../scripts/extension-package-files.mjs';
 import { webRuntimeFiles } from '../scripts/web-package-files.mjs';
 
 const packageMetadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
@@ -33,16 +34,20 @@ test('package and download docs expose the current release artifacts', async () 
     assert.match(document, new RegExp(`Insta-Toolbox-Setup-${escapedVersion}\\.exe`));
     assert.match(document, new RegExp(`Insta-Toolbox-${escapedVersion}-universal\\.dmg`));
     assert.match(document, new RegExp(`insta-toolbox-web-${escapedVersion}\\.zip`));
-    assert.match(document, new RegExp(`insta-aio-companion-${escapedVersion}\\.zip`));
+    assert.match(document, new RegExp(`Insta-Toolbox-Extension-${escapedVersion}\\.zip`));
   }
 });
 
-function extensionArchive({ includeNotices = true } = {}) {
-  const entries = [
-    { path: 'LICENSE', content: 'MIT License\n\nPermission is hereby granted.\n' },
-    { path: 'manifest.json', content: JSON.stringify({ version }) },
-  ];
-  if (includeNotices) entries.push({ path: 'THIRD_PARTY_NOTICES.md', content: '# Third-party notices\n' });
+function extensionArchive({ extraEntry = null, includeNotices = true } = {}) {
+  const contents = new Map([
+    ['LICENSE', 'MIT License\n\nPermission is hereby granted.\n'],
+    ['manifest.json', JSON.stringify({ version })],
+    ['THIRD_PARTY_NOTICES.md', '# Third-party notices\n'],
+  ]);
+  const entries = expectedExtensionArchiveEntries
+    .filter((relative) => includeNotices || relative !== 'THIRD_PARTY_NOTICES.md')
+    .map((relative) => ({ path: relative, content: contents.get(relative) || `fixture:${relative}\n` }));
+  if (extraEntry) entries.push({ path: extraEntry, content: 'unexpected\n' });
   return createZip(entries, { compression: 'store' });
 }
 
@@ -72,10 +77,10 @@ async function fixtureRoot(t) {
   await mkdir(path.join(root, 'dist', 'desktop'), { recursive: true });
   await writeFile(path.join(root, 'package.json'), `${JSON.stringify({ version })}\n`);
   await writeFile(
-    path.join(root, 'userscripts', 'insta-aio-companion.user.js'),
+    path.join(root, 'userscripts', 'insta-toolbox.user.js'),
     `// ==UserScript==\n// @version      ${version}\n// ==/UserScript==\n`,
   );
-  await writeFile(path.join(root, 'dist', `insta-aio-companion-${version}.zip`), extensionArchive());
+  await writeFile(path.join(root, 'dist', `Insta-Toolbox-Extension-${version}.zip`), extensionArchive());
   await writeFile(path.join(root, 'dist', `insta-toolbox-web-${version}.zip`), webArchive());
   return root;
 }
@@ -88,7 +93,6 @@ test('writes deterministic sorted SHA256SUMS entries without private paths', asy
   const root = await fixtureRoot(t);
   const desktopArtifacts = new Map([
     [`Insta-Toolbox-Setup-${version}.exe`, 'windows-installer'],
-    [`Insta-Toolbox-Setup-${version}.exe.blockmap`, 'windows-blockmap'],
     [`Insta-Toolbox-${version}-universal.dmg`, 'mac-dmg'],
     [`Insta-Toolbox-${version}-universal.zip`, 'mac-zip'],
   ]);
@@ -102,11 +106,10 @@ test('writes deterministic sorted SHA256SUMS entries without private paths', asy
   const expectedNames = [
     `Insta-Toolbox-${version}-universal.dmg`,
     `Insta-Toolbox-${version}-universal.zip`,
+    `Insta-Toolbox-Extension-${version}.zip`,
     `Insta-Toolbox-Setup-${version}.exe`,
-    `Insta-Toolbox-Setup-${version}.exe.blockmap`,
-    `insta-aio-companion-${version}.zip`,
-    'insta-aio-companion.user.js',
     `insta-toolbox-web-${version}.zip`,
+    'insta-toolbox.user.js',
   ];
   assert.deepEqual(first.artifacts.map(({ name }) => name), expectedNames);
   assert.equal(second.contents, first.contents);
@@ -116,6 +119,15 @@ test('writes deterministic sorted SHA256SUMS entries without private paths', asy
   for (const [name, content] of desktopArtifacts) {
     assert.match(first.contents, new RegExp(`^${digest(content)}  ${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
   }
+});
+
+test('rejects updater blockmaps because the desktop app has no updater', async (t) => {
+  const root = await fixtureRoot(t);
+  await writeFile(path.join(root, 'dist', 'desktop', `Insta-Toolbox-Setup-${version}.exe.blockmap`), 'unused');
+  await assert.rejects(
+    generateReleaseChecksums({ repositoryRoot: root }),
+    /must not include updater blockmaps/,
+  );
 });
 
 test('rejects stale desktop artifacts instead of silently mixing release versions', async (t) => {
@@ -129,11 +141,7 @@ test('rejects stale desktop artifacts instead of silently mixing release version
 
 test('verifies extension legal files, manifest version, and stored-entry CRCs', () => {
   const valid = extensionArchive();
-  assert.deepEqual(verifyExtensionReleaseArchive(valid, version), [
-    'LICENSE',
-    'THIRD_PARTY_NOTICES.md',
-    'manifest.json',
-  ]);
+  assert.deepEqual(verifyExtensionReleaseArchive(valid, version), expectedExtensionArchiveEntries);
   assert.throws(
     () => verifyExtensionReleaseArchive(extensionArchive({ includeNotices: false }), version),
     /missing THIRD_PARTY_NOTICES\.md/,
@@ -146,6 +154,11 @@ test('verifies extension legal files, manifest version, and stored-entry CRCs', 
   assert.throws(
     () => verifyExtensionReleaseArchive(corrupted, version),
     /failed its CRC check: LICENSE/,
+  );
+
+  assert.throws(
+    () => verifyExtensionReleaseArchive(extensionArchive({ extraEntry: 'debug-notes.txt' }), version),
+    /unexpected entry: debug-notes\.txt/,
   );
 });
 

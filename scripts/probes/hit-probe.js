@@ -1,5 +1,5 @@
 (() => {
-  const shadow = document.querySelector('#insta-aio-userscript-root').shadowRoot;
+  const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
   const vis = (el) => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);

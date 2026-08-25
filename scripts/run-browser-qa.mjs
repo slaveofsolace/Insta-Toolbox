@@ -33,7 +33,7 @@ try {
     cwd: repositoryRoot,
     env: {
       ...process.env,
-      INSTA_AIO_BROWSER_QA_USER_DATA: userDataRoot,
+      INSTA_TOOLBOX_BROWSER_QA_USER_DATA: userDataRoot,
     },
     stdio: 'inherit',
     windowsHide: true,

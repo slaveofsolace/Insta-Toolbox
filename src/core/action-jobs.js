@@ -110,7 +110,7 @@ export function createReviewedActionJob(queue, {
   const createdIso = new Date(createdAt).toISOString();
   return {
     schemaVersion: 1,
-    kind: 'insta-aio-reviewed-action-job',
+    kind: 'insta-toolbox-reviewed-action-job',
     id: jobId(createdAt, digest),
     createdAt: createdIso,
     updatedAt: createdIso,
@@ -134,7 +134,7 @@ export function confirmReviewedActionJob(job, {
   settings = {},
   confirmedAt = Date.now(),
 } = {}) {
-  if (job?.kind !== 'insta-aio-reviewed-action-job') {
+  if (job?.kind !== 'insta-toolbox-reviewed-action-job') {
     throw new ActionJobError('INVALID_JOB', 'Select a reviewed action job.');
   }
   if (!['dry-run', 'live'].includes(mode)) {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(
-  new URL('../userscripts/insta-aio-companion.user.js', import.meta.url),
+  new URL('../userscripts/insta-toolbox.user.js', import.meta.url),
   'utf8',
 );
 const shell = await readFile(
@@ -20,12 +20,12 @@ const confirmation = await readFile(
 );
 
 test('the userscript carries the metadata Tampermonkey needs to install and auto-update from GitHub', () => {
-  const rawUrl = 'https://raw.githubusercontent.com/slaveofsolace/Insta-AIO-Tool/main/userscripts/insta-aio-companion.user.js';
+  const stableUrl = 'https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js';
   assert.match(source, /^\/\/ ==UserScript==/);
-  assert.ok(source.includes(`// @downloadURL  ${rawUrl}`), 'a raw @downloadURL drives one-click install');
-  assert.ok(source.includes(`// @updateURL    ${rawUrl}`), 'a raw @updateURL drives auto-update');
-  assert.match(source, /@homepageURL\s+https:\/\/github\.com\/slaveofsolace\/Insta-AIO-Tool/);
-  assert.match(source, /@supportURL\s+https:\/\/github\.com\/slaveofsolace\/Insta-AIO-Tool\/issues/);
+  assert.ok(source.includes(`// @downloadURL  ${stableUrl}`), 'the release asset drives one-click install');
+  assert.ok(source.includes(`// @updateURL    ${stableUrl}`), 'the release asset drives auto-update');
+  assert.match(source, /@homepageURL\s+https:\/\/github\.com\/slaveofsolace\/Insta-Toolbox/);
+  assert.match(source, /@supportURL\s+https:\/\/github\.com\/slaveofsolace\/Insta-Toolbox\/issues/);
   assert.match(source, /@license\s+MIT/);
   assert.doesNotMatch(source, /raw\.githubusercontent\.com\/[^\s]*\/(?!main\/)(?:refs\/)?heads/);
   const metadataBlock = source.slice(0, source.indexOf('==/UserScript=='));
@@ -44,13 +44,13 @@ test('the bundle ships the extension engine itself rather than a second copy of 
   assert.match(source, /pnpm run build:userscript/);
   // The shell must not reimplement the live paths.
   assert.doesNotMatch(shell, /function performReviewedDmUnsend|function performReviewedProfileAction/);
-  assert.match(shell, /const engine = globalThis\.InstaAioInstagramInspector;/);
+  assert.match(shell, /const engine = globalThis\.InstaToolboxInstagramInspector;/);
 });
 
 test('live Follow, Unfollow, and Unsend are available and go through the engine', () => {
   assert.match(shell, /engine\.performReviewedProfileAction\(/);
   assert.doesNotMatch(shell, /engine\.performReviewedDmUnsend\(/);
-  assert.match(source, /InstaAioDmThreadUnsender/);
+  assert.match(source, /InstaToolboxDmThreadUnsender/);
   assert.match(source, /await dmRunner\.start\(\{/);
   assert.match(shell, /engine\.collectAccountList\(/);
   assert.match(shell, /dmRunner\.inspectAll\(\)/);
@@ -69,7 +69,7 @@ test('live Follow, Unfollow, and Unsend are available and go through the engine'
 });
 
 test('the userscript can review the current exact profile as a one-item run', () => {
-  assert.match(source, /<option value="current-profile">Current exact profile<\/option>/);
+  assert.match(source, /<option value="current-profile">Current profile<\/option>/);
   assert.match(shell, /const source = query\('\[data-role="bot-source"\]'\)\?\.value \|\| 'current-profile'/);
   assert.match(shell, /const count = source === 'current-profile' \? 1 : requestedCount/);
   assert.match(shell, /engine\.normalizeUsername\?\.\(location\.pathname\)/);
@@ -82,7 +82,7 @@ test('each mutation uses one exact transient capability without a global unlock'
   assert.doesNotMatch(source, /data-role="live-actions"|live actions locked/);
   assert.match(shell, /RUN_CAPABILITY_MS = 20 \* 60 \* 1_000/);
   assert.match(shell, /DM_PLAN_CAPABILITY_MS = 15 \* 60 \* 1_000/);
-  assert.doesNotMatch(shell, /ENABLE LIVE ACTIONS|LIVE_AUTHORIZATION_PHRASE|setLiveActionsUnlocked|InstaAioUserscriptLiveAuthority/);
+  assert.doesNotMatch(shell, /ENABLE LIVE ACTIONS|LIVE_AUTHORIZATION_PHRASE|setLiveActionsUnlocked|InstaToolboxUserscriptLiveAuthority/);
   assert.match(shell, /function accountCapabilityDigest\(action, usernames\)/);
   assert.match(shell, /capabilityExpiresAt: Date\.now\(\) \+ RUN_CAPABILITY_MS/);
   assert.match(shell, /approvedTargets: \[\.\.\.queue\]/);
@@ -235,12 +235,17 @@ test('the toolbox still yields when the extension panel is installed', () => {
 
 test('the userscript tablist exposes one selected tab and explicit panel relationships', () => {
   assert.doesNotMatch(shell, /aria-selected="true"\s+aria-selected="false"/);
-  assert.match(shell, /id="aio-tab-checker"[^>]*aria-controls="aio-panel-checker"[^>]*aria-selected="true"[^>]*tabindex="0"/);
-  assert.match(shell, /id="aio-tab-account"[^>]*aria-controls="aio-panel-account"[^>]*aria-selected="false"[^>]*tabindex="-1"/);
-  assert.match(shell, /id="aio-tab-messages"[^>]*aria-controls="aio-panel-messages"[^>]*aria-selected="false"[^>]*tabindex="-1"/);
-  assert.match(shell, /id="aio-panel-checker"[^>]*aria-labelledby="aio-tab-checker"/);
-  assert.match(shell, /id="aio-panel-account"[^>]*aria-labelledby="aio-tab-account"/);
-  assert.match(shell, /id="aio-panel-messages"[^>]*aria-labelledby="aio-tab-messages"/);
+  assert.match(shell, /id="insta-toolbox-tab-checker"[^>]*aria-controls="insta-toolbox-panel-checker"[^>]*aria-selected="true"[^>]*tabindex="0"/);
+  assert.match(shell, /id="insta-toolbox-tab-account"[^>]*aria-controls="insta-toolbox-panel-account"[^>]*aria-selected="false"[^>]*tabindex="-1"/);
+  assert.match(shell, /id="insta-toolbox-tab-messages"[^>]*aria-controls="insta-toolbox-panel-messages"[^>]*aria-selected="false"[^>]*tabindex="-1"/);
+  assert.match(shell, /id="insta-toolbox-panel-checker"[^>]*aria-labelledby="insta-toolbox-tab-checker"/);
+  assert.match(shell, /id="insta-toolbox-panel-account"[^>]*aria-labelledby="insta-toolbox-tab-account"/);
+  assert.match(shell, /id="insta-toolbox-panel-messages"[^>]*aria-labelledby="insta-toolbox-tab-messages"/);
+});
+
+test('userscript tab focus stays inside the tab strip without drawing a clipped box', () => {
+  assert.match(shell, /\.tab:focus-visible\s*\{[^}]*outline:\s*0;[^}]*box-shadow:\s*inset 0 -3px 0 var\(--insta-toolbox-focus/);
+  assert.match(shell, /@media \(forced-colors: active\)[\s\S]{0,500}?\.tab:focus-visible\s*\{[^}]*outline:\s*2px solid Highlight;[^}]*outline-offset:\s*-3px;[^}]*box-shadow:\s*none;/);
 });
 
 test('the movable panel and local follower comparison are preserved', () => {
@@ -251,10 +256,10 @@ test('the movable panel and local follower comparison are preserved', () => {
   assert.match(source, /data-role="move"/);
   assert.match(source, /data-role="resize"/);
   assert.match(source, /data-preference="opacity"/);
-  assert.match(source, /id="aio-opacity" type="range" min="55"/);
+  assert.match(source, /id="insta-toolbox-opacity" type="range" min="55"/);
   assert.match(shell, /event\.altKey.*event\.shiftKey.*event\.key\.toLowerCase\(\) !== 'i'/);
   assert.match(shell, /savePreferences\(\{ open: !preferences\.open \}\)/);
-  assert.match(source, /instaAioManualQueueV1/);
+  assert.match(source, /instaToolboxManualQueueV1/);
   assert.match(shell, /function compareCapture\(\)/);
   assert.match(shell, /notFollowingMeBack/);
   assert.match(shell, /iDoNotFollowBack/);

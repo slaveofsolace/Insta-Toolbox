@@ -81,8 +81,8 @@ class FakeElement {
         || element.getAttribute('data-item-id') != null
       ));
     }
-    if (selector === '[data-insta-aio-message-content]') {
-      return descendants.filter((element) => element.getAttribute('data-insta-aio-message-content') != null);
+    if (selector === '[data-insta-toolbox-message-content]') {
+      return descendants.filter((element) => element.getAttribute('data-insta-toolbox-message-content') != null);
     }
     if (selector === '[dir="auto"]') {
       return descendants.filter((element) => element.getAttribute('dir') === 'auto');
@@ -188,7 +188,7 @@ function createHarness({
 
   const scope = new FakeElement({ attributes: { 'data-pagelet': 'IGDMessagesList' } });
   const confirmation = new FakeElement({
-    attributes: bindSurfaces ? { 'data-insta-aio-bound-control': 'dm-dialog-1' } : {},
+    attributes: bindSurfaces ? { 'data-insta-toolbox-bound-control': 'dm-dialog-1' } : {},
     tagName: plainTextUnsendControls ? 'SPAN' : 'BUTTON',
     text: unsendLabel,
     onClick() {
@@ -258,7 +258,7 @@ function createHarness({
     },
   });
   const contentElement = new FakeElement({
-    attributes: { 'data-insta-aio-message-content': '', dir: 'auto' },
+    attributes: { 'data-insta-toolbox-message-content': '', dir: 'auto' },
     text: content,
   });
   const row = new FakeElement({
@@ -271,7 +271,7 @@ function createHarness({
     children: [contentElement, ...(includeReplyControl ? [replyControl] : []), actionControl],
   });
   const retainedIdentityControl = new FakeElement({
-    attributes: { 'data-insta-aio-message-content': '', dir: 'auto' },
+    attributes: { 'data-insta-toolbox-message-content': '', dir: 'auto' },
     text: 'Another message keeps stable identity coverage available',
   });
   const retainedIdentityRow = new FakeElement({
@@ -348,20 +348,20 @@ function createHarness({
 test('one exact DM token drives only its menu, Unsend choice, and confirmation once', async () => {
   const harness = createHarness();
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
   assert.equal(typeof resolution.resolutionToken, 'string');
 
   const result = await harness.send({
-    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
   assert.equal(result.result, 'unsent');
   assert.deepEqual(harness.activations, ['action-menu', 'menu-choice', 'confirmation']);
 
   const replay = await harness.send({
-    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
   assert.equal(replay.reason, 'dm-resolution-expired-or-changed');
@@ -371,11 +371,11 @@ test('one exact DM token drives only its menu, Unsend choice, and confirmation o
 test('current Instagram text-only message menu is selected while Reply is ignored', async () => {
   const harness = createHarness({ textOnlyActionControl: true, includeReplyControl: true });
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
   const result = await harness.send({
-    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
 
@@ -386,11 +386,11 @@ test('current Instagram text-only message menu is selected while Reply is ignore
 test('the reviewed German Unsend label remains exact UTF-8 and executable', async () => {
   const harness = createHarness({ unsendLabel: 'Zurücknehmen' });
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
   const result = await harness.send({
-    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
 
@@ -401,11 +401,11 @@ test('the reviewed German Unsend label remains exact UTF-8 and executable', asyn
 test('a pre-existing dialog consumes the token and stops before every DM control', async () => {
   const harness = createHarness({ preexistingDialog: true });
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
   const result = await harness.send({
-    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
   assert.equal(result.reason, 'preexisting-surface-before-live-unsend');
@@ -415,11 +415,11 @@ test('a pre-existing dialog consumes the token and stops before every DM control
 test('an unbound exact-text Unsend surface never receives a destructive activation', async () => {
   const harness = createHarness({ bindSurfaces: false });
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
   const result = await harness.send({
-    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
   assert.equal(result.reason, 'dm-unsend-menu-not-exact');
@@ -429,11 +429,11 @@ test('an unbound exact-text Unsend surface never receives a destructive activati
 test('a bound but noninteractive exact-text Unsend node never receives a destructive activation', async () => {
   const harness = createHarness({ plainTextUnsendControls: true });
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
   const result = await harness.send({
-    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
   assert.equal(result.reason, 'dm-unsend-menu-not-exact');
@@ -443,11 +443,11 @@ test('a bound but noninteractive exact-text Unsend node never receives a destruc
 test('wrong-thread transition after confirmation never becomes a successful Unsend', async () => {
   const harness = createHarness({ postConfirmation: 'wrong-thread' });
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
   const result = await harness.send({
-    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
   assert.notEqual(result.result, 'unsent');
@@ -457,11 +457,11 @@ test('wrong-thread transition after confirmation never becomes a successful Unse
 test('identity loss while the retained row remains connected never becomes a successful Unsend', async () => {
   const harness = createHarness({ postConfirmation: 'identity-loss' });
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
   const result = await harness.send({
-    kind: 'insta-aio-perform-reviewed-dm-unsend',
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
     item: { ...harness.item, resolutionToken: resolution.resolutionToken },
   });
   assert.notEqual(result.result, 'unsent');
@@ -471,7 +471,7 @@ test('identity loss while the retained row remains connected never becomes a suc
 test('a nested flex-end toolbar cannot prove that the reviewed message was sent by me', async () => {
   const harness = createHarness({ nestedFlexEnd: true });
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
   assert.equal(resolution.resolutionToken, undefined);
@@ -482,7 +482,7 @@ test('a nested flex-end toolbar cannot prove that the reviewed message was sent 
 test('DM inspection issues no capability when secure randomness is unavailable', async () => {
   const harness = createHarness({ secureCrypto: {} });
   const resolution = await harness.send({
-    kind: 'insta-aio-inspect-reviewed-dm-item',
+    kind: 'insta-toolbox-inspect-reviewed-dm-item',
     item: harness.item,
   });
 

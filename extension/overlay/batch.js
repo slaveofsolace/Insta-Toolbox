@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   if (!shared || modules.batch) return;
 
@@ -59,22 +59,22 @@
 
   function render(runtime, run = lastRun) {
     const { document, query } = runtime;
-    const panel = query('[data-ia-role="batch-panel"]');
+    const panel = query('[data-insta-toolbox-role="batch-panel"]');
     if (!panel) return;
     panel.hidden = !run;
     if (!run) return;
 
-    const state = query('[data-ia-role="batch-state"]');
+    const state = query('[data-insta-toolbox-role="batch-state"]');
     if (state) state.dataset.tone = statusTone(run);
     runtime.setText('batch-title', statusTitle(run));
     runtime.setText('batch-detail', summarize(run));
 
-    const bar = query('[data-ia-role="batch-bar"]');
+    const bar = query('[data-insta-toolbox-role="batch-bar"]');
     if (bar) {
       const done = run.completed + run.failed + run.skipped;
       const percent = run.total ? Math.round((done / run.total) * 100) : 0;
       bar.style.width = `${percent}%`;
-      const meter = query('[data-ia-role="batch-meter"]');
+      const meter = query('[data-insta-toolbox-role="batch-meter"]');
       if (meter) {
         meter.setAttribute('aria-valuenow', String(done));
         meter.setAttribute('aria-valuemax', String(run.total));
@@ -82,7 +82,7 @@
       }
     }
 
-    const next = query('[data-ia-role="batch-next"]');
+    const next = query('[data-insta-toolbox-role="batch-next"]');
     if (next) {
       const waitMs = run.nextActionAt ? Date.parse(run.nextActionAt) - Date.now() : 0;
       const show = running(run) && waitMs > 0;
@@ -90,15 +90,15 @@
       if (show) next.textContent = `Pacing · next item in ${Math.ceil(waitMs / 1000)}s`;
     }
 
-    const stop = query('[data-ia-action="batch-stop"]');
+    const stop = query('[data-insta-toolbox-action="batch-stop"]');
     if (stop) stop.hidden = !running(run);
 
-    const list = query('[data-ia-role="batch-results"]');
+    const list = query('[data-insta-toolbox-role="batch-results"]');
     if (list) {
       list.replaceChildren();
       for (const entry of (run.results || []).slice(0, 15)) {
         const row = document.createElement('li');
-        row.className = 'ia-list-item';
+        row.className = 'insta-toolbox-list-item';
         row.dataset.status = entry.status;
         const title = document.createElement('strong');
         title.textContent = entry.label ? String(entry.label) : `item ${entry.index + 1}`;
@@ -118,7 +118,7 @@
   }
 
   async function refresh(runtime, { announceEnd = true } = {}) {
-    const response = await runtime.sendBridge({ kind: 'insta-aio-batch-status' });
+    const response = await runtime.sendBridge({ kind: 'insta-toolbox-batch-status' });
     if (response?.error) return null;
     const previous = lastRun;
     lastRun = response.run || null;
@@ -212,7 +212,7 @@
     }
 
     const started = await runtime.sendBridge({
-      kind: 'insta-aio-start-batch',
+      kind: 'insta-toolbox-start-batch',
       batchKind: kind,
       action,
       confirmed: true,
@@ -239,7 +239,7 @@
 
   async function abort(runtime) {
     stopPolling();
-    const response = await runtime.sendBridge({ kind: 'insta-aio-abort-batch' });
+    const response = await runtime.sendBridge({ kind: 'insta-toolbox-abort-batch' });
     if (response?.error) throw new Error(`Could not stop the batch: ${response.error}.`);
     lastRun = response.run || lastRun;
     render(runtime, lastRun);
@@ -249,10 +249,10 @@
   async function saveLimits(runtime) {
     const { query } = runtime;
     const limits = {
-      minDelayMs: Number(query('[data-ia-role="limit-min-delay"]')?.value) * 1000,
-      maxDelayMs: Number(query('[data-ia-role="limit-max-delay"]')?.value) * 1000,
+      minDelayMs: Number(query('[data-insta-toolbox-role="limit-min-delay"]')?.value) * 1000,
+      maxDelayMs: Number(query('[data-insta-toolbox-role="limit-max-delay"]')?.value) * 1000,
     };
-    const response = await runtime.sendBridge({ kind: 'insta-aio-batch-limits', limits });
+    const response = await runtime.sendBridge({ kind: 'insta-toolbox-batch-limits', limits });
     if (response?.error) throw new Error(`Could not save limits: ${response.error}.`);
     applyLimits(runtime, response.limits);
     runtime.status('Pacing limits saved.', 'good');
@@ -262,7 +262,7 @@
     if (!limits) return;
     const { query } = runtime;
     const set = (role, value) => {
-      const field = query(`[data-ia-role="${role}"]`);
+      const field = query(`[data-insta-toolbox-role="${role}"]`);
       if (field) field.value = String(value);
     };
     set('limit-min-delay', Math.round(limits.minDelayMs / 1000));
@@ -270,7 +270,7 @@
   }
 
   async function hydrate(runtime) {
-    const response = await runtime.sendBridge({ kind: 'insta-aio-batch-status' })
+    const response = await runtime.sendBridge({ kind: 'insta-toolbox-batch-status' })
       .catch(() => null);
     if (!response || response.error) return;
     applyLimits(runtime, response.limits);

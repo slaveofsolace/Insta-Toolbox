@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const modules = globalThis.__instaAioOverlayModules;
+  const modules = globalThis.__instaToolboxOverlayModules;
   const shared = modules?.shared;
   const preferences = modules?.preferences;
   if (!shared || !preferences || modules.layout) return;
@@ -74,8 +74,8 @@
         preferences.limits.MAX_OPACITY,
       );
       const percent = Math.round(opacity * 100);
-      host.style.setProperty('--ia-panel-alpha', `${percent}%`);
-      host.style.setProperty('--ia-panel-alpha-strong', `${Math.min(100, percent + 8)}%`);
+      host.style.setProperty('--insta-toolbox-panel-alpha', `${percent}%`);
+      host.style.setProperty('--insta-toolbox-panel-alpha-strong', `${Math.min(100, percent + 8)}%`);
     }
 
     function apply(preferenceValue) {
@@ -83,26 +83,26 @@
       const viewport = viewportSize(windowLike);
       const size = renderedSize(current);
       if (current.panelWidth != null) {
-        host.style.setProperty('--ia-panel-custom-width', `${size.width}px`);
+        host.style.setProperty('--insta-toolbox-panel-custom-width', `${size.width}px`);
       } else {
-        host.style.removeProperty('--ia-panel-custom-width');
+        host.style.removeProperty('--insta-toolbox-panel-custom-width');
       }
       if (current.panelHeight != null) {
-        host.style.setProperty('--ia-panel-custom-height', `${size.height}px`);
+        host.style.setProperty('--insta-toolbox-panel-custom-height', `${size.height}px`);
       } else {
-        host.style.removeProperty('--ia-panel-custom-height');
+        host.style.removeProperty('--insta-toolbox-panel-custom-height');
       }
       applyOpacity(current.opacity);
 
       if (current.position && viewport.width > STACKED_LAYOUT_MAX_WIDTH) {
         const position = constrainPosition(current.position, size, viewport);
         host.dataset.layout = 'floating';
-        host.style.setProperty('--ia-panel-left', `${position.x}px`);
-        host.style.setProperty('--ia-panel-top', `${position.y}px`);
+        host.style.setProperty('--insta-toolbox-panel-left', `${position.x}px`);
+        host.style.setProperty('--insta-toolbox-panel-top', `${position.y}px`);
       } else {
         host.dataset.layout = 'docked';
-        host.style.removeProperty('--ia-panel-left');
-        host.style.removeProperty('--ia-panel-top');
+        host.style.removeProperty('--insta-toolbox-panel-left');
+        host.style.removeProperty('--insta-toolbox-panel-top');
       }
     }
 

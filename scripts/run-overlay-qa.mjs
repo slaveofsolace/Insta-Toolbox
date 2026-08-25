@@ -107,7 +107,7 @@ try {
     cwd: repositoryRoot,
     env: {
       ...process.env,
-      INSTA_AIO_OVERLAY_QA_USER_DATA: userDataRoot,
+      INSTA_TOOLBOX_OVERLAY_QA_USER_DATA: userDataRoot,
       // Fixture timestamps must render identically on local and hosted runners.
       // Product sessions still use the operator's local timezone.
       TZ: 'UTC',
