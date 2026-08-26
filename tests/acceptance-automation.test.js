@@ -259,6 +259,8 @@ test('Pages deploys only the tested artifact for the current main commit', () =>
 
 test('release promotion checksums the SBOM and promotes no updater blockmap', () => {
   assert.match(releaseWorkflow, /CI run is not for the current main commit/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(releaseWorkflow, /"\$event" = "push" \|\| "\$event" = "workflow_dispatch"/);
   assert.match(releaseWorkflow, /Generate SBOM for promoted files/);
   assert.match(releaseWorkflow, /sha256sum "Insta-Toolbox-\$\{\{ steps\.assets\.outputs\.version \}\}\.spdx\.json" >> SHA256SUMS\.txt/);
   assert.match(releaseWorkflow, /test "\$\(wc -l < SHA256SUMS\.txt\)" -eq 7/);

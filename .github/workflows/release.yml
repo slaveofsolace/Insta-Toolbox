@@ -41,7 +41,8 @@ jobs:
           run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID")"
           test "$(jq -r .path <<<"$run_json")" = ".github/workflows/ci.yml"
           test "$(jq -r .name <<<"$run_json")" = "CI"
-          test "$(jq -r .event <<<"$run_json")" = "push"
+          event="$(jq -r .event <<<"$run_json")"
+          [[ "$event" = "push" || "$event" = "workflow_dispatch" ]]
           test "$(jq -r .head_branch <<<"$run_json")" = "main"
           test "$(jq -r .status <<<"$run_json")" = "completed"
           test "$(jq -r .conclusion <<<"$run_json")" = "success"
