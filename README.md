@@ -3,7 +3,8 @@
 **[Install Insta Toolbox with Tampermonkey](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**
 
 Instagram utilities that run locally in your browser. Check mutuals, review follow or unfollow targets, and unsend your own messages from the conversation you have open.
-
+_______________________
+##### Recommended user steps:
 ## Install in about a minute
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
@@ -20,11 +21,11 @@ Instagram utilities that run locally in your browser. Check mutuals, review foll
 
    ![The Insta Toolbox IT launcher after Instagram reloads](docs/media/install/03-open-toolbox.png)
 
-**You're done — enjoy! :)**
+## **You're done — enjoy! :)**
 
 Need help or found a bug? [Submit a ticket](https://slaveofsolace.com/work/contact/) or [open an issue](https://github.com/slaveofsolace/Insta-Toolbox/issues).
 
-Like my work?
+##### Like my work?
 
 [![Buy me a coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://www.buymeacoffee.com/slaveofsolace)
 
