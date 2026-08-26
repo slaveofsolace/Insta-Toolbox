@@ -48,20 +48,18 @@ function scenario(id, options = {}) {
 }
 
 const requiredStates = [
-  scenario('first-run-walkthrough', {
-    firstRun: false,
+  scenario('settings-customization', {
+    after: 'open-settings',
     semantics: [
-      semantic('[data-insta-toolbox-role="first-run"]', {
+      semantic('[data-insta-toolbox-role="settings-dialog"]', {
         hidden: false,
-        includes: ['Start with Mutual Checker', 'Compare Followers and Following without clicking an Instagram action.'],
+        includes: ['Customize Insta Toolbox', 'Accent', 'Background blur', 'Collapsed button'],
       }),
-      semantic('[data-insta-toolbox-action="first-run-start"]', {
-        attributes: { type: 'button' },
-        equals: 'Open Mutual Checker',
+      semantic('[data-insta-toolbox-preference="accent"]', {
+        attributes: { id: 'insta-toolbox-pref-accent' },
       }),
-      semantic('[data-insta-toolbox-action="first-run-dismiss"]', {
-        attributes: { type: 'button' },
-        equals: 'Not now',
+      semantic('[data-insta-toolbox-action="close-settings"]', {
+        attributes: { 'aria-label': 'Close customization', type: 'button' },
       }),
     ],
     targetSelector: null,
@@ -79,8 +77,11 @@ const requiredStates = [
       semantic('[data-insta-toolbox-role="move-handle"]', {
         attributes: { 'aria-label': 'Move Insta Toolbox; use arrow keys for precise movement', type: 'button' },
       }),
-      semantic('[data-insta-toolbox-role="resize-handle"]', {
-        attributes: { 'aria-label': 'Resize Insta Toolbox; use arrow keys for precise sizing', type: 'button' },
+      semantic('[data-insta-toolbox-role="resize-handle-start"]', {
+        attributes: { 'aria-label': 'Resize Insta Toolbox from the lower-left corner; use arrow keys for precise sizing', type: 'button' },
+      }),
+      semantic('[data-insta-toolbox-role="resize-handle-end"]', {
+        attributes: { 'aria-label': 'Resize Insta Toolbox from the lower-right corner; use arrow keys for precise sizing', type: 'button' },
       }),
       semantic('[data-insta-toolbox-preference="opacity"]', {
         attributes: { max: '100', min: '55', type: 'range' },
@@ -462,8 +463,14 @@ const matrixStates = [
   scenario('profile-forced-colors', { forcedColors: true }),
   scenario('queue-forced-colors', { forcedColors: true, section: 'queue' }),
   scenario('collapsed-desktop', {
+    after: 'move-launcher',
     open: false,
     presentation: 'launcher',
+    semantics: [
+      semantic('.insta-toolbox-launcher', {
+        attributes: { 'aria-label': 'Open Insta Toolbox; drag or use arrow keys to move', type: 'button' },
+      }),
+    ],
     targetSelector: '.profile button',
   }),
   scenario('collapsed-mobile', {

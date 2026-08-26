@@ -1,32 +1,32 @@
 # Release status
 
-Current candidate: **3.0.0**
+Current candidate: **3.1.0**
 
 ## Release files
 
 | Surface | File |
 | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` |
-| Chrome extension | `Insta-Toolbox-Extension-3.0.0.zip` |
-| Web/PWA | `insta-toolbox-web-3.0.0.zip` |
-| Windows | `Insta-Toolbox-Setup-3.0.0.exe` |
-| macOS | `Insta-Toolbox-3.0.0-universal.dmg` and `.zip` |
+| Chrome extension | `Insta-Toolbox-Extension-3.1.0.zip` |
+| Web/PWA | `insta-toolbox-web-3.1.0.zip` |
+| Windows | `Insta-Toolbox-Setup-3.1.0.exe` |
+| macOS | `Insta-Toolbox-3.1.0-universal.dmg` and `.zip` |
 | Integrity | `SHA256SUMS.txt`, SBOM, and GitHub provenance attestation |
 
 The stable userscript channel is:
 
 `https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js`
 
-Version 3.0 intentionally replaces the 2.x userscript identity and repository filenames. No compatibility alias is published. Remove an older script before installing 3.0.
+Version 3 keeps the userscript identity introduced in 3.0. Tampermonkey updates 3.0 in place. Remove a 2.x script before installing 3.1.
 
 ## Candidate gates
 
-The 3.0 account-free matrix contains:
+The 3.1 account-free matrix contains:
 
-- 347 automated tests;
+- 349 automated tests;
 - 45 overlay screenshot states;
 - 11 PWA screenshot states;
-- service-worker cache generation `insta-toolbox-v300`.
+- service-worker cache generation `insta-toolbox-v310`.
 
 Before a release is promoted, the exact `main` commit must pass assembly, tests, repository hygiene, dependency audit, generated-userscript parity, extension and userscript acceptance, Chrome pairing, browser QA, overlay/PWA visual checks, Windows packaging, macOS packaging, archive inspection, checksum generation, and `git diff --check`.
 
@@ -50,11 +50,11 @@ The macOS application is ad-hoc signed for bundle integrity but is not Developer
 
 ## Evidence and nonclaims
 
-The candidate record is [acceptance/3.0.0.md](./acceptance/3.0.0.md). Compatibility is tracked in [compatibility/3.0.0.md](./compatibility/3.0.0.md).
+The candidate record is [acceptance/3.1.0.md](./acceptance/3.1.0.md). Compatibility is tracked in [compatibility/3.1.0.md](./compatibility/3.1.0.md).
 
 Automated fixtures do not prove current authenticated Instagram selectors, human screen-reader use, persistent-profile behavior, SmartScreen trust, Gatekeeper trust, or notarization. Record those checks separately without committing usernames, messages, thread IDs, cookies, tokens, or private screenshots.
 
-Historical evidence directories keep the version and filenames they were produced with. They are not renamed or presented as 3.0 evidence.
+Historical evidence directories keep the version and filenames they were produced with. They are not renamed or presented as 3.1 evidence.
 
 ## Related documents
 

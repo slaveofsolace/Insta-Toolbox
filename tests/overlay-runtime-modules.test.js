@@ -233,6 +233,10 @@ test('floating layout clamps drag position, resize bounds, and opacity preferenc
     { x: 612, y: 8 },
   );
   const normalized = preferences.normalize({
+    accent: 'violet',
+    blur: 'strong',
+    launcherPosition: { x: 900, y: -20 },
+    launcherSize: 'large',
     opacity: 0.4,
     panelHeight: 5_000,
     panelWidth: 100,
@@ -242,6 +246,85 @@ test('floating layout clamps drag position, resize bounds, and opacity preferenc
   assert.equal(normalized.panelWidth, 320);
   assert.equal(normalized.panelHeight, 1_200);
   assert.deepEqual(JSON.parse(JSON.stringify(normalized.position)), { x: 0, y: 10_000 });
+  assert.equal(normalized.accent, 'violet');
+  assert.equal(normalized.blur, 'strong');
+  assert.equal(normalized.launcherSize, 'large');
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized.launcherPosition)), { x: 900, y: 0 });
+});
+
+test('launcher dragging persists a clamped position and both resize corners stay wired', () => {
+  const { layout } = loadModules();
+  class FakeTarget extends EventTarget {
+    constructor(rectangle = {}) {
+      super();
+      this.rectangle = rectangle;
+      this.dataset = {};
+      const values = new Map();
+      this.style = {
+        removeProperty(name) { values.delete(name); },
+        setProperty(name, value) { values.set(name, value); },
+      };
+    }
+    getBoundingClientRect() { return this.rectangle; }
+  }
+  const pointer = (type, properties) => {
+    const event = new Event(type, { bubbles: false, cancelable: true });
+    for (const [name, value] of Object.entries(properties)) {
+      Object.defineProperty(event, name, { configurable: true, value });
+    }
+    return event;
+  };
+  const host = new FakeTarget();
+  const launcher = new FakeTarget({ left: 900, top: 630, width: 44, height: 44 });
+  const panel = new FakeTarget({ left: 300, right: 760, top: 60, width: 460, height: 500 });
+  const moveHandle = new FakeTarget();
+  const resizeStartHandle = new FakeTarget();
+  const resizeEndHandle = new FakeTarget();
+  const windowLike = new FakeTarget();
+  windowLike.innerWidth = 1_000;
+  windowLike.innerHeight = 700;
+  const commits = [];
+  const controller = layout.create({
+    host,
+    launcher,
+    moveHandle,
+    onCommit: (patch) => commits.push(JSON.parse(JSON.stringify(patch))),
+    panel,
+    resizeEndHandle,
+    resizeStartHandle,
+    window: windowLike,
+  });
+  controller.apply({ open: false });
+
+  launcher.dispatchEvent(pointer('pointerdown', {
+    button: 0, clientX: 910, clientY: 640, pointerId: 1,
+  }));
+  windowLike.dispatchEvent(pointer('pointermove', {
+    clientX: 1_020, clientY: 750, pointerId: 1,
+  }));
+  windowLike.dispatchEvent(pointer('pointerup', {
+    clientX: 1_020, clientY: 750, pointerId: 1,
+  }));
+  assert.deepEqual(commits.at(-1), { launcherPosition: { x: 948, y: 648 } });
+  const suppressedClick = new Event('click', { cancelable: true });
+  launcher.dispatchEvent(suppressedClick);
+  assert.equal(suppressedClick.defaultPrevented, true, 'drag release must not also open the toolbox');
+
+  resizeStartHandle.dispatchEvent(pointer('pointerdown', {
+    button: 0, clientX: 300, clientY: 560, pointerId: 2,
+  }));
+  windowLike.dispatchEvent(pointer('pointerup', {
+    clientX: 260, clientY: 600, pointerId: 2,
+  }));
+  assert.deepEqual(commits.at(-1), {
+    panelHeight: 540,
+    panelWidth: 500,
+    position: { x: 260, y: 60 },
+  });
+
+  resizeEndHandle.dispatchEvent(pointer('keydown', { key: 'ArrowRight', shiftKey: false }));
+  assert.equal(commits.at(-1).panelWidth, 512);
+  controller.teardown();
 });
 
 test('Mutual Checker migrates the legacy draft and compares both rendered lists locally', () => {

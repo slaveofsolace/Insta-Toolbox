@@ -33,7 +33,7 @@ const evidenceRoot = path.join(
   repositoryRoot,
   'docs',
   'evidence',
-  'overlay-ui-3.0.0-2026-08-24',
+  'overlay-ui-3.1.0-2026-08-26',
   'after',
   process.platform,
 );
@@ -268,6 +268,40 @@ function scenarioUrl(baseUrl, scenario) {
 }
 
 async function applyAfterState(webContents, scenario) {
+  if (scenario.after === 'open-settings') {
+    await webContents.executeJavaScript(`(() => {
+      const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+      shadow.querySelector('[data-insta-toolbox-action="open-settings"]')?.click();
+    })()`);
+    await waitForValue(
+      webContents,
+      `document.querySelector('#insta-toolbox-sidecar-root').shadowRoot.querySelector('[data-insta-toolbox-role="settings-dialog"]')?.open`,
+      `${scenario.id}: customization dialog`,
+    );
+  }
+  if (scenario.after === 'move-launcher') {
+    await webContents.executeJavaScript(`(() => {
+      const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+      const launcher = shadow.querySelector('.insta-toolbox-launcher');
+      if (!launcher) throw new Error('Collapsed launcher is missing.');
+      launcher.focus();
+      for (let index = 0; index < 20; index += 1) {
+        launcher.dispatchEvent(new KeyboardEvent('keydown', {
+          bubbles: true, cancelable: true, key: 'ArrowLeft', shiftKey: true,
+        }));
+      }
+      for (let index = 0; index < 15; index += 1) {
+        launcher.dispatchEvent(new KeyboardEvent('keydown', {
+          bubbles: true, cancelable: true, key: 'ArrowUp', shiftKey: true,
+        }));
+      }
+    })()`);
+    await waitForValue(
+      webContents,
+      `document.querySelector('#insta-toolbox-sidecar-root').dataset.launcherLayout === 'floating'`,
+      `${scenario.id}: movable collapsed launcher`,
+    );
+  }
   if (scenario.after === 'check-account-relationships') {
     await webContents.executeJavaScript(`(() => {
       const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
@@ -946,7 +980,7 @@ function fidelityLedger(results, performance) {
     capturedAt: new Date().toISOString(),
     platform: process.platform,
     source: {
-      current: `docs/evidence/overlay-ui-3.0.0-2026-08-24/after/${process.platform}`,
+      current: `docs/evidence/overlay-ui-3.1.0-2026-08-26/after/${process.platform}`,
     },
     comparison: [
     { area: 'shell', before: 'Default-open, visually dominant overlay panel', after: `Fresh collapsed launcher; standard open share ${(standard.metrics.panelAreaShare * 100).toFixed(2)}%`, status: 'MEASURED' },

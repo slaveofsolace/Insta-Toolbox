@@ -203,18 +203,6 @@
     };
   }
 
-  function renderFirstRun() {
-    const slot = query('[data-insta-toolbox-role="first-run-slot"]');
-    if (!slot) return;
-    if (model.preferences?.firstRunComplete) {
-      slot.replaceChildren();
-      return;
-    }
-    if (query('[data-insta-toolbox-role="first-run"]')) return;
-    const template = query('template[data-insta-toolbox-template="first-run"]');
-    if (template) slot.append(template.content.cloneNode(true));
-  }
-
   function applyPreferences(next) {
     model.preferences = preferences.normalize(next, model.preferences || preferences.defaults());
     model.open = model.preferences.open;
@@ -222,6 +210,9 @@
     host.dataset.density = model.preferences.density;
     host.dataset.dock = model.preferences.dock;
     host.dataset.width = model.preferences.width;
+    host.dataset.accent = model.preferences.accent;
+    host.dataset.blur = model.preferences.blur;
+    host.dataset.launcherSize = model.preferences.launcherSize;
     for (const control of queryAll('[data-insta-toolbox-preference]')) {
       const value = model.preferences[control.dataset.instaToolboxPreference];
       if (value !== undefined) control.value = value;
@@ -229,7 +220,6 @@
     const opacityControl = query('[data-insta-toolbox-preference="opacity"]');
     if (opacityControl) opacityControl.value = String(Math.round(model.preferences.opacity * 100));
     setText('opacity-output', `${Math.round(model.preferences.opacity * 100)}%`);
-    renderFirstRun();
     layoutController?.apply(model.preferences);
     themeController?.setPreference(model.preferences.theme);
   }
@@ -255,10 +245,27 @@
     }
   }
 
-  async function completeFirstRun(nextSection = null) {
-    const saved = await savePreference({ firstRunComplete: true });
-    if (!saved) return;
-    if (nextSection) setSection(nextSection, { focus: true });
+  function setSettingsOpen(open) {
+    const dialog = query('[data-insta-toolbox-role="settings-dialog"]');
+    const button = query('[data-insta-toolbox-role="settings-button"]');
+    if (!dialog || !button) return;
+    const shouldOpen = Boolean(open);
+    button.setAttribute('aria-expanded', String(shouldOpen));
+    if (shouldOpen && !dialog.open) {
+      dialog.showModal();
+      requestAnimationFrame(() => query('#insta-toolbox-pref-dock')?.focus({ preventScroll: true }));
+    } else if (!shouldOpen && dialog.open) {
+      dialog.close();
+    }
+  }
+
+  function onSettingsDialogClick(event) {
+    if (event.target === event.currentTarget) setSettingsOpen(false);
+  }
+
+  function onSettingsDialogClose() {
+    query('[data-insta-toolbox-role="settings-button"]')
+      ?.setAttribute('aria-expanded', 'false');
   }
 
   function setOpen(open, {
@@ -280,7 +287,7 @@
     panel.hidden = !shouldOpen;
     launcher.hidden = shouldOpen;
     launcher.setAttribute('aria-expanded', String(shouldOpen));
-    if (!shouldOpen) query('[data-insta-toolbox-role="settings"]').open = false;
+    if (!shouldOpen) setSettingsOpen(false);
     if (persist) void savePreference({ open: shouldOpen });
 
     if (shouldOpen) {
@@ -520,8 +527,7 @@
     'check-account-relationships': () => captureView.checkAccount(runtime),
     'confirm-cancel': () => confirmationController?.cancel(),
     close: () => setOpen(false),
-    'first-run-dismiss': () => completeFirstRun(),
-    'first-run-start': () => completeFirstRun('capture'),
+    'close-settings': () => setSettingsOpen(false),
     'inspect-messages': () => messagesView.inspect(runtime),
     'layout-preset': (target) => {
       const viewportHeight = Math.max(320, Number(window.innerHeight) || 720);
@@ -534,6 +540,7 @@
       return preset ? savePreference(preset) : undefined;
     },
     'mass-unsend': () => messagesView.massUnsend(runtime),
+    'open-settings': () => setSettingsOpen(true),
     'save-limits': () => batchController.saveLimits(runtime),
     'scan-full-list': (target) => captureView.scanFullList(runtime, target.dataset.listType),
     'scan-sent-dms': () => messagesView.scanSent(runtime),
@@ -547,6 +554,7 @@
       panelHeight: null,
       panelWidth: null,
       position: null,
+      launcherPosition: null,
     }),
   });
 
@@ -636,6 +644,11 @@
 
   function onDocumentKeydown(event) {
     if (event.key === 'Escape' && confirmationController?.isPending()) return;
+    if (event.key === 'Escape' && query('[data-insta-toolbox-role="settings-dialog"]')?.open) {
+      setSettingsOpen(false);
+      event.preventDefault();
+      return;
+    }
     if (event.altKey && event.shiftKey && event.key.toLowerCase() === 'i') {
       event.preventDefault();
       setOpen(!model.open);
@@ -724,6 +737,10 @@
     shadow.removeEventListener('change', onShadowChange);
     shadow.removeEventListener('input', onShadowInput);
     shadow.removeEventListener('toggle', onShadowToggle, true);
+    query('[data-insta-toolbox-role="settings-dialog"]')
+      ?.removeEventListener('click', onSettingsDialogClick);
+    query('[data-insta-toolbox-role="settings-dialog"]')
+      ?.removeEventListener('close', onSettingsDialogClose);
     document.removeEventListener('keydown', onDocumentKeydown);
     window.removeEventListener('resize', onWindowResize);
     chromeApi.storage.onChanged.removeListener?.(onStorageChanged);
@@ -772,10 +789,12 @@
     });
     layoutController = layout.create({
       host,
+      launcher: query('.insta-toolbox-launcher'),
       moveHandle: query('[data-insta-toolbox-role="move-handle"]'),
       onCommit: (patch) => { void savePreference(patch); },
       panel: query('.insta-toolbox-panel'),
-      resizeHandle: query('[data-insta-toolbox-role="resize-handle"]'),
+      resizeEndHandle: query('[data-insta-toolbox-role="resize-handle-end"]'),
+      resizeStartHandle: query('[data-insta-toolbox-role="resize-handle-start"]'),
       window,
     });
     layoutController.apply(model.preferences);
@@ -822,6 +841,10 @@
   shadow.addEventListener('change', onShadowChange);
   shadow.addEventListener('input', onShadowInput);
   shadow.addEventListener('toggle', onShadowToggle, true);
+  query('[data-insta-toolbox-role="settings-dialog"]')
+    ?.addEventListener('click', onSettingsDialogClick);
+  query('[data-insta-toolbox-role="settings-dialog"]')
+    ?.addEventListener('close', onSettingsDialogClose);
   document.addEventListener('keydown', onDocumentKeydown);
   chromeApi.storage.onChanged.addListener(onStorageChanged);
   document.documentElement.append(host);

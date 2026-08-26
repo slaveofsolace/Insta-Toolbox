@@ -4,8 +4,9 @@ Last updated: 2026-08-24
 
 ## Current status
 
-The production-script overlay matrix is green on Windows. The 3.0.0 update
-generated and reviewed 45 baselines, including the compact header and credit,
+The production-script overlay matrix is green on Windows. The 3.1.0 update
+generated and reviewed 45 baselines, including the movable collapsed launcher,
+two-corner resizing, named settings dialog, compact header, and credit,
 the immediate thread-bound Unsend action, authenticated Mutual Checker state,
 floating translucency, mobile layouts, forced colors, and 200% zoom. A
 subsequent non-updating check reproduced every semantic, geometry, collision,
@@ -13,9 +14,8 @@ accessibility-tree, performance, and screenshot expectation. Ordinary CI runs
 `qa:overlay:check` on `windows-latest`; CI never updates baselines.
 
 The baseline set lives under
-`docs/evidence/overlay-ui-3.0.0-2026-08-24/after/win32`. Its manifest SHA-256 at the
-time of the reviewed update is
-`06770775895839a150d00272c24a10a51ccafa336fca1f957b7bfa6fd8e3e072`.
+`docs/evidence/overlay-ui-3.1.0-2026-08-26/after/win32`. The reviewed manifest
+SHA-256 is recorded in [the 3.1 acceptance record](./acceptance/3.1.0.md).
 This establishes synthetic-fixture and Windows-rendering evidence only. It does
 not establish human visual or screen-reader acceptance, cross-platform pixel
 parity, persistent-profile acceptance, or authenticated Instagram selector
@@ -81,7 +81,7 @@ before any screenshot can be accepted:
 
 | Area | Scenarios |
 | --- | --- |
-| First use | `first-run-walkthrough` |
+| Customizer | `settings-customization` |
 | Profile | `profile-not-following-no-match`, `profile-following-queue-match`, `profile-ambiguous-safe-stop` |
 | Mutual Checker | `followers-first-capture`, `following-repeated-capture`, `checker-filtered-results`, `checker-authenticated-read` |
 | Follow / Unfollow | `queue-action-first`, `queue-exact-target-review`, `queue-confirmation-collision`, `queue-compatible-source-options` |
@@ -161,7 +161,7 @@ test-results/overlay-qa/
 An explicit update copies candidate evidence to:
 
 ```text
-docs/evidence/overlay-ui-3.0.0-2026-08-24/after/<platform>/
+docs/evidence/overlay-ui-3.1.0-2026-08-26/after/<platform>/
 ├── <scenario>.png
 ├── manifest.json
 └── fidelity-ledger.json
@@ -195,8 +195,9 @@ log for review.
 7. Only after the reviewed platform baseline is committed, add the corresponding
    non-updating CI check. Do not generate or accept baselines in ordinary CI.
 
-The original Windows procedure was completed on 2026-08-03. The 3.0.0 matrix
-was regenerated and reviewed on 2026-08-24 for the compact header and credit, immediate
+The original Windows procedure was completed on 2026-08-03. The 3.1.0 matrix
+was regenerated and reviewed on 2026-08-26 for the movable launcher, dual resize controls,
+settings dialog, compact header and credit, immediate
 thread-bound Unsend path, current extension version, authenticated checker,
 floating translucency, and responsive layouts. Key light, dark, DM, workspace,
 floating, mobile, and 200% zoom captures were inspected at full resolution;

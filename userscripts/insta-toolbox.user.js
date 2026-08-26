@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      3.0.0
+// @version      3.1.0
 // @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -79,6 +79,8 @@
       '--insta-toolbox-text-muted': 'rgb(var(--ig-secondary-text, 115 115 115))',
       '--insta-toolbox-line': 'rgb(var(--ig-separator, 219 219 219))',
       '--insta-toolbox-accent': '#b83d67',
+      '--insta-toolbox-accent-violet': '#7657d6',
+      '--insta-toolbox-accent-blue': '#1f6eb3',
       '--insta-toolbox-on-accent': '#fff',
       '--insta-toolbox-success': 'rgb(var(--ig-success, 0 148 84))',
       '--insta-toolbox-warning': '#b26a00',
@@ -4148,6 +4150,9 @@
     'legal', 'privacy', 'reels', 'settings', 'stories', 'terms', 'web',
   ]);
   const VIEWS = ['checker', 'account', 'messages'];
+  const ACCENTS = new Set(['rose', 'violet', 'blue']);
+  const BLURS = new Set(['none', 'soft', 'strong']);
+  const LAUNCHER_SIZES = new Set(['standard', 'large']);
   const WIDTH_MIN = 320;
   const WIDTH_MAX = 560;
   const HEIGHT_MIN = 320;
@@ -4267,13 +4272,17 @@
 
   function preferencesDefaults() {
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       open: true,
       view: 'checker',
       position: null,
+      launcherPosition: null,
       width: 390,
       height: 620,
       opacity: 0.88,
+      accent: 'rose',
+      blur: 'soft',
+      launcherSize: 'standard',
     };
   }
 
@@ -4413,14 +4422,28 @@
       && Number.isFinite(Number(source.position.y))
       ? { x: Math.max(0, Math.round(source.position.x)), y: Math.max(0, Math.round(source.position.y)) }
       : null;
+    const launcherPosition = source.launcherPosition
+      && Number.isFinite(Number(source.launcherPosition.x))
+      && Number.isFinite(Number(source.launcherPosition.y))
+      ? {
+        x: Math.max(0, Math.round(source.launcherPosition.x)),
+        y: Math.max(0, Math.round(source.launcherPosition.y)),
+      }
+      : null;
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       open: typeof source.open === 'boolean' ? source.open : true,
       view: VIEWS.includes(source.view) ? source.view : 'checker',
       position,
+      launcherPosition,
       width: Math.round(clamp(source.width || 390, WIDTH_MIN, WIDTH_MAX)),
       height: Math.round(clamp(source.height || 620, HEIGHT_MIN, HEIGHT_MAX)),
       opacity: Math.round(clamp(opacity ?? 0.88, 0.55, 1) * 100) / 100,
+      accent: ACCENTS.has(source.accent) ? source.accent : 'rose',
+      blur: BLURS.has(source.blur) ? source.blur : 'soft',
+      launcherSize: LAUNCHER_SIZES.has(source.launcherSize)
+        ? source.launcherSize
+        : 'standard',
     };
   }
 
@@ -4707,13 +4730,20 @@
   shadow.innerHTML = `
     <style>
       ${sharedTokenCss}
-      :host { all: initial; --insta-toolbox-alpha: 88%; --insta-toolbox-alpha-strong: 96%; --insta-toolbox-width: 390px; --insta-toolbox-height: 620px; --insta-toolbox-settings-max-height: 460px; color-scheme: light dark; color: var(--insta-toolbox-text, #1b211c); font-family: var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      :host { all: initial; --insta-toolbox-alpha: 88%; --insta-toolbox-alpha-strong: 96%; --insta-toolbox-width: 390px; --insta-toolbox-height: 620px; --insta-toolbox-backdrop-blur: 10px; --insta-toolbox-launcher-size: 46px; color-scheme: light dark; color: var(--insta-toolbox-text, #1b211c); font-family: var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      :host([data-accent="violet"]) { --insta-toolbox-accent: var(--insta-toolbox-accent-violet); --insta-toolbox-focus: var(--insta-toolbox-accent-violet); }
+      :host([data-accent="blue"]) { --insta-toolbox-accent: var(--insta-toolbox-accent-blue); --insta-toolbox-focus: var(--insta-toolbox-accent-blue); }
+      :host([data-blur="none"]) { --insta-toolbox-backdrop-blur: 0px; }
+      :host([data-blur="strong"]) { --insta-toolbox-backdrop-blur: 18px; }
+      :host([data-launcher-size="large"]) { --insta-toolbox-launcher-size: 54px; }
       *, *::before, *::after { box-sizing: border-box; }
       button, input, select { font: inherit; }
       button, label, summary { cursor: pointer; }
       [hidden] { display: none !important; }
-      .launcher { position: fixed; z-index: 2147482900; right: 16px; bottom: 16px; width: 46px; height: 46px; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: 14px; background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha), transparent); color: var(--insta-toolbox-text, #172018); box-shadow: var(--insta-toolbox-shadow-popover, 0 10px 32px rgba(0,0,0,.2)); font-weight: 850; }
-      .panel { animation: insta-toolbox-in var(--insta-toolbox-motion-fast, 120ms) var(--insta-toolbox-ease, ease) both; position: fixed; z-index: 2147482900; top: 62px; right: 16px; width: min(var(--insta-toolbox-width), calc(100vw - 24px)); height: min(var(--insta-toolbox-height), calc(100dvh - 74px)); display: flex; flex-direction: column; overflow: hidden; container-type: inline-size; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: var(--insta-toolbox-radius-lg, 14px); background: color-mix(in srgb, var(--insta-toolbox-bg, #f7f8f5) var(--insta-toolbox-alpha), transparent); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel, 0 20px 60px rgba(0,0,0,.24)); backdrop-filter: blur(10px) saturate(.95); -webkit-backdrop-filter: blur(10px) saturate(.95); font: var(--insta-toolbox-text-md, 14px)/var(--insta-toolbox-leading-md, 20px) var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      .launcher { position: fixed; z-index: 2147482900; right: 16px; bottom: 16px; width: var(--insta-toolbox-launcher-size); height: var(--insta-toolbox-launcher-size); border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: 14px; background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha), transparent); color: var(--insta-toolbox-text, #172018); box-shadow: var(--insta-toolbox-shadow-popover, 0 10px 32px rgba(0,0,0,.2)); font-weight: 850; cursor: grab; touch-action: none; }
+      :host([data-launcher-floating="true"]) .launcher { top: var(--insta-toolbox-launcher-top); right: auto; bottom: auto; left: var(--insta-toolbox-launcher-left); }
+      :host([data-layout-interaction="launcher"]) .launcher { cursor: grabbing; }
+      .panel { animation: insta-toolbox-in var(--insta-toolbox-motion-fast, 120ms) var(--insta-toolbox-ease, ease) both; position: fixed; z-index: 2147482900; top: 62px; right: 16px; width: min(var(--insta-toolbox-width), calc(100vw - 24px)); height: min(var(--insta-toolbox-height), calc(100dvh - 74px)); display: flex; flex-direction: column; overflow: hidden; container-type: inline-size; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: var(--insta-toolbox-radius-lg, 14px); background: color-mix(in srgb, var(--insta-toolbox-bg, #f7f8f5) var(--insta-toolbox-alpha), transparent); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel, 0 20px 60px rgba(0,0,0,.24)); backdrop-filter: blur(var(--insta-toolbox-backdrop-blur)) saturate(.95); -webkit-backdrop-filter: blur(var(--insta-toolbox-backdrop-blur)) saturate(.95); font: var(--insta-toolbox-text-md, 14px)/var(--insta-toolbox-leading-md, 20px) var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
       :host([data-floating="true"]) .panel { top: var(--insta-toolbox-top); right: auto; left: var(--insta-toolbox-left); }
       .header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 4px; align-items: center; height: 52px; min-height: 52px; padding: 4px 6px; border-bottom: 1px solid var(--insta-toolbox-line, #d8ddd4); background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha-strong), transparent); }
       .handle, .icon { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: inherit; }
@@ -4756,17 +4786,15 @@
       .list li { padding: 8px 0; border-bottom: 1px solid var(--insta-toolbox-line, #d8ddd4); overflow-wrap: break-word; word-break: normal; font-size: 12px; }
       .list small { display: block; margin-top: 2px; color: var(--insta-toolbox-text-muted, #687068); }
       .notice { padding: 10px; border-left: 4px solid var(--insta-toolbox-warning, #ad7823); background: var(--insta-toolbox-bg-sunken, #fff4d6); color: var(--insta-toolbox-text, #62490f); font-size: 12px; }
-      details.settings { position: relative; }
-      details.settings > summary { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 9px; list-style: none; font-size: 18px; }
-      details.settings > summary::-webkit-details-marker { display:none; }
-      details.settings:not([open]) > .settings-panel { display: none; }
-      .settings-panel { position: absolute; z-index: 5; top: 48px; right: 0; width: min(250px, calc(100vw - 32px)); max-height: var(--insta-toolbox-settings-max-height); overflow: auto; padding: 12px; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: 10px; background: color-mix(in srgb, var(--insta-toolbox-bg-raised, #fff) 97%, transparent); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel, 0 16px 46px rgba(0,0,0,.2)); }
       .range-row { display:grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items:center; }
-      .footer { height: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; padding: 3px 52px 3px 12px; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha-strong), transparent); color: var(--insta-toolbox-text-muted, #687068); font-size: 10px; line-height: 1; }
+      .footer { height: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; padding: 3px 52px; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha-strong), transparent); color: var(--insta-toolbox-text-muted, #687068); font-size: 10px; line-height: 1; }
       .footer a { color: inherit; text-decoration: none; }
       .footer a:hover, .footer a:focus-visible { color: var(--insta-toolbox-text, #1b211c); text-decoration: underline; text-underline-offset: 2px; }
-      .resize { position: absolute; right: 0; bottom: 0; display: block; width: 44px; height: 44px; z-index: 5; border: 0; border-radius: 10px 0 12px 0; padding: 0; background: transparent; color: var(--insta-toolbox-text-muted, #687068); cursor: nwse-resize; touch-action: none; }
+      .resize { position: absolute; bottom: 0; display: block; width: 44px; height: 44px; z-index: 5; border: 0; padding: 0; background: transparent; color: var(--insta-toolbox-text-muted, #687068); touch-action: none; }
+      .resize.end { right: 0; border-radius: 10px 0 12px 0; cursor: nwse-resize; }
+      .resize.start { left: 0; border-radius: 0 10px 0 12px; cursor: nesw-resize; }
       .resize::before { content:""; position:absolute; right:9px; bottom:9px; width:12px; height:12px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; opacity:.9; }
+      .resize.start::before { right:auto; left:9px; border-right:0; border-left:2px solid currentColor; }
       .resize:hover { background: color-mix(in srgb, var(--insta-toolbox-accent, #b83d67) 12%, transparent); color: var(--insta-toolbox-text, #1b211c); }
       button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, .file:focus-within { outline: 3px solid var(--insta-toolbox-focus, #b83d67); outline-offset: 2px; }
       .tab:focus-visible { outline: 0; outline-offset: 0; box-shadow: inset 0 -3px 0 var(--insta-toolbox-focus, #b83d67); }
@@ -4774,13 +4802,11 @@
       @container (max-width: 330px) { .header h1 { font-size:14px; } }
       @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; } }
       .step, .context, .review, .card { transition: border-color var(--insta-toolbox-motion-base, 180ms) var(--insta-toolbox-ease, ease); }
-      .intro { animation: insta-toolbox-in var(--insta-toolbox-motion-slow, 240ms) var(--insta-toolbox-ease, ease) both; }
       .scan-progress .run-bar span { transition: width var(--insta-toolbox-motion-base, 180ms) var(--insta-toolbox-ease, ease); }
       /* A finished run should register without stealing attention. */
       .run-panel[data-finished="true"] .run-bar span { transition: width var(--insta-toolbox-motion-slow, 240ms) var(--insta-toolbox-ease, ease); }
       @media (prefers-reduced-motion: reduce) {
         .step, .context, .review, .card, .scan-progress .run-bar span, .run-panel[data-finished="true"] .run-bar span { transition: none; }
-        .intro { animation: none; }
       }
       .review { margin-bottom: 12px; padding: 10px; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 10px; }
       .review strong { display: block; margin-bottom: 6px; font-size: 13px; }
@@ -4797,7 +4823,6 @@
       .settings-inline { margin-top: 10px; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); }
       .settings-inline > summary { min-height: 44px; display: flex; align-items: center; font-size: 13px; cursor: pointer; }
       .header, .context, .tabs, .run-panel, .footer { flex: 0 0 auto; }
-      .intro { flex: 0 0 auto; min-height: 0; overflow: visible; }
       .header, .footer { position: relative; z-index: 1; }
       input:not([type="range"]):not([type="checkbox"]), select, textarea { min-height: 44px; box-sizing: border-box; }
       .field input[type="range"] { min-height: 24px; }
@@ -4813,9 +4838,6 @@
       .context-copy strong { display: block; overflow: hidden; color: var(--insta-toolbox-text, #1b211c) !important; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
       .context-copy span { display: -webkit-box; overflow: hidden; color: var(--insta-toolbox-text-muted, #687068) !important; font-size: 11px; overflow-wrap: break-word; word-break: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
       .context-cta { white-space: nowrap; }
-      .intro { padding: 14px; border-bottom: 1px solid var(--insta-toolbox-line, #d8ddd4); }
-      .intro h2 { margin: 0 0 4px; font-size: 15px; }
-      .intro-note { max-width: 42ch; margin: 0 0 8px; color: var(--insta-toolbox-text-muted, #687068); font-size: 12px; }
       .run-panel { padding: 10px 12px; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha-strong), transparent); }
       .run-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
       .run-head strong { font-size: 12px; overflow-wrap: break-word; word-break: normal; }
@@ -4837,27 +4859,24 @@
       .confirm-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
       .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
       .confirm-dialog .toolbar { justify-content: flex-end; }
+      .settings-dialog { width: min(360px, calc(100vw - 28px)); max-height: min(680px, calc(100dvh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); }
+      .settings-dialog::backdrop { background: rgba(12,14,12,.44); backdrop-filter: grayscale(.65) blur(1px); }
+      .settings-dialog form { display: grid; gap: 12px; margin: 0; padding: 18px; }
+      .settings-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+      .settings-heading h2 { margin:0; font-size:18px; line-height:24px; }
+      .settings-dialog .lead { margin:-4px 0 2px; }
+      .settings-dialog .toolbar { margin:0; }
       @keyframes insta-toolbox-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
-      @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog { border:2px solid CanvasText; } .tab:focus-visible { outline:2px solid Highlight; outline-offset:-3px; box-shadow:none; } }
+      @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog,.settings-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog,.settings-dialog { border:2px solid CanvasText; } .tab:focus-visible { outline:2px solid Highlight; outline-offset:-3px; box-shadow:none; } }
     </style>
-    <button class="launcher" type="button" data-action="open" aria-label="Open Insta Toolbox" aria-expanded="false">IT</button>
+    <button class="launcher" type="button" data-action="open" aria-label="Open Insta Toolbox; drag or use arrow keys to move" aria-expanded="false" title="Drag to move · Click to open">IT</button>
     <aside class="panel" aria-label="Insta Toolbox" hidden>
       <header class="header">
         <button class="handle" type="button" data-role="move" aria-label="Move toolbox; use arrow keys for precise movement" title="Drag to move">✥</button>
         <h1>Insta Toolbox</h1>
         <div style="display:flex">
-          <details class="settings">
-            <summary aria-label="Toolbox preferences">⚙</summary>
-            <div class="settings-panel">
-              <strong>Layout</strong>
-              <div class="field"><label for="insta-toolbox-opacity">Surface transparency</label><div class="range-row"><input id="insta-toolbox-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
-              <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
-              <button class="button quiet" type="button" data-action="reset-layout">Reset position and size</button>
-              <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="insta-toolbox-limit-min">Min delay (seconds)</label><input id="insta-toolbox-limit-min" type="number" min="1" max="600" data-role="limit-min"></div><div class="field"><label for="insta-toolbox-limit-max">Max delay (seconds)</label><input id="insta-toolbox-limit-max" type="number" min="1" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
-              <p class="lead">Drag the header handle or lower corner. Arrow keys work on both.</p>
-            </div>
-          </details>
+          <button class="icon" type="button" data-action="open-settings" data-role="settings-button" aria-label="Customize Insta Toolbox" aria-haspopup="dialog" aria-expanded="false">⚙</button>
           <button class="icon" type="button" data-action="close" aria-label="Collapse Insta Toolbox">×</button>
         </div>
       </header>
@@ -4866,11 +4885,6 @@
         <div class="context-copy" role="status" aria-live="polite" aria-atomic="true"><strong data-role="context-title">Checking this page…</strong> <span data-role="context-detail"></span></div>
         <button class="button quiet context-cta" type="button" data-action="context-cta" data-role="context-cta" hidden></button>
       </div>
-      <section class="intro" data-role="intro" aria-labelledby="insta-toolbox-intro-title" hidden>
-        <h2 id="insta-toolbox-intro-title">Start with Mutual Checker</h2>
-        <p class="intro-note">Compare Followers and Following without clicking an Instagram action.</p>
-        <div class="toolbar"><button class="button primary" type="button" data-action="intro-done">Open Mutual Checker</button></div>
-      </section>
       <nav class="tabs" role="tablist" aria-label="Insta Toolbox tools">
         <button id="insta-toolbox-tab-checker" class="tab" type="button" role="tab" data-view="checker" aria-controls="insta-toolbox-panel-checker" aria-selected="true" tabindex="0">Mutual Checker</button>
         <button id="insta-toolbox-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="insta-toolbox-panel-account" aria-selected="false" tabindex="-1">Follow / Unfollow</button>
@@ -4894,8 +4908,23 @@
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
-      <button class="resize" type="button" data-role="resize" aria-label="Resize toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
+      <button class="resize start" type="button" data-role="resize-start" aria-label="Resize Insta Toolbox from the lower-left corner; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
+      <button class="resize end" type="button" data-role="resize-end" aria-label="Resize Insta Toolbox from the lower-right corner; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
     </aside>
+    <dialog class="settings-dialog" data-role="settings-dialog" aria-labelledby="insta-toolbox-settings-title" aria-describedby="insta-toolbox-settings-note">
+      <form>
+        <div class="settings-heading"><h2 id="insta-toolbox-settings-title">Customize Insta Toolbox</h2><button class="icon" type="button" data-action="close-settings" aria-label="Close customization">×</button></div>
+        <p class="lead" id="insta-toolbox-settings-note">Saved in this browser.</p>
+        <div class="field"><label for="insta-toolbox-accent">Accent</label><select id="insta-toolbox-accent" data-preference="accent"><option value="rose">Rose</option><option value="violet">Violet</option><option value="blue">Blue</option></select></div>
+        <div class="field"><label for="insta-toolbox-blur">Background blur</label><select id="insta-toolbox-blur" data-preference="blur"><option value="none">Off</option><option value="soft">Soft</option><option value="strong">Strong</option></select></div>
+        <div class="field"><label for="insta-toolbox-launcher-size">Collapsed button</label><select id="insta-toolbox-launcher-size" data-preference="launcherSize"><option value="standard">Standard</option><option value="large">Large</option></select></div>
+        <div class="field"><label for="insta-toolbox-opacity">Surface transparency</label><div class="range-row"><input id="insta-toolbox-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
+        <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
+        <button class="button quiet" type="button" data-action="reset-layout">Reset panel and collapsed button</button>
+        <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="insta-toolbox-limit-min">Min delay (seconds)</label><input id="insta-toolbox-limit-min" type="number" min="1" max="600" data-role="limit-min"></div><div class="field"><label for="insta-toolbox-limit-max">Max delay (seconds)</label><input id="insta-toolbox-limit-max" type="number" min="1" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
+        <p class="lead">Drag the collapsed IT button anywhere. Resize the open panel from either lower corner. Arrow keys work on the focused control. Shortcut: Alt + Shift + I.</p>
+      </form>
+    </dialog>
     <dialog class="confirm-dialog" data-role="action-confirmation" aria-labelledby="insta-toolbox-confirm-title" aria-describedby="insta-toolbox-confirm-message insta-toolbox-confirm-detail">
       <form>
         <h2 id="insta-toolbox-confirm-title" data-role="confirm-title">Confirm action</h2>
@@ -4958,18 +4987,34 @@
     };
   }
 
+  function launcherDimensions() {
+    const side = preferences.launcherSize === 'large' ? 54 : 46;
+    return { width: side, height: side };
+  }
+
   function applyLayout() {
     const size = panelSize();
     host.style.setProperty('--insta-toolbox-width', `${size.width}px`);
     host.style.setProperty('--insta-toolbox-height', `${size.height}px`);
-    const renderedPanelHeight = innerWidth <= 600
-      ? Math.min(innerHeight * 0.78, 720)
-      : Math.min(size.height, Math.max(0, innerHeight - 74));
-    const settingsMaxHeight = Math.max(44, Math.min(500, Math.floor(renderedPanelHeight - 86)));
-    host.style.setProperty('--insta-toolbox-settings-max-height', `${settingsMaxHeight}px`);
     const percent = Math.round(preferences.opacity * 100);
     host.style.setProperty('--insta-toolbox-alpha', `${percent}%`);
     host.style.setProperty('--insta-toolbox-alpha-strong', `${Math.min(100, percent + 8)}%`);
+    host.dataset.accent = preferences.accent;
+    host.dataset.blur = preferences.blur;
+    host.dataset.launcherSize = preferences.launcherSize;
+    if (preferences.launcherPosition) {
+      const launcherPosition = constrainedPosition(
+        preferences.launcherPosition,
+        launcherDimensions(),
+      );
+      host.dataset.launcherFloating = 'true';
+      host.style.setProperty('--insta-toolbox-launcher-left', `${launcherPosition.x}px`);
+      host.style.setProperty('--insta-toolbox-launcher-top', `${launcherPosition.y}px`);
+    } else {
+      host.dataset.launcherFloating = 'false';
+      host.style.removeProperty('--insta-toolbox-launcher-left');
+      host.style.removeProperty('--insta-toolbox-launcher-top');
+    }
     if (preferences.position && innerWidth > 600) {
       const position = constrainedPosition(preferences.position, size);
       host.dataset.floating = 'true';
@@ -4982,6 +5027,12 @@
     }
     const opacity = query('[data-preference="opacity"]');
     if (opacity) opacity.value = String(percent);
+    for (const control of queryAll('[data-preference]')) {
+      const preference = control.dataset.preference;
+      if (preference !== 'opacity' && preferences[preference] !== undefined) {
+        control.value = preferences[preference];
+      }
+    }
     setText('opacity-output', `${percent}%`);
   }
 
@@ -4994,6 +5045,7 @@
     panel.hidden = !preferences.open;
     launcher.hidden = preferences.open;
     launcher.setAttribute('aria-expanded', String(preferences.open));
+    if (!preferences.open) setSettingsOpen(false);
     for (const tab of queryAll('[data-view]')) {
       const selected = tab.dataset.view === preferences.view;
       tab.setAttribute('aria-selected', String(selected));
@@ -5019,6 +5071,28 @@
         lastFocusedElement = null;
       }, 0);
     }
+  }
+
+  function setSettingsOpen(open) {
+    const dialog = query('[data-role="settings-dialog"]');
+    const button = query('[data-role="settings-button"]');
+    if (!dialog || !button) return;
+    const shouldOpen = Boolean(open);
+    button.setAttribute('aria-expanded', String(shouldOpen));
+    if (shouldOpen && !dialog.open) {
+      dialog.showModal();
+      requestAnimationFrame(() => query('#insta-toolbox-accent')?.focus({ preventScroll: true }));
+    } else if (!shouldOpen && dialog.open) {
+      dialog.close();
+    }
+  }
+
+  function onSettingsDialogClick(event) {
+    if (event.target === event.currentTarget) setSettingsOpen(false);
+  }
+
+  function onSettingsDialogClose() {
+    query('[data-role="settings-button"]')?.setAttribute('aria-expanded', 'false');
   }
 
   function renderChecker() {
@@ -5193,7 +5267,6 @@
     renderCheckerSteps();
     renderDmSummary();
     renderContext();
-    renderIntro();
     renderRun();
     renderLimits();
   }
@@ -5710,12 +5783,6 @@
       }
     }
   }
-
-  function renderIntro() {
-    const intro = query('[data-role="intro"]');
-    if (intro) intro.hidden = state.introDone === true;
-  }
-
 
   // --- Section 3: guided scan sequence ------------------------------------
 
@@ -6264,16 +6331,10 @@
 
   const actions = {
     'confirm-cancel': () => confirmationController?.cancel(),
+    'close-settings': () => setSettingsOpen(false),
     'check-account-relationships': () => checkAccountRelationships(),
     'scan-following': () => scanInto('following'),
     'scan-followers': () => scanInto('followers'),
-    'intro-done': () => {
-      state.introDone = true;
-      saveState();
-      savePreferences({ view: 'checker' });
-      renderAll();
-      query('[data-view="checker"]')?.focus();
-    },
     'context-cta': () => {
       const cta = query('[data-role="context-cta"]');
       const target = cta?.dataset.ctaAction;
@@ -6281,6 +6342,7 @@
       if (view) savePreferences({ view });
       if (target && actions[target]) actions[target]();
     },
+    'open-settings': () => setSettingsOpen(true),
     'review-accounts': () => reviewAccountRun(),
     open: () => savePreferences({ open: true }),
     close: () => {
@@ -6412,7 +6474,14 @@
       open: true,
     }),
     'layout-wide': () => savePreferences({ width: 560, height: 680, open: true }),
-    'reset-layout': () => savePreferences({ ...preferencesDefaults(), open: true, view: preferences.view }),
+    'reset-layout': () => savePreferences({
+      ...preferencesDefaults(),
+      accent: preferences.accent,
+      blur: preferences.blur,
+      launcherSize: preferences.launcherSize,
+      open: true,
+      view: preferences.view,
+    }),
     capture: () => {
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
       const visible = captureVisibleAccounts(listType);
@@ -6538,8 +6607,13 @@
         renderDmSummary();
         return;
       }
-      if (event.target.matches('[data-preference="opacity"]')) {
-        savePreferences({ opacity: Number(event.target.value) / 100 });
+      if (event.target.matches('[data-preference]')) {
+        const preference = event.target.dataset.preference;
+        savePreferences({
+          [preference]: preference === 'opacity'
+            ? Number(event.target.value) / 100
+            : event.target.value,
+        });
         return;
       }
       const file = event.target.files?.[0];
@@ -6562,6 +6636,12 @@
 
   shadow.addEventListener('keydown', onTabKeydown);
   shadow.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && query('[data-role="settings-dialog"]')?.open) {
+      setSettingsOpen(false);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const tab = event.target.closest?.('[data-view]');
     if (tab && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
       const tabs = queryAll('[data-view]');
@@ -6577,15 +6657,29 @@
     }
   });
 
+  query('[data-role="settings-dialog"]')?.addEventListener('click', onSettingsDialogClick);
+  query('[data-role="settings-dialog"]')?.addEventListener('close', onSettingsDialogClose);
+
   let interaction = null;
+  let suppressLauncherClick = false;
   const panel = query('.panel');
+  const launcher = query('.launcher');
   const moveHandle = query('[data-role="move"]');
-  const resizeHandle = query('[data-role="resize"]');
+  const resizeStartHandle = query('[data-role="resize-start"]');
+  const resizeEndHandle = query('[data-role="resize-end"]');
 
   function beginInteraction(event, kind) {
-    if (event.button !== 0 || innerWidth <= 600) return;
-    const rectangle = panel.getBoundingClientRect();
-    interaction = { kind, pointerId: event.pointerId, x: event.clientX, y: event.clientY, rectangle };
+    if (event.button !== 0 || (kind !== 'launcher' && innerWidth <= 600)) return;
+    const rectangle = (kind === 'launcher' ? launcher : panel).getBoundingClientRect();
+    interaction = {
+      kind,
+      moved: false,
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      rectangle,
+    };
+    host.dataset.layoutInteraction = kind;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     event.preventDefault();
   }
@@ -6593,15 +6687,35 @@
   function interactionPatch(event) {
     const deltaX = event.clientX - interaction.x;
     const deltaY = event.clientY - interaction.y;
+    interaction.moved ||= Math.hypot(deltaX, deltaY) >= 4;
+    if (interaction.kind === 'launcher') {
+      return { launcherPosition: constrainedPosition({
+        x: interaction.rectangle.left + deltaX,
+        y: interaction.rectangle.top + deltaY,
+      }, launcherDimensions()) };
+    }
     if (interaction.kind === 'move') {
       return { position: constrainedPosition({ x: interaction.rectangle.left + deltaX, y: interaction.rectangle.top + deltaY }) };
     }
     const maxWidth = Math.min(WIDTH_MAX, innerWidth - (INSET * 2));
     const maxHeight = Math.min(HEIGHT_MAX, innerHeight - (INSET * 2));
-    return {
-      width: Math.round(clamp(interaction.rectangle.width + deltaX, WIDTH_MIN, maxWidth)),
+    const fromStart = interaction.kind === 'resize-start';
+    const size = {
+      width: Math.round(clamp(
+        interaction.rectangle.width + (fromStart ? -deltaX : deltaX),
+        WIDTH_MIN,
+        maxWidth,
+      )),
       height: Math.round(clamp(interaction.rectangle.height + deltaY, HEIGHT_MIN, maxHeight)),
     };
+    const patch = { ...size };
+    if (fromStart) {
+      patch.position = constrainedPosition({
+        x: interaction.rectangle.right - size.width,
+        y: interaction.rectangle.top,
+      }, size);
+    }
+    return patch;
   }
 
   function moveInteraction(event) {
@@ -6614,28 +6728,65 @@
   function endInteraction(event) {
     if (!interaction || event.pointerId !== interaction.pointerId) return;
     const patch = interactionPatch(event);
+    const finished = interaction;
     interaction = null;
+    delete host.dataset.layoutInteraction;
+    if (finished.kind === 'launcher' && !finished.moved) return;
+    if (finished.kind === 'launcher') suppressLauncherClick = true;
     savePreferences(patch);
   }
 
   function keyboardLayout(event, kind) {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
     const step = event.shiftKey ? 40 : 12;
-    const rectangle = panel.getBoundingClientRect();
-    if (kind === 'move') {
+    const rectangle = (kind === 'launcher' ? launcher : panel).getBoundingClientRect();
+    if (kind === 'launcher') {
+      const size = launcherDimensions();
+      savePreferences({ launcherPosition: constrainedPosition({
+        x: (preferences.launcherPosition?.x ?? rectangle.left)
+          + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
+        y: (preferences.launcherPosition?.y ?? rectangle.top)
+          + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
+      }, size) });
+    } else if (kind === 'move') {
       savePreferences({ position: constrainedPosition({
         x: (preferences.position?.x ?? rectangle.left) + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
         y: (preferences.position?.y ?? rectangle.top) + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
       }) });
-    } else {
+    } else if (kind === 'resize-end') {
       savePreferences({
         width: preferences.width + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
         height: preferences.height + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
+      });
+    } else {
+      const next = panelSize();
+      next.width = Math.round(clamp(
+        next.width + (event.key === 'ArrowLeft' ? step : event.key === 'ArrowRight' ? -step : 0),
+        WIDTH_MIN,
+        Math.min(WIDTH_MAX, innerWidth - (INSET * 2)),
+      ));
+      next.height = Math.round(clamp(
+        next.height + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
+        HEIGHT_MIN,
+        Math.min(HEIGHT_MAX, innerHeight - (INSET * 2)),
+      ));
+      savePreferences({
+        width: next.width,
+        height: next.height,
+        position: constrainedPosition({ x: rectangle.right - next.width, y: rectangle.top }, next),
       });
     }
     event.preventDefault();
   }
 
+  launcher.addEventListener('pointerdown', (event) => beginInteraction(event, 'launcher'));
+  launcher.addEventListener('keydown', (event) => keyboardLayout(event, 'launcher'));
+  launcher.addEventListener('click', (event) => {
+    if (!suppressLauncherClick) return;
+    suppressLauncherClick = false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
   moveHandle.addEventListener('pointerdown', (event) => beginInteraction(event, 'move'));
   // Dragging anywhere on the header is far easier to hit than the grip alone,
   // as long as the real controls in it still behave like controls.
@@ -6643,14 +6794,24 @@
     if (event.target.closest('button, select, summary, input, a, label, [data-view], [data-action]')) return;
     beginInteraction(event, 'move');
   });
-  resizeHandle.addEventListener('pointerdown', (event) => beginInteraction(event, 'resize'));
+  resizeStartHandle.addEventListener('pointerdown', (event) => beginInteraction(event, 'resize-start'));
+  resizeEndHandle.addEventListener('pointerdown', (event) => beginInteraction(event, 'resize-end'));
   moveHandle.addEventListener('keydown', (event) => keyboardLayout(event, 'move'));
-  resizeHandle.addEventListener('keydown', (event) => keyboardLayout(event, 'resize'));
+  resizeStartHandle.addEventListener('keydown', (event) => keyboardLayout(event, 'resize-start'));
+  resizeEndHandle.addEventListener('keydown', (event) => keyboardLayout(event, 'resize-end'));
   window.addEventListener('pointermove', moveInteraction, { passive: false });
   window.addEventListener('pointerup', endInteraction);
   window.addEventListener('pointercancel', endInteraction);
   window.addEventListener('resize', () => {
-    if (preferences.position) savePreferences({ position: constrainedPosition(preferences.position) });
+    const patch = {};
+    if (preferences.position) patch.position = constrainedPosition(preferences.position);
+    if (preferences.launcherPosition) {
+      patch.launcherPosition = constrainedPosition(
+        preferences.launcherPosition,
+        launcherDimensions(),
+      );
+    }
+    if (Object.keys(patch).length) savePreferences(patch);
     else applyLayout();
   });
 

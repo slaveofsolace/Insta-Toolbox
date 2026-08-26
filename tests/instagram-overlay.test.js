@@ -71,7 +71,7 @@ test('Instagram loads the inspector before the visible sidecar', () => {
     'overlay/views/workspace.js',
     'instagram-overlay.js',
   ]);
-  assert.equal(manifest.version, '3.0.0');
+  assert.equal(manifest.version, '3.1.0');
 });
 
 test('sidecar migrates the visible capture and manual queue workflow', () => {
@@ -97,7 +97,8 @@ test('sidecar exposes every tool family and accessibility controls', () => {
   assert.match(overlay, /prefers-reduced-motion: reduce/);
   assert.match(overlay, /Alt \+ Shift \+ I/);
   assert.match(overlay, /data-insta-toolbox-role="move-handle"/);
-  assert.match(overlay, /data-insta-toolbox-role="resize-handle"/);
+  assert.match(overlay, /data-insta-toolbox-role="resize-handle-start"/);
+  assert.match(overlay, /data-insta-toolbox-role="resize-handle-end"/);
   assert.match(overlay, /\.insta-toolbox-header \{[^}]*min-height: 52px/);
   assert.match(overlay, /\.insta-toolbox-move-handle \{[^}]*min-width: 44px/);
   assert.match(overlay, /@container insta-toolbox-body \(max-width: 340px\)/);
@@ -115,6 +116,13 @@ test('sidecar exposes every tool family and accessibility controls', () => {
   assert.doesNotMatch(overlay, /data-insta-toolbox-role="view-subtitle"/);
   assert.doesNotMatch(overlay, />Local only</);
   assert.match(overlay, /data-insta-toolbox-preference="opacity"/);
+  assert.match(overlay, /data-insta-toolbox-preference="accent"/);
+  assert.match(overlay, /data-insta-toolbox-preference="blur"/);
+  assert.match(overlay, /data-insta-toolbox-preference="launcherSize"/);
+  assert.match(overlay, /data-insta-toolbox-role="settings-dialog"/);
+  assert.match(overlay, /Customize Insta Toolbox/);
+  assert.match(overlay, /insta-toolbox-settings-dialog::backdrop/);
+  assert.match(overlay, /event\.target === event\.currentTarget\) setSettingsOpen\(false\)/);
   assert.match(overlay, /\.insta-toolbox-range \{[^}]*accent-color: var\(--insta-toolbox-signal\)/);
   assert.match(overlay, /\.insta-toolbox-state-row\[data-tone="good"\] \.insta-toolbox-state-dot \{ background: var\(--insta-toolbox-good\)/);
   assert.match(overlay, /\.insta-toolbox-tool-card em \{ color: var\(--insta-toolbox-muted\)/);
@@ -158,13 +166,10 @@ test('sidecar can review only the exact profile already open without an imported
   assert.match(overlay, /Open one Instagram profile first\. No target was reviewed\./);
 });
 
-test('fresh installs explain all tools and follower comparisons can be filtered', () => {
-  assert.match(overlay, /data-insta-toolbox-role="first-run"/);
-  assert.match(overlay, /data-insta-toolbox-action="first-run-start"/);
-  assert.match(overlay, /Compare Followers and Following without clicking an Instagram action/);
-  assert.doesNotMatch(overlay, /<ol[^>]*data-insta-toolbox-role="first-run"/);
-  assert.match(overlay, /if \(model\.preferences\?\.firstRunComplete\) \{\s+slot\.replaceChildren\(\)/);
-  assert.match(overlay, /savePreference\(\{ firstRunComplete: true \}\)/);
+test('fresh installs open directly on the tools and follower comparisons can be filtered', () => {
+  assert.doesNotMatch(overlay, /data-insta-toolbox-role="first-run"/);
+  assert.doesNotMatch(overlay, /data-insta-toolbox-action="first-run-start"/);
+  assert.doesNotMatch(overlay, /Start with Mutual Checker/);
   assert.match(overlay, /data-insta-toolbox-role="checker-category"/);
   assert.match(overlay, /data-insta-toolbox-role="checker-search"/);
   assert.match(overlay, /filterComparisonResults/);

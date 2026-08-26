@@ -51,6 +51,8 @@ Roles, never raw colours. A component asks for `--insta-toolbox-danger`, not a h
 | Muted text | `--insta-toolbox-text-muted` | Secondary copy, captions |
 | Separator | `--insta-toolbox-line` | Borders and rules |
 | Accent | `--insta-toolbox-accent` | Primary action, selected tab |
+| Violet accent | `--insta-toolbox-accent-violet` | Optional violet customization |
+| Blue accent | `--insta-toolbox-accent-blue` | Optional blue customization |
 | On accent | `--insta-toolbox-on-accent` | Text and icons on an accent or danger fill |
 | Success | `--insta-toolbox-success` | Completed, proven removal |
 | Warning | `--insta-toolbox-warning` | Running, paused, incomplete scan |
