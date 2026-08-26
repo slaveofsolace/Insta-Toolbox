@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const shell = await readFile(new URL('../userscripts/src/toolbox-shell.js', import.meta.url), 'utf8');
+const extensionShell = await readFile(new URL('../extension/overlay/shell.js', import.meta.url), 'utf8');
+const extensionCapture = await readFile(new URL('../extension/overlay/views/capture.js', import.meta.url), 'utf8');
 const labels = await readFile(new URL('../extension/action-labels.js', import.meta.url), 'utf8');
 const confirmation = await readFile(new URL('../extension/action-confirmation.js', import.meta.url), 'utf8');
 const generated = await readFile(new URL('../userscripts/insta-toolbox.user.js', import.meta.url), 'utf8');
@@ -12,10 +14,14 @@ const pwaTools = await readFile(new URL('../src/app.parts/part-02.jsfrag', impor
 const pwaSettings = await readFile(new URL('../src/app.parts/part-03.jsfrag', import.meta.url), 'utf8');
 const pwaStyles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
 
-function loadShellFunction(name, globals = {}) {
-  const match = shell.match(new RegExp(`  function ${name}\\([\\s\\S]*?\\n  \\}`));
+function loadSourceFunction(source, name, globals = {}) {
+  const match = source.match(new RegExp(`  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`));
   assert.ok(match, `${name} must remain available for runtime copy checks`);
   return vm.runInNewContext(`(${match[0].trim()})`, globals);
+}
+
+function loadShellFunction(name, globals = {}) {
+  return loadSourceFunction(shell, name, globals);
 }
 
 test('first use opens directly on the three tools without an onboarding card', () => {
@@ -96,7 +102,7 @@ test('the panel names the current Instagram context for every handled state', ()
 
 test('the checker is a sequence that reports completeness per list', () => {
   assert.match(shell, /function scanState\(listType\)/);
-  assert.match(shell, /state\.capture\.verified\?\.\[listType\] !== true\) return 'partial'/);
+  assert.match(shell, /state\.capture\.verified\?\.\[listType\] !== true\) return count \? 'partial' : 'todo'/);
   assert.match(shell, /state\.capture\.complete\?\.\[listType\] === true \? 'done' : 'partial'/);
   assert.match(generated, /data-step="following"/);
   assert.match(generated, /data-step="followers"/);
@@ -157,22 +163,111 @@ test('the Mutual Checker preserves reconciliation progress and settles final det
   assert.ok(block.indexOf('showScanProgress(') < block.indexOf("setText("));
   assert.match(block, /reconciliationScanDetail\(progress\)/);
   assert.match(shell, /setText\('scan-detail', completedRelationshipScanDetail\(result\)\)/);
-  assert.match(shell, /const detail = failedRelationshipScanDetail\(error\);\s*setText\('scan-detail', detail\);\s*status\(detail\)/);
+  assert.match(shell, /const detail = failedRelationshipScanDetail\(error\)/);
+  assert.match(shell, /setText\('scan-detail', detail\);\s*status\(detail\)/);
+});
+
+test('Mutual Checker progress is determinate only when verified totals are known', () => {
+  const progressPercent = loadShellFunction('scanProgressPercent');
+  assert.equal(progressPercent({ followers: 12 }, {}, false), null);
+  assert.equal(progressPercent({ followers: 0, following: 0 }, { followers: 0, following: 0 }, false), 0);
+  assert.equal(progressPercent(
+    { followers: 50, following: 0 },
+    { followers: 100, following: 100 },
+    false,
+  ), 25);
+  assert.equal(progressPercent(
+    { followers: 100, following: 50 },
+    { followers: 100, following: 100 },
+    false,
+  ), 75);
+  assert.equal(progressPercent(
+    { followers: 5_000, following: 50 },
+    { followers: 100, following: 100 },
+    false,
+  ), 75);
+  assert.equal(progressPercent(
+    { followers: 99, following: 1 },
+    { followers: 100, following: 1 },
+    false,
+  ), 99);
+  assert.equal(progressPercent({}, {}, true), 100);
+  assert.match(shell, /bar\.removeAttribute\('aria-valuenow'\)/);
+  assert.doesNotMatch(shell, /found % 95/);
+
+  const attributes = new Map([['aria-valuenow', '72']]);
+  const bar = {
+    dataset: { indeterminate: 'false' },
+    removeAttribute(name) { attributes.delete(name); },
+    setAttribute(name, value) { attributes.set(name, value); },
+  };
+  const fill = { style: { width: '72%' } };
+  const settleFailure = loadShellFunction('settleFailedRelationshipProgress', {
+    query(selector) {
+      if (selector === '[data-role="scan-bar"]') return bar;
+      if (selector === '[data-role="scan-fill"]') return fill;
+      return null;
+    },
+  });
+  settleFailure(new Error('request failed'));
+  assert.equal(fill.style.width, '0%');
+  assert.equal(attributes.has('aria-valuenow'), false);
+  assert.equal(attributes.get('aria-valuetext'), 'Mutual check failed');
+  assert.equal(bar.dataset.indeterminate, 'false');
 });
 
 test('legacy checker rows are quarantined until an exact list dialog is rescanned', () => {
   assert.match(shell, /const requiresCountReconciledRescan = Number\(value\.schemaVersion\) < 4/);
   assert.match(shell, /schemaVersion: 5/);
   assert.match(shell, /verified: \{ followers: false, following: false \}/);
-  assert.match(shell, /'scanned-followers': \(\) => names\(verifiedCapture\('followers'\)\)/);
-  assert.match(shell, /'scanned-following': \(\) => names\(verifiedCapture\('following'\)\)/);
+  assert.match(shell, /'scanned-followers': \(\) => capturePool\(completeCapture\('followers'\)\)/);
+  assert.match(shell, /'scanned-following': \(\) => capturePool\(completeCapture\('following'\)\)/);
   assert.match(shell, /cannot drive comparisons or runs until rescanned/);
   assert.match(shell, /if \(observedTypes\.size !== 1\) continue/);
-  assert.equal(
-    shell.match(/new Map\(verifiedCapture\(listType\)\.map\(/g)?.length,
-    2,
-    'both full and visible rescans must replace quarantined rows instead of promoting them',
+  assert.match(shell, /function reconciledRelationshipAccounts\(existing, incoming, complete\)/);
+});
+
+test('complete list rescans replace stale rows while partial rescans remain partial merges', () => {
+  const normalizeAccounts = (items) => [...new Map((items || []).map((item) => [
+    String(item.username).toLowerCase(),
+    { ...item, username: String(item.username).toLowerCase() },
+  ])).values()];
+  const reconcile = loadShellFunction('reconciledRelationshipAccounts', { normalizeAccounts, Map });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(reconcile([{ username: 'stale' }], [{ username: 'fresh' }], true))),
+    [{ username: 'fresh' }],
   );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(reconcile([{ username: 'stale' }], [{ username: 'fresh' }], false))),
+    [{ username: 'stale' }, { username: 'fresh' }],
+  );
+
+  const state = {
+    capture: {
+      subjectUsername: 'account_a',
+      followers: [{ username: 'stale' }],
+      following: [],
+      source: { followers: 'list-dialog', following: '' },
+    },
+  };
+  const prepare = loadShellFunction('prepareCaptureWorkspace', {
+    engine: { normalizeUsername: (value) => String(value || '').toLowerCase() },
+    state,
+    stateDefaults: () => ({
+      capture: {
+        subjectUsername: '', followers: [], following: [], source: { followers: '', following: '' },
+      },
+    }),
+  });
+  prepare('account_b');
+  assert.deepEqual(state.capture.followers, []);
+  assert.equal(state.capture.subjectUsername, '');
+
+  const currentSubject = loadShellFunction('currentProfileCaptureSubject', {
+    engine: { normalizeUsername: (value) => String(value || '').replace(/^\/+|\/+$/g, '').toLowerCase() },
+    location: { pathname: '/external_account/' },
+  });
+  assert.equal(currentSubject(), 'external_account');
 });
 
 test('the checker scan controls name the exact list they operate on', () => {
@@ -448,4 +543,156 @@ test('the panels lead with one action instead of a row of peers', () => {
   const disclosures = (generated.match(/class="settings-inline"/g) || []).length;
   assert.ok(disclosures >= 3, 'each tool should keep its secondary actions behind a disclosure');
   assert.ok(toolbars < 24, `toolbars grew to ${toolbars}; keep secondary actions disclosed`);
+});
+
+test('secondary disclosures use visible open and closed triangle indicators', () => {
+  assert.match(shell, /\.settings-inline > summary::after \{[^}]*border-left: 7px solid currentColor;/s);
+  assert.match(shell, /\.settings-inline\[open\] > summary::after \{ transform: rotate\(90deg\); \}/);
+  assert.match(extensionShell, /\.insta-toolbox-disclosure > summary::after \{[^}]*border-left: 7px solid currentColor;/s);
+  assert.match(extensionShell, /\.insta-toolbox-disclosure\[open\] > summary::after \{ transform: rotate\(90deg\); \}/);
+  assert.doesNotMatch(extensionShell, /summary::after \{ content: "\+"/);
+});
+
+test('Mutual Checker filters stack inside a narrow custom panel', () => {
+  assert.match(
+    extensionShell,
+    /@container insta-toolbox-body \(max-width: 340px\) \{[\s\S]*?\.insta-toolbox-filter-grid \{ grid-template-columns: 1fr; \}/,
+  );
+});
+
+test('partial Mutual Checker captures cannot become userscript action targets', () => {
+  const state = {
+    capture: {
+      subjectUsername: 'signed_in',
+      followers: [{ username: 'follower_one' }],
+      following: [{ username: 'unsafe_target' }],
+      complete: { followers: false, following: true },
+      verified: { followers: true, following: true },
+    },
+    queue: { queue: [] },
+  };
+  let source = 'not-following-me-back';
+  const globals = {
+    state,
+    ACTIONABLE_STATUSES: new Set(['pending']),
+    clampNumber: (value, _bounds, fallback) => Number(value) || fallback,
+    completeCapture: (listType) => (
+      state.capture.verified[listType] && state.capture.complete[listType]
+        ? state.capture[listType]
+        : []
+    ),
+    compareCapture: () => ({
+      mutuals: [],
+      iDoNotFollowBack: [],
+      notFollowingMeBack: [{ username: 'unsafe_target' }],
+    }),
+    engine: {
+      detectAuthenticatedUsername: () => 'signed_in',
+      normalizeUsername: (value) => String(value || '').replace(/^@/, '').toLowerCase(),
+    },
+    query(selector) {
+      if (selector === '[data-role="bot-action"]') return { value: 'unfollow' };
+      if (selector === '[data-role="bot-source"]') return { value: source };
+      if (selector === '[data-role="bot-count"]') return { value: '20' };
+      return null;
+    },
+  };
+  const accountRunPlan = loadShellFunction('accountRunPlan', globals);
+
+  let plan = accountRunPlan();
+  assert.equal(plan.items.length, 0);
+  assert.match(plan.skippedReasons[0].reason, /data is partial/);
+
+  state.capture.complete.followers = true;
+  plan = accountRunPlan();
+  assert.equal(plan.items[0].username, 'unsafe_target');
+
+  state.capture.subjectUsername = 'other_person';
+  plan = accountRunPlan();
+  assert.equal(plan.items.length, 0);
+  assert.match(plan.skippedReasons[0].reason, /signed-in account/);
+  state.capture.subjectUsername = 'signed_in';
+
+  source = 'scanned-followers';
+  state.capture.complete.followers = false;
+  plan = accountRunPlan();
+  assert.equal(plan.items.length, 0);
+  state.capture.complete.followers = true;
+  plan = accountRunPlan();
+  assert.equal(plan.items[0].username, 'follower_one');
+});
+
+test('failed manual scans replace the visible scanning message', async () => {
+  let outcome = null;
+  const details = [];
+  const bar = {
+    dataset: {},
+    removeAttribute() {},
+    setAttribute(_name, value) { this.valueText = value; },
+  };
+  const fill = { style: {} };
+  const select = { value: '' };
+  const scanInto = loadShellFunction('scanInto', {
+    actions: { 'scan-list': async () => outcome },
+    query(selector) {
+      if (selector === '[data-role="list-type"]') return select;
+      if (selector === '[data-role="scan-bar"]') return bar;
+      if (selector === '[data-role="scan-fill"]') return fill;
+      return null;
+    },
+    renderAll() {},
+    resetRelationshipProgress() {},
+    safeText: (value, fallback = '') => String(value ?? '').trim() || fallback,
+    setText(role, value) { if (role === 'scan-detail') details.push(value); },
+    showScanProgress() {},
+  });
+
+  for (const detail of [
+    'No verified followers dialog was open.',
+    'No rows were readable.',
+    'Stopped: Instagram rate limit.',
+  ]) {
+    outcome = { applied: false, detail };
+    await scanInto('followers');
+    assert.equal(details.at(-1), detail);
+    assert.equal(bar.valueText, detail);
+    assert.equal(fill.style.width, '0%');
+  }
+  assert.equal((shell.match(/return \{ applied: false, detail \};/g) || []).length, 3);
+});
+
+test('verified empty extension lists are rendered as scanned', () => {
+  const detail = loadSourceFunction(extensionCapture, 'relationshipListDetail', {
+    formatCount: (value) => Number(value || 0).toLocaleString('en-US'),
+  });
+  assert.equal(detail('followers', [], true, true), '0 unique · complete');
+  assert.equal(detail('followers', [], true, false), '0 unique · partial');
+  assert.equal(detail('followers', [], false, false), 'Open your Followers list next');
+});
+
+test('comparison changes and coarse scan phases use the existing live feedback', () => {
+  assert.match(shell, /function announceComparisonCount\(\)/);
+  assert.match(shell, /checkerResultAnnouncementTimer = setTimeout\([\s\S]*?status\(message, 'neutral'\)/);
+  assert.equal((shell.match(/announceComparisonCount\(\);/g) || []).length, 2);
+  assert.match(extensionCapture, /function announceComparisonResult\(runtime, message\)/);
+  assert.match(extensionCapture, /const announceProgress = \(key, message\) =>/);
+  assert.match(extensionCapture, /announceProgress\(\s*`loading-\$\{progress\.listType\}`/s);
+  assert.doesNotMatch(shell, /Complete both follower lists before downloading a comparison/);
+  assert.match(shell, /Scan or verify both follower lists before downloading a comparison/);
+});
+
+test('verified empty relationship lists keep an honest complete or partial state', () => {
+  const state = {
+    capture: {
+      followers: [],
+      complete: { followers: true },
+      verified: { followers: true },
+    },
+  };
+  const scanState = loadShellFunction('scanState', { state });
+  assert.equal(scanState('followers'), 'done');
+  state.capture.complete.followers = false;
+  assert.equal(scanState('followers'), 'partial');
+  state.capture.verified.followers = false;
+  assert.equal(scanState('followers'), 'todo');
 });

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      3.1.1
+// @version      3.1.2
 // @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -2096,6 +2096,7 @@
   const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
   const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
   const RELATIONSHIP_RETRY_BASE_MS = 1_000;
+  const RELATIONSHIP_RECONCILIATION_PASSES = 3;
 
   function normalizeUsername(value) {
     const username = String(value || '')
@@ -2253,6 +2254,7 @@
 
   async function fetchInstagramRelationshipJson(url, {
     clearTimer,
+    expectedCount = null,
     fetchImpl,
     found = 0,
     listType = null,
@@ -2337,6 +2339,7 @@
           attempt: attempt + 1,
           failedAttempt: attempt,
           found,
+          expectedCount,
           listType,
           maxAttempts: requestAttempts,
           pages,
@@ -2454,133 +2457,180 @@
     startedAt,
     expectedCount = null,
   }) {
-    const accounts = new Map();
-    const accountKeyByUsername = new Map();
-    const seenTokens = new Set();
-    const passAccounts = new Set();
-    let nextMaxId = '';
-    let pages = 0;
-    let reconciliationAttempts = 0;
-    while (pages < maxPages && accounts.size < maxAccounts) {
-      assertRelationshipRunActive(signal, startedAt, now, maxDurationMs);
-      const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
-      url.searchParams.set('count', String(RELATIONSHIP_PAGE_SIZE));
-      if (nextMaxId) url.searchParams.set('max_id', nextMaxId);
-      const data = await fetchInstagramRelationshipJson(url, {
-        clearTimer,
-        fetchImpl,
-        found: accounts.size,
-        listType,
-        onProgress,
-        pages,
-        random,
-        requestAttempts,
-        requestTimeoutMs,
-        retryBaseMs,
-        setTimer,
-        signal,
-        sleepImpl,
-        username,
-      });
-      if (!Array.isArray(data?.users)) {
-        throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} page.`);
+    let bestAccounts = [];
+    let totalPages = 0;
+    for (let passIndex = 0; passIndex < RELATIONSHIP_RECONCILIATION_PASSES; passIndex += 1) {
+      const accounts = new Map();
+      const accountKeyByUsername = new Map();
+      const seenTokens = new Set();
+      let nextMaxId = '';
+      let passPages = 0;
+      let retryNextPass = false;
+      let stagnantPages = 0;
+      if (passIndex > 0) {
+        onProgress?.(Object.freeze({
+          attempt: passIndex,
+          expectedCount,
+          found: bestAccounts.length,
+          listType,
+          maxAttempts: RELATIONSHIP_RECONCILIATION_PASSES,
+          pages: totalPages,
+          phase: 'reconciling',
+          passFound: 0,
+          username,
+        }));
+        await sleepImpl(800 + ((passIndex - 1) * 400), signal);
       }
-      pages += 1;
-      for (const user of data.users) {
-        const accountUsername = normalizeUsername(user?.username);
-        if (!accountUsername) continue;
-        const rawAccountId = user?.pk ?? user?.id ?? '';
-        const accountId = String(rawAccountId || '').trim();
-        if (accountId && !/^\d+$/.test(accountId)) {
-          throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} account ID.`);
-        }
-        const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
-        const usernameOwner = accountKeyByUsername.get(accountUsername);
-        if (usernameOwner && usernameOwner !== accountKey) {
-          if (usernameOwner === `username:${accountUsername}` && accountId) {
-            accounts.delete(usernameOwner);
-          } else {
-            throw relationshipError(
-              'invalid-response',
-              `Instagram returned conflicting ${listType} account identities.`,
-            );
-          }
-        }
-        const previous = accounts.get(accountKey);
-        if (previous?.username && previous.username !== accountUsername) {
-          accountKeyByUsername.delete(previous.username);
-        }
-        accounts.set(accountKey, {
-          username: accountUsername,
-          profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
-          displayName: String(user?.full_name || '').trim().slice(0, 160),
-          source: 'authenticated-instagram-web',
+      while (passPages < maxPages && accounts.size < maxAccounts) {
+        assertRelationshipRunActive(signal, startedAt, now, maxDurationMs);
+        const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
+        url.searchParams.set('count', String(RELATIONSHIP_PAGE_SIZE));
+        if (nextMaxId) url.searchParams.set('max_id', nextMaxId);
+        const data = await fetchInstagramRelationshipJson(url, {
+          clearTimer,
+          expectedCount,
+          fetchImpl,
+          found: accounts.size,
+          listType,
+          onProgress,
+          pages: totalPages,
+          random,
+          requestAttempts,
+          requestTimeoutMs,
+          retryBaseMs,
+          setTimer,
+          signal,
+          sleepImpl,
+          username,
         });
-        accountKeyByUsername.set(accountUsername, accountKey);
-        if (reconciliationAttempts > 0) passAccounts.add(accountKey);
-        if (accounts.size >= maxAccounts) break;
-      }
-      onProgress?.(Object.freeze({
-        found: accounts.size,
-        listType,
-        pages,
-        ...(reconciliationAttempts > 0 ? {
-          attempt: reconciliationAttempts,
-          expectedCount,
-          passFound: passAccounts.size,
-        } : {}),
-        phase: reconciliationAttempts > 0 ? 'reconciling' : 'loading',
-        username,
-      }));
-      const candidateToken = data.next_max_id;
-      if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
-        if (Number.isSafeInteger(expectedCount)
-          && accounts.size < expectedCount
-          && reconciliationAttempts < 1) {
-          reconciliationAttempts += 1;
-          nextMaxId = '';
-          seenTokens.clear();
-          passAccounts.clear();
-          onProgress?.(Object.freeze({
-            attempt: reconciliationAttempts,
-            expectedCount,
-            found: accounts.size,
-            listType,
-            pages,
-            phase: 'reconciling',
-            passFound: 0,
-            username,
-          }));
-          await sleepImpl(800, signal);
-          continue;
+        if (!Array.isArray(data?.users)) {
+          throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} page.`);
         }
-        const countReconciled = Number.isSafeInteger(expectedCount) && accounts.size === expectedCount;
-        return {
-          accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
-          complete: countReconciled,
+        passPages += 1;
+        totalPages += 1;
+        const beforePageCount = accounts.size;
+        for (const user of data.users) {
+          const accountUsername = normalizeUsername(user?.username);
+          if (!accountUsername) continue;
+          const rawAccountId = user?.pk ?? user?.id ?? '';
+          const accountId = String(rawAccountId || '').trim();
+          if (accountId && !/^\d+$/.test(accountId)) {
+            throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} account ID.`);
+          }
+          const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
+          const usernameOwner = accountKeyByUsername.get(accountUsername);
+          if (usernameOwner && usernameOwner !== accountKey) {
+            if (usernameOwner === `username:${accountUsername}` && accountId) {
+              accounts.delete(usernameOwner);
+            } else {
+              throw relationshipError(
+                'invalid-response',
+                `Instagram returned conflicting ${listType} account identities.`,
+              );
+            }
+          }
+          const previous = accounts.get(accountKey);
+          if (previous?.username && previous.username !== accountUsername) {
+            accountKeyByUsername.delete(previous.username);
+          }
+          accounts.set(accountKey, {
+            username: accountUsername,
+            profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
+            displayName: String(user?.full_name || '').trim().slice(0, 160),
+            source: 'authenticated-instagram-web',
+          });
+          accountKeyByUsername.set(accountUsername, accountKey);
+          if (accounts.size >= maxAccounts) break;
+        }
+        stagnantPages = accounts.size > beforePageCount ? 0 : stagnantPages + 1;
+        onProgress?.(Object.freeze({
           expectedCount,
-          pages,
-          reason: countReconciled
-            ? 'pagination-complete'
-            : Number.isSafeInteger(expectedCount)
-              ? 'count-mismatch'
-              : 'count-unverified',
-        };
+          found: Math.max(bestAccounts.length, accounts.size),
+          listType,
+          pages: totalPages,
+          ...(passIndex > 0 ? {
+            attempt: passIndex,
+            passFound: accounts.size,
+          } : {}),
+          phase: passIndex > 0 ? 'reconciling' : 'loading',
+          username,
+        }));
+        const candidateToken = stagnantPages >= 3 ? null : data.next_max_id;
+        if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
+          const passAccounts = [...accounts.values()]
+            .sort((left, right) => left.username.localeCompare(right.username));
+          if (passAccounts.length > bestAccounts.length) bestAccounts = passAccounts;
+          const countReconciled = Number.isSafeInteger(expectedCount)
+            && passAccounts.length === expectedCount;
+          if (countReconciled) {
+            return {
+              accounts: passAccounts,
+              complete: true,
+              expectedCount,
+              pages: totalPages,
+              reason: 'pagination-complete',
+            };
+          }
+          const shouldRetry = Number.isSafeInteger(expectedCount)
+            && passAccounts.length < expectedCount
+            && passIndex < RELATIONSHIP_RECONCILIATION_PASSES - 1;
+          if (shouldRetry) {
+            retryNextPass = true;
+            break;
+          }
+          return {
+            accounts: bestAccounts,
+            complete: false,
+            expectedCount,
+            pages: totalPages,
+            reason: Number.isSafeInteger(expectedCount) ? 'count-mismatch' : 'count-unverified',
+          };
+        }
+        nextMaxId = String(candidateToken);
+        if (!nextMaxId || nextMaxId.length > 500) {
+          throw relationshipError('invalid-pagination', `Instagram returned an unsafe ${listType} pagination token.`);
+        }
+        if (seenTokens.has(nextMaxId)) {
+          const passAccounts = [...accounts.values()]
+            .sort((left, right) => left.username.localeCompare(right.username));
+          if (passAccounts.length > bestAccounts.length) bestAccounts = passAccounts;
+          const shouldRetry = Number.isSafeInteger(expectedCount)
+            && passAccounts.length < expectedCount
+            && passIndex < RELATIONSHIP_RECONCILIATION_PASSES - 1;
+          if (shouldRetry) {
+            retryNextPass = true;
+            break;
+          }
+          return {
+            accounts: bestAccounts,
+            complete: false,
+            expectedCount,
+            pages: totalPages,
+            reason: 'count-mismatch',
+          };
+        }
+        seenTokens.add(nextMaxId);
+        const delayMs = Math.floor(800 + (Math.max(0, Math.min(0.999999, random())) * 700));
+        await sleepImpl(delayMs, signal);
       }
-      nextMaxId = String(candidateToken);
-      if (!nextMaxId || nextMaxId.length > 500 || seenTokens.has(nextMaxId)) {
-        throw relationshipError('invalid-pagination', `Instagram returned an unsafe ${listType} pagination token.`);
-      }
-      seenTokens.add(nextMaxId);
-      const delayMs = Math.floor(800 + (Math.max(0, Math.min(0.999999, random())) * 700));
-      await sleepImpl(delayMs, signal);
+      const passAccounts = [...accounts.values()]
+        .sort((left, right) => left.username.localeCompare(right.username));
+      if (passAccounts.length > bestAccounts.length) bestAccounts = passAccounts;
+      if (retryNextPass) continue;
+      return {
+        accounts: bestAccounts,
+        complete: false,
+        expectedCount,
+        pages: totalPages,
+        reason: accounts.size >= maxAccounts ? 'account-limit' : 'page-limit',
+      };
     }
     return {
-      accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
+      accounts: bestAccounts,
       complete: false,
       expectedCount,
-      pages,
-      reason: accounts.size >= maxAccounts ? 'account-limit' : 'page-limit',
+      pages: totalPages,
+      reason: 'count-mismatch',
     };
   }
 
@@ -2655,6 +2705,14 @@
         pages: 0,
         username,
       });
+      onProgress?.(Object.freeze({
+        expectedCounts: profileCountsAtStart,
+        found: 0,
+        listType: null,
+        pages: 0,
+        phase: 'counts-ready',
+        username,
+      }));
       const countDisagreementAtStart = exactProfileCountDisagreement(username, profileCountsAtStart);
       const followersTraversal = await fetchRelationshipList('followers', userId, username, {
         ...common,
@@ -3744,6 +3802,9 @@
 
   function exactProfileListCount(listType) {
     if (listType !== 'followers' && listType !== 'following') return null;
+    const profileUsername = normalizeUsername(location.pathname);
+    const scopedCounts = new Set();
+    const fallbackCounts = new Set();
     for (const link of document.querySelectorAll('a[role="link"], a[href="#"]')) {
       const values = [
         link.getAttribute('title'),
@@ -3761,9 +3822,22 @@
         const digits = match[1].replace(/\D/g, '');
         if (!digits) continue;
         const count = Number(digits);
-        if (Number.isSafeInteger(count)) return count;
+        if (!Number.isSafeInteger(count)) continue;
+        fallbackCounts.add(count);
+        const href = link.getAttribute?.('href');
+        if (!href || !profileUsername) continue;
+        try {
+          const pathname = new URL(href, INSTAGRAM_WEB_ORIGIN).pathname
+            .replace(/\/+$/, '')
+            .toLowerCase();
+          if (pathname === `/${profileUsername}/${listType}`) scopedCounts.add(count);
+        } catch {
+          // Ignore malformed, non-navigation values such as JavaScript URLs.
+        }
       }
     }
+    if (scopedCounts.size === 1) return [...scopedCounts][0];
+    if (!scopedCounts.size && fallbackCounts.size === 1) return [...fallbackCounts][0];
     return null;
   }
 
@@ -3779,9 +3853,9 @@
       return { ...session, accounts: [], complete: false, reason: 'session-stop' };
     }
     const expectedListType = listType === 'followers' || listType === 'following' ? listType : '';
-    const listContext = accountListDialog(expectedListType);
-    const root = listContext?.dialog || null;
-    const scroller = scrollableWithin(root);
+    let listContext = accountListDialog(expectedListType);
+    let root = listContext?.dialog || null;
+    let scroller = scrollableWithin(root);
     if (!root) {
       return { ...session, accounts: [], complete: false, reason: 'open-a-followers-or-following-list' };
     }
@@ -3804,9 +3878,30 @@
     };
 
     harvest();
-    let complete = !scroller;
+    let complete = !scroller
+      && Number.isSafeInteger(expectedCountAtStart)
+      && accounts.size === expectedCountAtStart;
     let stagnantRounds = 0;
-    for (let round = 0; scroller && round < maxScrolls; round += 1) {
+    for (let round = 0; round < maxScrolls; round += 1) {
+      const currentContext = accountListDialog(expectedListType);
+      if (!currentContext) {
+        complete = false;
+        break;
+      }
+      const currentRoot = currentContext.dialog;
+      const currentScroller = scrollableWithin(currentRoot);
+      if (currentRoot !== root || currentScroller !== scroller) {
+        listContext = currentContext;
+        root = currentRoot;
+        scroller = currentScroller;
+        stagnantRounds = 0;
+        harvest();
+      }
+      if (!scroller) {
+        complete = Number.isSafeInteger(expectedCountAtStart)
+          && accounts.size === expectedCountAtStart;
+        break;
+      }
       const beforeCount = accounts.size;
       const beforeHeight = scroller.scrollHeight;
       // Virtualised lists only fetch more rows in response to a real scroll
@@ -3824,21 +3919,17 @@
       // A long Followers list keeps a spinner up well past the settle delay.
       // Waiting for it to clear is what stops a big list being declared
       // complete while thousands of rows are still unfetched.
+      let loading = false;
       for (let wait = 0; wait < 24; wait += 1) {
-        if (!root.querySelector('[role="progressbar"], svg[aria-label*="Loading" i]')) break;
+        loading = Boolean(root.querySelector('[role="progressbar"], svg[aria-label*="Loading" i]'));
+        if (!loading) break;
         await sleep(250);
       }
       harvest();
 
       const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 8;
       const grew = accounts.size > beforeCount || scroller.scrollHeight > beforeHeight;
-      stagnantRounds = grew ? 0 : stagnantRounds + 1;
-      // Instagram lazy-loads in bursts and can pause between pages, so a couple
-      // of quiet rounds does not mean the end. Be patient before concluding.
-      if (atBottom && stagnantRounds >= 10) {
-        complete = true;
-        break;
-      }
+      stagnantRounds = grew || loading ? 0 : stagnantRounds + 1;
       const check = inspectSession();
       if (check.sessionExpired || check.challenge || check.actionBlocked || check.rateLimited) {
         return {
@@ -3847,6 +3938,18 @@
           complete: false,
           reason: 'session-stop',
         };
+      }
+      if (atBottom
+        && Number.isSafeInteger(expectedCountAtStart)
+        && accounts.size === expectedCountAtStart) {
+        complete = true;
+        break;
+      }
+      // Instagram lazy-loads in bursts and can pause between pages, so a couple
+      // of quiet rounds does not mean the end. Be patient before concluding.
+      if (atBottom && !loading && stagnantRounds >= 10) {
+        complete = true;
+        break;
       }
     }
 
@@ -4474,6 +4577,16 @@
   let state = loadState(managerTab);
   let preferences = normalizePreferences(GM_getValue(PREFERENCES_KEY, preferencesDefaults()));
   let lastFocusedElement = null;
+  const CHECKER_RESULTS_PAGE_SIZE = 25;
+  const CHECKER_CATEGORY_KEYS = Object.freeze({
+    'not-following-me-back': 'notFollowingMeBack',
+    'i-do-not-follow-back': 'iDoNotFollowBack',
+    mutuals: 'mutuals',
+  });
+  let checkerResultLimit = CHECKER_RESULTS_PAGE_SIZE;
+  let checkerResultKey = '';
+  let checkerResultAnnouncement = '';
+  let checkerResultAnnouncementTimer = null;
 
   function saveState() {
     GM_setValue(STATE_KEY, { ...state, run: null });
@@ -4505,6 +4618,13 @@
     return state.capture.verified?.[listType] === true ? state.capture[listType] : [];
   }
 
+  function completeCapture(listType) {
+    return state.capture.verified?.[listType] === true
+      && state.capture.complete?.[listType] === true
+      ? state.capture[listType]
+      : [];
+  }
+
   function compareCapture() {
     const followers = verifiedCapture('followers');
     const following = verifiedCapture('following');
@@ -4514,6 +4634,39 @@
       mutuals: following.filter((account) => followerNames.has(account.username)),
       iDoNotFollowBack: followers.filter((account) => !followingNames.has(account.username)),
       notFollowingMeBack: following.filter((account) => !followerNames.has(account.username)),
+    };
+  }
+
+  function comparisonBrowserSelection(comparison) {
+    const categoryControl = query('[data-role="comparison-category"]');
+    const searchControl = query('[data-role="result-filter"]');
+    const category = Object.hasOwn(CHECKER_CATEGORY_KEYS, categoryControl?.value)
+      ? categoryControl.value
+      : 'not-following-me-back';
+    const search = safeText(searchControl?.value).replace(/^@+/, '').toLocaleLowerCase();
+    const source = Array.isArray(comparison?.[CHECKER_CATEGORY_KEYS[category]])
+      ? comparison[CHECKER_CATEGORY_KEYS[category]]
+      : [];
+    const matches = search
+      ? source.filter((account) => (
+        safeText(account?.username).toLocaleLowerCase().includes(search)
+        || safeText(account?.displayName).toLocaleLowerCase().includes(search)
+      ))
+      : source;
+    const viewKey = [
+      category,
+      search,
+      state.capture.capturedAt?.followers || '',
+      state.capture.capturedAt?.following || '',
+    ].join('|');
+    if (checkerResultKey !== viewKey) {
+      checkerResultKey = viewKey;
+      checkerResultLimit = CHECKER_RESULTS_PAGE_SIZE;
+    }
+    return {
+      accounts: matches.slice(0, checkerResultLimit),
+      category,
+      total: matches.length,
     };
   }
 
@@ -4807,6 +4960,12 @@
       .list { margin: 10px 0 0; padding: 0; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); list-style: none; }
       .list li { padding: 8px 0; border-bottom: 1px solid var(--insta-toolbox-line, #d8ddd4); overflow-wrap: break-word; word-break: normal; font-size: 12px; }
       .list small { display: block; margin-top: 2px; color: var(--insta-toolbox-text-muted, #687068); }
+      .comparison-browser[hidden] { display: none; }
+      .comparison-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+      .comparison-controls .field { margin: 0; }
+      .comparison-count { margin: 10px 0 0; color: var(--insta-toolbox-text-muted, #687068); font-size: 12px; }
+      .comparison-list strong { display: block; }
+      .comparison-more { width: 100%; margin-top: 10px; }
       .notice { padding: 10px; border-left: 4px solid var(--insta-toolbox-warning, #ad7823); background: var(--insta-toolbox-bg-sunken, #fff4d6); color: var(--insta-toolbox-text, #62490f); font-size: 12px; }
       .range-row { display:grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items:center; }
       .footer { height: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; padding: 3px 52px; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); background: color-mix(in srgb, var(--insta-toolbox-bg, #fff) var(--insta-toolbox-alpha-strong), transparent); color: var(--insta-toolbox-text-muted, #687068); font-size: 10px; line-height: 1; }
@@ -4821,14 +4980,16 @@
       button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, .file:focus-within { outline: 3px solid var(--insta-toolbox-focus, #b83d67); outline-offset: 2px; }
       .tab:focus-visible { outline: 0; outline-offset: 0; box-shadow: inset 0 -3px 0 var(--insta-toolbox-focus, #b83d67); }
       @media (max-width: 600px) { .panel { top:auto; right:0; bottom:0; left:0; width:100%; height:min(78dvh,720px); border-radius:14px 14px 0 0; } .handle,.resize { display:none; } .header { grid-template-columns:minmax(0,1fr) auto; } }
+      @container (max-width: 420px) { .comparison-controls { grid-template-columns: minmax(0,1fr); } }
       @container (max-width: 330px) { .header h1 { font-size:14px; } }
       @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; } }
       .step, .context, .review, .card { transition: border-color var(--insta-toolbox-motion-base, 180ms) var(--insta-toolbox-ease, ease); }
       .scan-progress .run-bar span { transition: width var(--insta-toolbox-motion-base, 180ms) var(--insta-toolbox-ease, ease); }
+      .scan-progress .run-bar[data-indeterminate="true"] span { width: 100% !important; background: repeating-linear-gradient(135deg, var(--insta-toolbox-accent, #b83d67) 0 8px, transparent 8px 14px); opacity: .72; }
       /* A finished run should register without stealing attention. */
       .run-panel[data-finished="true"] .run-bar span { transition: width var(--insta-toolbox-motion-slow, 240ms) var(--insta-toolbox-ease, ease); }
       @media (prefers-reduced-motion: reduce) {
-        .step, .context, .review, .card, .scan-progress .run-bar span, .run-panel[data-finished="true"] .run-bar span { transition: none; }
+        .step, .context, .review, .card, .settings-inline > summary::after, .scan-progress .run-bar span, .run-panel[data-finished="true"] .run-bar span { transition: none; }
       }
       .review { margin-bottom: 12px; padding: 10px; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 10px; }
       .review strong { display: block; margin-bottom: 6px; font-size: 13px; }
@@ -4843,7 +5004,10 @@
       .step-body span { display: block; color: var(--insta-toolbox-text-muted, #687068); font-size: 12px; }
       .scan-progress { margin-bottom: 12px; }
       .settings-inline { margin-top: 10px; border-top: 1px solid var(--insta-toolbox-line, #d8ddd4); }
-      .settings-inline > summary { min-height: 44px; display: flex; align-items: center; font-size: 13px; cursor: pointer; }
+      .settings-inline > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; cursor: pointer; list-style: none; }
+      .settings-inline > summary::-webkit-details-marker { display: none; }
+      .settings-inline > summary::after { content: ""; flex: 0 0 auto; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 7px solid currentColor; color: var(--insta-toolbox-text-muted, #687068); transition: transform var(--insta-toolbox-motion-fast, 120ms) var(--insta-toolbox-ease, ease); }
+      .settings-inline[open] > summary::after { transform: rotate(90deg); }
       .header, .context, .tabs, .run-panel, .footer { flex: 0 0 auto; }
       .header, .footer { position: relative; z-index: 1; }
       input:not([type="range"]):not([type="checkbox"]), select, textarea { min-height: 44px; box-sizing: border-box; }
@@ -4914,9 +5078,10 @@
       </nav>
       <div class="scroll">
         <section id="insta-toolbox-panel-checker" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-checker" data-panel="checker" hidden><section class="card" aria-labelledby="insta-toolbox-checker-account-title"><h2 id="insta-toolbox-checker-account-title">Check mutuals</h2><p>Read-only. Uses the Instagram session in this tab.</p><div class="field"><label for="insta-toolbox-checker-username">Instagram username</label><input id="insta-toolbox-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-role="checker-username"></div><div class="toolbar"><button class="button primary" type="button" data-action="check-account-relationships" data-role="checker-run">Check mutuals</button></div></section>
-          <div class="scan-progress" data-role="scan-progress" hidden><div class="run-bar"><span data-role="scan-fill"></span></div><p class="lead" data-role="scan-detail"></p></div>
-          <div class="field"><label for="insta-toolbox-filter">Filter results</label><input id="insta-toolbox-filter" type="search" placeholder="Search a username" data-role="result-filter"></div>
-          <div class="card" data-role="comparison"></div><details class="settings-inline"><summary>Capture lists and export</summary><p class="lead">If the account check fails, open Followers or Following and scan that list.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="insta-toolbox-list-type">Raw list</label><select id="insta-toolbox-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
+          <div class="scan-progress" data-role="scan-progress" hidden><div class="run-bar" data-role="scan-bar" role="progressbar" aria-label="Mutual check progress" aria-describedby="insta-toolbox-scan-detail" aria-valuemin="0" aria-valuemax="100"><span data-role="scan-fill"></span></div><p id="insta-toolbox-scan-detail" class="lead" data-role="scan-detail"></p></div>
+          <div class="card" data-role="comparison"></div>
+          <section class="card comparison-browser" data-role="comparison-browser" aria-labelledby="insta-toolbox-comparison-browser-title" hidden><h2 id="insta-toolbox-comparison-browser-title">Comparison list</h2><div class="comparison-controls"><div class="field"><label for="insta-toolbox-comparison-category">Show accounts</label><select id="insta-toolbox-comparison-category" data-role="comparison-category" aria-controls="insta-toolbox-comparison-list"><option value="not-following-me-back">Don't follow you back</option><option value="i-do-not-follow-back">You don't follow back</option><option value="mutuals">Mutuals</option></select></div><div class="field"><label for="insta-toolbox-filter">Find a username</label><input id="insta-toolbox-filter" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-role="result-filter" aria-controls="insta-toolbox-comparison-list"></div></div><p id="insta-toolbox-comparison-count" class="comparison-count" data-role="comparison-count" tabindex="-1"></p><ul id="insta-toolbox-comparison-list" class="list comparison-list" data-role="comparison-list" aria-describedby="insta-toolbox-comparison-count"></ul><button class="button quiet comparison-more" type="button" data-action="show-more-comparison" data-role="comparison-more" hidden>Show more</button></section>
+          <details class="settings-inline"><summary>Capture lists and export</summary><p class="lead">If the account check fails, open Followers or Following and scan that list.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="insta-toolbox-list-type">Raw list</label><select id="insta-toolbox-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
         <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><p class="lead"><strong>Follow / Unfollow.</strong> Choose an action, then review the accounts. Review never clicks.</p><div class="card" data-role="queue-current"></div>
           <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Refresh profile status</button><button class="button quiet" type="button" data-action="open-profile">Open profile</button></div><details class="settings-inline"><summary>Queue and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
           <div class="field"><label for="insta-toolbox-bot-action">What do you want to do?</label><select id="insta-toolbox-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
@@ -4986,6 +5151,18 @@
     }
     renderContext();
   };
+
+  function announceComparisonCount() {
+    const message = safeText(query('[data-role="comparison-count"]')?.textContent);
+    clearTimeout(checkerResultAnnouncementTimer);
+    checkerResultAnnouncementTimer = null;
+    if (!message || message === checkerResultAnnouncement) return;
+    checkerResultAnnouncementTimer = setTimeout(() => {
+      checkerResultAnnouncement = message;
+      checkerResultAnnouncementTimer = null;
+      status(message, 'neutral');
+    }, 250);
+  }
 
   const confirmationController = globalThis.InstaToolboxActionConfirmation?.createController({
     root: shadow,
@@ -5157,7 +5334,6 @@
     // every number below it would quietly be wrong.
     const partial = ['followers', 'following']
       .filter((type) => state.capture.verified?.[type] === true
-        && state.capture[type].length
         && state.capture.complete?.[type] !== true);
     if (partial.length) {
       const warning = document.createElement('p');
@@ -5181,6 +5357,7 @@
       const button = document.createElement('button');
       button.className = 'button quiet';
       button.type = 'button';
+      button.dataset.role = 'comparison-report-download';
       button.textContent = 'Download comparison report';
       button.addEventListener('click', () => {
         const generatedAt = nowIso();
@@ -5191,6 +5368,49 @@
       });
       actions.append(button);
       result.append(actions);
+    }
+
+    const browser = query('[data-role="comparison-browser"]');
+    const comparisonList = query('[data-role="comparison-list"]');
+    const comparisonCount = query('[data-role="comparison-count"]');
+    const showMore = query('[data-role="comparison-more"]');
+    if (browser && comparisonList && comparisonCount && showMore) {
+      browser.hidden = !comparisonReady;
+      comparisonList.replaceChildren();
+      if (comparisonReady) {
+        const selection = comparisonBrowserSelection(comparison);
+        const completeness = partial.length ? ' Partial comparison.' : '';
+        comparisonCount.textContent = selection.total
+          ? `Showing ${formatCount(selection.accounts.length)} of ${formatCount(selection.total)} ${selection.total === 1 ? 'account' : 'accounts'}.${completeness}`
+          : `0 accounts.${completeness}`;
+        for (const account of selection.accounts) {
+          const row = document.createElement('li');
+          const username = document.createElement('strong');
+          username.textContent = `@${account.username}`;
+          row.append(username);
+          if (account.displayName && account.displayName !== account.username) {
+            const displayName = document.createElement('small');
+            displayName.textContent = account.displayName;
+            row.append(displayName);
+          }
+          comparisonList.append(row);
+        }
+        if (!selection.total) {
+          const empty = document.createElement('li');
+          empty.textContent = safeText(query('[data-role="result-filter"]')?.value)
+            ? 'No captured account matches this search.'
+            : 'No accounts are in this comparison group.';
+          comparisonList.append(empty);
+        }
+        const remaining = Math.max(0, selection.total - selection.accounts.length);
+        showMore.hidden = remaining === 0;
+        showMore.textContent = remaining
+          ? `Show ${formatCount(Math.min(CHECKER_RESULTS_PAGE_SIZE, remaining))} more`
+          : 'Show more';
+      } else {
+        comparisonCount.textContent = '';
+        showMore.hidden = true;
+      }
     }
 
     const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
@@ -5411,6 +5631,7 @@
   let batchAbort = false;
   let accountRunDraft = null;
   let relationshipController = null;
+  let relationshipProgress = null;
   let dmThreadPreview = null;
   let dmRunnerSnapshot = null;
 
@@ -5810,8 +6031,7 @@
 
   function scanState(listType) {
     const count = state.capture[listType].length;
-    if (!count) return 'todo';
-    if (state.capture.verified?.[listType] !== true) return 'partial';
+    if (state.capture.verified?.[listType] !== true) return count ? 'partial' : 'todo';
     return state.capture.complete?.[listType] === true ? 'done' : 'partial';
   }
 
@@ -5833,7 +6053,8 @@
       if (button) button.textContent = `${status === 'todo' ? 'Scan' : 'Rescan'} ${listLabel}`;
     }
     const compareStep = query('.step[data-step="compare"]');
-    const both = verifiedCapture('following').length && verifiedCapture('followers').length;
+    const both = state.capture.verified?.following === true
+      && state.capture.verified?.followers === true;
     const complete = scanState('following') === 'done' && scanState('followers') === 'done';
     if (compareStep) compareStep.dataset.state = both ? (complete ? 'done' : 'partial') : 'todo';
     setText('step-compare', both
@@ -5841,13 +6062,76 @@
       : 'Scan both lists first');
   }
 
-  function showScanProgress(listType, found, complete, settled = false) {
+  function resetRelationshipProgress() {
+    relationshipProgress = {
+      expectedCounts: { followers: null, following: null },
+      found: { followers: 0, following: 0 },
+    };
+  }
+
+  function scanProgressPercent(found, expectedCounts, complete = false) {
+    const types = ['followers', 'following'];
+    const knownTypes = types.filter((type) => Number.isSafeInteger(expectedCounts?.[type]));
+    if (!knownTypes.length) return complete ? 100 : null;
+    const total = knownTypes.reduce((sum, type) => sum + expectedCounts[type], 0);
+    if (total === 0) return complete ? 100 : 0;
+    const loaded = knownTypes.reduce(
+      (sum, type) => sum + Math.min(expectedCounts[type], Math.max(0, Number(found?.[type]) || 0)),
+      0,
+    );
+    const percent = Math.floor((loaded / total) * 100);
+    return complete ? 100 : Math.min(99, Math.max(0, percent));
+  }
+
+  function showScanProgress(
+    listType,
+    found,
+    complete,
+    settled = false,
+    expectedCount = null,
+    expectedCounts = null,
+  ) {
     const panel = query('[data-role="scan-progress"]');
     if (!panel) return;
+    if (!relationshipProgress) resetRelationshipProgress();
+    if (expectedCounts && typeof expectedCounts === 'object') {
+      for (const type of ['followers', 'following']) {
+        if (Number.isSafeInteger(expectedCounts[type])) {
+          relationshipProgress.expectedCounts[type] = expectedCounts[type];
+        }
+      }
+    }
+    if (listType === 'followers' || listType === 'following') {
+      relationshipProgress.found[listType] = Math.max(
+        relationshipProgress.found[listType],
+        Math.max(0, Number(found) || 0),
+      );
+      if (Number.isSafeInteger(expectedCount)) {
+        relationshipProgress.expectedCounts[listType] = expectedCount;
+      }
+    }
     panel.hidden = false;
     const fill = query('[data-role="scan-fill"]');
-    // Total is unknown mid-scan, so the bar reports motion, not completion.
-    if (fill) fill.style.width = complete ? '100%' : `${Math.min(95, 5 + (found % 95))}%`;
+    const bar = query('[data-role="scan-bar"]');
+    const percent = scanProgressPercent(
+      relationshipProgress.found,
+      relationshipProgress.expectedCounts,
+      complete,
+    );
+    if (fill) fill.style.width = percent === null ? '100%' : `${percent}%`;
+    if (bar) {
+      bar.dataset.indeterminate = String(percent === null);
+      if (percent === null) bar.removeAttribute('aria-valuenow');
+      else bar.setAttribute('aria-valuenow', String(percent));
+      bar.setAttribute(
+        'aria-valuetext',
+        settled
+          ? complete ? 'Mutual check complete' : 'Mutual check finished with a partial result'
+          : percent === null
+            ? `Scanning ${listType || 'accounts'}; total unknown`
+            : `${percent}% of the expected accounts read`,
+      );
+    }
     setText('scan-detail', complete
       ? `Scanned ${found} ${listType} — complete.`
       : settled
@@ -5871,13 +6155,46 @@
     return `Mutual check failed: ${message} Saved comparison unchanged.`;
   }
 
+  function settleFailedRelationshipProgress(error) {
+    const bar = query('[data-role="scan-bar"]');
+    const fill = query('[data-role="scan-fill"]');
+    if (fill) fill.style.width = '0%';
+    if (!bar) return;
+    bar.dataset.indeterminate = 'false';
+    bar.removeAttribute('aria-valuenow');
+    bar.setAttribute(
+      'aria-valuetext',
+      error?.code === 'stopped' ? 'Mutual check stopped' : 'Mutual check failed',
+    );
+  }
+
   async function scanInto(listType) {
     const select = query('[data-role="list-type"]');
     if (select) select.value = listType;
+    resetRelationshipProgress();
     showScanProgress(listType, 0, false);
-    await actions['scan-list']();
-    const found = state.capture[listType].length;
-    showScanProgress(listType, found, state.capture.complete?.[listType] === true, true);
+    const outcome = await actions['scan-list']();
+    if (!outcome?.applied) {
+      const detail = safeText(outcome?.detail, `The ${listType} scan did not start.`);
+      const bar = query('[data-role="scan-bar"]');
+      const fill = query('[data-role="scan-fill"]');
+      if (bar) {
+        bar.dataset.indeterminate = 'false';
+        bar.removeAttribute('aria-valuenow');
+        bar.setAttribute('aria-valuetext', detail);
+      }
+      if (fill) fill.style.width = '0%';
+      setText('scan-detail', detail);
+      renderAll();
+      return;
+    }
+    showScanProgress(
+      listType,
+      outcome.found,
+      outcome.complete,
+      true,
+      outcome.expectedCount,
+    );
     renderAll();
   }
 
@@ -5903,9 +6220,9 @@
     if (input) input.value = username;
     const controller = new AbortController();
     relationshipController = controller;
+    resetRelationshipProgress();
     renderAll();
-    const progressPanel = query('[data-role="scan-progress"]');
-    if (progressPanel) progressPanel.hidden = false;
+    showScanProgress(null, 0, false);
     setText('scan-detail', `Finding the exact @${username} account…`);
     try {
       const result = await engine.fetchFollowerComparison({
@@ -5921,12 +6238,29 @@
             setText('scan-detail', `Reading the exact @${username} profile totals…`);
             return;
           }
+          if (progress.phase === 'counts-ready') {
+            showScanProgress(null, 0, false, false, null, progress.expectedCounts);
+            setText(
+              'scan-detail',
+              `Instagram reports ${formatCount(progress.expectedCounts?.followers)} followers and ${formatCount(progress.expectedCounts?.following)} following.`,
+            );
+            return;
+          }
           if (progress.phase === 'revalidating-profile') {
             setText('scan-detail', `Confirming @${username}'s profile totals did not change…`);
             return;
           }
           if (progress.phase === 'retrying') {
             const label = progress.listType || 'account lookup';
+            if (progress.listType) {
+              showScanProgress(
+                progress.listType,
+                progress.found,
+                false,
+                false,
+                progress.expectedCount,
+              );
+            }
             setText(
               'scan-detail',
               `Retrying ${label}: attempt ${progress.attempt} of ${progress.maxAttempts} in ${(progress.retryDelayMs / 1_000).toFixed(1)}s. ${progress.found} accounts from ${progress.pages} completed pages are preserved.`,
@@ -5934,14 +6268,28 @@
             return;
           }
           if (progress.phase === 'reconciling') {
-            showScanProgress(progress.listType, progress.found, false);
+            showScanProgress(
+              progress.listType,
+              progress.found,
+              false,
+              false,
+              progress.expectedCount,
+            );
             setText(
               'scan-detail',
               reconciliationScanDetail(progress),
             );
             return;
           }
-          if (progress.listType) showScanProgress(progress.listType, progress.found, false);
+          if (progress.listType) {
+            showScanProgress(
+              progress.listType,
+              progress.found,
+              false,
+              false,
+              progress.expectedCount,
+            );
+          }
         },
       });
       const previousCapture = state.capture;
@@ -5985,9 +6333,20 @@
       status(
         `Checked @${result.username}: ${result.followers.length.toLocaleString('en-US')} followers and ${result.following.length.toLocaleString('en-US')} following.${result.complete.followers && result.complete.following ? '' : mismatch}`,
       );
+      relationshipProgress.found.followers = result.followers.length;
+      relationshipProgress.found.following = result.following.length;
+      showScanProgress(
+        null,
+        result.followers.length + result.following.length,
+        result.complete.followers && result.complete.following,
+        true,
+        null,
+        result.expectedCounts,
+      );
       setText('scan-detail', completedRelationshipScanDetail(result));
     } catch (error) {
       const detail = failedRelationshipScanDetail(error);
+      settleFailedRelationshipProgress(error);
       setText('scan-detail', detail);
       status(detail);
     } finally {
@@ -6072,6 +6431,40 @@
     const comparison = compareCapture();
     const names = (list) => (list || []).map((entry) => entry.username || entry).filter(Boolean);
     const skippedReasons = [];
+    const requiredLists = source === 'scanned-followers'
+      ? ['followers']
+      : source === 'scanned-following'
+        ? ['following']
+        : ['i-do-not-follow-back', 'not-following-me-back'].includes(source)
+          ? ['followers', 'following']
+          : [];
+    const authenticatedUsername = engine.normalizeUsername?.(
+      engine.detectAuthenticatedUsername?.(),
+    ) || '';
+    const captureSubject = engine.normalizeUsername?.(state.capture.subjectUsername) || '';
+    const captureBoundToAccount = Boolean(
+      captureSubject && authenticatedUsername && captureSubject === authenticatedUsername,
+    );
+    const captureReady = requiredLists.length === 0 || (
+      captureBoundToAccount
+      && requiredLists.every((listType) => (
+        state.capture.verified?.[listType] === true
+        && state.capture.complete?.[listType] === true
+      ))
+    );
+    const capturePool = (list) => {
+      if (captureReady) return names(list);
+      const reason = captureBoundToAccount
+        ? 'Mutual Checker data is partial. Run Mutual Checker again before creating account actions.'
+        : 'Run Mutual Checker for your signed-in account before creating account actions.';
+      if (!skippedReasons.some((entry) => entry.reason === reason)) {
+        skippedReasons.push({
+          count: 0,
+          reason,
+        });
+      }
+      return [];
+    };
     const pools = {
       'current-profile': () => {
         const username = engine.normalizeUsername?.(location.pathname) || '';
@@ -6099,14 +6492,14 @@
           .map((entry) => entry.account?.username)
           .filter(Boolean);
       },
-      'i-do-not-follow-back': () => names(comparison.iDoNotFollowBack),
-      'not-following-me-back': () => names(comparison.notFollowingMeBack),
-      'scanned-followers': () => names(verifiedCapture('followers')),
-      'scanned-following': () => names(verifiedCapture('following')),
+      'i-do-not-follow-back': () => capturePool(comparison.iDoNotFollowBack),
+      'not-following-me-back': () => capturePool(comparison.notFollowingMeBack),
+      'scanned-followers': () => capturePool(completeCapture('followers')),
+      'scanned-following': () => capturePool(completeCapture('following')),
     };
     const pool = (pools[source] || pools['current-profile'])();
     let eligible = pool;
-    const verifiedFollowing = verifiedCapture('following');
+    const verifiedFollowing = completeCapture('following');
     if (source !== 'current-profile' && action === 'follow' && verifiedFollowing.length) {
       const already = new Set(names(verifiedFollowing));
       eligible = eligible.filter((username) => !already.has(username));
@@ -6351,6 +6744,28 @@
     next.focus();
   }
 
+  function currentProfileCaptureSubject() {
+    return engine.normalizeUsername?.(location.pathname) || '';
+  }
+
+  function prepareCaptureWorkspace(subjectUsername) {
+    const currentSubject = engine.normalizeUsername?.(state.capture.subjectUsername) || '';
+    const hasAuthenticatedData = state.capture.source?.followers === 'authenticated-web'
+      || state.capture.source?.following === 'authenticated-web';
+    if (hasAuthenticatedData || currentSubject !== subjectUsername) {
+      state.capture = stateDefaults().capture;
+    }
+  }
+
+  function reconciledRelationshipAccounts(existing, incoming, complete) {
+    const merged = new Map(
+      (complete === true ? [] : normalizeAccounts(existing))
+        .map((account) => [account.username, account]),
+    );
+    for (const account of normalizeAccounts(incoming)) merged.set(account.username, account);
+    return [...merged.values()];
+  }
+
   const actions = {
     'confirm-cancel': () => confirmationController?.cancel(),
     'close-settings': () => setSettingsOpen(false),
@@ -6388,31 +6803,35 @@
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
       status(`Scanning the open ${listType} list. Keep the dialog open.`);
       const outcome = await engine.collectAccountList({ listType });
-      if (sessionStop(outcome)) {
-        status(`Stopped: ${sessionStop(outcome)}.`);
-        return;
+      const stopReason = sessionStop(outcome);
+      if (stopReason) {
+        const detail = `Stopped: ${stopReason}.`;
+        status(detail);
+        return { applied: false, detail };
       }
       const accounts = outcome?.accounts || [];
       if (outcome?.listType !== listType) {
-        status(`No verified ${listType} dialog was open. Open that exact list and scan again.`);
-        return;
+        const detail = `No verified ${listType} dialog was open. Open that exact list and scan again.`;
+        status(detail);
+        return { applied: false, detail };
       }
       if (!accounts.length) {
-        status(`No rows were readable. Open your ${listType} list first.`);
-        return;
+        const detail = `No rows were readable. Open your ${listType} list first.`;
+        status(detail);
+        return { applied: false, detail };
       }
-      if (state.capture.source?.followers === 'authenticated-web'
-        || state.capture.source?.following === 'authenticated-web') {
-        state.capture = stateDefaults().capture;
-      }
-      const merged = new Map(verifiedCapture(listType).map((a) => [a.username, a]));
-      for (const account of accounts) merged.set(account.username, account);
-      state.capture[listType] = normalizeAccounts([...merged.values()]);
+      const subjectUsername = currentProfileCaptureSubject();
+      prepareCaptureWorkspace(subjectUsername);
+      state.capture[listType] = reconciledRelationshipAccounts(
+        verifiedCapture(listType),
+        accounts,
+        outcome.complete === true,
+      );
       state.capture.capturedAt[listType] = nowIso();
       state.capture.complete = { ...(state.capture.complete || {}), [listType]: outcome.complete === true };
       state.capture.verified = { ...(state.capture.verified || {}), [listType]: true };
       state.capture.source = { ...(state.capture.source || {}), [listType]: 'list-dialog' };
-      state.capture.subjectUsername = '';
+      state.capture.subjectUsername = subjectUsername;
       saveState();
       renderAll();
       const mismatch = outcome?.reason === 'list-count-mismatch'
@@ -6426,6 +6845,12 @@
               ? ' The profile count changed during the scan, so this capture stays incomplete.'
               : ' The list did not reach its end, so some may be missing.'}`,
       );
+      return {
+        applied: true,
+        complete: outcome.complete === true,
+        expectedCount: outcome.expectedCount,
+        found: state.capture[listType].length,
+      };
     },
     'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
@@ -6511,26 +6936,51 @@
         status(`No verified ${listType} rows were readable. Open that exact list first.`);
         return;
       }
-      if (state.capture.source?.followers === 'authenticated-web'
-        || state.capture.source?.following === 'authenticated-web') {
-        state.capture = stateDefaults().capture;
-      }
-      const accounts = new Map(verifiedCapture(listType).map((account) => [account.username, account]));
-      const before = accounts.size;
-      for (const account of visible) accounts.set(account.username, account);
-      state.capture[listType] = normalizeAccounts([...accounts.values()]);
+      const subjectUsername = currentProfileCaptureSubject();
+      prepareCaptureWorkspace(subjectUsername);
+      const before = verifiedCapture(listType).length;
+      state.capture[listType] = reconciledRelationshipAccounts(
+        verifiedCapture(listType),
+        visible,
+        false,
+      );
       state.capture.capturedAt[listType] = nowIso();
       state.capture.complete = { ...(state.capture.complete || {}), [listType]: false };
       state.capture.verified = { ...(state.capture.verified || {}), [listType]: true };
       state.capture.source = { ...(state.capture.source || {}), [listType]: 'list-dialog' };
-      state.capture.subjectUsername = '';
+      state.capture.subjectUsername = subjectUsername;
       saveState();
       status(`Captured ${visible.length} rendered ${listType} rows; ${state.capture[listType].length - before} were new.`);
     },
     'clear-capture': () => {
       state.capture = stateDefaults().capture;
+      checkerResultKey = '';
+      checkerResultLimit = CHECKER_RESULTS_PAGE_SIZE;
+      checkerResultAnnouncement = '';
+      clearTimeout(checkerResultAnnouncementTimer);
+      checkerResultAnnouncementTimer = null;
+      relationshipProgress = null;
+      const progressPanel = query('[data-role="scan-progress"]');
+      const progressBar = query('[data-role="scan-bar"]');
+      const progressFill = query('[data-role="scan-fill"]');
+      if (progressPanel) progressPanel.hidden = true;
+      if (progressFill) progressFill.style.width = '0%';
+      if (progressBar) {
+        progressBar.dataset.indeterminate = 'false';
+        progressBar.removeAttribute('aria-valuenow');
+        progressBar.removeAttribute('aria-valuetext');
+      }
       saveState();
       status('Mutual Checker cleared.');
+    },
+    'show-more-comparison': () => {
+      const showMore = query('[data-role="comparison-more"]');
+      const shouldRestoreFocus = shadow.activeElement === showMore;
+      checkerResultLimit += CHECKER_RESULTS_PAGE_SIZE;
+      renderChecker();
+      if (shouldRestoreFocus && showMore?.hidden) {
+        query('[data-role="comparison-count"]')?.focus({ preventScroll: true });
+      }
     },
     'download-list': () => {
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
@@ -6553,7 +7003,7 @@
       const comparisonReady = state.capture.verified?.followers === true
         && state.capture.verified?.following === true;
       if (!comparisonReady) {
-        status('Complete both follower lists before downloading a comparison.');
+        status('Scan or verify both follower lists before downloading a comparison.');
         return;
       }
       const generatedAt = nowIso();
@@ -6625,6 +7075,12 @@
         renderChecker();
         return;
       }
+      if (event.target.matches('[data-role="comparison-category"]')) {
+        checkerResultKey = '';
+        renderChecker();
+        announceComparisonCount();
+        return;
+      }
       if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"]')) {
         renderDmSummary();
         return;
@@ -6649,6 +7105,12 @@
   });
 
   shadow.addEventListener('input', (event) => {
+    if (event.target.matches('[data-role="result-filter"]')) {
+      checkerResultKey = '';
+      renderChecker();
+      announceComparisonCount();
+      return;
+    }
     if (!event.target.matches('[data-preference="opacity"]')) return;
     const percent = Number(event.target.value);
     host.style.setProperty('--insta-toolbox-alpha', `${percent}%`);

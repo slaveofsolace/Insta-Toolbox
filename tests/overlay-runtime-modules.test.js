@@ -40,6 +40,13 @@ function loadQueueModules() {
   return context.__instaToolboxOverlayModules;
 }
 
+function loadCaptureModules() {
+  const context = vm.createContext({ console, Date, Intl, Map });
+  vm.runInContext(sources.shared, context);
+  vm.runInContext(captureViewSource, context);
+  return context.__instaToolboxOverlayModules;
+}
+
 test('route observer emits one debounced change and installs no location polling', async () => {
   const modules = loadModules();
   assert.doesNotMatch(sources['route-observer'], /setInterval/);
@@ -466,13 +473,20 @@ test('partial Mutual Checker data stays visible but cannot seed account actions'
   const normalizeUsername = (value) => String(value || '').replace(/^@/, '').toLowerCase();
   const base = {
     schemaVersion: 5,
+    subjectUsername: 'signed_in',
     followers: [{ username: 'mutual' }, { username: 'follower_only' }],
     following: [{ username: 'mutual' }, { username: 'not_back' }],
     verified: { followers: true, following: true },
     complete: { followers: true, following: true },
   };
   const complete = shared.normalizeCaptureWorkspace(base, normalizeUsername);
-  const runtime = { model: { capture: complete } };
+  const runtime = {
+    inspector: {
+      detectAuthenticatedUsername: () => 'signed_in',
+      normalizeUsername,
+    },
+    model: { capture: complete },
+  };
 
   assert.deepEqual(
     JSON.parse(JSON.stringify(queueView.botTargets(runtime, 'not-following-me-back', 'unfollow').pool)),
@@ -482,6 +496,15 @@ test('partial Mutual Checker data stays visible but cannot seed account actions'
     JSON.parse(JSON.stringify(queueView.botTargets(runtime, 'i-do-not-follow-back', 'follow').pool)),
     ['follower_only'],
   );
+
+  runtime.model.capture = shared.normalizeCaptureWorkspace({
+    ...base,
+    subjectUsername: 'other_person',
+  }, normalizeUsername);
+  const wrongSubject = queueView.botTargets(runtime, 'not-following-me-back', 'unfollow');
+  assert.deepEqual(JSON.parse(JSON.stringify(wrongSubject.pool)), []);
+  assert.match(wrongSubject.skipped[0].reason, /signed-in account/i);
+  runtime.model.capture = complete;
 
   for (const [listType, directSource] of [
     ['followers', 'scanned-followers'],
@@ -505,6 +528,91 @@ test('partial Mutual Checker data stays visible but cannot seed account actions'
     [],
   );
   assert.equal(quarantined.followers.length, 2, 'partial rows remain available for display and export');
+});
+
+test('extension complete rescans replace stale rows and partial rescans cannot be promoted', async () => {
+  const { captureView, shared } = loadCaptureModules();
+  const normalizeUsername = (value) => String(value || '').replace(/^@/, '').toLowerCase();
+  const makeRuntime = (outcome) => ({
+    inspector: {
+      collectAccountList: async () => outcome,
+      detectAuthenticatedUsername: () => 'signed_in',
+      normalizeUsername,
+    },
+    model: {
+      context: { pageKind: 'profile', username: 'signed_in' },
+      capture: shared.normalizeCaptureWorkspace({
+        schemaVersion: 5,
+        subjectUsername: 'signed_in',
+        followers: [{ username: 'stale' }],
+        following: [],
+        verified: { followers: true, following: false },
+        complete: { followers: false, following: false },
+        source: { followers: 'list-dialog', following: '' },
+      }, normalizeUsername),
+    },
+    persistCapture: async () => {},
+    query: () => null,
+    status: () => {},
+  });
+
+  const completeRuntime = makeRuntime({
+    accounts: [{ username: 'fresh' }],
+    complete: true,
+    expectedCount: 1,
+    listType: 'followers',
+  });
+  await captureView.scanFullList(completeRuntime, 'followers');
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(completeRuntime.model.capture.followers.map((account) => account.username))),
+    ['fresh'],
+  );
+  assert.equal(completeRuntime.model.capture.complete.followers, true);
+
+  const partialRuntime = makeRuntime({
+    accounts: [{ username: 'fresh' }],
+    complete: false,
+    expectedCount: 2,
+    listType: 'followers',
+    reason: 'list-count-mismatch',
+  });
+  await captureView.scanFullList(partialRuntime, 'followers');
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(partialRuntime.model.capture.followers.map((account) => account.username))),
+    ['fresh', 'stale'],
+  );
+  assert.equal(partialRuntime.model.capture.complete.followers, false);
+
+  const switchedAccountRuntime = makeRuntime({
+    accounts: [{ username: 'fresh' }],
+    complete: false,
+    expectedCount: 2,
+    listType: 'followers',
+    reason: 'list-count-mismatch',
+  });
+  switchedAccountRuntime.model.capture.subjectUsername = 'other_person';
+  await captureView.scanFullList(switchedAccountRuntime, 'followers');
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(switchedAccountRuntime.model.capture.followers.map((account) => account.username))),
+    ['fresh'],
+  );
+  assert.equal(switchedAccountRuntime.model.capture.subjectUsername, 'signed_in');
+
+  const externalProfileRuntime = makeRuntime({
+    accounts: [{ username: 'fresh' }],
+    complete: false,
+    expectedCount: 2,
+    listType: 'followers',
+    reason: 'list-count-mismatch',
+  });
+  externalProfileRuntime.model.context.username = 'external_b';
+  externalProfileRuntime.model.capture.subjectUsername = 'external_a';
+  await captureView.scanFullList(externalProfileRuntime, 'followers');
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(externalProfileRuntime.model.capture.followers.map((account) => account.username))),
+    ['fresh'],
+  );
+  assert.equal(externalProfileRuntime.model.capture.subjectUsername, 'external_b');
 });
 
 test('follower comparison filters stay local, bounded, and category-specific', () => {

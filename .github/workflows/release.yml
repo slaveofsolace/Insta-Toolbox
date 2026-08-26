@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag:
-        description: Release tag, for example v3.1.1
+        description: Release tag, for example v3.1.2
         required: true
         type: string
 
@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           test "$RELEASE_TAG" = "v$version"
-          test "$version" = "3.1.1"
+          test "$version" = "3.1.2"
           mkdir -p release
           copy_exact() {
             local name="$1"
@@ -175,7 +175,7 @@ jobs:
 
           - The Windows installer is unsigned and may show a Microsoft SmartScreen warning.
           - The macOS packages are ad-hoc signed and are not Apple-notarized.
-          - Automated CI does not claim current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 3.1.1 acceptance record for any separately recorded manual evidence.
+          - Automated CI does not claim current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 3.1.2 acceptance record for any separately recorded manual evidence.
           EOF
           )"
           gh release create "$RELEASE_TAG" release/* \

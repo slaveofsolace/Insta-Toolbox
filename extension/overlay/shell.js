@@ -259,13 +259,13 @@
     .insta-toolbox-list--compact .insta-toolbox-list-item[data-status="completed"] strong { color: var(--insta-toolbox-good, inherit); }
     .insta-toolbox-list--compact .insta-toolbox-list-item[data-status="failed"] strong,
     .insta-toolbox-list--compact .insta-toolbox-list-item[data-status="stopped"] strong { color: var(--insta-toolbox-danger); }
-    @media (prefers-reduced-motion: reduce) { .insta-toolbox-progress-bar { transition: none; } }
+    @media (prefers-reduced-motion: reduce) { .insta-toolbox-progress-bar, .insta-toolbox-disclosure > summary::after { transition: none; } }
 
     .insta-toolbox-disclosure { margin-top: 12px; border-top: 1px solid var(--insta-toolbox-line); }
     .insta-toolbox-disclosure > summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; color: var(--insta-toolbox-ink); font-size: 13px; list-style: none; }
     .insta-toolbox-disclosure > summary::-webkit-details-marker { display: none; }
-    .insta-toolbox-disclosure > summary::after { content: "+"; color: var(--insta-toolbox-muted); font-size: 16px; }
-    .insta-toolbox-disclosure[open] > summary::after { content: "−"; }
+    .insta-toolbox-disclosure > summary::after { content: ""; flex: 0 0 auto; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 7px solid currentColor; color: var(--insta-toolbox-muted); transition: transform var(--insta-toolbox-motion-fast) var(--insta-toolbox-ease); }
+    .insta-toolbox-disclosure[open] > summary::after { transform: rotate(90deg); }
     .insta-toolbox-disclosure-body { padding: 0 0 13px; }
     .insta-toolbox-gate[open] { margin-top: 14px; padding: 0 14px; border: 1px solid var(--insta-toolbox-line); border-radius: 10px; background: var(--insta-toolbox-surface-raised); }
     .insta-toolbox-gate[open] > summary { min-height: 50px; }
@@ -332,6 +332,7 @@
       .insta-toolbox-header { gap: 3px; padding-inline: 6px; }
       .insta-toolbox-header h1 { font-size: 15px; }
       .insta-toolbox-header-actions { gap: 0; }
+      .insta-toolbox-filter-grid { grid-template-columns: 1fr; }
       .insta-toolbox-credit { padding-inline: 48px; }
     }
 
