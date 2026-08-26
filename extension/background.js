@@ -26,7 +26,7 @@ const MAX_DM_ACTION_LEDGER = 500;
 const MAX_THREAD_UNSEND_LEDGER = 100;
 const DEFAULT_DAILY_ACTION_LIMIT = 100;
 const DEFAULT_DAILY_DM_LIMIT = 50;
-// Ceilings the user cannot raise. Instagram penalises fast bulk activity, so the
+// Fixed safety ceilings. Instagram penalises fast bulk activity, so the
 // batch runner stays well inside commonly reported action thresholds.
 const MAX_DAILY_ACTION_LIMIT = 400;
 const MAX_DAILY_DM_LIMIT = 300;

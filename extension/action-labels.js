@@ -863,7 +863,7 @@
         // Some Instagram builds only restart lazy history loading after real
         // movement at the oldest edge. Wake that loader once per loaded page,
         // not on every quiet poll: repeated nudges made the conversation look
-        // as though the run was permanently fighting the user's scroll.
+        // as though the run was permanently fighting manual scrolling.
         scroller.scrollTop = target + (reversed ? 1 : -1) * Math.max(80, Math.floor(scroller.clientHeight / 2));
         dispatch(scroller, new Event('scroll', { bubbles: true }));
         await delay(80, signal);

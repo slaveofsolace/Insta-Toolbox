@@ -82,7 +82,7 @@ The application shall:
 - Identify sender ownership from configured owner names and source metadata
 - Filter by keyword, conversation, sender, and type
 - Use windowed rendering for large result sets
-- Allow selection only for messages identified as sent by the owner
+- Allow selection only for messages identified as sent by the current account
 - Preserve conversation ID, message ID, timestamp, type, sender, content digest, and preview
 - Export a simple plan or reviewed job
 

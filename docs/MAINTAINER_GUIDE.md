@@ -91,7 +91,7 @@ uses a disposable browser profile, pregrants only loopback access in a disposabl
 copy of the unpacked manifest, completes the production popup/PWA handshake,
 pings the extension, verifies read-only permissions and live-off defaults, then
 deletes the profile. Branded stable Chrome may reject command-line loading of an
-unpacked extension; do not weaken or modify the user's real profile to bypass
+unpacked extension; do not weaken or modify the real profile to bypass
 that policy.
 
 For macOS packaging changes, run `pnpm run dist:mac` followed by
