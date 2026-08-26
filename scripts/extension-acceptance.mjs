@@ -1625,6 +1625,168 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   );
   assert.ok(checker.saved.position.x >= 0);
 
+  const initialComparisonBrowser = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    return {
+      browserHidden: shadow.querySelector('[data-role="comparison-browser"]')?.hidden,
+      count: shadow.querySelector('[data-role="comparison-count"]')?.textContent,
+      rows: [...shadow.querySelectorAll('[data-role="comparison-list"] strong')]
+        .map((row) => row.textContent),
+      report: shadow.querySelector('[data-role="comparison-report-download"]')?.textContent,
+      json: shadow.querySelector('[data-action="download-comparison-json"]')?.textContent,
+    };
+  })()`, true);
+  assert.deepEqual(initialComparisonBrowser, {
+    browserHidden: false,
+    count: 'Showing 1 of 1 account. Partial comparison.',
+    rows: ['@not_back'],
+    report: 'Download comparison report',
+    json: 'Download JSON',
+  });
+
+  const comparisonDownloads = await webContents.executeJavaScript(`(async () => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    globalThis.fixtureDownloads.length = 0;
+    shadow.querySelector('[data-role="comparison-report-download"]').click();
+    shadow.querySelector('[data-action="download-comparison-json"]').click();
+    await Promise.resolve();
+    return Promise.all(globalThis.fixtureDownloads.map(async ({ blob, filename }) => ({
+      filename,
+      text: await blob.text(),
+      type: blob.type,
+    })));
+  })()`, true);
+  assert.equal(comparisonDownloads.length, 2);
+  const reportDownload = comparisonDownloads.find(({ filename }) => filename.endsWith('.txt'));
+  const jsonDownload = comparisonDownloads.find(({ filename }) => filename.endsWith('.json'));
+  assert.match(reportDownload.filename, /^insta-toolbox-mutual-comparison-.+\.txt$/);
+  assert.match(reportDownload.type, /^text\/plain/);
+  assert.match(reportDownload.text, /NOT FOLLOWING YOU BACK/);
+  assert.match(reportDownload.text, /YOU DO NOT FOLLOW BACK/);
+  assert.match(reportDownload.text, /MUTUAL FOLLOWERS/);
+  assert.match(reportDownload.text, /@not_back/);
+  assert.match(reportDownload.text, /@follower_only/);
+  assert.match(reportDownload.text, /@mutual_friend/);
+  assert.match(jsonDownload.filename, /^insta-toolbox-mutual-comparison-.+\.json$/);
+  assert.match(jsonDownload.type, /^application\/json/);
+  const downloadedRecord = JSON.parse(jsonDownload.text);
+  assert.equal(downloadedRecord.schemaVersion, 1);
+  assert.equal(downloadedRecord.kind, 'insta-toolbox-comparison');
+  assert.deepEqual(downloadedRecord.notFollowingMeBack.map(({ username }) => username), ['not_back']);
+  assert.deepEqual(downloadedRecord.iDoNotFollowBack.map(({ username }) => username), ['follower_only']);
+  assert.deepEqual(downloadedRecord.mutuals.map(({ username }) => username), ['mutual_friend']);
+
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    shadow.querySelector('[data-action="clear-capture"]').click();
+    globalThis.fixtureSetList('following', [
+      'mutual_friend',
+      ...Array.from({ length: 30 }, (_, index) => ({
+        displayName: index === 7 ? 'Studio Signal' : '',
+        username: 'not_back_' + String(index).padStart(2, '0'),
+      })),
+    ]);
+    const listType = shadow.querySelector('[data-role="list-type"]');
+    listType.value = 'following';
+    listType.dispatchEvent(new Event('change', { bubbles: true }));
+    shadow.querySelector('[data-action="capture"]').click();
+    globalThis.fixtureSetList('followers', ['mutual_friend', 'follower_only']);
+    listType.value = 'followers';
+    listType.dispatchEvent(new Event('change', { bubbles: true }));
+    shadow.querySelector('[data-action="capture"]').click();
+  })()`, true);
+  const firstComparisonPage = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    return {
+      count: shadow.querySelector('[data-role="comparison-count"]')?.textContent,
+      rows: shadow.querySelectorAll('[data-role="comparison-list"] strong').length,
+      moreHidden: shadow.querySelector('[data-role="comparison-more"]')?.hidden,
+      moreText: shadow.querySelector('[data-role="comparison-more"]')?.textContent,
+    };
+  })()`, true);
+  assert.deepEqual(firstComparisonPage, {
+    count: 'Showing 25 of 30 accounts. Partial comparison.',
+    rows: 25,
+    moreHidden: false,
+    moreText: 'Show 5 more',
+  });
+
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const more = shadow.querySelector('[data-role="comparison-more"]');
+    more.focus();
+    more.click();
+  })()`, true);
+  const expandedComparison = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const rows = [...shadow.querySelectorAll('[data-role="comparison-list"] strong')]
+      .map((row) => row.textContent);
+    return {
+      count: shadow.querySelector('[data-role="comparison-count"]')?.textContent,
+      rows: rows.length,
+      last: rows.at(-1),
+      moreHidden: shadow.querySelector('[data-role="comparison-more"]')?.hidden,
+      focusedRole: shadow.activeElement?.dataset?.role,
+    };
+  })()`, true);
+  assert.deepEqual(expandedComparison, {
+    count: 'Showing 30 of 30 accounts. Partial comparison.',
+    rows: 30,
+    last: '@not_back_29',
+    moreHidden: true,
+    focusedRole: 'comparison-count',
+  });
+
+  const filteredAndMutualViews = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const search = shadow.querySelector('[data-role="result-filter"]');
+    search.value = '@NOT_BACK_29';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    const filtered = {
+      count: shadow.querySelector('[data-role="comparison-count"]')?.textContent,
+      rows: [...shadow.querySelectorAll('[data-role="comparison-list"] strong')]
+        .map((row) => row.textContent),
+    };
+    search.value = 'studio signal';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    const displayNameFiltered = {
+      count: shadow.querySelector('[data-role="comparison-count"]')?.textContent,
+      rows: [...shadow.querySelectorAll('[data-role="comparison-list"] strong')]
+        .map((row) => row.textContent),
+    };
+    search.value = 'missing account';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    const emptySearch = {
+      count: shadow.querySelector('[data-role="comparison-count"]')?.textContent,
+      text: shadow.querySelector('[data-role="comparison-list"]')?.textContent,
+    };
+    search.value = '';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    const category = shadow.querySelector('[data-role="comparison-category"]');
+    category.value = 'mutuals';
+    category.dispatchEvent(new Event('change', { bubbles: true }));
+    const mutuals = {
+      count: shadow.querySelector('[data-role="comparison-count"]')?.textContent,
+      rows: [...shadow.querySelectorAll('[data-role="comparison-list"] strong')]
+        .map((row) => row.textContent),
+    };
+    category.value = 'i-do-not-follow-back';
+    category.dispatchEvent(new Event('change', { bubbles: true }));
+    const notFollowedBack = {
+      count: shadow.querySelector('[data-role="comparison-count"]')?.textContent,
+      rows: [...shadow.querySelectorAll('[data-role="comparison-list"] strong')]
+        .map((row) => row.textContent),
+    };
+    return { filtered, displayNameFiltered, emptySearch, mutuals, notFollowedBack };
+  })()`, true);
+  assert.deepEqual(filteredAndMutualViews, {
+    filtered: { count: 'Showing 1 of 1 account. Partial comparison.', rows: ['@not_back_29'] },
+    displayNameFiltered: { count: 'Showing 1 of 1 account. Partial comparison.', rows: ['@not_back_07'] },
+    emptySearch: { count: '0 accounts. Partial comparison.', text: 'No captured account matches this search.' },
+    mutuals: { count: 'Showing 1 of 1 account. Partial comparison.', rows: ['@mutual_friend'] },
+    notFollowedBack: { count: 'Showing 1 of 1 account. Partial comparison.', rows: ['@follower_only'] },
+  });
+
   await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
     shadow.querySelector('[data-view="account"]').click();

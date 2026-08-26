@@ -40,7 +40,7 @@ function createLazyList({
       if (!changed) return;
       const atEnd = next + this.clientHeight >= this.scrollHeight - 40;
       // A real list only fetches when a genuine scroll event reaches the end.
-      if (atEnd && (loadOnScrollEvent || true)) loadPage();
+      if (atEnd && loadOnScrollEvent) loadPage();
     },
     querySelectorAll: () => [],
   };
@@ -83,6 +83,7 @@ function createLazyList({
 }
 
 function createHarness(list, {
+  bodyText = '',
   includeDialog = true,
   main = null,
   profileCount = null,
@@ -92,8 +93,12 @@ function createHarness(list, {
     textContent: `${profileCount} ${profileListType}`,
     getAttribute: (name) => (name === 'href' ? '#' : null),
   };
+  const body = {};
+  Object.defineProperty(body, 'innerText', {
+    get: () => (typeof bodyText === 'function' ? bodyText() : bodyText),
+  });
   const document = {
-    body: { innerText: '' },
+    body,
     querySelector: (selector) => (selector === 'main' ? main : null),
     querySelectorAll(selector) {
       if (selector === '[role="dialog"]') return includeDialog ? [list.dialog] : [];
@@ -207,6 +212,16 @@ test('full-list scan still advances when the list starts pinned at the bottom', 
   assert.equal(scanned.complete, true);
 });
 
+test('a first page that fits the dialog is not mistaken for the full list', async () => {
+  const list = createLazyList({ total: 75, pageSize: 25, clientHeight: 2_000 });
+  const inspector = createHarness(list);
+
+  const scanned = await inspector.collectAccountList({ maxScrolls: 20, settleMs: 0, listType: 'followers' });
+  assert.equal(scanned.accounts.length, 25);
+  assert.equal(scanned.complete, false);
+  assert.equal(scanned.reason, 'list-truncated');
+});
+
 test('full-list scan reports an incomplete list rather than claiming completeness', async () => {
   const list = createLazyList({ total: 500, pageSize: 25 });
   const inspector = createHarness(list);
@@ -236,18 +251,17 @@ test('full-list scan stays incomplete when the exact profile total exceeds reada
 
 test('full-list scan stops and reports when Instagram interrupts the session', async () => {
   const list = createLazyList({ total: 200, pageSize: 25 });
-  const inspector = createHarness(list);
-  // A challenge banner appearing mid-scan must abort rather than continue.
-  let calls = 0;
-  const originalDescriptor = Object.getOwnPropertyDescriptor(list.dialog, 'textContent');
-  Object.defineProperty(list.dialog, 'textContent', {
-    get() {
-      calls += 1;
-      return calls > 4 ? 'Challenge required' : 'Followers';
+  let sessionReads = 0;
+  const inspector = createHarness(list, {
+    bodyText() {
+      sessionReads += 1;
+      return sessionReads > 3 ? 'Please wait a few minutes' : '';
     },
   });
 
   const scanned = await inspector.collectAccountList({ maxScrolls: 400, settleMs: 0 });
-  assert.ok(Array.isArray(scanned.accounts));
-  if (originalDescriptor) Object.defineProperty(list.dialog, 'textContent', originalDescriptor);
+  assert.equal(scanned.rateLimited, true);
+  assert.equal(scanned.complete, false);
+  assert.equal(scanned.reason, 'session-stop');
+  assert.ok(scanned.accounts.length < 200);
 });

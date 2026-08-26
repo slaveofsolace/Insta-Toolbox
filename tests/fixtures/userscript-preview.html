@@ -85,18 +85,39 @@
     globalThis.GM_setValue = (key, value) => {
       globalThis.fixtureGmStore[key] = structuredClone(value);
     };
-    globalThis.fixtureSetList = (type) => {
+    globalThis.fixtureDownloads = [];
+    const fixtureBlobs = new Map();
+    let fixtureBlobId = 0;
+    URL.createObjectURL = (blob) => {
+      const url = `blob:https://www.instagram.com/insta-toolbox-${fixtureBlobId += 1}`;
+      fixtureBlobs.set(url, blob);
+      return url;
+    };
+    URL.revokeObjectURL = (url) => fixtureBlobs.delete(url);
+    const nativeAnchorClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function fixtureAnchorClick() {
+      const blob = fixtureBlobs.get(this.href);
+      if (this.download && blob) {
+        globalThis.fixtureDownloads.push({ blob, filename: this.download });
+        return;
+      }
+      nativeAnchorClick.call(this);
+    };
+    globalThis.fixtureSetList = (type, customValues = null) => {
       const dialog = document.querySelector('[role="dialog"]');
       dialog.setAttribute('aria-label', type === 'followers' ? 'Followers' : 'Following');
       dialog.querySelector('h2').textContent = type === 'followers' ? 'Followers' : 'Following';
       dialog.querySelectorAll('a').forEach((element) => element.remove());
-      const values = type === 'followers'
-        ? ['mutual_friend', 'follower_only']
-        : ['mutual_friend', 'not_back'];
-      for (const username of values) {
+      const values = Array.isArray(customValues)
+        ? customValues
+        : type === 'followers'
+          ? ['mutual_friend', 'follower_only']
+          : ['mutual_friend', 'not_back'];
+      for (const value of values) {
+        const username = typeof value === 'string' ? value : value.username;
         const anchor = document.createElement('a');
         anchor.href = `/${username}/`;
-        anchor.textContent = username;
+        anchor.textContent = typeof value === 'string' ? username : value.displayName || username;
         dialog.append(anchor);
       }
     };

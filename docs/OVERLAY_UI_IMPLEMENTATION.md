@@ -105,8 +105,9 @@ saved. Capture and queue contracts remain V1 and import-compatible.
   Instagram page on first load.
 - The first opened panel introduces all three tools once; migrated preferences
   skip it, and completion is stored only in the V3 preference record.
-- Completed follower comparisons expose category and text filters with a
-  100-row DOM cap; filtering reads only normalized local capture data.
+- Completed follower comparisons expose category and text filters. The
+  extension keeps a bounded preview; the userscript reveals every local row in
+  25-row steps without sending the comparison anywhere.
 - Standard width is 380 pixels, with 336- and 480-pixel presets, left/right
   docking, bounded custom size, persisted desktop position, and reset control.
 - The five tools remain visible in a 48-pixel semantic rail; Arrow keys plus

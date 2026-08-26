@@ -227,7 +227,14 @@
       : source === 'scanned-following'
         ? ['following']
         : ['followers', 'following'];
-    const captureReady = requiredLists.every((listType) => (
+    const authenticatedUsername = runtime.inspector?.normalizeUsername?.(
+      runtime.inspector.detectAuthenticatedUsername?.(),
+    ) || '';
+    const captureSubject = runtime.inspector?.normalizeUsername?.(workspace.subjectUsername) || '';
+    const captureBoundToAccount = Boolean(
+      captureSubject && authenticatedUsername && captureSubject === authenticatedUsername,
+    );
+    const captureReady = captureBoundToAccount && requiredLists.every((listType) => (
       workspace.verified?.[listType] === true && workspace.complete?.[listType] === true
     ));
     if (!captureReady) {
@@ -235,7 +242,9 @@
         pool: [],
         skipped: [{
           count: 0,
-          reason: 'Mutual Checker data is partial. Run Mutual Checker again before creating account actions.',
+          reason: captureBoundToAccount
+            ? 'Mutual Checker data is partial. Run Mutual Checker again before creating account actions.'
+            : 'Run Mutual Checker for your signed-in account before creating account actions.',
         }],
       };
     }

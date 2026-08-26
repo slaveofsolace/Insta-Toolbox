@@ -1,21 +1,22 @@
 # Overlay QA
 
-Last updated: 2026-08-24
+Last updated: 2026-08-26
 
 ## Current status
 
-The production-script overlay matrix is green on Windows. The 3.1.0 update
+The production-script overlay matrix is green on Windows. The 3.1.2 update
 generated and reviewed 45 baselines, including the movable collapsed launcher,
 two-corner resizing, named settings dialog, compact header, and credit,
 the immediate thread-bound Unsend action, authenticated Mutual Checker state,
-floating translucency, mobile layouts, forced colors, and 200% zoom. A
+visible disclosure arrows, floating translucency, mobile layouts, forced
+colors, and 200% zoom. A
 subsequent non-updating check reproduced every semantic, geometry, collision,
 accessibility-tree, performance, and screenshot expectation. Ordinary CI runs
 `qa:overlay:check` on `windows-latest`; CI never updates baselines.
 
 The baseline set lives under
-`docs/evidence/overlay-ui-3.1.0-2026-08-26/after/win32`. The reviewed manifest
-SHA-256 is recorded in [the 3.1 acceptance record](./acceptance/3.1.0.md).
+`docs/evidence/overlay-ui-3.1.2-2026-08-26/after/win32`. The reviewed manifest
+SHA-256 is recorded in [the 3.1 acceptance record](./acceptance/3.1.2.md).
 This establishes synthetic-fixture and Windows-rendering evidence only. It does
 not establish human visual or screen-reader acceptance, cross-platform pixel
 parity, persistent-profile acceptance, or authenticated Instagram selector
@@ -161,7 +162,7 @@ test-results/overlay-qa/
 An explicit update copies candidate evidence to:
 
 ```text
-docs/evidence/overlay-ui-3.1.0-2026-08-26/after/<platform>/
+docs/evidence/overlay-ui-3.1.2-2026-08-26/after/<platform>/
 ├── <scenario>.png
 ├── manifest.json
 └── fidelity-ledger.json
@@ -195,12 +196,13 @@ log for review.
 7. Only after the reviewed platform baseline is committed, add the corresponding
    non-updating CI check. Do not generate or accept baselines in ordinary CI.
 
-The original Windows procedure was completed on 2026-08-03. The 3.1.0 matrix
+The original Windows procedure was completed on 2026-08-03. The 3.1.2 matrix
 was regenerated and reviewed on 2026-08-26 for the movable launcher, dual resize controls,
 settings dialog, compact header and credit, immediate
 thread-bound Unsend path, current extension version, authenticated checker,
-floating translucency, and responsive layouts. Key light, dark, DM, workspace,
-floating, mobile, and 200% zoom captures were inspected at full resolution;
+visible disclosure arrows, floating translucency, and responsive layouts. Key
+light, dark, DM, workspace, floating, mobile, and 200% zoom captures were
+inspected at full resolution;
 semantics, collision, accessibility-tree, and geometry checks ran across all
 45 scenarios. No human screen-reader or authenticated Instagram acceptance is
 claimed.

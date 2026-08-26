@@ -2,6 +2,24 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 3.1.2 - 2026-08-26
+
+### Added
+
+- Browse, search, and progressively reveal all three Mutual Checker comparison groups inside the Instagram toolbox.
+- Keep both downloads: a readable text report and the schema-1 JSON record under **Capture lists and export**.
+- Show visible disclosure arrows on secondary tool sections in the extension and userscript.
+
+### Fixed
+
+- Retry incomplete relationship pagination with three isolated passes without combining changing memberships into a false complete result.
+- Stop duplicate cursor pages from hanging, reacquire replaced list scrollers, ignore unrelated profile counters, and keep uncertain list ends partial.
+- Replace the jumping Mutual Checker bar with verified count-based progress and an honest indeterminate state when the total is unknown.
+- Prevent a failed manual rescan from presenting an older saved list as a new result.
+- Replace stale rows after a complete rescan and isolate manual captures when the profile changes.
+- Keep partial or differently sourced captures available for review and export without allowing them to create Follow or Unfollow targets.
+- Show verified empty lists as scanned, replace failed-scan progress text, stack narrow result filters, and announce coarse progress and filtered counts.
+
 ## 3.1.1 - 2026-08-26
 
 ### Fixed

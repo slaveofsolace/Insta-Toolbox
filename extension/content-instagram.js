@@ -46,6 +46,7 @@
   const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
   const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
   const RELATIONSHIP_RETRY_BASE_MS = 1_000;
+  const RELATIONSHIP_RECONCILIATION_PASSES = 3;
 
   function normalizeUsername(value) {
     const username = String(value || '')
@@ -203,6 +204,7 @@
 
   async function fetchInstagramRelationshipJson(url, {
     clearTimer,
+    expectedCount = null,
     fetchImpl,
     found = 0,
     listType = null,
@@ -287,6 +289,7 @@
           attempt: attempt + 1,
           failedAttempt: attempt,
           found,
+          expectedCount,
           listType,
           maxAttempts: requestAttempts,
           pages,
@@ -404,133 +407,180 @@
     startedAt,
     expectedCount = null,
   }) {
-    const accounts = new Map();
-    const accountKeyByUsername = new Map();
-    const seenTokens = new Set();
-    const passAccounts = new Set();
-    let nextMaxId = '';
-    let pages = 0;
-    let reconciliationAttempts = 0;
-    while (pages < maxPages && accounts.size < maxAccounts) {
-      assertRelationshipRunActive(signal, startedAt, now, maxDurationMs);
-      const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
-      url.searchParams.set('count', String(RELATIONSHIP_PAGE_SIZE));
-      if (nextMaxId) url.searchParams.set('max_id', nextMaxId);
-      const data = await fetchInstagramRelationshipJson(url, {
-        clearTimer,
-        fetchImpl,
-        found: accounts.size,
-        listType,
-        onProgress,
-        pages,
-        random,
-        requestAttempts,
-        requestTimeoutMs,
-        retryBaseMs,
-        setTimer,
-        signal,
-        sleepImpl,
-        username,
-      });
-      if (!Array.isArray(data?.users)) {
-        throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} page.`);
+    let bestAccounts = [];
+    let totalPages = 0;
+    for (let passIndex = 0; passIndex < RELATIONSHIP_RECONCILIATION_PASSES; passIndex += 1) {
+      const accounts = new Map();
+      const accountKeyByUsername = new Map();
+      const seenTokens = new Set();
+      let nextMaxId = '';
+      let passPages = 0;
+      let retryNextPass = false;
+      let stagnantPages = 0;
+      if (passIndex > 0) {
+        onProgress?.(Object.freeze({
+          attempt: passIndex,
+          expectedCount,
+          found: bestAccounts.length,
+          listType,
+          maxAttempts: RELATIONSHIP_RECONCILIATION_PASSES,
+          pages: totalPages,
+          phase: 'reconciling',
+          passFound: 0,
+          username,
+        }));
+        await sleepImpl(800 + ((passIndex - 1) * 400), signal);
       }
-      pages += 1;
-      for (const user of data.users) {
-        const accountUsername = normalizeUsername(user?.username);
-        if (!accountUsername) continue;
-        const rawAccountId = user?.pk ?? user?.id ?? '';
-        const accountId = String(rawAccountId || '').trim();
-        if (accountId && !/^\d+$/.test(accountId)) {
-          throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} account ID.`);
-        }
-        const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
-        const usernameOwner = accountKeyByUsername.get(accountUsername);
-        if (usernameOwner && usernameOwner !== accountKey) {
-          if (usernameOwner === `username:${accountUsername}` && accountId) {
-            accounts.delete(usernameOwner);
-          } else {
-            throw relationshipError(
-              'invalid-response',
-              `Instagram returned conflicting ${listType} account identities.`,
-            );
-          }
-        }
-        const previous = accounts.get(accountKey);
-        if (previous?.username && previous.username !== accountUsername) {
-          accountKeyByUsername.delete(previous.username);
-        }
-        accounts.set(accountKey, {
-          username: accountUsername,
-          profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
-          displayName: String(user?.full_name || '').trim().slice(0, 160),
-          source: 'authenticated-instagram-web',
+      while (passPages < maxPages && accounts.size < maxAccounts) {
+        assertRelationshipRunActive(signal, startedAt, now, maxDurationMs);
+        const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
+        url.searchParams.set('count', String(RELATIONSHIP_PAGE_SIZE));
+        if (nextMaxId) url.searchParams.set('max_id', nextMaxId);
+        const data = await fetchInstagramRelationshipJson(url, {
+          clearTimer,
+          expectedCount,
+          fetchImpl,
+          found: accounts.size,
+          listType,
+          onProgress,
+          pages: totalPages,
+          random,
+          requestAttempts,
+          requestTimeoutMs,
+          retryBaseMs,
+          setTimer,
+          signal,
+          sleepImpl,
+          username,
         });
-        accountKeyByUsername.set(accountUsername, accountKey);
-        if (reconciliationAttempts > 0) passAccounts.add(accountKey);
-        if (accounts.size >= maxAccounts) break;
-      }
-      onProgress?.(Object.freeze({
-        found: accounts.size,
-        listType,
-        pages,
-        ...(reconciliationAttempts > 0 ? {
-          attempt: reconciliationAttempts,
-          expectedCount,
-          passFound: passAccounts.size,
-        } : {}),
-        phase: reconciliationAttempts > 0 ? 'reconciling' : 'loading',
-        username,
-      }));
-      const candidateToken = data.next_max_id;
-      if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
-        if (Number.isSafeInteger(expectedCount)
-          && accounts.size < expectedCount
-          && reconciliationAttempts < 1) {
-          reconciliationAttempts += 1;
-          nextMaxId = '';
-          seenTokens.clear();
-          passAccounts.clear();
-          onProgress?.(Object.freeze({
-            attempt: reconciliationAttempts,
-            expectedCount,
-            found: accounts.size,
-            listType,
-            pages,
-            phase: 'reconciling',
-            passFound: 0,
-            username,
-          }));
-          await sleepImpl(800, signal);
-          continue;
+        if (!Array.isArray(data?.users)) {
+          throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} page.`);
         }
-        const countReconciled = Number.isSafeInteger(expectedCount) && accounts.size === expectedCount;
-        return {
-          accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
-          complete: countReconciled,
+        passPages += 1;
+        totalPages += 1;
+        const beforePageCount = accounts.size;
+        for (const user of data.users) {
+          const accountUsername = normalizeUsername(user?.username);
+          if (!accountUsername) continue;
+          const rawAccountId = user?.pk ?? user?.id ?? '';
+          const accountId = String(rawAccountId || '').trim();
+          if (accountId && !/^\d+$/.test(accountId)) {
+            throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} account ID.`);
+          }
+          const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
+          const usernameOwner = accountKeyByUsername.get(accountUsername);
+          if (usernameOwner && usernameOwner !== accountKey) {
+            if (usernameOwner === `username:${accountUsername}` && accountId) {
+              accounts.delete(usernameOwner);
+            } else {
+              throw relationshipError(
+                'invalid-response',
+                `Instagram returned conflicting ${listType} account identities.`,
+              );
+            }
+          }
+          const previous = accounts.get(accountKey);
+          if (previous?.username && previous.username !== accountUsername) {
+            accountKeyByUsername.delete(previous.username);
+          }
+          accounts.set(accountKey, {
+            username: accountUsername,
+            profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
+            displayName: String(user?.full_name || '').trim().slice(0, 160),
+            source: 'authenticated-instagram-web',
+          });
+          accountKeyByUsername.set(accountUsername, accountKey);
+          if (accounts.size >= maxAccounts) break;
+        }
+        stagnantPages = accounts.size > beforePageCount ? 0 : stagnantPages + 1;
+        onProgress?.(Object.freeze({
           expectedCount,
-          pages,
-          reason: countReconciled
-            ? 'pagination-complete'
-            : Number.isSafeInteger(expectedCount)
-              ? 'count-mismatch'
-              : 'count-unverified',
-        };
+          found: Math.max(bestAccounts.length, accounts.size),
+          listType,
+          pages: totalPages,
+          ...(passIndex > 0 ? {
+            attempt: passIndex,
+            passFound: accounts.size,
+          } : {}),
+          phase: passIndex > 0 ? 'reconciling' : 'loading',
+          username,
+        }));
+        const candidateToken = stagnantPages >= 3 ? null : data.next_max_id;
+        if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
+          const passAccounts = [...accounts.values()]
+            .sort((left, right) => left.username.localeCompare(right.username));
+          if (passAccounts.length > bestAccounts.length) bestAccounts = passAccounts;
+          const countReconciled = Number.isSafeInteger(expectedCount)
+            && passAccounts.length === expectedCount;
+          if (countReconciled) {
+            return {
+              accounts: passAccounts,
+              complete: true,
+              expectedCount,
+              pages: totalPages,
+              reason: 'pagination-complete',
+            };
+          }
+          const shouldRetry = Number.isSafeInteger(expectedCount)
+            && passAccounts.length < expectedCount
+            && passIndex < RELATIONSHIP_RECONCILIATION_PASSES - 1;
+          if (shouldRetry) {
+            retryNextPass = true;
+            break;
+          }
+          return {
+            accounts: bestAccounts,
+            complete: false,
+            expectedCount,
+            pages: totalPages,
+            reason: Number.isSafeInteger(expectedCount) ? 'count-mismatch' : 'count-unverified',
+          };
+        }
+        nextMaxId = String(candidateToken);
+        if (!nextMaxId || nextMaxId.length > 500) {
+          throw relationshipError('invalid-pagination', `Instagram returned an unsafe ${listType} pagination token.`);
+        }
+        if (seenTokens.has(nextMaxId)) {
+          const passAccounts = [...accounts.values()]
+            .sort((left, right) => left.username.localeCompare(right.username));
+          if (passAccounts.length > bestAccounts.length) bestAccounts = passAccounts;
+          const shouldRetry = Number.isSafeInteger(expectedCount)
+            && passAccounts.length < expectedCount
+            && passIndex < RELATIONSHIP_RECONCILIATION_PASSES - 1;
+          if (shouldRetry) {
+            retryNextPass = true;
+            break;
+          }
+          return {
+            accounts: bestAccounts,
+            complete: false,
+            expectedCount,
+            pages: totalPages,
+            reason: 'count-mismatch',
+          };
+        }
+        seenTokens.add(nextMaxId);
+        const delayMs = Math.floor(800 + (Math.max(0, Math.min(0.999999, random())) * 700));
+        await sleepImpl(delayMs, signal);
       }
-      nextMaxId = String(candidateToken);
-      if (!nextMaxId || nextMaxId.length > 500 || seenTokens.has(nextMaxId)) {
-        throw relationshipError('invalid-pagination', `Instagram returned an unsafe ${listType} pagination token.`);
-      }
-      seenTokens.add(nextMaxId);
-      const delayMs = Math.floor(800 + (Math.max(0, Math.min(0.999999, random())) * 700));
-      await sleepImpl(delayMs, signal);
+      const passAccounts = [...accounts.values()]
+        .sort((left, right) => left.username.localeCompare(right.username));
+      if (passAccounts.length > bestAccounts.length) bestAccounts = passAccounts;
+      if (retryNextPass) continue;
+      return {
+        accounts: bestAccounts,
+        complete: false,
+        expectedCount,
+        pages: totalPages,
+        reason: accounts.size >= maxAccounts ? 'account-limit' : 'page-limit',
+      };
     }
     return {
-      accounts: [...accounts.values()].sort((left, right) => left.username.localeCompare(right.username)),
+      accounts: bestAccounts,
       complete: false,
       expectedCount,
-      pages,
-      reason: accounts.size >= maxAccounts ? 'account-limit' : 'page-limit',
+      pages: totalPages,
+      reason: 'count-mismatch',
     };
   }
 
@@ -605,6 +655,14 @@
         pages: 0,
         username,
       });
+      onProgress?.(Object.freeze({
+        expectedCounts: profileCountsAtStart,
+        found: 0,
+        listType: null,
+        pages: 0,
+        phase: 'counts-ready',
+        username,
+      }));
       const countDisagreementAtStart = exactProfileCountDisagreement(username, profileCountsAtStart);
       const followersTraversal = await fetchRelationshipList('followers', userId, username, {
         ...common,
@@ -1694,6 +1752,9 @@
 
   function exactProfileListCount(listType) {
     if (listType !== 'followers' && listType !== 'following') return null;
+    const profileUsername = normalizeUsername(location.pathname);
+    const scopedCounts = new Set();
+    const fallbackCounts = new Set();
     for (const link of document.querySelectorAll('a[role="link"], a[href="#"]')) {
       const values = [
         link.getAttribute('title'),
@@ -1711,9 +1772,22 @@
         const digits = match[1].replace(/\D/g, '');
         if (!digits) continue;
         const count = Number(digits);
-        if (Number.isSafeInteger(count)) return count;
+        if (!Number.isSafeInteger(count)) continue;
+        fallbackCounts.add(count);
+        const href = link.getAttribute?.('href');
+        if (!href || !profileUsername) continue;
+        try {
+          const pathname = new URL(href, INSTAGRAM_WEB_ORIGIN).pathname
+            .replace(/\/+$/, '')
+            .toLowerCase();
+          if (pathname === `/${profileUsername}/${listType}`) scopedCounts.add(count);
+        } catch {
+          // Ignore malformed, non-navigation values such as JavaScript URLs.
+        }
       }
     }
+    if (scopedCounts.size === 1) return [...scopedCounts][0];
+    if (!scopedCounts.size && fallbackCounts.size === 1) return [...fallbackCounts][0];
     return null;
   }
 
@@ -1729,9 +1803,9 @@
       return { ...session, accounts: [], complete: false, reason: 'session-stop' };
     }
     const expectedListType = listType === 'followers' || listType === 'following' ? listType : '';
-    const listContext = accountListDialog(expectedListType);
-    const root = listContext?.dialog || null;
-    const scroller = scrollableWithin(root);
+    let listContext = accountListDialog(expectedListType);
+    let root = listContext?.dialog || null;
+    let scroller = scrollableWithin(root);
     if (!root) {
       return { ...session, accounts: [], complete: false, reason: 'open-a-followers-or-following-list' };
     }
@@ -1754,9 +1828,30 @@
     };
 
     harvest();
-    let complete = !scroller;
+    let complete = !scroller
+      && Number.isSafeInteger(expectedCountAtStart)
+      && accounts.size === expectedCountAtStart;
     let stagnantRounds = 0;
-    for (let round = 0; scroller && round < maxScrolls; round += 1) {
+    for (let round = 0; round < maxScrolls; round += 1) {
+      const currentContext = accountListDialog(expectedListType);
+      if (!currentContext) {
+        complete = false;
+        break;
+      }
+      const currentRoot = currentContext.dialog;
+      const currentScroller = scrollableWithin(currentRoot);
+      if (currentRoot !== root || currentScroller !== scroller) {
+        listContext = currentContext;
+        root = currentRoot;
+        scroller = currentScroller;
+        stagnantRounds = 0;
+        harvest();
+      }
+      if (!scroller) {
+        complete = Number.isSafeInteger(expectedCountAtStart)
+          && accounts.size === expectedCountAtStart;
+        break;
+      }
       const beforeCount = accounts.size;
       const beforeHeight = scroller.scrollHeight;
       // Virtualised lists only fetch more rows in response to a real scroll
@@ -1774,21 +1869,17 @@
       // A long Followers list keeps a spinner up well past the settle delay.
       // Waiting for it to clear is what stops a big list being declared
       // complete while thousands of rows are still unfetched.
+      let loading = false;
       for (let wait = 0; wait < 24; wait += 1) {
-        if (!root.querySelector('[role="progressbar"], svg[aria-label*="Loading" i]')) break;
+        loading = Boolean(root.querySelector('[role="progressbar"], svg[aria-label*="Loading" i]'));
+        if (!loading) break;
         await sleep(250);
       }
       harvest();
 
       const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 8;
       const grew = accounts.size > beforeCount || scroller.scrollHeight > beforeHeight;
-      stagnantRounds = grew ? 0 : stagnantRounds + 1;
-      // Instagram lazy-loads in bursts and can pause between pages, so a couple
-      // of quiet rounds does not mean the end. Be patient before concluding.
-      if (atBottom && stagnantRounds >= 10) {
-        complete = true;
-        break;
-      }
+      stagnantRounds = grew || loading ? 0 : stagnantRounds + 1;
       const check = inspectSession();
       if (check.sessionExpired || check.challenge || check.actionBlocked || check.rateLimited) {
         return {
@@ -1797,6 +1888,18 @@
           complete: false,
           reason: 'session-stop',
         };
+      }
+      if (atBottom
+        && Number.isSafeInteger(expectedCountAtStart)
+        && accounts.size === expectedCountAtStart) {
+        complete = true;
+        break;
+      }
+      // Instagram lazy-loads in bursts and can pause between pages, so a couple
+      // of quiet rounds does not mean the end. Be patient before concluding.
+      if (atBottom && !loading && stagnantRounds >= 10) {
+        complete = true;
+        break;
       }
     }
 
