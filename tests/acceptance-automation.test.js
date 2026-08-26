@@ -82,8 +82,12 @@ test('browser acceptance covers accessibility, installability, and read-only pai
   assert.match(acceptance, /innerWidth === \$\{viewport\.width\} && innerHeight === \$\{viewport\.height\}/);
   assert.match(acceptance, /dispatchEvent\(new Event\('resize'\)\)/);
   assert.match(acceptance, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
-  assert.match(acceptance, /details\.open = true;[\s\S]*?requestAnimationFrame/);
-  assert.match(acceptance, /configuredMaxHeight/);
+  assert.match(
+    acceptance,
+    /querySelector\('\[data-action="open-settings"\]'\)\.click\(\);[\s\S]*?requestAnimationFrame/,
+  );
+  assert.match(acceptance, /settingsBounds\.settings\.bottom <= settingsBounds\.cssViewport\.height/);
+  assert.match(acceptance, /closedAfterOutsideClick, true/);
   assert.match(acceptance, /--ig-primary-text'[\s\S]*?waitForPageValue[\s\S]*?settled userscript dark-theme tokens/);
 });
 

@@ -354,7 +354,10 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
       })(),
       closeLabel: shadow.querySelector('[data-insta-toolbox-action="close"]')?.getAttribute('aria-label'),
       moveLabel: shadow.querySelector('[data-insta-toolbox-role="move-handle"]')?.getAttribute('aria-label'),
-      resizeLabel: shadow.querySelector('[data-insta-toolbox-role="resize-handle"]')?.getAttribute('aria-label'),
+      resizeLabels: [
+        shadow.querySelector('[data-insta-toolbox-role="resize-handle-start"]')?.getAttribute('aria-label'),
+        shadow.querySelector('[data-insta-toolbox-role="resize-handle-end"]')?.getAttribute('aria-label'),
+      ],
       opacity: shadow.querySelector('[data-insta-toolbox-preference="opacity"]')?.value,
       panelBackground: getComputedStyle(shadow.querySelector('.insta-toolbox-panel')).backgroundColor,
     };
@@ -385,17 +388,22 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
   assert.ok(Math.abs(metrics.moveSize.width - 44) <= 1, `move target width changed: ${metrics.moveSize.width}px`);
   assert.equal(metrics.closeLabel, 'Collapse Insta Toolbox');
   assert.match(metrics.moveLabel, /Move Insta Toolbox/);
-  assert.match(metrics.resizeLabel, /Resize Insta Toolbox/);
+  assert.deepEqual(metrics.resizeLabels, [
+    'Resize Insta Toolbox from the lower-left corner; use arrow keys for precise sizing',
+    'Resize Insta Toolbox from the lower-right corner; use arrow keys for precise sizing',
+  ]);
   assert.equal(metrics.opacity, '88');
   assert.match(metrics.panelBackground, /(rgba\(|color\()/);
 
   await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
     const move = shadow.querySelector('[data-insta-toolbox-role="move-handle"]');
-    const resize = shadow.querySelector('[data-insta-toolbox-role="resize-handle"]');
+    const resizeStart = shadow.querySelector('[data-insta-toolbox-role="resize-handle-start"]');
+    const resizeEnd = shadow.querySelector('[data-insta-toolbox-role="resize-handle-end"]');
     const opacity = shadow.querySelector('[data-insta-toolbox-preference="opacity"]');
     move.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-    resize.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    resizeStart.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    resizeEnd.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     opacity.value = '76';
     opacity.dispatchEvent(new Event('input', { bubbles: true }));
     opacity.dispatchEvent(new Event('change', { bubbles: true }));
@@ -478,7 +486,8 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
       'DM Unsend',
       'Workspace',
       'Move Insta Toolbox; use arrow keys for precise movement',
-      'Resize Insta Toolbox; use arrow keys for precise sizing',
+      'Resize Insta Toolbox from the lower-left corner; use arrow keys for precise sizing',
+      'Resize Insta Toolbox from the lower-right corner; use arrow keys for precise sizing',
     ]) {
       assert.equal(names.has(expected), true, `accessibility tree is missing ${expected}`);
     }
@@ -1117,9 +1126,18 @@ async function acceptToolboxLayout(webContents, baseUrl) {
       }), `${viewport.label}: emulate theme`);
       webContents.setZoomFactor(viewport.zoom);
       await withTimeout(webContents.executeJavaScript(`new Promise((resolve) => {
-        const host = document.querySelector('#insta-toolbox-userscript-root');
-        if (${Number.isFinite(viewport.panelWidth)}) host?.style.setProperty('--insta-toolbox-width', '${viewport.panelWidth || 390}px');
-        requestAnimationFrame(() => requestAnimationFrame(resolve));
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (${Number.isFinite(viewport.panelWidth)}) {
+            const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+            const resize = shadow.querySelector('[data-role="resize-end"]');
+            for (let index = 0; index < 20; index += 1) {
+              resize.dispatchEvent(new KeyboardEvent('keydown', {
+                bubbles: true, cancelable: true, key: 'ArrowLeft',
+              }));
+            }
+          }
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        }));
       })`, true), `${viewport.label}: settle panel`);
       assert.equal(webContents.getZoomFactor(), viewport.zoom, `${viewport.label}: Chromium zoom factor changed`);
       const sized = await withTimeout(webContents.executeJavaScript(probe, true), `${viewport.label}: layout probe`);
@@ -1140,40 +1158,43 @@ async function acceptToolboxLayout(webContents, baseUrl) {
       assert.deepEqual(resolvedTheme, expectedTheme, `${viewport.label}: resolved theme`);
       const settingsBounds = await withTimeout(webContents.executeJavaScript(`new Promise((resolve) => {
         const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
-        const details = shadow.querySelector('details.settings');
-        details.open = true;
+        shadow.querySelector('[data-action="open-settings"]').click();
         requestAnimationFrame(() => requestAnimationFrame(() => {
-          const settingsElement = shadow.querySelector('.settings-panel');
+          const settingsElement = shadow.querySelector('.settings-dialog');
           const settings = settingsElement.getBoundingClientRect();
           const panel = shadow.querySelector('.panel').getBoundingClientRect();
           const move = shadow.querySelector('[data-role="move"]');
           const moveStyle = getComputedStyle(move);
           const moveRect = move.getBoundingClientRect();
           const computed = getComputedStyle(settingsElement);
-          details.open = false;
+          const title = shadow.querySelector('#insta-toolbox-settings-title')?.textContent;
+          settingsElement.dispatchEvent(new MouseEvent('click', { bubbles: true }));
           resolve({
             cssViewport: { width: innerWidth, height: innerHeight },
             settings: { left: settings.left, top: settings.top, right: settings.right, bottom: settings.bottom },
             panel: { left: panel.left, top: panel.top, right: panel.right, bottom: panel.bottom, width: panel.width },
             move: { display: moveStyle.display, width: moveRect.width, height: moveRect.height },
+            title,
+            closedAfterOutsideClick: !settingsElement.open,
             computed: {
               maxHeight: computed.maxHeight,
               boxSizing: computed.boxSizing,
-              configuredMaxHeight: getComputedStyle(shadow.host).getPropertyValue('--insta-toolbox-settings-max-height').trim(),
             },
           });
         }));
       })`, true), `${viewport.label}: settings geometry`);
       const settingsGeometry = JSON.stringify(settingsBounds);
-      assert.ok(settingsBounds.settings.left >= settingsBounds.panel.left - 1, `${viewport.label}: settings escape left ${settingsGeometry}`);
-      assert.ok(settingsBounds.settings.top >= settingsBounds.panel.top - 1, `${viewport.label}: settings escape top ${settingsGeometry}`);
-      assert.ok(settingsBounds.settings.right <= settingsBounds.panel.right + 1, `${viewport.label}: settings escape right ${settingsGeometry}`);
-      assert.ok(settingsBounds.settings.bottom <= settingsBounds.panel.bottom + 1, `${viewport.label}: settings escape bottom ${settingsGeometry}`);
+      assert.ok(settingsBounds.settings.left >= -1, `${viewport.label}: settings escape left ${settingsGeometry}`);
+      assert.ok(settingsBounds.settings.top >= -1, `${viewport.label}: settings escape top ${settingsGeometry}`);
+      assert.ok(settingsBounds.settings.right <= settingsBounds.cssViewport.width + 1, `${viewport.label}: settings escape right ${settingsGeometry}`);
+      assert.ok(settingsBounds.settings.bottom <= settingsBounds.cssViewport.height + 1, `${viewport.label}: settings escape bottom ${settingsGeometry}`);
+      assert.equal(settingsBounds.title, 'Customize Insta Toolbox', `${viewport.label}: settings title`);
+      assert.equal(settingsBounds.closedAfterOutsideClick, true, `${viewport.label}: settings outside click`);
       if (viewport.zoom === 2) {
         assert.ok(settingsBounds.cssViewport.width <= 650, `${viewport.label}: layout viewport did not shrink at 200% zoom`);
       }
       if (viewport.panelWidth) {
-        assert.ok(settingsBounds.panel.width <= viewport.panelWidth + 1, `${viewport.label}: custom panel width was not applied`);
+        assert.ok(settingsBounds.panel.width <= viewport.panelWidth + 1, `${viewport.label}: custom panel width was not applied ${settingsGeometry}`);
         assert.deepEqual(settingsBounds.move, { display: 'flex', width: 44, height: 44 }, `${viewport.label}: move handle must remain usable`);
       }
       const filename = `${viewport.label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
@@ -1336,14 +1357,17 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
         labelledBy: element.getAttribute('aria-labelledby'),
       })),
       resizeCorners: [
-        Boolean(shadow.querySelector('[data-role="resize"]')),
-        Boolean(shadow.querySelector('[data-role="resize-tl"]')),
+        Boolean(shadow.querySelector('[data-role="resize-start"]')),
+        Boolean(shadow.querySelector('[data-role="resize-end"]')),
       ],
       move: shadow.querySelector('[data-role="move"]')?.getAttribute('aria-label'),
       open: !shadow.querySelector('.panel').hidden,
       opacity: shadow.querySelector('[data-preference="opacity"]')?.value,
       opacityMin: shadow.querySelector('[data-preference="opacity"]')?.min,
-      resize: shadow.querySelector('[data-role="resize"]')?.getAttribute('aria-label'),
+      resizeLabels: [
+        shadow.querySelector('[data-role="resize-start"]')?.getAttribute('aria-label'),
+        shadow.querySelector('[data-role="resize-end"]')?.getAttribute('aria-label'),
+      ],
       header: shadow.querySelector('.header h1')?.textContent,
       credit: shadow.querySelector('.footer a')?.textContent,
       liveRegions: shadow.querySelectorAll('[aria-live]').length,
@@ -1370,7 +1394,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
         action: shadow.querySelector('[data-role="context-cta"]')?.dataset.ctaAction,
         label: shadow.querySelector('[data-role="context-cta"]')?.textContent,
       },
-      introHidden: shadow.querySelector('[data-role="intro"]')?.hidden,
+      hasIntro: Boolean(shadow.querySelector('[data-role="intro"]')),
       unsendPlanHidden: shadow.querySelector('[data-role="unsend-plan"]')?.hidden === true,
       engineExecutors: [
         typeof globalThis.InstaToolboxInstagramInspector?.performReviewedProfileAction,
@@ -1390,15 +1414,15 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     { id: 'insta-toolbox-panel-account', labelledBy: 'insta-toolbox-tab-account' },
     { id: 'insta-toolbox-panel-messages', labelledBy: 'insta-toolbox-tab-messages' },
   ]);
-  // Resizing lives on the conventional bottom-right corner only. A top-left
-  // grip contended with the header for the same pixels, so one of the two was
-  // always dead.
-  assert.deepEqual(initial.resizeCorners, [true, false], 'resize is bottom-right only');
+  assert.deepEqual(initial.resizeCorners, [true, true], 'both lower resize corners must be available');
   assert.equal(initial.open, true);
   assert.equal(initial.opacity, '88');
   assert.equal(initial.opacityMin, '55');
   assert.match(initial.move, /Move toolbox/);
-  assert.match(initial.resize, /Resize toolbox/);
+  assert.deepEqual(initial.resizeLabels, [
+    'Resize Insta Toolbox from the lower-left corner; use arrow keys for precise sizing',
+    'Resize Insta Toolbox from the lower-right corner; use arrow keys for precise sizing',
+  ]);
   assert.equal(initial.header, 'Insta Toolbox');
   assert.equal(initial.credit, 'created by @slaveofsolace');
   assert.equal(initial.liveRegions, 1);
@@ -1406,7 +1430,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(initial.ambientLiveControls, 0);
   assert.deepEqual(initial.reviewControl, { disabled: false, live: false });
   assert.deepEqual(initial.unsendControl, { disabled: true, label: 'Unsend DMs' });
-  assert.equal(initial.introHidden, false);
+  assert.equal(initial.hasIntro, false);
   assert.deepEqual(initial.context, {
     title: 'Following list open',
     action: 'scan-following',
@@ -1508,19 +1532,23 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     panelText: 'rgb(245, 245, 245)',
   });
 
-  const introRoute = await webContents.executeJavaScript(`(() => {
+  const directToolRoutes = await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
     shadow.querySelector('[data-view="messages"]').click();
-    shadow.querySelector('[data-action="intro-done"]').click();
-    return {
-      introHidden: shadow.querySelector('[data-role="intro"]')?.hidden,
+    const selected = () => ({
       selected: [...shadow.querySelectorAll('[role="tab"]')]
         .find((tab) => tab.getAttribute('aria-selected') === 'true')?.dataset.view,
       visible: [...shadow.querySelectorAll('[role="tabpanel"]')]
         .find((panel) => !panel.hidden)?.dataset.panel,
-    };
+    });
+    const messages = selected();
+    shadow.querySelector('[data-view="checker"]').click();
+    return { checker: selected(), messages };
   })()`, true);
-  assert.deepEqual(introRoute, { introHidden: true, selected: 'checker', visible: 'checker' });
+  assert.deepEqual(directToolRoutes, {
+    checker: { selected: 'checker', visible: 'checker' },
+    messages: { selected: 'messages', visible: 'messages' },
+  });
 
   await webContents.executeJavaScript(`(() => {
     const dialog = document.querySelector('[role="dialog"]');
@@ -1566,7 +1594,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
     shadow.querySelector('[data-role="move"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-    shadow.querySelector('[data-role="resize"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    shadow.querySelector('[data-role="resize-end"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     const opacity = shadow.querySelector('[data-preference="opacity"]');
     opacity.value = '80';
     opacity.dispatchEvent(new Event('input', { bubbles: true }));

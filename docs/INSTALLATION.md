@@ -1,20 +1,26 @@
-# Install Insta Toolbox 3.0
+# Install Insta Toolbox 3.1
 
 Tampermonkey is the quickest way to put the toolbox on Instagram. Desktop and web builds provide the larger local workspace for imports, comparisons, reviewed plans, ledgers, and exports.
 
-## Tampermonkey: one to two minutes
+## Tampermonkey: about one minute
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) for Chrome or another Chromium browser. Chrome is the verified 3.0 target.
-2. In Chrome, open `chrome://extensions`, select **Details** for Tampermonkey, and enable **Allow User Scripts**. Skip this step if your browser does not show it.
-3. Open **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**.
-4. Review the metadata and select **Install**.
-5. Open or reload [instagram.com](https://www.instagram.com/). Press `Alt+Shift+I` if the panel is hidden.
+1. Install [Tampermonkey](https://www.tampermonkey.net/). In Chrome, open Tampermonkey's **Details** page and turn on **Allow User Scripts**.
+
+   ![Chrome extension details with Allow User Scripts turned on](media/install/01-allow-user-scripts.svg)
+
+2. Open **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**, then click **Install** in Tampermonkey.
+
+   ![Tampermonkey installer with the Install button highlighted](media/install/02-install-userscript.svg)
+
+3. Open or reload [Instagram](https://www.instagram.com/). Click **IT** or press `Alt+Shift+I`.
+
+   ![Instagram with the Insta Toolbox button highlighted](media/install/03-open-toolbox.svg)
 
 The panel should show **Mutual Checker**, **Follow / Unfollow**, and **DM Unsend**.
 
 ### Upgrade from 2.x
 
-Version 3.0 has a new userscript identity and update channel. Remove any 2.x userscript before installing 3.0. Do not keep both enabled: duplicate scripts can create two panels and competing runners.
+Version 3 has a different userscript identity and update channel from 2.x. Remove any 2.x userscript before installing 3.1. Do not keep both enabled: duplicate scripts can create two panels and competing runners.
 
 Export important local data before upgrading. Version 3.0 does not read,
 migrate, or delete 2.x browser or desktop state. It starts clean and leaves the
@@ -30,7 +36,7 @@ Open the Tampermonkey dashboard, locate **Insta Toolbox**, and choose **Delete**
 
 ## Chrome extension
 
-1. Download `Insta-Toolbox-Extension-3.0.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download `Insta-Toolbox-Extension-3.1.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify its SHA-256 checksum as described below.
 3. Extract the ZIP to a permanent folder.
 4. Open `chrome://extensions` and enable **Developer mode**.
@@ -43,7 +49,7 @@ To remove it, open `chrome://extensions`, select **Remove**, and delete the extr
 
 ## Windows desktop app
 
-1. Download `Insta-Toolbox-Setup-3.0.0.exe` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download `Insta-Toolbox-Setup-3.1.0.exe` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify the checksum.
 3. Double-click the installer.
 
@@ -56,13 +62,13 @@ Uninstall from **Settings > Apps > Installed apps > Insta Toolbox**.
 
 ## macOS desktop app
 
-1. Download the recommended `Insta-Toolbox-3.0.0-universal.dmg` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download the recommended `Insta-Toolbox-3.1.0-universal.dmg` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify the checksum.
 3. Open the DMG and drag **Insta Toolbox** to Applications.
 
 The universal package targets Intel and Apple Silicon. Public builds are not notarized unless the release notes explicitly say they are. On first launch, control-click the app, choose **Open**, then confirm the macOS warning.
 
-The release also includes `Insta-Toolbox-3.0.0-universal.zip` as a portable alternative. Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
+The release also includes `Insta-Toolbox-3.1.0-universal.zip` as a portable alternative. Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
 
 To remove it, quit the app and move **Insta Toolbox** from Applications to Trash. Remove its application data separately only if you want to erase local workspace history.
 
@@ -76,7 +82,7 @@ Use the browser's **Install app** command for a standalone PWA window. Browser w
 
 To self-host it:
 
-1. Download `insta-toolbox-web-3.0.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download `insta-toolbox-web-3.1.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify its checksum.
 3. Extract the ZIP.
 4. Serve the extracted `insta-toolbox-web` directory over HTTPS or a loopback HTTP origin.
@@ -92,15 +98,15 @@ Download `SHA256SUMS.txt` from the same release as the package.
 ### Windows PowerShell
 
 ```powershell
-Get-FileHash .\Insta-Toolbox-Setup-3.0.0.exe -Algorithm SHA256
-Get-FileHash .\Insta-Toolbox-Extension-3.0.0.zip -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Setup-3.1.0.exe -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Extension-3.1.0.zip -Algorithm SHA256
 ```
 
 ### macOS or Linux
 
 ```sh
-shasum -a 256 Insta-Toolbox-3.0.0-universal.dmg
-shasum -a 256 insta-toolbox-web-3.0.0.zip
+shasum -a 256 Insta-Toolbox-3.1.0-universal.dmg
+shasum -a 256 insta-toolbox-web-3.1.0.zip
 ```
 
 The printed hash must match the corresponding line in `SHA256SUMS.txt`. A mismatch means the file should not be opened.
@@ -133,7 +139,7 @@ pnpm run qa:mac-package
 
 ### The Instagram panel is missing
 
-- Confirm that only the 3.0 script or extension is enabled.
+- Confirm that only one version 3 script or extension is enabled.
 - Confirm that the page URL begins with `https://www.instagram.com/`.
 - Reload the tab after installation.
 - For Tampermonkey on Chrome, enable **Allow User Scripts**.
@@ -149,8 +155,8 @@ Read the reason shown in the active tool. Challenge, rate-limit, wrong-thread, c
 
 ## Acceptance and support
 
-- [3.0 acceptance record](acceptance/3.0.0.md)
-- [3.0 compatibility](compatibility/3.0.0.md)
+- [3.1 acceptance record](acceptance/3.1.0.md)
+- [3.1 compatibility](compatibility/3.1.0.md)
 - [Operator acceptance guide](OPERATOR_ACCEPTANCE.md)
 - [Security policy](../SECURITY.md)
 - [Open an issue](https://github.com/slaveofsolace/Insta-Toolbox/issues)

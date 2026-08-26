@@ -9,6 +9,9 @@
   const WIDTHS = new Set(['compact', 'standard', 'wide']);
   const THEMES = new Set(['auto', 'light', 'dark']);
   const DENSITIES = new Set(['comfortable', 'compact']);
+  const ACCENTS = new Set(['rose', 'violet', 'blue']);
+  const BLURS = new Set(['none', 'soft', 'strong']);
+  const LAUNCHER_SIZES = new Set(['standard', 'large']);
   const MIN_PANEL_WIDTH = 320;
   const MAX_PANEL_WIDTH = 560;
   const MIN_PANEL_HEIGHT = 280;
@@ -44,8 +47,12 @@
       width: 'standard',
       theme: 'auto',
       density: 'comfortable',
+      accent: 'rose',
+      blur: 'soft',
+      launcherSize: 'standard',
       firstRunComplete: false,
       position: null,
+      launcherPosition: null,
       panelWidth: null,
       panelHeight: null,
       opacity: 0.88,
@@ -62,10 +69,16 @@
       width: WIDTHS.has(source.width) ? source.width : fallback.width,
       theme: THEMES.has(source.theme) ? source.theme : fallback.theme,
       density: DENSITIES.has(source.density) ? source.density : fallback.density,
+      accent: ACCENTS.has(source.accent) ? source.accent : fallback.accent,
+      blur: BLURS.has(source.blur) ? source.blur : fallback.blur,
+      launcherSize: LAUNCHER_SIZES.has(source.launcherSize)
+        ? source.launcherSize
+        : fallback.launcherSize,
       firstRunComplete: typeof source.firstRunComplete === 'boolean'
         ? source.firstRunComplete
         : fallback.firstRunComplete,
       position: normalizePosition(source.position),
+      launcherPosition: normalizePosition(source.launcherPosition),
       panelWidth: optionalInteger(source.panelWidth, MIN_PANEL_WIDTH, MAX_PANEL_WIDTH),
       panelHeight: optionalInteger(source.panelHeight, MIN_PANEL_HEIGHT, MAX_PANEL_HEIGHT),
       opacity: Math.round(

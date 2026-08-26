@@ -254,7 +254,9 @@ test('the movable panel and local follower comparison are preserved', () => {
   assert.match(source, /Follow \/ Unfollow/);
   assert.match(source, /DM Unsend/);
   assert.match(source, /data-role="move"/);
-  assert.match(source, /data-role="resize"/);
+  assert.match(source, /data-role="resize-start"/);
+  assert.match(source, /data-role="resize-end"/);
+  assert.match(source, /Open Insta Toolbox; drag or use arrow keys to move/);
   assert.match(source, /data-preference="opacity"/);
   assert.match(source, /id="insta-toolbox-opacity" type="range" min="55"/);
   assert.match(shell, /event\.altKey.*event\.shiftKey.*event\.key\.toLowerCase\(\) !== 'i'/);

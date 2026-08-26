@@ -25,11 +25,19 @@
       --insta-toolbox-panel-width: 460px;
       --insta-toolbox-panel-alpha: 88%;
       --insta-toolbox-panel-alpha-strong: 96%;
+      --insta-toolbox-backdrop-blur: 10px;
+      --insta-toolbox-launcher-size: 44px;
       --insta-toolbox-panel-inline-start: auto;
       --insta-toolbox-panel-inline-end: max(14px, env(safe-area-inset-right));
       color-scheme: light;
       font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
     }
+
+    :host([data-accent="violet"]) { --insta-toolbox-signal: var(--insta-toolbox-accent-violet); --insta-toolbox-focus: var(--insta-toolbox-accent-violet); }
+    :host([data-accent="blue"]) { --insta-toolbox-signal: var(--insta-toolbox-accent-blue); --insta-toolbox-focus: var(--insta-toolbox-accent-blue); }
+    :host([data-blur="none"]) { --insta-toolbox-backdrop-blur: 0px; }
+    :host([data-blur="strong"]) { --insta-toolbox-backdrop-blur: 18px; }
+    :host([data-launcher-size="large"]) { --insta-toolbox-launcher-size: 52px; }
 
     :host([data-theme="dark"]) {
       --insta-toolbox-surface: #151714;
@@ -67,8 +75,8 @@
       right: max(14px, env(safe-area-inset-right));
       bottom: max(14px, env(safe-area-inset-bottom));
       display: grid;
-      width: 44px;
-      height: 44px;
+      width: var(--insta-toolbox-launcher-size);
+      height: var(--insta-toolbox-launcher-size);
       place-items: center;
       border: 1px solid var(--insta-toolbox-line);
       border-radius: 12px;
@@ -76,9 +84,13 @@
       color: var(--insta-toolbox-ink);
       box-shadow: 0 8px 28px rgba(0, 0, 0, .18);
       font-weight: 800;
+      cursor: grab;
+      touch-action: none;
       transition: transform 140ms ease, box-shadow 140ms ease;
     }
+    :host([data-layout-interaction="launcher"]) .insta-toolbox-launcher { cursor: grabbing; }
     :host([data-dock="left"]) .insta-toolbox-launcher { right: auto; left: max(14px, env(safe-area-inset-left)); }
+    :host([data-launcher-layout="floating"]) .insta-toolbox-launcher { top: var(--insta-toolbox-launcher-top); right: auto; bottom: auto; left: var(--insta-toolbox-launcher-left); }
     .insta-toolbox-launcher:hover { transform: translateY(-1px); box-shadow: 0 10px 32px rgba(0, 0, 0, .22); }
     .insta-toolbox-launcher-mark { font-size: 15px; letter-spacing: -.03em; }
     .insta-toolbox-launcher-signal { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border: 2px solid var(--insta-toolbox-surface-raised); border-radius: 50%; background: var(--insta-toolbox-signal); }
@@ -98,8 +110,8 @@
       background: color-mix(in srgb, var(--insta-toolbox-surface) var(--insta-toolbox-panel-alpha), transparent);
       color: var(--insta-toolbox-ink);
       box-shadow: var(--insta-toolbox-shadow);
-      backdrop-filter: blur(10px) saturate(.94);
-      -webkit-backdrop-filter: blur(10px) saturate(.94);
+      backdrop-filter: blur(var(--insta-toolbox-backdrop-blur)) saturate(.94);
+      -webkit-backdrop-filter: blur(var(--insta-toolbox-backdrop-blur)) saturate(.94);
       font-size: 14px;
       line-height: 1.45;
       animation: insta-toolbox-open 150ms cubic-bezier(.2, .8, .2, 1);
@@ -126,15 +138,10 @@
     .insta-toolbox-header-copy { min-width: 0; }
     .insta-toolbox-header h1 { margin: 0; overflow: hidden; color: var(--insta-toolbox-ink); font-size: 16px; line-height: 1.2; letter-spacing: -.015em; text-overflow: ellipsis; white-space: nowrap; }
     .insta-toolbox-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
-    .insta-toolbox-icon-button, .insta-toolbox-settings summary { display: grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--insta-toolbox-ink); list-style: none; }
+    .insta-toolbox-icon-button { display: grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--insta-toolbox-ink); }
     .insta-toolbox-move-handle { min-width: 44px; padding: 0; cursor: grab; touch-action: none; }
     :host([data-layout-interaction="move"]) .insta-toolbox-move-handle { cursor: grabbing; }
-    .insta-toolbox-settings summary::-webkit-details-marker { display: none; }
-    .insta-toolbox-icon-button:hover, .insta-toolbox-settings summary:hover, .insta-toolbox-settings[open] summary { background: var(--insta-toolbox-surface); }
-    .insta-toolbox-settings { position: relative; }
-    .insta-toolbox-settings-panel { position: absolute; z-index: 5; top: 48px; right: 0; display: grid; width: 260px; max-height: min(520px, calc(100dvh - 92px)); overflow: auto; gap: 12px; padding: 14px; border: 1px solid var(--insta-toolbox-line); border-radius: 10px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) 96%, transparent); box-shadow: var(--insta-toolbox-shadow); }
-    .insta-toolbox-settings:not([open]) .insta-toolbox-settings-panel { display: none; }
-    .insta-toolbox-settings-panel strong { font-size: 13px; }
+    .insta-toolbox-icon-button:hover, .insta-toolbox-icon-button[aria-expanded="true"] { background: var(--insta-toolbox-surface); }
     .insta-toolbox-field { display: grid; gap: 5px; }
     .insta-toolbox-field label { color: var(--insta-toolbox-muted); font-size: 12px; }
     .insta-toolbox-select, .insta-toolbox-text-input { min-height: 44px; width: 100%; border: 1px solid var(--insta-toolbox-line); border-radius: 8px; padding: 8px 10px; background: var(--insta-toolbox-surface-raised); color: var(--insta-toolbox-ink); }
@@ -188,9 +195,6 @@
     .insta-toolbox-tool-card span { margin-top: 3px; color: var(--insta-toolbox-muted); font-size: 12px; }
     .insta-toolbox-tool-card em { color: var(--insta-toolbox-muted); font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
 
-    .insta-toolbox-first-run { margin-bottom: 14px; padding: 14px; border: 1px solid var(--insta-toolbox-line); border-radius: 10px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); }
-    .insta-toolbox-first-run h2 { margin: 0; font-size: 17px; }
-    .insta-toolbox-first-run > p { max-width: 42ch; margin: 5px 0 0; color: var(--insta-toolbox-muted); font-size: 12px; }
 
     .insta-toolbox-checker-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
     .insta-toolbox-checker-metric { padding: 11px; border: 1px solid var(--insta-toolbox-line); border-radius: 9px; background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); }
@@ -278,7 +282,7 @@
     .insta-toolbox-operational-status[data-tone="good"] { border-color: color-mix(in srgb, var(--insta-toolbox-good) 52%, var(--insta-toolbox-line)); }
     .insta-toolbox-operational-status[data-tone="error"] { border-color: color-mix(in srgb, var(--insta-toolbox-danger) 62%, var(--insta-toolbox-line)); }
     .insta-toolbox-status-message { display: -webkit-box; min-width: 0; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-    .insta-toolbox-credit { display: flex; min-height: 27px; align-items: center; padding: 3px 50px 3px 12px; border-top: 1px solid var(--insta-toolbox-line); background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); color: var(--insta-toolbox-muted); font-size: 10px; line-height: 1.2; }
+    .insta-toolbox-credit { display: flex; min-height: 27px; align-items: center; justify-content: center; padding: 3px 50px; border-top: 1px solid var(--insta-toolbox-line); background: color-mix(in srgb, var(--insta-toolbox-surface-raised) var(--insta-toolbox-panel-alpha-strong), transparent); color: var(--insta-toolbox-muted); font-size: 10px; line-height: 1.2; }
     .insta-toolbox-credit-link { color: inherit; text-decoration: none; }
     .insta-toolbox-credit-link:hover { color: var(--insta-toolbox-ink); text-decoration: underline; text-underline-offset: 2px; }
 
@@ -293,6 +297,12 @@
     .insta-toolbox-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line); border-radius: 8px; font-size: 13px; line-height: 19px; }
     .insta-toolbox-dialog code { display: block; padding: 10px; border: 1px solid var(--insta-toolbox-line); border-radius: 8px; background: var(--insta-toolbox-surface); color: var(--insta-toolbox-ink); overflow-wrap: anywhere; font-size: 13px; }
     .insta-toolbox-dialog .insta-toolbox-toolbar { justify-content: flex-end; }
+    .insta-toolbox-settings-dialog { width: min(360px, calc(100vw - 28px)); max-height: min(680px, calc(100dvh - 28px)); overflow: auto; }
+    .insta-toolbox-settings-dialog::backdrop { background: rgba(12, 14, 12, .44); backdrop-filter: grayscale(.65) blur(1px); }
+    .insta-toolbox-settings-dialog form { gap: 12px; }
+    .insta-toolbox-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .insta-toolbox-settings-heading .insta-toolbox-icon-button { flex: 0 0 auto; }
+    .insta-toolbox-settings-dialog .insta-toolbox-note { margin: -4px 0 2px; }
 
     .insta-toolbox-collision-strip { position: fixed; z-index: 2147483000; display: flex; min-height: 52px; width: min(320px, calc(100vw - 28px)); align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--insta-toolbox-line); border-radius: 12px; background: var(--insta-toolbox-surface-raised); color: var(--insta-toolbox-ink); box-shadow: var(--insta-toolbox-shadow); font-size: 12px; }
     .insta-toolbox-collision-copy { min-width: 0; }
@@ -302,12 +312,15 @@
     :host([data-collision="active"]) .insta-toolbox-panel, :host([data-collision="active"]) .insta-toolbox-launcher { display: none !important; }
 
     .insta-toolbox-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-    .insta-toolbox-resize-handle { position: absolute; z-index: 4; right: 0; bottom: 0; display: block; width: 44px; height: 44px; border: 0; border-radius: 10px 0 12px 0; padding: 0; background: transparent; color: var(--insta-toolbox-muted); cursor: nwse-resize; touch-action: none; }
+    .insta-toolbox-resize-handle { position: absolute; z-index: 4; bottom: 0; display: block; width: 44px; height: 44px; border: 0; padding: 0; background: transparent; color: var(--insta-toolbox-muted); touch-action: none; }
+    .insta-toolbox-resize-handle--end { right: 0; border-radius: 10px 0 12px 0; cursor: nwse-resize; }
+    .insta-toolbox-resize-handle--start { left: 0; border-radius: 0 10px 0 12px; cursor: nesw-resize; }
     .insta-toolbox-resize-handle::before { content: ""; position: absolute; right: 9px; bottom: 9px; width: 12px; height: 12px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; opacity: .9; }
+    .insta-toolbox-resize-handle--start::before { right: auto; left: 9px; border-right: 0; border-left: 2px solid currentColor; }
     .insta-toolbox-resize-handle:hover { background: color-mix(in srgb, var(--insta-toolbox-signal-soft) 72%, transparent); color: var(--insta-toolbox-ink); }
 
     .insta-toolbox-launcher:focus-visible, .insta-toolbox-tab:focus-visible, .insta-toolbox-icon-button:focus-visible,
-    .insta-toolbox-settings summary:focus-visible, .insta-toolbox-select:focus-visible, .insta-toolbox-text-input:focus-visible,
+    .insta-toolbox-select:focus-visible, .insta-toolbox-text-input:focus-visible,
     .insta-toolbox-button:focus-visible, .insta-toolbox-link-button:focus-visible, .insta-toolbox-file-label:focus-within,
     .insta-toolbox-disclosure > summary:focus-visible, .insta-toolbox-tool-card:focus-visible, .insta-toolbox-range:focus-visible,
     .insta-toolbox-resize-handle:focus-visible, .insta-toolbox-credit-link:focus-visible {
@@ -319,7 +332,7 @@
       .insta-toolbox-header { gap: 3px; padding-inline: 6px; }
       .insta-toolbox-header h1 { font-size: 15px; }
       .insta-toolbox-header-actions { gap: 0; }
-      .insta-toolbox-credit { padding-left: 8px; }
+      .insta-toolbox-credit { padding-inline: 48px; }
     }
 
     @keyframes insta-toolbox-open {
@@ -342,7 +355,7 @@
       .insta-toolbox-move-handle, .insta-toolbox-resize-handle { display: none; }
       .insta-toolbox-shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
       .insta-toolbox-header { grid-template-columns: minmax(0, 1fr) auto; }
-      .insta-toolbox-credit { padding-right: 12px; }
+      .insta-toolbox-credit { padding-inline: 12px; }
       .insta-toolbox-rail { grid-row: 2; display: grid; grid-template-columns: repeat(5, minmax(44px, 1fr)); padding: 4px max(4px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left)); border-top: 1px solid var(--insta-toolbox-line); border-right: 0; }
       .insta-toolbox-brand-mark { display: none; }
       .insta-toolbox-tab { width: 100%; min-height: 52px; grid-template-columns: 1fr; grid-template-rows: 20px auto; place-items: center; gap: 2px; padding: 5px 2px; text-align: center; }
@@ -350,7 +363,6 @@
       .insta-toolbox-tab[data-insta-toolbox-section="workspace"] { margin-top: 0; }
       .insta-toolbox-tab[aria-selected="true"] { box-shadow: inset 0 -3px 0 var(--insta-toolbox-signal); }
       .insta-toolbox-body { grid-row: 1; }
-      .insta-toolbox-settings-panel { position: fixed; top: auto; right: 12px; bottom: calc(58px + env(safe-area-inset-bottom)); left: 12px; width: auto; }
       .insta-toolbox-facts { grid-template-columns: 1fr; }
       .insta-toolbox-facts > div + div { border-top: 1px solid var(--insta-toolbox-line); border-left: 0; }
     }
@@ -378,8 +390,7 @@
       .insta-toolbox-header { grid-template-columns: minmax(0, 1fr) auto; }
       .insta-toolbox-move-handle { display: none; }
       .insta-toolbox-resize-handle { display: flex; }
-      .insta-toolbox-credit { padding-right: 50px; }
-      .insta-toolbox-settings-panel { position: absolute; top: 48px; right: 0; bottom: auto; left: auto; width: 260px; }
+      .insta-toolbox-credit { padding-inline: 50px; }
       .insta-toolbox-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .insta-toolbox-facts > div + div { border-top: 0; border-left: 1px solid var(--insta-toolbox-line); }
     }
@@ -396,7 +407,7 @@
 
     @media (forced-colors: active) {
       :host { --insta-toolbox-signal: Highlight; --insta-toolbox-focus: Highlight; }
-      .insta-toolbox-panel, .insta-toolbox-launcher, .insta-toolbox-collision-strip, .insta-toolbox-settings-panel, .insta-toolbox-dialog { border: 2px solid CanvasText; box-shadow: none; }
+      .insta-toolbox-panel, .insta-toolbox-launcher, .insta-toolbox-collision-strip, .insta-toolbox-dialog { border: 2px solid CanvasText; box-shadow: none; }
       .insta-toolbox-tab[aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -3px; box-shadow: none; }
       .insta-toolbox-state-dot, .insta-toolbox-launcher-signal, .insta-toolbox-tab-signal { border: 2px solid CanvasText; }
       .insta-toolbox-panel, .insta-toolbox-header, .insta-toolbox-operational-status, .insta-toolbox-credit, .insta-toolbox-card, .insta-toolbox-tool-card, .insta-toolbox-checker-metric, .insta-toolbox-checker-result { background: Canvas; }
@@ -411,15 +422,19 @@
     const host = targetDocument.createElement('div');
     host.id = 'insta-toolbox-sidecar-root';
     host.dataset.collision = 'inactive';
+    host.dataset.accent = 'rose';
+    host.dataset.blur = 'soft';
     host.dataset.density = 'comfortable';
     host.dataset.dock = 'right';
+    host.dataset.launcherLayout = 'docked';
+    host.dataset.launcherSize = 'standard';
     host.dataset.layout = 'docked';
     host.dataset.theme = 'light';
     host.dataset.width = 'standard';
     const shadow = host.attachShadow({ mode: openShadow ? 'open' : 'closed' });
     shadow.innerHTML = `
       <style>${styles}</style>
-      <button class="insta-toolbox-launcher" type="button" data-insta-toolbox-action="open" aria-label="Open Insta Toolbox" aria-expanded="false">
+      <button class="insta-toolbox-launcher" type="button" data-insta-toolbox-action="open" aria-label="Open Insta Toolbox; drag or use arrow keys to move" aria-expanded="false" title="Drag to move · Click to open">
         <span class="insta-toolbox-launcher-mark" aria-hidden="true">IT</span>
         <span class="insta-toolbox-launcher-signal" data-insta-toolbox-role="launcher-signal" hidden></span>
       </button>
@@ -440,26 +455,12 @@
                 <h1 data-insta-toolbox-role="view-title">Insta Toolbox</h1>
               </div>
               <div class="insta-toolbox-header-actions">
-                <details class="insta-toolbox-settings" data-insta-toolbox-role="settings">
-                  <summary aria-label="Overlay preferences">${icons.svg('preferences')}</summary>
-                  <div class="insta-toolbox-settings-panel">
-                    <strong>Overlay preferences</strong>
-                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-dock">Dock side</label><select class="insta-toolbox-select" id="insta-toolbox-pref-dock" data-insta-toolbox-preference="dock"><option value="right">Right</option><option value="left">Left</option></select></div>
-                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-width">Panel width</label><select class="insta-toolbox-select" id="insta-toolbox-pref-width" data-insta-toolbox-preference="width"><option value="compact">Compact</option><option value="standard">Standard</option><option value="wide">Wide</option></select></div>
-                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-theme">Theme</label><select class="insta-toolbox-select" id="insta-toolbox-pref-theme" data-insta-toolbox-preference="theme"><option value="auto">Match Instagram</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
-                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-density">Density</label><select class="insta-toolbox-select" id="insta-toolbox-pref-density" data-insta-toolbox-preference="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
-                    <div class="insta-toolbox-field"><label for="insta-toolbox-pref-opacity">Surface transparency</label><div class="insta-toolbox-range-row"><input class="insta-toolbox-range" id="insta-toolbox-pref-opacity" type="range" min="55" max="100" step="1" value="88" data-insta-toolbox-preference="opacity"><output class="insta-toolbox-range-output" for="insta-toolbox-pref-opacity" data-insta-toolbox-role="opacity-output">88%</output></div></div>
-                    <div class="insta-toolbox-field"><label>Size presets</label><div class="insta-toolbox-toolbar"><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="layout-preset" data-layout-preset="compact">Compact</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="layout-preset" data-layout-preset="tall">Tall</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="layout-preset" data-layout-preset="wide">Wide</button></div></div>
-                    <button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="reset-layout">Reset position and size</button>
-                    <details class="insta-toolbox-disclosure" data-insta-toolbox-role="advanced-settings"><summary>Advanced controls</summary><div class="insta-toolbox-disclosure-body" data-insta-toolbox-role="advanced-settings-body"></div></details>
-                    <p class="insta-toolbox-note">Drag the header handle or resize from the lower corner. Arrow keys work on both controls. Shortcut: Alt + Shift + I.</p>
-                  </div>
-                </details>
+                <button class="insta-toolbox-icon-button" type="button" data-insta-toolbox-action="open-settings" data-insta-toolbox-role="settings-button" aria-label="Customize Insta Toolbox" aria-haspopup="dialog" aria-expanded="false">${icons.svg('preferences')}</button>
                 <button class="insta-toolbox-icon-button" type="button" data-insta-toolbox-action="close" aria-label="Collapse Insta Toolbox">${icons.svg('close')}</button>
               </div>
             </header>
             <div class="insta-toolbox-scroll">
-              <section class="insta-toolbox-view" id="insta-toolbox-view-now" role="tabpanel" aria-labelledby="insta-toolbox-tab-now" tabindex="0" data-insta-toolbox-view="now"><div data-insta-toolbox-role="first-run-slot"></div><div data-insta-toolbox-role="now-content"></div></section>
+              <section class="insta-toolbox-view" id="insta-toolbox-view-now" role="tabpanel" aria-labelledby="insta-toolbox-tab-now" tabindex="0" data-insta-toolbox-view="now"><div data-insta-toolbox-role="now-content"></div></section>
               <section class="insta-toolbox-view" id="insta-toolbox-view-capture" role="tabpanel" aria-labelledby="insta-toolbox-tab-capture" tabindex="0" data-insta-toolbox-view="capture" hidden>
                 <div class="insta-toolbox-state-row" data-insta-toolbox-role="capture-state" data-tone="neutral"><span class="insta-toolbox-state-dot"></span><div><strong data-insta-toolbox-role="capture-state-title">Ready</strong><span data-insta-toolbox-role="capture-state-detail">Enter a username to compare Followers and Following.</span></div></div>
                 <section class="insta-toolbox-primary-action" aria-labelledby="insta-toolbox-checker-account-title"><div class="insta-toolbox-gate-summary"><span><strong id="insta-toolbox-checker-account-title">Check mutuals</strong><span class="insta-toolbox-note">Read-only. Uses this Instagram session.</span></span><span class="insta-toolbox-badge">read only</span></div><div class="insta-toolbox-disclosure-body"><div class="insta-toolbox-field"><label for="insta-toolbox-checker-username">Instagram username</label><input class="insta-toolbox-text-input" id="insta-toolbox-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-insta-toolbox-role="checker-username"></div><button class="insta-toolbox-button" type="button" data-insta-toolbox-action="check-account-relationships" data-insta-toolbox-role="checker-run">Check mutuals</button></div></section>
@@ -512,8 +513,27 @@
             <footer class="insta-toolbox-credit"><a class="insta-toolbox-credit-link" href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
           </div>
         </div>
-        <button class="insta-toolbox-resize-handle" type="button" data-insta-toolbox-role="resize-handle" aria-label="Resize Insta Toolbox; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
+        <button class="insta-toolbox-resize-handle insta-toolbox-resize-handle--start" type="button" data-insta-toolbox-role="resize-handle-start" aria-label="Resize Insta Toolbox from the lower-left corner; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
+        <button class="insta-toolbox-resize-handle insta-toolbox-resize-handle--end" type="button" data-insta-toolbox-role="resize-handle-end" aria-label="Resize Insta Toolbox from the lower-right corner; use arrow keys for precise sizing" title="Drag to resize · Arrow keys resize"></button>
       </aside>
+      <dialog class="insta-toolbox-dialog insta-toolbox-settings-dialog" data-insta-toolbox-role="settings-dialog" aria-labelledby="insta-toolbox-settings-title" aria-describedby="insta-toolbox-settings-note">
+        <form>
+          <div class="insta-toolbox-settings-heading"><h2 id="insta-toolbox-settings-title">Customize Insta Toolbox</h2><button class="insta-toolbox-icon-button" type="button" data-insta-toolbox-action="close-settings" aria-label="Close customization">${icons.svg('close')}</button></div>
+          <p class="insta-toolbox-note" id="insta-toolbox-settings-note">Saved in this browser.</p>
+          <div class="insta-toolbox-field"><label for="insta-toolbox-pref-dock">Dock side</label><select class="insta-toolbox-select" id="insta-toolbox-pref-dock" data-insta-toolbox-preference="dock"><option value="right">Right</option><option value="left">Left</option></select></div>
+          <div class="insta-toolbox-field"><label for="insta-toolbox-pref-width">Panel width</label><select class="insta-toolbox-select" id="insta-toolbox-pref-width" data-insta-toolbox-preference="width"><option value="compact">Compact</option><option value="standard">Standard</option><option value="wide">Wide</option></select></div>
+          <div class="insta-toolbox-field"><label for="insta-toolbox-pref-theme">Theme</label><select class="insta-toolbox-select" id="insta-toolbox-pref-theme" data-insta-toolbox-preference="theme"><option value="auto">Match Instagram</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+          <div class="insta-toolbox-field"><label for="insta-toolbox-pref-density">Spacing</label><select class="insta-toolbox-select" id="insta-toolbox-pref-density" data-insta-toolbox-preference="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
+          <div class="insta-toolbox-field"><label for="insta-toolbox-pref-accent">Accent</label><select class="insta-toolbox-select" id="insta-toolbox-pref-accent" data-insta-toolbox-preference="accent"><option value="rose">Rose</option><option value="violet">Violet</option><option value="blue">Blue</option></select></div>
+          <div class="insta-toolbox-field"><label for="insta-toolbox-pref-blur">Background blur</label><select class="insta-toolbox-select" id="insta-toolbox-pref-blur" data-insta-toolbox-preference="blur"><option value="none">Off</option><option value="soft">Soft</option><option value="strong">Strong</option></select></div>
+          <div class="insta-toolbox-field"><label for="insta-toolbox-pref-launcher-size">Collapsed button</label><select class="insta-toolbox-select" id="insta-toolbox-pref-launcher-size" data-insta-toolbox-preference="launcherSize"><option value="standard">Standard</option><option value="large">Large</option></select></div>
+          <div class="insta-toolbox-field"><label for="insta-toolbox-pref-opacity">Surface transparency</label><div class="insta-toolbox-range-row"><input class="insta-toolbox-range" id="insta-toolbox-pref-opacity" type="range" min="55" max="100" step="1" value="88" data-insta-toolbox-preference="opacity"><output class="insta-toolbox-range-output" for="insta-toolbox-pref-opacity" data-insta-toolbox-role="opacity-output">88%</output></div></div>
+          <div class="insta-toolbox-field"><label>Size presets</label><div class="insta-toolbox-toolbar"><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="layout-preset" data-layout-preset="compact">Compact</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="layout-preset" data-layout-preset="tall">Tall</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="layout-preset" data-layout-preset="wide">Wide</button></div></div>
+          <button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="reset-layout">Reset panel and collapsed button</button>
+          <details class="insta-toolbox-disclosure" data-insta-toolbox-role="advanced-settings"><summary>Advanced controls</summary><div class="insta-toolbox-disclosure-body" data-insta-toolbox-role="advanced-settings-body"></div></details>
+          <p class="insta-toolbox-note">Drag the collapsed IT button anywhere. Resize the open panel from either lower corner. Arrow keys work on the focused control. Shortcut: Alt + Shift + I.</p>
+        </form>
+      </dialog>
       <div class="insta-toolbox-collision-strip" data-insta-toolbox-role="collision-strip" hidden>
         <span class="insta-toolbox-state-dot"></span><div class="insta-toolbox-collision-copy"><strong data-insta-toolbox-role="collision-target">Exact target</strong><span data-insta-toolbox-role="collision-state">Native action surface is visible</span></div>
       </div>
@@ -528,7 +548,6 @@
         </form>
       </dialog>
       <template data-insta-toolbox-template="advanced-settings"><strong>Batch pacing</strong><div class="insta-toolbox-field"><label for="insta-toolbox-limit-min-delay">Min delay (seconds)</label><input class="insta-toolbox-text-input" id="insta-toolbox-limit-min-delay" type="number" min="2" max="600" data-insta-toolbox-role="limit-min-delay"></div><div class="insta-toolbox-field"><label for="insta-toolbox-limit-max-delay">Max delay (seconds)</label><input class="insta-toolbox-text-input" id="insta-toolbox-limit-max-delay" type="number" min="2" max="900" data-insta-toolbox-role="limit-max-delay"></div><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="save-limits">Save pacing</button></template>
-      <template data-insta-toolbox-template="first-run"><section class="insta-toolbox-first-run" data-insta-toolbox-role="first-run" aria-labelledby="insta-toolbox-first-run-title"><h2 id="insta-toolbox-first-run-title">Start with Mutual Checker</h2><p>Compare Followers and Following without clicking an Instagram action.</p><div class="insta-toolbox-toolbar"><button class="insta-toolbox-button" type="button" data-insta-toolbox-action="first-run-start">Open Mutual Checker</button><button class="insta-toolbox-button insta-toolbox-button--quiet" type="button" data-insta-toolbox-action="first-run-dismiss">Not now</button></div></section></template>
       <template data-insta-toolbox-template="checker-browser"><section class="insta-toolbox-checker-browser" data-insta-toolbox-role="checker-browser" aria-label="Mutual Checker results"><div class="insta-toolbox-filter-grid"><div class="insta-toolbox-field"><label for="insta-toolbox-checker-category">Show accounts</label><select class="insta-toolbox-select" id="insta-toolbox-checker-category" data-insta-toolbox-role="checker-category"><option value="not-following-me-back">Don't follow you back</option><option value="i-do-not-follow-back">You don't follow back</option><option value="mutuals">Mutuals</option></select></div><div class="insta-toolbox-field"><label for="insta-toolbox-checker-search">Find a username</label><input class="insta-toolbox-text-input" id="insta-toolbox-checker-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-insta-toolbox-role="checker-search"></div></div><div class="insta-toolbox-count"><strong data-insta-toolbox-role="checker-filter-count">0</strong><span data-insta-toolbox-role="checker-filter-detail">accounts</span></div><ul class="insta-toolbox-list" data-insta-toolbox-role="checker-filtered-list"></ul></section></template>
     `;
     return Object.freeze({ host, shadow });

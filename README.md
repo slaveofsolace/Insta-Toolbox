@@ -1,23 +1,28 @@
 # Insta Toolbox
 
-![Insta Toolbox workspace overview](docs/media/insta-toolbox-preview.png)
+**[Install Insta Toolbox with Tampermonkey](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**
 
 Instagram utilities that run locally in your browser. Check mutuals, review follow or unfollow targets, and unsend your own messages from the conversation you have open.
 
-## Install in one or two minutes
+## Install in about a minute
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) for your browser.
-2. In Chrome, open `chrome://extensions`, select **Details** for Tampermonkey, and enable **Allow User Scripts**. Or right click the extension at the top right of your browser, scroll down, and enable it that way.
-3. **[Install the Tampermonkey userscript](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**
-4. Open the **Install the Tampermonkey userscript** link above.
-5. Choose **Install** in Tampermonkey.
-6. Open or reload [instagram.com](https://www.instagram.com/). Press `Alt+Shift+I` if the panel is hidden.
+1. Install [Tampermonkey](https://www.tampermonkey.net/). In Chrome, open Tampermonkey's **Details** page and turn on **Allow User Scripts**.
 
-Version 3.0 uses a new userscript identity. Remove any 2.x userscript before
-installing 3.0 so only one panel loads. Version 3.0 starts clean and leaves 2.x
-browser or desktop data untouched.
+   ![Chrome extension details with Allow User Scripts turned on](docs/media/install/01-allow-user-scripts.svg)
+
+2. Click **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**, then click **Install** in Tampermonkey.
+
+   ![Tampermonkey installer with the Install button highlighted](docs/media/install/02-install-userscript.svg)
+
+3. Open or reload [Instagram](https://www.instagram.com/). Click the **IT** button. If it is hidden, press `Alt+Shift+I`.
+
+   ![Instagram with the Insta Toolbox button highlighted](docs/media/install/03-open-toolbox.svg)
+
+Already on version 3.0? Tampermonkey updates it in place. Remove any 2.x copy so only one panel loads.
 
 See [Installation](docs/INSTALLATION.md) for the extension, desktop apps, web app, checksums, updates, and uninstall steps.
+
+![Insta Toolbox workspace overview](docs/media/insta-toolbox-preview.png)
 
 ## What it does
 
@@ -35,11 +40,11 @@ Download files from the [latest release](https://github.com/slaveofsolace/Insta-
 | Surface | Release file | Use it when |
 | --- | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` | You want the simplest Instagram overlay install. |
-| Chrome extension | `Insta-Toolbox-Extension-3.0.0.zip` | You prefer an unpacked browser extension. |
-| Windows desktop | `Insta-Toolbox-Setup-3.0.0.exe` | You want one downloadable Windows installer. |
-| macOS desktop | `Insta-Toolbox-3.0.0-universal.dmg` | You want the recommended drag-to-Applications package for Intel or Apple Silicon. |
-| macOS portable | `Insta-Toolbox-3.0.0-universal.zip` | You prefer to extract the universal app directly. |
-| Web/PWA | `insta-toolbox-web-3.0.0.zip` | You want to self-host the local-first workspace. |
+| Chrome extension | `Insta-Toolbox-Extension-3.1.0.zip` | You prefer an unpacked browser extension. |
+| Windows desktop | `Insta-Toolbox-Setup-3.1.0.exe` | You want one downloadable Windows installer. |
+| macOS desktop | `Insta-Toolbox-3.1.0-universal.dmg` | You want the recommended drag-to-Applications package for Intel or Apple Silicon. |
+| macOS portable | `Insta-Toolbox-3.1.0-universal.zip` | You prefer to extract the universal app directly. |
+| Web/PWA | `insta-toolbox-web-3.1.0.zip` | You want to self-host the local-first workspace. |
 
 Windows packages are unsigned. macOS packages are ad-hoc signed, but not Developer ID signed or notarized. Confirm the checksum before opening a download.
 
@@ -50,13 +55,13 @@ Download `SHA256SUMS.txt` from the same release.
 Windows PowerShell:
 
 ```powershell
-Get-FileHash .\Insta-Toolbox-Setup-3.0.0.exe -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Setup-3.1.0.exe -Algorithm SHA256
 ```
 
 macOS:
 
 ```sh
-shasum -a 256 Insta-Toolbox-3.0.0-universal.dmg
+shasum -a 256 Insta-Toolbox-3.1.0-universal.dmg
 ```
 
 Match the printed hash to the file's entry in `SHA256SUMS.txt`.
@@ -98,9 +103,9 @@ pnpm run qa:overlay:check
 pnpm run verify:repo-hygiene
 ```
 
-The 3.0 account-free regression matrix contains 347 tests, 45 overlay states, and 11 PWA states. The service worker uses cache generation `insta-toolbox-v300`. Authenticated Instagram behavior still depends on the current site and must be accepted separately with disposable content.
+The 3.1 account-free regression matrix covers the PWA, extension, userscript, layout controls, and packaged apps. The service worker uses cache generation `insta-toolbox-v310`. Authenticated Instagram behavior still depends on the current site and must be accepted separately with disposable content.
 
-See [Contributing](CONTRIBUTING.md), [Maintainer Guide](docs/MAINTAINER_GUIDE.md), [3.0 compatibility](docs/compatibility/3.0.0.md), and [3.0 acceptance](docs/acceptance/3.0.0.md).
+See [Contributing](CONTRIBUTING.md), [Maintainer Guide](docs/MAINTAINER_GUIDE.md), [3.1 compatibility](docs/compatibility/3.1.0.md), and [3.1 acceptance](docs/acceptance/3.1.0.md).
 
 ## License and credit
 

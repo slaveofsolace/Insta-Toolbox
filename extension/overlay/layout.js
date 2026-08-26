@@ -7,6 +7,7 @@
   if (!shared || !preferences || modules.layout) return;
 
   const PRESET_WIDTHS = Object.freeze({ compact: 380, standard: 460, wide: 560 });
+  const LAUNCHER_SIZES = Object.freeze({ standard: 44, large: 52 });
   const VIEWPORT_INSET = 8;
   const STACKED_LAYOUT_MAX_WIDTH = 860;
 
@@ -45,15 +46,23 @@
 
   function create({
     host,
+    launcher,
     moveHandle,
     onCommit,
     panel,
-    resizeHandle,
+    resizeEndHandle,
+    resizeStartHandle,
     window: windowLike,
   }) {
     let active = true;
     let interaction = null;
+    let suppressLauncherClick = false;
     let current = preferences.defaults();
+
+    function renderedLauncherSize(preferenceValue = current) {
+      const side = LAUNCHER_SIZES[preferenceValue.launcherSize] || LAUNCHER_SIZES.standard;
+      return { width: side, height: side };
+    }
 
     function renderedSize(preferenceValue = current) {
       const viewport = viewportSize(windowLike);
@@ -94,6 +103,21 @@
       }
       applyOpacity(current.opacity);
 
+      if (current.launcherPosition) {
+        const launcherPosition = constrainPosition(
+          current.launcherPosition,
+          renderedLauncherSize(current),
+          viewport,
+        );
+        host.dataset.launcherLayout = 'floating';
+        host.style.setProperty('--insta-toolbox-launcher-left', `${launcherPosition.x}px`);
+        host.style.setProperty('--insta-toolbox-launcher-top', `${launcherPosition.y}px`);
+      } else {
+        host.dataset.launcherLayout = 'docked';
+        host.style.removeProperty('--insta-toolbox-launcher-left');
+        host.style.removeProperty('--insta-toolbox-launcher-top');
+      }
+
       if (current.position && viewport.width > STACKED_LAYOUT_MAX_WIDTH) {
         const position = constrainPosition(current.position, size, viewport);
         host.dataset.layout = 'floating';
@@ -115,6 +139,16 @@
       const viewport = viewportSize(windowLike);
       const deltaX = event.clientX - interaction.pointerX;
       const deltaY = event.clientY - interaction.pointerY;
+      interaction.moved ||= Math.hypot(deltaX, deltaY) >= 4;
+      if (interaction.kind === 'launcher') {
+        const size = renderedLauncherSize(current);
+        return {
+          launcherPosition: constrainPosition({
+            x: interaction.rectangle.left + deltaX,
+            y: interaction.rectangle.top + deltaY,
+          }, size, viewport),
+        };
+      }
       if (interaction.kind === 'move') {
         const size = constrainSize({
           width: interaction.rectangle.width,
@@ -127,21 +161,31 @@
           }, size, viewport),
         };
       }
+      const fromStart = interaction.kind === 'resize-start';
       const size = constrainSize({
-        width: interaction.rectangle.width + deltaX,
+        width: interaction.rectangle.width + (fromStart ? -deltaX : deltaX),
         height: interaction.rectangle.height + deltaY,
       }, viewport);
-      return {
+      const patch = {
         panelHeight: size.height,
         panelWidth: size.width,
       };
+      if (fromStart) {
+        patch.position = constrainPosition({
+          x: interaction.rectangle.right - size.width,
+          y: interaction.rectangle.top,
+        }, size, viewport);
+      }
+      return patch;
     }
 
     function begin(event, kind) {
-      if (!active || event.button !== 0 || viewportSize(windowLike).width <= STACKED_LAYOUT_MAX_WIDTH) return;
-      const rectangle = panel.getBoundingClientRect();
+      if (!active || event.button !== 0) return;
+      if (kind !== 'launcher' && viewportSize(windowLike).width <= STACKED_LAYOUT_MAX_WIDTH) return;
+      const rectangle = (kind === 'launcher' ? launcher : panel).getBoundingClientRect();
       interaction = {
         kind,
+        moved: false,
         pointerId: event.pointerId,
         pointerX: event.clientX,
         pointerY: event.clientY,
@@ -162,9 +206,12 @@
     function end(event) {
       if (!interaction || event.pointerId !== interaction.pointerId) return;
       const patch = interactionPatch(event);
+      const finished = interaction;
       interaction = null;
       delete host.dataset.layoutInteraction;
       event.currentTarget?.releasePointerCapture?.(event.pointerId);
+      if (finished.kind === 'launcher' && !finished.moved) return;
+      if (finished.kind === 'launcher') suppressLauncherClick = true;
       if (patch) {
         apply({ ...current, ...patch });
         onCommit?.(patch);
@@ -204,10 +251,72 @@
       event.preventDefault();
     }
 
+    function keyboardResizeStart(event) {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      const rectangle = panel.getBoundingClientRect();
+      const size = renderedSize(current);
+      const step = event.shiftKey ? 40 : 12;
+      const next = constrainSize({
+        width: size.width + (event.key === 'ArrowLeft' ? step : event.key === 'ArrowRight' ? -step : 0),
+        height: size.height + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
+      }, viewportSize(windowLike));
+      const patch = {
+        panelHeight: next.height,
+        panelWidth: next.width,
+        position: constrainPosition({
+          x: rectangle.right - next.width,
+          y: rectangle.top,
+        }, next, viewportSize(windowLike)),
+      };
+      apply({ ...current, ...patch });
+      onCommit?.(patch);
+      event.preventDefault();
+    }
+
+    function keyboardLauncherMove(event) {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      const rectangle = launcher.getBoundingClientRect();
+      const step = event.shiftKey ? 40 : 12;
+      const size = renderedLauncherSize(current);
+      const patch = {
+        launcherPosition: constrainPosition({
+          x: (current.launcherPosition?.x ?? rectangle.left)
+            + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
+          y: (current.launcherPosition?.y ?? rectangle.top)
+            + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
+        }, size, viewportSize(windowLike)),
+      };
+      apply({ ...current, ...patch });
+      onCommit?.(patch);
+      event.preventDefault();
+    }
+
+    function consumeLauncherClick(event) {
+      if (!suppressLauncherClick) return;
+      suppressLauncherClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
     function constrain() {
       if (!active) return;
       const previousPosition = current.position;
+      const previousLauncherPosition = current.launcherPosition;
       apply(current);
+      if (previousLauncherPosition) {
+        const launcherPosition = constrainPosition(
+          previousLauncherPosition,
+          renderedLauncherSize(current),
+          viewportSize(windowLike),
+        );
+        if (
+          launcherPosition.x !== previousLauncherPosition.x
+          || launcherPosition.y !== previousLauncherPosition.y
+        ) {
+          apply({ ...current, launcherPosition });
+          onCommit?.({ launcherPosition });
+        }
+      }
       if (!previousPosition || viewportSize(windowLike).width <= STACKED_LAYOUT_MAX_WIDTH) return;
       const size = renderedSize(current);
       const position = constrainPosition(previousPosition, size, viewportSize(windowLike));
@@ -218,11 +327,18 @@
     }
 
     const beginMove = (event) => begin(event, 'move');
-    const beginResize = (event) => begin(event, 'resize');
+    const beginLauncherMove = (event) => begin(event, 'launcher');
+    const beginResizeEnd = (event) => begin(event, 'resize-end');
+    const beginResizeStart = (event) => begin(event, 'resize-start');
+    launcher?.addEventListener('pointerdown', beginLauncherMove);
+    launcher?.addEventListener('keydown', keyboardLauncherMove);
+    launcher?.addEventListener('click', consumeLauncherClick, true);
     moveHandle?.addEventListener('pointerdown', beginMove);
-    resizeHandle?.addEventListener('pointerdown', beginResize);
+    resizeEndHandle?.addEventListener('pointerdown', beginResizeEnd);
+    resizeStartHandle?.addEventListener('pointerdown', beginResizeStart);
     moveHandle?.addEventListener('keydown', keyboardMove);
-    resizeHandle?.addEventListener('keydown', keyboardResize);
+    resizeEndHandle?.addEventListener('keydown', keyboardResize);
+    resizeStartHandle?.addEventListener('keydown', keyboardResizeStart);
     windowLike.addEventListener('pointermove', move, { passive: false });
     windowLike.addEventListener('pointerup', end);
     windowLike.addEventListener('pointercancel', end);
@@ -234,10 +350,15 @@
       teardown() {
         if (!active) return;
         active = false;
+        launcher?.removeEventListener('pointerdown', beginLauncherMove);
+        launcher?.removeEventListener('keydown', keyboardLauncherMove);
+        launcher?.removeEventListener('click', consumeLauncherClick, true);
         moveHandle?.removeEventListener('pointerdown', beginMove);
-        resizeHandle?.removeEventListener('pointerdown', beginResize);
+        resizeEndHandle?.removeEventListener('pointerdown', beginResizeEnd);
+        resizeStartHandle?.removeEventListener('pointerdown', beginResizeStart);
         moveHandle?.removeEventListener('keydown', keyboardMove);
-        resizeHandle?.removeEventListener('keydown', keyboardResize);
+        resizeEndHandle?.removeEventListener('keydown', keyboardResize);
+        resizeStartHandle?.removeEventListener('keydown', keyboardResizeStart);
         windowLike.removeEventListener('pointermove', move);
         windowLike.removeEventListener('pointerup', end);
         windowLike.removeEventListener('pointercancel', end);
@@ -247,6 +368,7 @@
 
   shared.install('layout', {
     PRESET_WIDTHS,
+    LAUNCHER_SIZES,
     STACKED_LAYOUT_MAX_WIDTH,
     VIEWPORT_INSET,
     constrainPosition,

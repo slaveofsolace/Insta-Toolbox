@@ -2,7 +2,22 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
-## 3.0.0 - 2026-08-24 (release candidate)
+## 3.1.0 - 2026-08-26
+
+### Changed
+
+- Made the collapsed **IT** button draggable and keyboard-movable across the viewport.
+- Added matching lower-left and lower-right resize controls to both in-page surfaces.
+- Replaced the loose settings popover with a named modal that dims the page and closes when clicking outside it.
+- Added accent, background blur, and collapsed-button size choices without changing saved tool data.
+- Removed the redundant first-run card so the three tools open directly.
+- Replaced the duplicated installer text with a three-step Tampermonkey guide and click-by-click images.
+
+### Safety
+
+- Follow, Unfollow, and DM Unsend behavior is unchanged. Each live run still requires its exact action confirmation and stops on an uncertain Instagram state.
+
+## 3.0.0 - 2026-08-24
 
 ### Changed
 

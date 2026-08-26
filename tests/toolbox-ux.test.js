@@ -18,27 +18,19 @@ function loadShellFunction(name, globals = {}) {
   return vm.runInNewContext(`(${match[0].trim()})`, globals);
 }
 
-test('first use gives one clear read-only starting point', () => {
-  assert.match(generated, /data-role="intro"/);
+test('first use opens directly on the three tools without an onboarding card', () => {
+  assert.doesNotMatch(generated, /data-role="intro"/);
   assert.match(generated, /Mutual Checker/);
   assert.match(generated, /Follow \/ Unfollow/);
   assert.match(generated, /DM Unsend/);
-  assert.match(generated, /Compare Followers and Following without clicking an Instagram action/);
-  assert.match(generated, />Open Mutual Checker<\/button>/);
-  assert.doesNotMatch(generated, /Data stays in this browser|Checks are read-only|Changes require one exact confirmation/);
-  // It is dismissible and remembered, not shown on every load.
-  assert.match(shell, /'intro-done':/);
+  assert.doesNotMatch(generated, /Start with Mutual Checker|Open Mutual Checker/);
   assert.match(shell, /introDone: value\.introDone === true/);
-  assert.match(
-    shell,
-    /'intro-done': \(\) => \{[\s\S]*?savePreferences\(\{ view: 'checker' \}\);[\s\S]*?query\('\[data-view="checker"\]'\)\?\.focus\(\);/,
-    'the button labelled Start with the checker must actually select the checker',
-  );
+  assert.doesNotMatch(shell, /'intro-done':/);
 });
 
-test('first use stays inside the panel scroll owner', () => {
-  assert.match(shell, /\.intro \{ flex: 0 0 auto; min-height: 0; overflow: visible; \}/);
-  assert.doesNotMatch(generated, /Three Instagram tools|Data stays in this browser/);
+test('the tool body remains the only panel scroll owner', () => {
+  assert.doesNotMatch(shell, /\.intro \{/);
+  assert.match(shell, /\.scroll \{[^}]*overflow: auto/);
   assert.doesNotMatch(shell, /function renderNow\(|\.tool-grid|\.live-toggle/);
 });
 
@@ -200,18 +192,29 @@ test('userscript restores the previous checker comparison when local persistence
 });
 
 test('the userscript migrates the old opaque default while preserving explicit choices', () => {
-  assert.match(shell, /schemaVersion: 2,[\s\S]*?opacity: 0\.88/);
+  assert.match(shell, /schemaVersion: 3,[\s\S]*?opacity: 0\.88/);
   assert.match(shell, /source\.schemaVersion === 1 && Number\(source\.opacity\) === 0\.94/);
   assert.match(shell, /clamp\(opacity \?\? 0\.88, 0\.55, 1\)/);
   assert.match(generated, /<input[^>]*value="88"[^>]*data-preference="opacity"/);
+  assert.match(shell, /const launcherPosition = source\.launcherPosition[\s\S]*?Math\.round\(source\.launcherPosition\.x\)/);
+  assert.match(shell, /accent: ACCENTS\.has\(source\.accent\) \? source\.accent : 'rose'/);
 });
 
-test('the settings popover uses the resized layout viewport on every desktop', () => {
-  assert.match(shell, /\.settings-panel \{[^}]*max-height: var\(--insta-toolbox-settings-max-height\)/);
-  assert.match(shell, /const renderedPanelHeight = innerWidth <= 600/);
-  assert.match(shell, /Math\.min\(size\.height, Math\.max\(0, innerHeight - 74\)\)/);
-  assert.match(shell, /host\.style\.setProperty\('--insta-toolbox-settings-max-height', `\$\{settingsMaxHeight\}px`\)/);
-  assert.doesNotMatch(shell, /\.settings-panel \{[^}]*max-height:[^;}]*dvh/);
+test('customization is a named modal that dims the toolbox and dismisses outside', () => {
+  assert.match(generated, /data-role="settings-dialog"[^>]*aria-labelledby="insta-toolbox-settings-title"/);
+  assert.match(generated, /<h2 id="insta-toolbox-settings-title">Customize Insta Toolbox<\/h2>/);
+  assert.match(shell, /\.settings-dialog::backdrop \{[^}]*grayscale\(\.65\) blur\(1px\)/);
+  assert.match(shell, /dialog\.showModal\(\)/);
+  assert.match(shell, /event\.target === event\.currentTarget\) setSettingsOpen\(false\)/);
+  assert.match(generated, /data-preference="accent"/);
+  assert.match(generated, /data-preference="blur"/);
+  assert.match(generated, /data-preference="launcherSize"/);
+});
+
+test('the collapsed userscript launcher moves from its own viewport position', () => {
+  assert.match(shell, /const rectangle = \(kind === 'launcher' \? launcher : panel\)\.getBoundingClientRect\(\)/);
+  assert.match(shell, /savePreferences\(\{ launcherPosition: constrainedPosition/);
+  assert.match(shell, /suppressLauncherClick = true/);
 });
 
 test('the context strip keeps explicit readable text in dark Instagram themes', () => {
@@ -389,6 +392,7 @@ test('the userscript moves focus into the panel and restores a safe opener', () 
     document: documentState,
     requestAnimationFrame(callback) { callback(); },
     setTimeout(callback) { callback(); },
+    setSettingsOpen() {},
     query(selector) {
       if (selector === '.panel') return panel;
       if (selector === '.launcher') return launcher;
@@ -420,7 +424,7 @@ test('motion is tied to state and removed under reduced motion', () => {
   assert.match(shell, /transition: border-color var\(--insta-toolbox-motion-base/);
   assert.match(shell, /transition: width var\(--insta-toolbox-motion-base/);
   assert.match(shell, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(shell, /\.intro \{ animation: none; \}/);
+  assert.match(shell, /\.panel \{ animation: none; \}/);
   // No ambient motion: nothing loops.
   assert.doesNotMatch(shell, /animation:[^;]*infinite/);
 });

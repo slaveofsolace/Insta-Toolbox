@@ -25,6 +25,8 @@
       '--insta-toolbox-text-muted': 'rgb(var(--ig-secondary-text, 115 115 115))',
       '--insta-toolbox-line': 'rgb(var(--ig-separator, 219 219 219))',
       '--insta-toolbox-accent': '#b83d67',
+      '--insta-toolbox-accent-violet': '#7657d6',
+      '--insta-toolbox-accent-blue': '#1f6eb3',
       '--insta-toolbox-on-accent': '#fff',
       '--insta-toolbox-success': 'rgb(var(--ig-success, 0 148 84))',
       '--insta-toolbox-warning': '#b26a00',

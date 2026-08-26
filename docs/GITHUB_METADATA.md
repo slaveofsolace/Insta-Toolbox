@@ -1,6 +1,6 @@
 # GitHub repository settings
 
-Use these public settings for the 3.0 release.
+Use these public settings for the 3.1 release.
 
 ## Description
 
