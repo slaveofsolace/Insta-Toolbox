@@ -1400,6 +1400,8 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
         typeof globalThis.InstaToolboxInstagramInspector?.performReviewedProfileAction,
         typeof globalThis.InstaToolboxInstagramInspector?.performReviewedDmUnsend,
       ],
+      rootCount: document.querySelectorAll('#insta-toolbox-userscript-root').length,
+      claimCount: document.querySelectorAll('#insta-toolbox-userscript-claim').length,
     };
   })()`, true);
   // Exactly the three tools, with no landing tab in front of them.
@@ -1445,6 +1447,8 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   // non-conversation fixture it is disabled by route, not by a global unlock.
   assert.equal(initial.unsendPlanHidden, false);
   assert.deepEqual(initial.engineExecutors, ['function', 'function']);
+  assert.equal(initial.rootCount, 1, 'loading the userscript twice must mount one toolbox');
+  assert.equal(initial.claimCount, 0, 'the bootstrap claim must clear after the toolbox mounts');
 
   await waitForPageValue(
     webContents,

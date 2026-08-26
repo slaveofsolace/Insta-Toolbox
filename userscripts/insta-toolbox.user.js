@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      3.1.0
+// @version      3.1.1
 // @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -52,6 +52,21 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+(() => {
+  'use strict';
+  const rootId = 'insta-toolbox-userscript-root';
+  const extensionRootId = 'insta-toolbox-sidecar-root';
+  const claimId = 'insta-toolbox-userscript-claim';
+  if (!document.documentElement
+    || document.getElementById(extensionRootId)
+    || document.getElementById(rootId)
+    || document.getElementById(claimId)) return;
+
+  const bootstrapClaim = document.createElement('div');
+  bootstrapClaim.id = claimId;
+  bootstrapClaim.hidden = true;
+  bootstrapClaim.setAttribute('aria-hidden', 'true');
+  document.documentElement.append(bootstrapClaim);
 (() => {
   'use strict';
 
@@ -4167,7 +4182,10 @@
     'tampermonkey-visible-dom',
   ]);
 
-  if (document.getElementById(EXTENSION_ROOT_ID) || document.getElementById(ROOT_ID)) return;
+  if (document.getElementById(EXTENSION_ROOT_ID) || document.getElementById(ROOT_ID)) {
+    bootstrapClaim.remove();
+    return;
+  }
 
   const normalizeUsername = (value) => {
     const username = String(value || '')
@@ -4448,6 +4466,10 @@
   }
 
   let managerTab = await readManagerTab();
+  if (document.getElementById(EXTENSION_ROOT_ID) || document.getElementById(ROOT_ID)) {
+    bootstrapClaim.remove();
+    return;
+  }
   const managerTabStorageAvailable = managerTab !== null;
   let state = loadState(managerTab);
   let preferences = normalizePreferences(GM_getValue(PREFERENCES_KEY, preferencesDefaults()));
@@ -6853,6 +6875,7 @@
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
 
   document.documentElement.append(host);
+  bootstrapClaim.remove();
   saveState();
   savePreferences(preferences);
   renderAll();
@@ -6866,4 +6889,6 @@
       status(`Run stopped: ${error.message}`);
     });
   }
+})();
+
 })();

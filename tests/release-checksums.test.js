@@ -37,9 +37,14 @@ test('package and download docs expose the current release artifacts', async () 
     assert.match(document, new RegExp(`Insta-Toolbox-Extension-${escapedVersion}\\.zip`));
     assert.match(document, /chrome:\/\/extensions\/\?id=dhdgffkkebhmkfjojejmpbldmpobfkfo/);
     assert.match(document, /Turn on \*\*Allow User Scripts\*\*/);
+    assert.match(document, /Install\*\* button on the left below the script details/);
+    assert.doesNotMatch(document, /Install\*\* in the top-right corner/);
     assert.match(document, /01-allow-user-scripts\.png/);
     assert.match(document, /02-install-userscript\.png/);
     assert.match(document, /03-open-toolbox\.png/);
+    assert.match(document, /https:\/\/slaveofsolace\.com\/work\/contact\//);
+    assert.match(document, /https:\/\/github\.com\/slaveofsolace\/Insta-Toolbox\/issues/);
+    assert.match(document, /https:\/\/www\.buymeacoffee\.com\/slaveofsolace/);
     assert.doesNotMatch(document, /media\/install\/[^)]+\.svg/);
   }
 });
