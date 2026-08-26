@@ -1,4 +1,4 @@
-# Install Insta Toolbox 3.1
+# Install Insta Toolbox 3.1.1
 
 Tampermonkey is the quickest way to put the toolbox on Instagram. Desktop and web builds provide the larger local workspace for imports, comparisons, reviewed plans, ledgers, and exports.
 
@@ -10,7 +10,7 @@ Tampermonkey is the quickest way to put the toolbox on Instagram. Desktop and we
 
    ![Tampermonkey details page showing the Allow User Scripts switch](media/install/01-allow-user-scripts.png)
 
-3. Open **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**, then click **Install** in the top-right corner.
+3. Open **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**, then click the **Install** button on the left below the script details.
 
    ![Tampermonkey showing the Insta Toolbox userscript and its Install button](media/install/02-install-userscript.png)
 
@@ -18,11 +18,19 @@ Tampermonkey is the quickest way to put the toolbox on Instagram. Desktop and we
 
    ![The Insta Toolbox IT launcher after Instagram reloads](media/install/03-open-toolbox.png)
 
+**You're done — enjoy! :)**
+
+Need help or found a bug? [Submit a ticket](https://slaveofsolace.com/work/contact/) or [open an issue](https://github.com/slaveofsolace/Insta-Toolbox/issues).
+
+Like my work?
+
+[![Buy me a coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://www.buymeacoffee.com/slaveofsolace)
+
 The panel should show **Mutual Checker**, **Follow / Unfollow**, and **DM Unsend**.
 
 ### Upgrade from 2.x
 
-Version 3 has a different userscript identity and update channel from 2.x. Remove any 2.x userscript before installing 3.1. Do not keep both enabled: duplicate scripts can create two panels and competing runners.
+Version 3 has a different userscript identity and update channel from 2.x. Remove any 2.x userscript before installing 3.1. Version 3.1.1 also prevents multiple current copies from mounting more than one launcher, but keeping one copy enabled makes updates simpler.
 
 Export important local data before upgrading. Version 3.0 does not read,
 migrate, or delete 2.x browser or desktop state. It starts clean and leaves the
@@ -38,7 +46,7 @@ Open the Tampermonkey dashboard, locate **Insta Toolbox**, and choose **Delete**
 
 ## Chrome extension
 
-1. Download `Insta-Toolbox-Extension-3.1.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download `Insta-Toolbox-Extension-3.1.1.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify its SHA-256 checksum as described below.
 3. Extract the ZIP to a permanent folder.
 4. Open `chrome://extensions` and enable **Developer mode**.
@@ -51,7 +59,7 @@ To remove it, open `chrome://extensions`, select **Remove**, and delete the extr
 
 ## Windows desktop app
 
-1. Download `Insta-Toolbox-Setup-3.1.0.exe` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download `Insta-Toolbox-Setup-3.1.1.exe` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify the checksum.
 3. Double-click the installer.
 
@@ -64,13 +72,13 @@ Uninstall from **Settings > Apps > Installed apps > Insta Toolbox**.
 
 ## macOS desktop app
 
-1. Download the recommended `Insta-Toolbox-3.1.0-universal.dmg` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download the recommended `Insta-Toolbox-3.1.1-universal.dmg` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify the checksum.
 3. Open the DMG and drag **Insta Toolbox** to Applications.
 
 The universal package targets Intel and Apple Silicon. Public builds are not notarized unless the release notes explicitly say they are. On first launch, control-click the app, choose **Open**, then confirm the macOS warning.
 
-The release also includes `Insta-Toolbox-3.1.0-universal.zip` as a portable alternative. Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
+The release also includes `Insta-Toolbox-3.1.1-universal.zip` as a portable alternative. Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
 
 To remove it, quit the app and move **Insta Toolbox** from Applications to Trash. Remove its application data separately only if you want to erase local workspace history.
 
@@ -84,7 +92,7 @@ Use the browser's **Install app** command for a standalone PWA window. Browser w
 
 To self-host it:
 
-1. Download `insta-toolbox-web-3.1.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download `insta-toolbox-web-3.1.1.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify its checksum.
 3. Extract the ZIP.
 4. Serve the extracted `insta-toolbox-web` directory over HTTPS or a loopback HTTP origin.
@@ -100,15 +108,15 @@ Download `SHA256SUMS.txt` from the same release as the package.
 ### Windows PowerShell
 
 ```powershell
-Get-FileHash .\Insta-Toolbox-Setup-3.1.0.exe -Algorithm SHA256
-Get-FileHash .\Insta-Toolbox-Extension-3.1.0.zip -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Setup-3.1.1.exe -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Extension-3.1.1.zip -Algorithm SHA256
 ```
 
 ### macOS or Linux
 
 ```sh
-shasum -a 256 Insta-Toolbox-3.1.0-universal.dmg
-shasum -a 256 insta-toolbox-web-3.1.0.zip
+shasum -a 256 Insta-Toolbox-3.1.1-universal.dmg
+shasum -a 256 insta-toolbox-web-3.1.1.zip
 ```
 
 The printed hash must match the corresponding line in `SHA256SUMS.txt`. A mismatch means the file should not be opened.
@@ -157,8 +165,8 @@ Read the reason shown in the active tool. Challenge, rate-limit, wrong-thread, c
 
 ## Acceptance and support
 
-- [3.1 acceptance record](acceptance/3.1.0.md)
-- [3.1 compatibility](compatibility/3.1.0.md)
+- [3.1 acceptance record](acceptance/3.1.1.md)
+- [3.1 compatibility](compatibility/3.1.1.md)
 - [Operator acceptance guide](OPERATOR_ACCEPTANCE.md)
 - [Security policy](../SECURITY.md)
 - [Open an issue](https://github.com/slaveofsolace/Insta-Toolbox/issues)

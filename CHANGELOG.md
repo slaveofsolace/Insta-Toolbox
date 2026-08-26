@@ -2,6 +2,17 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 3.1.1 - 2026-08-26
+
+### Fixed
+
+- Prevented duplicate **IT** launchers when more than one current userscript copy starts on the same page.
+- Corrected the Tampermonkey guide with arrows on the exact Chrome permission and left-side Install controls.
+
+### Changed
+
+- Added direct support, issue, and Buy Me a Coffee links below the one-minute installation steps.
+
 ## 3.1.0 - 2026-08-26
 
 ### Changed

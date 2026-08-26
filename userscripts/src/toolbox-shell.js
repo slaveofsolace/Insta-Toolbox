@@ -30,7 +30,10 @@
     'tampermonkey-visible-dom',
   ]);
 
-  if (document.getElementById(EXTENSION_ROOT_ID) || document.getElementById(ROOT_ID)) return;
+  if (document.getElementById(EXTENSION_ROOT_ID) || document.getElementById(ROOT_ID)) {
+    bootstrapClaim.remove();
+    return;
+  }
 
   const normalizeUsername = (value) => {
     const username = String(value || '')
@@ -311,6 +314,10 @@
   }
 
   let managerTab = await readManagerTab();
+  if (document.getElementById(EXTENSION_ROOT_ID) || document.getElementById(ROOT_ID)) {
+    bootstrapClaim.remove();
+    return;
+  }
   const managerTabStorageAvailable = managerTab !== null;
   let state = loadState(managerTab);
   let preferences = normalizePreferences(GM_getValue(PREFERENCES_KEY, preferencesDefaults()));
@@ -2716,6 +2723,7 @@
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
 
   document.documentElement.append(host);
+  bootstrapClaim.remove();
   saveState();
   savePreferences(preferences);
   renderAll();

@@ -46,6 +46,26 @@ const [metadata, license, ...sources] = await Promise.all([
 
 const licenseBanner = `/*\n${license.trim().split(/\r?\n/).map((line) => (line ? ` * ${line}` : ' *')).join('\n')}\n */\n`;
 
+const singletonGuardStart = `(() => {
+  'use strict';
+  const rootId = 'insta-toolbox-userscript-root';
+  const extensionRootId = 'insta-toolbox-sidecar-root';
+  const claimId = 'insta-toolbox-userscript-claim';
+  if (!document.documentElement
+    || document.getElementById(extensionRootId)
+    || document.getElementById(rootId)
+    || document.getElementById(claimId)) return;
+
+  const bootstrapClaim = document.createElement('div');
+  bootstrapClaim.id = claimId;
+  bootstrapClaim.hidden = true;
+  bootstrapClaim.setAttribute('aria-hidden', 'true');
+  document.documentElement.append(bootstrapClaim);
+`;
+const singletonGuardEnd = `
+})();
+`;
+
 const engine = sources.join('\n');
 if (!engine.includes('performReviewedProfileAction')
   || !engine.includes('performReviewedDmUnsend')
@@ -76,7 +96,7 @@ for (const grant of ['GM_getTab', 'GM_getValue', 'GM_saveTab', 'GM_setValue']) {
 // fresh bundle as stale on Windows purely because of line endings, so both
 // sides of the check are normalised and the file is written with LF.
 const normalize = (value) => value.replaceAll('\r\n', '\n');
-const assembled = normalize(`${metadata}${banner}${licenseBanner}${engine}`);
+const assembled = normalize(`${metadata}${banner}${licenseBanner}${singletonGuardStart}${engine}${singletonGuardEnd}`);
 
 if (checkOnly) {
   const current = normalize(await readFile(output, 'utf8').catch(() => ''));

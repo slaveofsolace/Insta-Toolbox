@@ -217,6 +217,19 @@ test('the collapsed userscript launcher moves from its own viewport position', (
   assert.match(shell, /suppressLauncherClick = true/);
 });
 
+test('the userscript claims the page before asynchronous startup can duplicate the launcher', () => {
+  const claimCheck = generated.indexOf('document.getElementById(claimId)');
+  const claimMount = generated.indexOf('document.documentElement.append(bootstrapClaim)');
+  const asynchronousStartup = generated.indexOf('await readManagerTab()');
+  const hostMount = generated.indexOf('document.documentElement.append(host)');
+  const claimRemoval = generated.indexOf('bootstrapClaim.remove()', hostMount);
+  assert.ok(claimCheck >= 0, 'the duplicate claim must be checked');
+  assert.ok(claimMount > claimCheck, 'the page claim must be mounted after the guard');
+  assert.ok(claimMount < asynchronousStartup, 'the page claim must precede asynchronous startup');
+  assert.ok(asynchronousStartup < hostMount, 'the real host mounts after startup completes');
+  assert.ok(claimRemoval > hostMount, 'the page claim clears only after the real host mounts');
+});
+
 test('the context strip keeps explicit readable text in dark Instagram themes', () => {
   assert.match(shell, /\.context \{[^}]*background: var\(--insta-toolbox-bg-sunken[^}]*color: var\(--insta-toolbox-text/);
   assert.match(shell, /\.context-copy strong \{[^}]*color: var\(--insta-toolbox-text[^}]*!important/);

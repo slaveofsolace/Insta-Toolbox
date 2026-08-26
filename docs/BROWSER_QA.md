@@ -33,7 +33,7 @@ the authenticated Instagram session.
 | Desktop viewport | Pass | Chrome content viewport measured 1134 by 569 CSS pixels. |
 | Responsive PWA layouts | Pass on Windows Chromium | Every primary view passed at 1134x700, 820x900, and 390x844 CSS pixels with no document/body horizontal overflow and visible bounded navigation/main regions. |
 | Screenshot regression | Pass on Windows Chromium | The 11-state PWA matrix covers primary views, responsive sizes, and themes. The non-updating check compares exact reviewed hashes. |
-| Fresh service-worker origin | Pass | The final source is reassembled and loaded from a fresh loopback origin using cache generation `insta-toolbox-v310`. |
+| Fresh service-worker origin | Pass | The final source is reassembled and loaded from a fresh loopback origin using cache generation `insta-toolbox-v311`. |
 | No-click safety | Pass | The walkthrough used local PWA state only; no global live toggle was present and no extension action path was available. |
 | Production account DOM chains | Pass in isolated Chromium | The actual content script resolved and executed bounded local Follow (one control) and Unfollow (relationship plus newly bound confirmation), then rejected token replay without another activation. |
 | Production one-message DOM chain | Pass in isolated Chromium | The actual content script used one exact row action, one bound Unsend menu item, and one bound confirmation, proved retained row/identity disconnection plus exact absence, then rejected replay. |
@@ -77,8 +77,8 @@ the authenticated Instagram session.
 
 Focused regressions live in `tests/app-shell-safety.test.js`,
 `tests/static-asset-policy.test.js`, and `tests/browser-qa-harness.test.js`. The
-3.1 repository suite contains 350 tests. Record the final pass against the exact
-release commit in [acceptance/3.1.0.md](./acceptance/3.1.0.md).
+3.1 repository suite contains 351 tests. Record the final pass against the exact
+release commit in [acceptance/3.1.1.md](./acceptance/3.1.1.md).
 
 ## Representative screenshots
 
@@ -160,7 +160,7 @@ responsive layout, and cache delivery.
 - Establish and visually accept native baselines on any additional release
   platform where screenshot hashes will be gated.
 - Apply Apple Developer ID signing and notarization when release credentials
-  are available. Version 3.1.0 is universal and ad-hoc signed; CI validates the
+  are available. Version 3.1.1 is universal and ad-hoc signed; CI validates the
   exact shipped package but cannot establish Apple trust or notarization.
 
 These remaining checks prevent a claim of complete human browser or
