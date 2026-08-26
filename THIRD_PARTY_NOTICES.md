@@ -51,3 +51,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 Reference: `https://gist.github.com/abir-taheer/0d3f1313def5eec6b78399c0fb69e4b1`
 
 No explicit license was identified on the supplied Gist page. Its source code is not vendored or copied into this project. Insta Toolbox independently implements normalized set comparison and historical snapshot logic.
+
+## Acknowledgments
+
+These sources helped shape Insta Toolbox. Thanks to their creators for sharing their work and making this project possible.

@@ -23,7 +23,7 @@ Version 3 keeps the userscript identity introduced in 3.0. Tampermonkey updates 
 
 The 3.1 account-free matrix contains:
 
-- 349 automated tests;
+- 350 automated tests;
 - 45 overlay screenshot states;
 - 11 PWA screenshot states;
 - service-worker cache generation `insta-toolbox-v310`.
