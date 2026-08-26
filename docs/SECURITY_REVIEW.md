@@ -4,9 +4,9 @@ Last reviewed: 2026-08-24
 
 ## Boundaries
 
-Insta Toolbox is local-first. The PWA and desktop app process selected files and saved workspace data on the user's machine. The Instagram companion uses the session already active in the browser tab. It does not request a password, read or export cookies, send analytics, or use a remote control service.
+Insta Toolbox is local-first. The PWA and desktop app process selected files and saved workspace data on the local device. The Instagram companion uses the session already active in the browser tab. It does not request a password, read or export cookies, send analytics, or use a remote control service.
 
-Required extension host access is limited to Instagram. Pairing requests optional access only to the exact workspace origin the user approves; requests are signed, short-lived, nonce-protected, and split into read and action permissions. Sender origin comes from browser metadata, not the page's claim. Credential-like bridge fields are rejected.
+Required extension host access is limited to Instagram. Pairing requests optional access only to the approved workspace origin; requests are signed, short-lived, nonce-protected, and split into read and action permissions. Sender origin comes from browser metadata, not the page's claim. Credential-like bridge fields are rejected.
 
 Workspace exports can contain imported account data and pairing secrets. Treat them as private backups. Revoke pairings before sharing a backup.
 

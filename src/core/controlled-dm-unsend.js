@@ -204,7 +204,7 @@ export function prepareControlledDmIntent(job, pairing, state, now = Date.now())
     && state.pendingDmIntent.pairingId === pairing.pairingId
     && state.pendingDmIntent.armCode === armCode;
   // Clear legacy persisted authority. The 2.0.0 runner mints a transient
-  // capability only after the user confirms the exact current thread/message.
+  // capability only after exact current-thread and message confirmation.
   state.dmArm = null;
   state.pendingDmIntent = sameIntent
     ? { ...state.pendingDmIntent, expiresAt: nextIntent.expiresAt }
