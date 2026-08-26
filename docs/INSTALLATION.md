@@ -4,17 +4,19 @@ Tampermonkey is the quickest way to put the toolbox on Instagram. Desktop and we
 
 ## Tampermonkey: about one minute
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/). In Chrome, open Tampermonkey's **Details** page and turn on **Allow User Scripts**.
+1. Install [Tampermonkey](https://www.tampermonkey.net/).
 
-   ![Chrome extension details with Allow User Scripts turned on](media/install/01-allow-user-scripts.svg)
+2. In Chrome, open `chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo`. Turn on **Allow User Scripts**.
 
-2. Open **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**, then click **Install** in Tampermonkey.
+   ![Tampermonkey details page showing the Allow User Scripts switch](media/install/01-allow-user-scripts.png)
 
-   ![Tampermonkey installer with the Install button highlighted](media/install/02-install-userscript.svg)
+3. Open **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**, then click **Install** in the top-right corner.
 
-3. Open or reload [Instagram](https://www.instagram.com/). Click **IT** or press `Alt+Shift+I`.
+   ![Tampermonkey showing the Insta Toolbox userscript and its Install button](media/install/02-install-userscript.png)
 
-   ![Instagram with the Insta Toolbox button highlighted](media/install/03-open-toolbox.svg)
+4. Open or reload [Instagram](https://www.instagram.com/). Click **IT** or press `Alt+Shift+I`.
+
+   ![The Insta Toolbox IT launcher after Instagram reloads](media/install/03-open-toolbox.png)
 
 The panel should show **Mutual Checker**, **Follow / Unfollow**, and **DM Unsend**.
 

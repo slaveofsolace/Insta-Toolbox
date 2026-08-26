@@ -35,6 +35,25 @@ test('package and download docs expose the current release artifacts', async () 
     assert.match(document, new RegExp(`Insta-Toolbox-${escapedVersion}-universal\\.dmg`));
     assert.match(document, new RegExp(`insta-toolbox-web-${escapedVersion}\\.zip`));
     assert.match(document, new RegExp(`Insta-Toolbox-Extension-${escapedVersion}\\.zip`));
+    assert.match(document, /chrome:\/\/extensions\/\?id=dhdgffkkebhmkfjojejmpbldmpobfkfo/);
+    assert.match(document, /Turn on \*\*Allow User Scripts\*\*/);
+    assert.match(document, /01-allow-user-scripts\.png/);
+    assert.match(document, /02-install-userscript\.png/);
+    assert.match(document, /03-open-toolbox\.png/);
+    assert.doesNotMatch(document, /media\/install\/[^)]+\.svg/);
+  }
+});
+
+test('the quick-install guide uses captured PNG click targets', async () => {
+  const captures = await Promise.all([
+    readFile(new URL('../docs/media/install/01-allow-user-scripts.png', import.meta.url)),
+    readFile(new URL('../docs/media/install/02-install-userscript.png', import.meta.url)),
+    readFile(new URL('../docs/media/install/03-open-toolbox.png', import.meta.url)),
+  ]);
+  const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  for (const capture of captures) {
+    assert.equal(capture.subarray(0, pngSignature.length).equals(pngSignature), true);
+    assert.ok(capture.length > 5_000);
   }
 });
 

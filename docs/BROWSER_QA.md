@@ -77,7 +77,7 @@ the authenticated Instagram session.
 
 Focused regressions live in `tests/app-shell-safety.test.js`,
 `tests/static-asset-policy.test.js`, and `tests/browser-qa-harness.test.js`. The
-3.1 repository suite contains 349 tests. Record the final pass against the exact
+3.1 repository suite contains 350 tests. Record the final pass against the exact
 release commit in [acceptance/3.1.0.md](./acceptance/3.1.0.md).
 
 ## Representative screenshots

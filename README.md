@@ -6,17 +6,19 @@ Instagram utilities that run locally in your browser. Check mutuals, review foll
 
 ## Install in about a minute
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/). In Chrome, open Tampermonkey's **Details** page and turn on **Allow User Scripts**.
+1. Install [Tampermonkey](https://www.tampermonkey.net/).
 
-   ![Chrome extension details with Allow User Scripts turned on](docs/media/install/01-allow-user-scripts.svg)
+2. In Chrome, open `chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo`. Turn on **Allow User Scripts**.
 
-2. Click **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**, then click **Install** in Tampermonkey.
+   ![Tampermonkey details page showing the Allow User Scripts switch](docs/media/install/01-allow-user-scripts.png)
 
-   ![Tampermonkey installer with the Install button highlighted](docs/media/install/02-install-userscript.svg)
+3. Click **[Install Insta Toolbox](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**, then click **Install** in the top-right corner.
 
-3. Open or reload [Instagram](https://www.instagram.com/). Click the **IT** button. If it is hidden, press `Alt+Shift+I`.
+   ![Tampermonkey showing the Insta Toolbox userscript and its Install button](docs/media/install/02-install-userscript.png)
 
-   ![Instagram with the Insta Toolbox button highlighted](docs/media/install/03-open-toolbox.svg)
+4. Open or reload [Instagram](https://www.instagram.com/). Click **IT**. If it is hidden, press `Alt+Shift+I`.
+
+   ![The Insta Toolbox IT launcher after Instagram reloads](docs/media/install/03-open-toolbox.png)
 
 Already on version 3.0? Tampermonkey updates it in place. Remove any 2.x copy so only one panel loads.
 
