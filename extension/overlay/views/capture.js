@@ -510,20 +510,6 @@
             );
             return;
           }
-          if (progress.phase === 'reconciling') {
-            const label = progress.listType === 'followers' ? 'Followers' : 'Following';
-            setState(
-              runtime,
-              `Finishing ${label} for @${username}`,
-              `${(progress.passFound || 0).toLocaleString('en-US')} checked; ${progress.found.toLocaleString('en-US')} of ${progress.expectedCount.toLocaleString('en-US')} unique found.`,
-              'warning',
-            );
-            announceProgress(
-              `reconciling-${progress.listType}`,
-              `Checking the ${label} result against Instagram's profile total.`,
-            );
-            return;
-          }
           if (progress.listType) {
             const label = progress.listType === 'followers' ? 'Followers' : 'Following';
             setState(
@@ -567,7 +553,11 @@
         const label = listType === 'followers' ? 'Followers' : 'Following';
         const reason = reasons[listType];
         const expected = expectedCounts[listType];
-        if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
+        if (reason === 'instagram-limited-list' && Number.isSafeInteger(expected)) {
+          partialDetails.push(`${label}: Instagram limited this list to ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')} accounts.`);
+        } else if (reason === 'cursor-missing') {
+          partialDetails.push(`${label}: Instagram ended pagination without returning the next page.`);
+        } else if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
           const difference = expected - accounts.length;
           partialDetails.push(difference > 0
             ? `${label}: Instagram returned ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')}; ${difference.toLocaleString('en-US')} were not returned.`

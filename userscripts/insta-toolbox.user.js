@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      3.1.2
+// @version      3.1.3
 // @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -2089,6 +2089,7 @@
   ]);
   const INSTAGRAM_WEB_ORIGIN = 'https://www.instagram.com';
   const INSTAGRAM_WEB_APP_ID = '936619743392459';
+  const INSTAGRAM_WEB_ASBD_ID = '129477';
   const RELATIONSHIP_PAGE_SIZE = 50;
   const RELATIONSHIP_MAX_PAGES = 1_000;
   const RELATIONSHIP_MAX_ACCOUNTS = 25_000;
@@ -2096,7 +2097,6 @@
   const RELATIONSHIP_REQUEST_TIMEOUT_MS = 20_000;
   const RELATIONSHIP_REQUEST_ATTEMPTS = 3;
   const RELATIONSHIP_RETRY_BASE_MS = 1_000;
-  const RELATIONSHIP_RECONCILIATION_PASSES = 3;
 
   function normalizeUsername(value) {
     const username = String(value || '')
@@ -2273,9 +2273,16 @@
       try {
         const response = await relationshipStepWithTimeout(
           (attemptSignal) => fetchImpl(url.href, {
+            cache: 'no-store',
             credentials: 'include',
-            headers: { 'X-IG-App-ID': INSTAGRAM_WEB_APP_ID },
+            headers: {
+              'X-ASBD-ID': INSTAGRAM_WEB_ASBD_ID,
+              'X-IG-App-ID': INSTAGRAM_WEB_APP_ID,
+              'X-Requested-With': 'XMLHttpRequest',
+            },
             method: 'GET',
+            referrer: `${INSTAGRAM_WEB_ORIGIN}/${username}/`,
+            referrerPolicy: 'strict-origin-when-cross-origin',
             signal: attemptSignal,
           }),
           {
@@ -2457,180 +2464,135 @@
     startedAt,
     expectedCount = null,
   }) {
-    let bestAccounts = [];
-    let totalPages = 0;
-    for (let passIndex = 0; passIndex < RELATIONSHIP_RECONCILIATION_PASSES; passIndex += 1) {
-      const accounts = new Map();
-      const accountKeyByUsername = new Map();
-      const seenTokens = new Set();
-      let nextMaxId = '';
-      let passPages = 0;
-      let retryNextPass = false;
-      let stagnantPages = 0;
-      if (passIndex > 0) {
-        onProgress?.(Object.freeze({
-          attempt: passIndex,
-          expectedCount,
-          found: bestAccounts.length,
-          listType,
-          maxAttempts: RELATIONSHIP_RECONCILIATION_PASSES,
-          pages: totalPages,
-          phase: 'reconciling',
-          passFound: 0,
-          username,
-        }));
-        await sleepImpl(800 + ((passIndex - 1) * 400), signal);
-      }
-      while (passPages < maxPages && accounts.size < maxAccounts) {
-        assertRelationshipRunActive(signal, startedAt, now, maxDurationMs);
-        const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
-        url.searchParams.set('count', String(RELATIONSHIP_PAGE_SIZE));
-        if (nextMaxId) url.searchParams.set('max_id', nextMaxId);
-        const data = await fetchInstagramRelationshipJson(url, {
-          clearTimer,
-          expectedCount,
-          fetchImpl,
-          found: accounts.size,
-          listType,
-          onProgress,
-          pages: totalPages,
-          random,
-          requestAttempts,
-          requestTimeoutMs,
-          retryBaseMs,
-          setTimer,
-          signal,
-          sleepImpl,
-          username,
-        });
-        if (!Array.isArray(data?.users)) {
-          throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} page.`);
-        }
-        passPages += 1;
-        totalPages += 1;
-        const beforePageCount = accounts.size;
-        for (const user of data.users) {
-          const accountUsername = normalizeUsername(user?.username);
-          if (!accountUsername) continue;
-          const rawAccountId = user?.pk ?? user?.id ?? '';
-          const accountId = String(rawAccountId || '').trim();
-          if (accountId && !/^\d+$/.test(accountId)) {
-            throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} account ID.`);
-          }
-          const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
-          const usernameOwner = accountKeyByUsername.get(accountUsername);
-          if (usernameOwner && usernameOwner !== accountKey) {
-            if (usernameOwner === `username:${accountUsername}` && accountId) {
-              accounts.delete(usernameOwner);
-            } else {
-              throw relationshipError(
-                'invalid-response',
-                `Instagram returned conflicting ${listType} account identities.`,
-              );
-            }
-          }
-          const previous = accounts.get(accountKey);
-          if (previous?.username && previous.username !== accountUsername) {
-            accountKeyByUsername.delete(previous.username);
-          }
-          accounts.set(accountKey, {
-            username: accountUsername,
-            profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
-            displayName: String(user?.full_name || '').trim().slice(0, 160),
-            source: 'authenticated-instagram-web',
-          });
-          accountKeyByUsername.set(accountUsername, accountKey);
-          if (accounts.size >= maxAccounts) break;
-        }
-        stagnantPages = accounts.size > beforePageCount ? 0 : stagnantPages + 1;
-        onProgress?.(Object.freeze({
-          expectedCount,
-          found: Math.max(bestAccounts.length, accounts.size),
-          listType,
-          pages: totalPages,
-          ...(passIndex > 0 ? {
-            attempt: passIndex,
-            passFound: accounts.size,
-          } : {}),
-          phase: passIndex > 0 ? 'reconciling' : 'loading',
-          username,
-        }));
-        const candidateToken = stagnantPages >= 3 ? null : data.next_max_id;
-        if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
-          const passAccounts = [...accounts.values()]
-            .sort((left, right) => left.username.localeCompare(right.username));
-          if (passAccounts.length > bestAccounts.length) bestAccounts = passAccounts;
-          const countReconciled = Number.isSafeInteger(expectedCount)
-            && passAccounts.length === expectedCount;
-          if (countReconciled) {
-            return {
-              accounts: passAccounts,
-              complete: true,
-              expectedCount,
-              pages: totalPages,
-              reason: 'pagination-complete',
-            };
-          }
-          const shouldRetry = Number.isSafeInteger(expectedCount)
-            && passAccounts.length < expectedCount
-            && passIndex < RELATIONSHIP_RECONCILIATION_PASSES - 1;
-          if (shouldRetry) {
-            retryNextPass = true;
-            break;
-          }
-          return {
-            accounts: bestAccounts,
-            complete: false,
-            expectedCount,
-            pages: totalPages,
-            reason: Number.isSafeInteger(expectedCount) ? 'count-mismatch' : 'count-unverified',
-          };
-        }
-        nextMaxId = String(candidateToken);
-        if (!nextMaxId || nextMaxId.length > 500) {
-          throw relationshipError('invalid-pagination', `Instagram returned an unsafe ${listType} pagination token.`);
-        }
-        if (seenTokens.has(nextMaxId)) {
-          const passAccounts = [...accounts.values()]
-            .sort((left, right) => left.username.localeCompare(right.username));
-          if (passAccounts.length > bestAccounts.length) bestAccounts = passAccounts;
-          const shouldRetry = Number.isSafeInteger(expectedCount)
-            && passAccounts.length < expectedCount
-            && passIndex < RELATIONSHIP_RECONCILIATION_PASSES - 1;
-          if (shouldRetry) {
-            retryNextPass = true;
-            break;
-          }
-          return {
-            accounts: bestAccounts,
-            complete: false,
-            expectedCount,
-            pages: totalPages,
-            reason: 'count-mismatch',
-          };
-        }
-        seenTokens.add(nextMaxId);
-        const delayMs = Math.floor(800 + (Math.max(0, Math.min(0.999999, random())) * 700));
-        await sleepImpl(delayMs, signal);
-      }
-      const passAccounts = [...accounts.values()]
-        .sort((left, right) => left.username.localeCompare(right.username));
-      if (passAccounts.length > bestAccounts.length) bestAccounts = passAccounts;
-      if (retryNextPass) continue;
-      return {
-        accounts: bestAccounts,
-        complete: false,
+    const accounts = new Map();
+    const accountKeyByUsername = new Map();
+    const seenTokens = new Set();
+    let nextMaxId = '';
+    let pages = 0;
+    let stagnantPages = 0;
+    let instagramLimited = false;
+    while (pages < maxPages && accounts.size < maxAccounts) {
+      assertRelationshipRunActive(signal, startedAt, now, maxDurationMs);
+      const url = new URL(`/api/v1/friendships/${userId}/${listType}/`, INSTAGRAM_WEB_ORIGIN);
+      url.searchParams.set('count', String(RELATIONSHIP_PAGE_SIZE));
+      url.searchParams.set('search_surface', 'follow_list_page');
+      url.searchParams.set('query', '');
+      url.searchParams.set('enable_groups', 'true');
+      if (listType === 'following') url.searchParams.set('includes_hashtags', 'false');
+      if (nextMaxId) url.searchParams.set('max_id', nextMaxId);
+      const data = await fetchInstagramRelationshipJson(url, {
+        clearTimer,
         expectedCount,
-        pages: totalPages,
-        reason: accounts.size >= maxAccounts ? 'account-limit' : 'page-limit',
-      };
+        fetchImpl,
+        found: accounts.size,
+        listType,
+        onProgress,
+        pages,
+        random,
+        requestAttempts,
+        requestTimeoutMs,
+        retryBaseMs,
+        setTimer,
+        signal,
+        sleepImpl,
+        username,
+      });
+      if (!Array.isArray(data?.users)) {
+        throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} page.`);
+      }
+      for (const flag of ['has_more', 'should_limit_list_of_followers']) {
+        if (Object.prototype.hasOwnProperty.call(data, flag) && typeof data[flag] !== 'boolean') {
+          throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} pagination flag.`);
+        }
+      }
+      instagramLimited ||= data.should_limit_list_of_followers === true;
+      pages += 1;
+      const beforePageCount = accounts.size;
+      for (const user of data.users) {
+        const accountUsername = normalizeUsername(user?.username);
+        if (!accountUsername) continue;
+        const rawAccountId = user?.pk ?? user?.id ?? '';
+        const accountId = String(rawAccountId || '').trim();
+        if (accountId && !/^\d+$/.test(accountId)) {
+          throw relationshipError('invalid-response', `Instagram returned an invalid ${listType} account ID.`);
+        }
+        const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
+        const usernameOwner = accountKeyByUsername.get(accountUsername);
+        if (usernameOwner && usernameOwner !== accountKey) {
+          if (usernameOwner === `username:${accountUsername}` && accountId) {
+            accounts.delete(usernameOwner);
+          } else {
+            throw relationshipError(
+              'invalid-response',
+              `Instagram returned conflicting ${listType} account identities.`,
+            );
+          }
+        }
+        const previous = accounts.get(accountKey);
+        if (previous?.username && previous.username !== accountUsername) {
+          accountKeyByUsername.delete(previous.username);
+        }
+        accounts.set(accountKey, {
+          username: accountUsername,
+          profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
+          displayName: String(user?.full_name || '').trim().slice(0, 160),
+          source: 'authenticated-instagram-web',
+        });
+        accountKeyByUsername.set(accountUsername, accountKey);
+        if (accounts.size >= maxAccounts) break;
+      }
+      stagnantPages = accounts.size > beforePageCount ? 0 : stagnantPages + 1;
+      onProgress?.(Object.freeze({
+        expectedCount,
+        found: accounts.size,
+        listType,
+        pages,
+        phase: 'loading',
+        username,
+      }));
+      const sortedAccounts = () => [...accounts.values()]
+        .sort((left, right) => left.username.localeCompare(right.username));
+      const candidateToken = stagnantPages >= 3 ? null : data.next_max_id;
+      if (candidateToken === undefined || candidateToken === null || candidateToken === '') {
+        const countReconciled = Number.isSafeInteger(expectedCount) && accounts.size === expectedCount;
+        return {
+          accounts: sortedAccounts(),
+          complete: countReconciled,
+          expectedCount,
+          pages,
+          reason: countReconciled
+            ? 'pagination-complete'
+            : instagramLimited
+              ? 'instagram-limited-list'
+              : data.has_more === true
+                ? 'cursor-missing'
+                : Number.isSafeInteger(expectedCount) ? 'count-mismatch' : 'count-unverified',
+        };
+      }
+      nextMaxId = String(candidateToken);
+      if (!nextMaxId || nextMaxId.length > 500) {
+        throw relationshipError('invalid-pagination', `Instagram returned an unsafe ${listType} pagination token.`);
+      }
+      if (seenTokens.has(nextMaxId)) {
+        return {
+          accounts: sortedAccounts(),
+          complete: false,
+          expectedCount,
+          pages,
+          reason: 'count-mismatch',
+        };
+      }
+      seenTokens.add(nextMaxId);
+      const delayMs = Math.floor(800 + (Math.max(0, Math.min(0.999999, random())) * 700));
+      await sleepImpl(delayMs, signal);
     }
     return {
-      accounts: bestAccounts,
+      accounts: [...accounts.values()]
+        .sort((left, right) => left.username.localeCompare(right.username)),
       complete: false,
       expectedCount,
-      pages: totalPages,
-      reason: 'count-mismatch',
+      pages,
+      reason: accounts.size >= maxAccounts ? 'account-limit' : 'page-limit',
     };
   }
 
@@ -6139,11 +6101,6 @@
         : `Scanning ${listType}… ${formatCount(found)} found so far.`);
   }
 
-  function reconciliationScanDetail(progress) {
-    const label = progress?.listType === 'followers' ? 'Followers' : 'Following';
-    return `Retrying ${label}: ${formatCount(progress?.passFound)} checked; ${formatCount(progress?.found)} of ${formatCount(progress?.expectedCount)} unique found.`;
-  }
-
   function completedRelationshipScanDetail(result) {
     const complete = result?.complete?.followers === true && result?.complete?.following === true;
     return `Checked ${formatCount(result?.followers?.length)} followers and ${formatCount(result?.following?.length)} following — ${complete ? 'complete' : 'partial'}.`;
@@ -6267,20 +6224,6 @@
             );
             return;
           }
-          if (progress.phase === 'reconciling') {
-            showScanProgress(
-              progress.listType,
-              progress.found,
-              false,
-              false,
-              progress.expectedCount,
-            );
-            setText(
-              'scan-detail',
-              reconciliationScanDetail(progress),
-            );
-            return;
-          }
           if (progress.listType) {
             showScanProgress(
               progress.listType,
@@ -6318,7 +6261,11 @@
         const label = listType === 'followers' ? 'Followers' : 'Following';
         const reason = result.reasons[listType];
         const expected = result.expectedCounts[listType];
-        if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
+        if (reason === 'instagram-limited-list' && Number.isSafeInteger(expected)) {
+          partialDetails.push(`${label}: Instagram limited this list to ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')} accounts.`);
+        } else if (reason === 'cursor-missing') {
+          partialDetails.push(`${label}: Instagram ended pagination without returning the next page.`);
+        } else if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
           const difference = expected - accounts.length;
           partialDetails.push(difference > 0
             ? `${label}: Instagram returned ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')}; ${difference.toLocaleString('en-US')} were not returned.`

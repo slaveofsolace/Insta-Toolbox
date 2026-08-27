@@ -116,23 +116,13 @@ test('the checker is a sequence that reports completeness per list', () => {
   assert.match(shell, /Instagram reports \$\{outcome\.expectedCount\}, so this capture stays incomplete/);
 });
 
-test('the Mutual Checker preserves reconciliation progress and settles final detail', () => {
+test('the Mutual Checker uses one traversal and settles final detail', () => {
   const formatCount = (value) => Number(value || 0).toLocaleString('en-US');
-  const reconciliationDetail = loadShellFunction('reconciliationScanDetail', { formatCount });
   const completedDetail = loadShellFunction('completedRelationshipScanDetail', { formatCount });
   const failedDetail = loadShellFunction('failedRelationshipScanDetail', {
     safeText: (value, fallback = '') => String(value ?? '').trim() || fallback,
   });
 
-  assert.equal(
-    reconciliationDetail({
-      listType: 'followers',
-      passFound: 20,
-      found: 2_071,
-      expectedCount: 2_101,
-    }),
-    'Retrying Followers: 20 checked; 2,071 of 2,101 unique found.',
-  );
   assert.equal(
     completedDetail({
       followers: Array(2_101),
@@ -158,10 +148,8 @@ test('the Mutual Checker preserves reconciliation progress and settles final det
     'Mutual check failed: Instagram returned an unreadable page. Saved comparison unchanged.',
   );
 
-  const start = shell.indexOf("if (progress.phase === 'reconciling')");
-  const block = shell.slice(start, shell.indexOf('if (progress.listType)', start));
-  assert.ok(block.indexOf('showScanProgress(') < block.indexOf("setText("));
-  assert.match(block, /reconciliationScanDetail\(progress\)/);
+  assert.doesNotMatch(shell, /progress\.phase === 'reconciling'/);
+  assert.doesNotMatch(shell, /reconciliationScanDetail/);
   assert.match(shell, /setText\('scan-detail', completedRelationshipScanDetail\(result\)\)/);
   assert.match(shell, /const detail = failedRelationshipScanDetail\(error\)/);
   assert.match(shell, /setText\('scan-detail', detail\);\s*status\(detail\)/);

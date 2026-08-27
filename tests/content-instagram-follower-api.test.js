@@ -166,10 +166,22 @@ test('authenticated follower check uses only bounded exact read endpoints and pa
     assert.equal(url.origin, 'https://www.instagram.com');
     assert.equal(options.method, 'GET');
     assert.equal(options.credentials, 'include');
-    assert.deepEqual({ ...options.headers }, { 'X-IG-App-ID': '936619743392459' });
+    assert.equal(options.cache, 'no-store');
+    assert.equal(options.referrer, 'https://www.instagram.com/demo.creator/');
+    assert.equal(options.referrerPolicy, 'strict-origin-when-cross-origin');
+    assert.deepEqual({ ...options.headers }, {
+      'X-ASBD-ID': '129477',
+      'X-IG-App-ID': '936619743392459',
+      'X-Requested-With': 'XMLHttpRequest',
+    });
   }
   assert.equal(requests[2].url.searchParams.get('count'), '50');
+  assert.equal(requests[2].url.searchParams.get('search_surface'), 'follow_list_page');
+  assert.equal(requests[2].url.searchParams.get('query'), '');
+  assert.equal(requests[2].url.searchParams.get('enable_groups'), 'true');
+  assert.equal(requests[2].url.searchParams.has('includes_hashtags'), false);
   assert.equal(requests[3].url.searchParams.get('max_id'), 'followers-page-2');
+  assert.equal(requests[4].url.searchParams.get('includes_hashtags'), 'false');
   assert.equal(requests[5].url.pathname, '/api/v1/users/web_profile_info/');
 });
 
@@ -184,7 +196,7 @@ test('authenticated follower check requires an exact username search result', as
   );
 });
 
-test('Mutual Checker retries a premature final Followers page and accepts one exact pass', async () => {
+test('Mutual Checker stops after one premature final Followers page without rerunning the list', async () => {
   const inspector = createInspector();
   const baseFollowers = Array.from({ length: 100 }, (_, index) => ({ username: `follower.${index}` }));
   let followerCalls = 0;
@@ -204,11 +216,7 @@ test('Mutual Checker retries a premature final Followers page and accepts one ex
       }
       if (url.pathname.includes('/followers/')) {
         followerCalls += 1;
-        return response({
-          users: followerCalls === 1
-            ? baseFollowers
-            : [...baseFollowers, { username: 'follower.100' }],
-        });
+        return response({ users: baseFollowers });
       }
       return response({ users: [{ username: 'following.one' }] });
     },
@@ -217,16 +225,11 @@ test('Mutual Checker retries a premature final Followers page and accepts one ex
     username: 'target_name',
   });
 
-  assert.equal(followerCalls, 2);
-  assert.equal(result.followers.length, 101);
-  assert.equal(result.complete.followers, true);
-  assert.ok(progress.some((entry) => entry.phase === 'reconciling'
-    && entry.found === 100
-    && entry.passFound === 0
-    && entry.expectedCount === 101));
-  assert.ok(progress.some((entry) => entry.phase === 'reconciling'
-    && entry.found === 101
-    && entry.passFound === 101));
+  assert.equal(followerCalls, 1);
+  assert.equal(result.followers.length, 100);
+  assert.equal(result.complete.followers, false);
+  assert.equal(result.reasons.followers, 'count-mismatch');
+  assert.equal(progress.some((entry) => entry.phase === 'reconciling'), false);
 });
 
 test('Mutual Checker never calls a changing union complete when no pass reached the exact count', async () => {
@@ -251,7 +254,7 @@ test('Mutual Checker never calls a changing union complete when no pass reached 
     username: 'target_name',
   });
 
-  assert.equal(followerCalls, 3);
+  assert.equal(followerCalls, 1);
   assert.equal(result.followers.length, 1);
   assert.equal(result.followers[0].username, 'account.a');
   assert.equal(result.complete.followers, false);
@@ -283,13 +286,13 @@ test('Mutual Checker finishes partial instead of hanging when Instagram keeps on
     username: 'target_name',
   });
 
-  assert.equal(followerCalls, 3);
+  assert.equal(followerCalls, 1);
   assert.equal(result.followers.length, 100);
   assert.equal(result.complete.followers, false);
   assert.equal(result.reasons.followers, 'count-mismatch');
 });
 
-test('Mutual Checker recovers a prematurely cursorless 2,104-follower response', async () => {
+test('Mutual Checker reads a 2,104-follower list in one cursor traversal', async () => {
   const inspector = createInspector();
   const followers = Array.from({ length: 2_104 }, (_, index) => ({ username: `follower.${index}` }));
   let followerCalls = 0;
@@ -307,7 +310,6 @@ test('Mutual Checker recovers a prematurely cursorless 2,104-follower response',
       }
       if (url.pathname.includes('/followers/')) {
         followerCalls += 1;
-        if (followerCalls === 1) return response({ users: followers.slice(0, 27) });
         const offset = Number(String(url.searchParams.get('max_id') || 'offset-0').replace('offset-', ''));
         const end = Math.min(followers.length, offset + 50);
         return response({
@@ -322,17 +324,14 @@ test('Mutual Checker recovers a prematurely cursorless 2,104-follower response',
     username: 'target_name',
   });
 
-  assert.equal(followerCalls, 44);
+  assert.equal(followerCalls, 43);
   assert.equal(result.followers.length, 2_104);
   assert.equal(result.complete.followers, true);
   assert.equal(result.reasons.followers, 'pagination-complete');
-  assert.ok(progress.some((entry) => entry.phase === 'reconciling'
-    && entry.listType === 'followers'
-    && entry.found === 27
-    && entry.expectedCount === 2_104));
+  assert.equal(progress.some((entry) => entry.phase === 'reconciling'), false);
 });
 
-test('Mutual Checker retries a large cursorless list twice, then finishes partial', async () => {
+test('Mutual Checker finishes a large cursorless list partial after one traversal', async () => {
   const inspector = createInspector();
   const followers = Array.from({ length: 2_070 }, (_, index) => ({ username: `follower.${index}` }));
   let followerCalls = 0;
@@ -359,12 +358,96 @@ test('Mutual Checker retries a large cursorless list twice, then finishes partia
     username: 'target_name',
   });
 
-  assert.equal(followerCalls, 3);
+  assert.equal(followerCalls, 1);
   assert.equal(result.followers.length, 2_070);
   assert.equal(result.expectedCounts.followers, 2_104);
   assert.equal(result.complete.followers, false);
   assert.equal(result.reasons.followers, 'count-mismatch');
-  assert.equal(progress.some((entry) => entry.phase === 'reconciling' && entry.listType === 'followers'), true);
+  assert.equal(progress.some((entry) => entry.phase === 'reconciling'), false);
+});
+
+test('Mutual Checker reports when Instagram explicitly limits a relationship list', async () => {
+  const inspector = createInspector();
+  let followerCalls = 0;
+  const result = await inspector.fetchFollowerComparison({
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname.includes('topsearch')) {
+        return response({ users: [{ user: { pk: '77', username: 'target_name' } }] });
+      }
+      if (url.pathname.includes('web_profile_info')) {
+        return profileResponse({ followers: 2_104, following: 0 });
+      }
+      if (url.pathname.includes('/followers/')) {
+        followerCalls += 1;
+        return response({
+          has_more: false,
+          should_limit_list_of_followers: true,
+          users: Array.from({ length: 100 }, (_, index) => ({ username: `follower.${index}` })),
+        });
+      }
+      return response({ users: [] });
+    },
+    sleepImpl: async () => {},
+    username: 'target_name',
+  });
+
+  assert.equal(followerCalls, 1);
+  assert.equal(result.followers.length, 100);
+  assert.equal(result.complete.followers, false);
+  assert.equal(result.reasons.followers, 'instagram-limited-list');
+});
+
+test('Mutual Checker reports a missing cursor without restarting the list', async () => {
+  const inspector = createInspector();
+  let followerCalls = 0;
+  const result = await inspector.fetchFollowerComparison({
+    fetchImpl: async (input) => {
+      const url = new URL(input);
+      if (url.pathname.includes('topsearch')) {
+        return response({ users: [{ user: { pk: '77', username: 'target_name' } }] });
+      }
+      if (url.pathname.includes('web_profile_info')) {
+        return profileResponse({ followers: 2, following: 0 });
+      }
+      if (url.pathname.includes('/followers/')) {
+        followerCalls += 1;
+        return response({ has_more: true, users: [{ username: 'account.a' }] });
+      }
+      return response({ users: [] });
+    },
+    sleepImpl: async () => {},
+    username: 'target_name',
+  });
+
+  assert.equal(followerCalls, 1);
+  assert.equal(result.followers.length, 1);
+  assert.equal(result.complete.followers, false);
+  assert.equal(result.reasons.followers, 'cursor-missing');
+});
+
+test('Mutual Checker rejects malformed Instagram pagination flags', async () => {
+  const inspector = createInspector();
+  await assert.rejects(
+    inspector.fetchFollowerComparison({
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname.includes('topsearch')) {
+          return response({ users: [{ user: { pk: '77', username: 'target_name' } }] });
+        }
+        if (url.pathname.includes('web_profile_info')) {
+          return profileResponse({ followers: 2, following: 0 });
+        }
+        if (url.pathname.includes('/followers/')) {
+          return response({ has_more: 'yes', users: [{ username: 'account.a' }] });
+        }
+        return response({ users: [] });
+      },
+      sleepImpl: async () => {},
+      username: 'target_name',
+    }),
+    (error) => error.code === 'invalid-response',
+  );
 });
 
 test('Mutual Checker does not treat stale top-search counters as completeness proof', async () => {
@@ -402,12 +485,9 @@ test('Mutual Checker does not treat stale top-search counters as completeness pr
   assert.deepEqual({ ...result.reasons }, { followers: 'count-mismatch', following: 'count-mismatch' });
   assert.equal(result.followers.length, 2_071);
   assert.equal(result.following.length, 100);
-  assert.equal(followerCalls, 3);
-  assert.equal(followingCalls, 3);
-  assert.deepEqual(
-    [...new Set(progress.filter((entry) => entry.phase === 'reconciling').map((entry) => entry.listType))],
-    ['followers', 'following'],
-  );
+  assert.equal(followerCalls, 1);
+  assert.equal(followingCalls, 1);
+  assert.equal(progress.some((entry) => entry.phase === 'reconciling'), false);
 });
 
 test('Mutual Checker requires exact count equality when a traversal returns too many identities', async () => {
@@ -646,7 +726,7 @@ test('authenticated follower check marks bounded pagination as partial instead o
   assert.deepEqual({ ...result.reasons }, { followers: 'page-limit', following: 'page-limit' });
 });
 
-test('Mutual Checker restarts duplicate cursor pages instead of running to the page limit', async () => {
+test('Mutual Checker stops one traversal after three stagnant cursor pages', async () => {
   const inspector = createInspector();
   let followerCalls = 0;
   const result = await inspector.fetchFollowerComparison({
@@ -672,7 +752,7 @@ test('Mutual Checker restarts duplicate cursor pages instead of running to the p
     username: 'target_name',
   });
 
-  assert.equal(followerCalls, 12);
+  assert.equal(followerCalls, 4);
   assert.equal(result.followers.length, 1);
   assert.equal(result.complete.followers, false);
   assert.equal(result.reasons.followers, 'count-mismatch');

@@ -2,6 +2,15 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 3.1.3 - 2026-08-26
+
+### Fixed
+
+- Read Followers and Following with one cursor traversal instead of restarting the entire list.
+- Match Instagram's current follow-list request shape and detect platform-limited lists.
+- Explain missing cursors and limited lists without marking partial comparisons complete.
+- Keep progress tied to the single active traversal, including bounded request retries.
+
 ## 3.1.2 - 2026-08-26
 
 ### Added
