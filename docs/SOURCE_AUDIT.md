@@ -53,6 +53,39 @@ Because no license was identified, source code was not copied. The project indep
 
 Saved checker results migrate as partial, read-only reports. They do not contain a complete snapshot and cannot create queue actions.
 
+### 2026 pagination review
+
+The 3.1.3 review compared the independent reader with current public examples
+and maintained client implementations:
+
+- The original Gist pages with `count=50`, `max_id`, the Instagram web app ID,
+  and 800–1500 ms pacing.
+- [OpenCLI issue 1831](https://github.com/jackwener/OpenCLI/issues/1831) and
+  [pull request 1835](https://github.com/jackwener/OpenCLI/pull/1835), which
+  document current 400 responses for oversized page counts and the use of
+  50-row cursor pagination.
+- The current
+  [instagrapi relationship reader](https://github.com/subzeroid/instagrapi/blob/master/instagrapi/mixins/user.py),
+  which uses the follow-list surface parameters and recognizes
+  `should_limit_list_of_followers` as a platform-limited response.
+- [Meta's public Instagram API collection](https://www.postman.com/meta/instagram/folder/23987686-22b3a5b0-4a51-449a-9299-e3667d69b182),
+  which exposes relationship counts but not a supported endpoint for
+  enumerating a personal account's complete follower identities.
+
+Adopted independently:
+
+- One bounded cursor traversal per list
+- Current same-origin follow-list parameters and web request headers
+- Explicit handling for a platform-limited list or a missing next cursor
+- Exact profile-count reconciliation before a list is marked complete
+
+Rejected:
+
+- Repeating a complete list scan to combine changing memberships
+- Treating a profile total as proof that every identity is available
+- Promoting partial rows into Follow / Unfollow targets
+- Claiming the private web route is a stable public Instagram API
+
 ## instagram-dm-unsender
 
 - Repository: <https://github.com/thoughtsunificator/instagram-dm-unsender>

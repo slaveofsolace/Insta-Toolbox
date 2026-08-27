@@ -1884,11 +1884,6 @@
         : `Scanning ${listType}… ${formatCount(found)} found so far.`);
   }
 
-  function reconciliationScanDetail(progress) {
-    const label = progress?.listType === 'followers' ? 'Followers' : 'Following';
-    return `Retrying ${label}: ${formatCount(progress?.passFound)} checked; ${formatCount(progress?.found)} of ${formatCount(progress?.expectedCount)} unique found.`;
-  }
-
   function completedRelationshipScanDetail(result) {
     const complete = result?.complete?.followers === true && result?.complete?.following === true;
     return `Checked ${formatCount(result?.followers?.length)} followers and ${formatCount(result?.following?.length)} following — ${complete ? 'complete' : 'partial'}.`;
@@ -2012,20 +2007,6 @@
             );
             return;
           }
-          if (progress.phase === 'reconciling') {
-            showScanProgress(
-              progress.listType,
-              progress.found,
-              false,
-              false,
-              progress.expectedCount,
-            );
-            setText(
-              'scan-detail',
-              reconciliationScanDetail(progress),
-            );
-            return;
-          }
           if (progress.listType) {
             showScanProgress(
               progress.listType,
@@ -2063,7 +2044,11 @@
         const label = listType === 'followers' ? 'Followers' : 'Following';
         const reason = result.reasons[listType];
         const expected = result.expectedCounts[listType];
-        if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
+        if (reason === 'instagram-limited-list' && Number.isSafeInteger(expected)) {
+          partialDetails.push(`${label}: Instagram limited this list to ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')} accounts.`);
+        } else if (reason === 'cursor-missing') {
+          partialDetails.push(`${label}: Instagram ended pagination without returning the next page.`);
+        } else if (reason === 'count-mismatch' && Number.isSafeInteger(expected)) {
           const difference = expected - accounts.length;
           partialDetails.push(difference > 0
             ? `${label}: Instagram returned ${accounts.length.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')}; ${difference.toLocaleString('en-US')} were not returned.`

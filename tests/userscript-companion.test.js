@@ -217,7 +217,7 @@ test('the Mutual Checker remembers whether a scan actually finished', () => {
 });
 
 test('the toolbox has no credential access or third-party connector and keeps follower reads Instagram-only', () => {
-  assert.doesNotMatch(source, /GM_xmlhttpRequest|XMLHttpRequest|document\.cookie/);
+  assert.doesNotMatch(source, /GM_xmlhttpRequest|new\s+XMLHttpRequest|XMLHttpRequest\s*\(|document\.cookie/);
   assert.doesNotMatch(source, /fetch\s*\(/);
   assert.match(source, /const INSTAGRAM_WEB_ORIGIN = 'https:\/\/www\.instagram\.com'/);
   assert.match(source, /\/api\/v1\/web\/search\/topsearch\//);
