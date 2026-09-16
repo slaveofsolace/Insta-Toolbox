@@ -1030,16 +1030,22 @@ async function acceptThreadUnsendScopes(webContents, baseUrl) {
   console.log('Accepted newest and oldest finite Unsend ordering across virtualized rows.');
 }
 
-async function acceptPrimarySpeedEquivalence(webContents, baseUrl) {
+async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
+  surfaces = ['extension', 'userscript'], media = false, groupStyle = false, uncertain = false,
+} = {}) {
   const measurements = [];
-  for (const surface of ['extension', 'userscript']) {
+  const expectedRemovals = uncertain ? 0 : media ? 2 : 1;
+  const fixtureLabel = media ? `idless-reels-${groupStyle ? 'group' : 'direct'}${uncertain ? '-uncertain' : ''}` : 'primary';
+  for (const surface of surfaces) {
     for (const speed of ['standard', 'fast']) {
       const extension = surface === 'extension';
       if (extension) await loadFixture(webContents, baseUrl, 'messages-live');
       else {
         await withTimeout(webContents.loadURL(`${baseUrl}/userscript-fixture.html`), 'speed userscript fixture load');
         await waitForPageValue(webContents, `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'speed userscript ready');
-        await webContents.executeJavaScript('globalThis.fixtureSetMessages()', true);
+        await webContents.executeJavaScript(media
+          ? `globalThis.fixtureSetMediaMessages({groupStyle:${groupStyle},uncertain:${uncertain}})`
+          : 'globalThis.fixtureSetMessages()', true);
         await waitForPageValue(webContents, `(() => {
           const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
           return !shadow.querySelector('[data-role="unsend-primary"]').disabled;
@@ -1050,12 +1056,17 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl) {
       const action = extension ? 'data-insta-toolbox-action' : 'data-action';
       await webContents.executeJavaScript(`(() => {
         const shadow = document.querySelector(${JSON.stringify(host)}).shadowRoot;
+        if (${uncertain}) {
+          const preference = shadow.querySelector('[data-cleanup-preference="showSummary"]');
+          preference.checked = false;
+          preference.dispatchEvent(new Event('change', { bubbles: true }));
+        }
         if (shadow.querySelector(${JSON.stringify(extension ? '.insta-toolbox-panel' : '.panel')}).hidden)
           shadow.querySelector(${JSON.stringify(extension ? '.insta-toolbox-launcher' : '.launcher')}).click();
         shadow.querySelector(${JSON.stringify(extension ? '[data-insta-toolbox-section="messages"]' : '[data-view="messages"]')}).click();
         const scope = shadow.querySelector('[${role}="unsend-scope"]');
-        scope.value = 'newest'; scope.dispatchEvent(new Event('change', { bubbles: true }));
-        shadow.querySelector('[${role}="unsend-count"]').value = '1';
+        scope.value = '${media ? 'all' : 'newest'}'; scope.dispatchEvent(new Event('change', { bubbles: true }));
+        shadow.querySelector('[${role}="unsend-count"]').value = '${expectedRemovals}';
         const speed = shadow.querySelector('[${role}="unsend-speed"]');
         if (speed.querySelector('option[value="fast"]').disabled)
           throw new Error('The tested Fast mode must be available on this surface.');
@@ -1074,8 +1085,15 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl) {
       const outcome = await waitForPageValue(webContents, `(() => {
         const result = globalThis.InstaToolboxDmThreadUnsender.snapshot();
         if (['idle','preparing','running','waiting','stopping'].includes(result.status)) return null;
+        const shadow = document.querySelector(${JSON.stringify(host)}).shadowRoot;
         return { ...result, actualRemovals: globalThis.fixtureUnsentCount,
-          receivedRetained: Boolean(document.querySelector('[data-message-id="received-1"]')),
+          receivedRetained: Boolean(document.querySelector('${media ? '[data-fixture-received]' : '[data-message-id="received-1"]'}')),
+          remainingSent: document.querySelectorAll('[data-fixture-sent]').length,
+          remainingSentRows: [...document.querySelectorAll('[data-fixture-sent]')].map(row => row.outerHTML),
+          messageContainerChildren: [...document.querySelector('[data-pagelet="IGDMessagesList"]')?.children || []]
+            .map(node => ({ tag: node.tagName, role: node.getAttribute('role'), childCount: node.children.length })),
+          summaryVisible: !shadow.querySelector('[data-role="dm-summary"]')?.hidden,
+          summaryText: shadow.querySelector('[data-role="dm-summary"]')?.textContent || '',
           fixtureClicks: globalThis.fixtureDmClickCount,
           menuControl: document.querySelector('#fixture-dm-action')?.outerHTML,
           surfacedMenus: [...document.querySelectorAll('[role="menu"]')].map(menu => menu.outerHTML),
@@ -1092,19 +1110,28 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl) {
         })()`);
         throw new Error(`${error.message} ${JSON.stringify(diagnostic)}`);
       });
-      assert.equal(outcome.status, 'completed', JSON.stringify(outcome));
-      assert.equal(outcome.processed, 1);
-      assert.equal(outcome.failed, 0);
-      assert.equal(outcome.uncertain || 0, 0);
-      assert.equal(outcome.actualRemovals, 1);
-      assert.equal(outcome.receivedRetained, true);
-      measurements.push({ surface, speed, processed: outcome.processed, failed: outcome.failed,
+      assert.equal(outcome.status, uncertain ? 'error' : 'completed', JSON.stringify(outcome));
+      assert.equal(outcome.processed, expectedRemovals, JSON.stringify(outcome));
+      assert.equal(outcome.failed, 0, JSON.stringify(outcome));
+      assert.equal(outcome.uncertain || 0, uncertain ? 1 : 0, JSON.stringify(outcome));
+      assert.equal(outcome.actualRemovals, expectedRemovals, JSON.stringify(outcome));
+      assert.equal(outcome.receivedRetained, true, JSON.stringify(outcome));
+      if (media) {
+        assert.equal(outcome.remainingSent, uncertain ? 2 : 0);
+        assert.equal(outcome.fixtureClicks, uncertain ? 3 : expectedRemovals * 3, 'each exact native control is activated once');
+      }
+      if (uncertain) {
+        assert.equal(outcome.summaryVisible, true, 'uncertain primary run is visible without a preliminary scan');
+        assert.match(outcome.summaryText, /0 unsent/);
+        assert.match(outcome.summaryText, /uncertain/i);
+      }
+      measurements.push({ surface, fixture: fixtureLabel, speed, processed: outcome.processed, failed: outcome.failed,
         uncertain: outcome.uncertain || 0, elapsedMs: outcome.elapsedMs, phaseTimings: outcome.phaseTimings });
-      console.log(`Accepted ${surface} ${speed} primary fixture in ${Math.round(outcome.elapsedMs)}ms.`);
+      console.log(`Accepted ${surface} ${speed} ${fixtureLabel} fixture in ${Math.round(outcome.elapsedMs)}ms.`);
     }
   }
-  await writeFile(path.join(resultsRoot, 'speed-primary-fixture.json'), `${JSON.stringify({ fixtureOnly: true, measurements }, null, 2)}\n`);
-  console.log('Accepted Standard/Fast primary-flow equivalence on both surfaces: one verified removal, received message retained, no failures or uncertain outcomes. Fixture timings saved.');
+  await writeFile(path.join(resultsRoot, `speed-${fixtureLabel}-fixture.json`), `${JSON.stringify({ fixtureOnly: true, measurements }, null, 2)}\n`);
+  console.log(`Accepted Standard/Fast ${fixtureLabel} flow: ${expectedRemovals} verified removals, received message retained${uncertain ? ', uncertain outcome visible without retry' : ', no failures or uncertain outcomes'}.`);
 }
 
 async function acceptThreadUnsendStop(webContents, baseUrl) {
@@ -2681,6 +2708,16 @@ async function run() {
     const pwaAddress = await listen(pwaServer);
     const overlayBaseUrl = `http://127.0.0.1:${overlayAddress.port}`;
     const pwaBaseUrl = `http://127.0.0.1:${pwaAddress.port}/`;
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_MEDIA_ONLY === '1') {
+      for (const groupStyle of [false, true]) {
+        await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+          { surfaces: ['userscript'], media: true, groupStyle });
+      }
+      await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+        { surfaces: ['userscript'], media: true, uncertain: true });
+      assert.deepEqual(overlay.problems, [], 'userscript media fixture browser problems');
+      return;
+    }
     if (process.env.INSTA_TOOLBOX_QA_SPEED_ONLY === '1') {
       await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl);
       assert.deepEqual(overlay.problems, [], 'primary-speed fixture browser problems');
@@ -2698,6 +2735,12 @@ async function run() {
     await acceptOverlayDmConfirmation(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsendScopes(overlay.window.webContents, overlayBaseUrl);
     await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl);
+    for (const groupStyle of [false, true]) {
+      await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+        { surfaces: ['userscript'], media: true, groupStyle });
+    }
+    await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+      { surfaces: ['userscript'], media: true, uncertain: true });
     await acceptThreadUnsendStop(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsend(overlay.window.webContents, overlayBaseUrl);
     await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);

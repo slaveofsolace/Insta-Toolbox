@@ -794,6 +794,41 @@
     }
   }
 
+  function normalizeFollowerDiagnostics(value) {
+    const reasons = new Set(['pagination-complete', 'instagram-limited-list', 'cursor-missing',
+      'count-mismatch', 'count-unverified', 'count-changed', 'profile-count-disagreement', 'account-limit', 'page-limit']);
+    const count = (number) => Number.isSafeInteger(number) && number >= 0 ? number : null;
+    return {
+      expectedCounts: Object.fromEntries(['followers', 'following'].map((type) => [type, count(value?.expectedCounts?.[type])])),
+      pages: Object.fromEntries(['followers', 'following'].map((type) => [type, count(value?.pages?.[type])])),
+      reasons: Object.fromEntries(['followers', 'following'].map((type) => [type, reasons.has(value?.reasons?.[type]) ? value.reasons[type] : ''])),
+    };
+  }
+
+  function followerComparisonDetails(workspace) {
+    const diagnostics = normalizeFollowerDiagnostics(workspace);
+    return ['followers', 'following'].flatMap((type) => {
+      const reason = diagnostics.reasons[type];
+      if (!reason) return [];
+      const found = Array.isArray(workspace?.[type]) ? workspace[type].length : 0;
+      const expected = diagnostics.expectedCounts[type];
+      const label = type === 'followers' ? 'Followers' : 'Following';
+      const count = expected === null ? `${found.toLocaleString('en-US')} read` : `${found.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')} read`;
+      const explanations = {
+        'pagination-complete': 'Pagination finished and totals matched.',
+        'instagram-limited-list': 'Instagram marked this list as limited.',
+        'cursor-missing': 'Instagram reported more results but supplied no next page.',
+        'count-mismatch': 'The returned accounts did not match the profile total; the cause is unknown.',
+        'count-unverified': 'No exact profile total was available.',
+        'count-changed': 'The profile total changed during this check.',
+        'profile-count-disagreement': 'Instagram profile counters disagreed.',
+        'account-limit': 'The bounded account read limit was reached.',
+        'page-limit': 'The bounded page read limit was reached.',
+      };
+      return [`${label}: ${count}. ${explanations[reason]}`];
+    });
+  }
+
   function followerComparisonSummary(workspace) {
     const completeList = (type) => workspace?.verified?.[type] === true && workspace?.complete?.[type] === true;
     const complete = completeList('followers') && completeList('following');
@@ -803,15 +838,21 @@
     const verifiedPartial = !complete && ['followers', 'following'].some((type) => (
       workspace?.verified?.[type] === true && workspace?.complete?.[type] !== true
     ));
+    const knownReason = ['followers', 'following'].some((type) => [
+      'instagram-limited-list', 'cursor-missing', 'count-changed', 'profile-count-disagreement', 'account-limit', 'page-limit',
+    ].includes(workspace?.reasons?.[type]));
     return {
       available,
       complete,
+      details: followerComparisonDetails(workspace),
       labels: {
         mutuals: 'Mutuals',
         notFollowingMeBack: complete ? "Don't follow you back" : 'Not found in followers',
         iDoNotFollowBack: complete ? "You don't follow back" : 'Not found in following',
       },
-      warning: complete ? '' : 'Partial comparison — captured accounts only. Someone missing from a list may still be a mutual. The missing accounts and the reason are unknown; check profiles before acting.',
+      warning: complete ? '' : knownReason
+        ? 'Partial comparison — captured accounts only. Someone missing from a list may still be a mutual. Check profiles before acting.'
+        : 'Partial comparison — captured accounts only. Someone missing from a list may still be a mutual. The missing accounts and the reason are unknown; check profiles before acting.',
       ageFilterGuidance: verifiedPartial
         ? 'Possible viewer-age filtering: Instagram may hide age-restricted accounts if the signed-in account has no birthday. Check Accounts Center, reload, and retry. Other causes are possible.'
         : '',
@@ -836,6 +877,7 @@
       warning: summary.warning,
       ageFilterGuidance: summary.ageFilterGuidance,
       accountsCenterUrl: summary.accountsCenterUrl,
+      ...normalizeFollowerDiagnostics(workspace),
       mutuals: Array.isArray(comparison?.mutuals) ? comparison.mutuals : [],
       notFollowingMeBack: Array.isArray(comparison?.notFollowingMeBack)
         ? comparison.notFollowingMeBack
@@ -870,6 +912,7 @@
       ...(record.warning ? [record.warning] : []),
       ...(record.ageFilterGuidance ? [record.ageFilterGuidance] : []),
       ...(record.accountsCenterUrl ? [`Accounts Center: ${record.accountsCenterUrl}`] : []),
+      ...followerComparisonDetails(workspace),
       '',
       'SUMMARY',
       '-------',
@@ -2324,6 +2367,7 @@
     followerComparisonRecord,
     followerComparisonReport,
     followerComparisonSummary,
+    normalizeFollowerDiagnostics,
     inspectPageContext,
     inspectProfile,
     inspectReviewedDmItem,

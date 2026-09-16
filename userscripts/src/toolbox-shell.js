@@ -8,6 +8,7 @@
   const cleanupSettings = globalThis.InstaToolboxCleanupSettings;
   const LEGACY_QUEUE_KEY = 'instaToolboxManualQueueV1';
   const TAB_RUN_FIELD = 'instaToolboxAccountRunV1';
+  const TAB_CHECKER_FIELD = 'instaToolboxCheckerDraftV1';
   const ACTIONABLE_STATUSES = new Set(['pending', 'ready', 'failed', 'paused']);
   const RESERVED = new Set([
     'accounts', 'about', 'api', 'developer', 'direct', 'emails', 'explore',
@@ -204,18 +205,20 @@
     if (typeof GM_getTab !== 'function' || typeof GM_saveTab !== 'function') return Promise.resolve(null);
     return new Promise((resolve) => {
       let settled = false;
+      let timer = null;
       const finish = (value) => {
         if (settled) return;
         settled = true;
+        if (timer !== null) clearTimeout(timer);
         resolve(value && typeof value === 'object' ? value : null);
       };
+      timer = setTimeout(() => finish(null), 1_000);
       try {
         const pending = GM_getTab(finish);
         if (pending && typeof pending.then === 'function') pending.then(finish, () => finish(null));
       } catch {
         finish(null);
       }
-      setTimeout(() => finish(null), 1_000);
     });
   }
 
@@ -223,7 +226,16 @@
     const source = GM_getValue(STATE_KEY, null);
     const defaults = stateDefaults();
     const legacyQueue = GM_getValue(LEGACY_QUEUE_KEY, null);
-    const value = source && typeof source === 'object' ? source : defaults;
+    const sharedState = source && typeof source === 'object' ? source : defaults;
+    const checkerDraft = tabState?.[TAB_CHECKER_FIELD];
+    // A new tab starts empty. The old shared capture remains untouched; it is
+    // never imported implicitly into another tab.
+    const value = {
+      ...sharedState,
+      schemaVersion: checkerDraft?.schemaVersion || 6,
+      capture: checkerDraft?.capture && typeof checkerDraft.capture === 'object'
+        ? checkerDraft.capture : defaults.capture,
+    };
     // Schema 4 is the first state whose capture completeness is reconciled
     // against an exact list read. Schema 5 records whether that read used
     // bounded authenticated pagination or the list-dialog fallback. Schema 6
@@ -261,6 +273,7 @@
             ? value.capture.source.following
             : '',
         },
+        ...globalThis.InstaToolboxInstagramInspector.normalizeFollowerDiagnostics(value.capture),
       },
       queue: normalizeQueue(value.queue?.queue?.length ? value.queue : legacyQueue),
       accountCheck: value.accountCheck && typeof value.accountCheck === 'object' ? value.accountCheck : null,
@@ -342,10 +355,14 @@
   let checkerResultAnnouncementTimer = null;
 
   function saveState() {
-    GM_setValue(STATE_KEY, { ...state, run: null });
+    const { capture, ...sharedState } = state;
+    const previous = GM_getValue(STATE_KEY, null);
+    // Preserve any legacy shared capture without overwriting it from this tab.
+    GM_setValue(STATE_KEY, { ...(previous && typeof previous === 'object' ? previous : {}), ...sharedState, run: null });
     if (!managerTabStorageAvailable) return;
     const resumable = normalizeResumableAccountRun(state.run);
     managerTab = { ...managerTab };
+    managerTab[TAB_CHECKER_FIELD] = { schemaVersion: 6, capture };
     if (resumable) managerTab[TAB_RUN_FIELD] = resumable;
     else delete managerTab[TAB_RUN_FIELD];
     try {
@@ -1153,6 +1170,11 @@
       warning.className = 'notice';
       warning.textContent = summary.warning;
       result.append(warning);
+      for (const text of summary.details || []) {
+        const diagnostic = document.createElement('p');
+        diagnostic.textContent = text;
+        result.append(diagnostic);
+      }
       if (summary.ageFilterGuidance) {
         const guidance = document.createElement('p');
         guidance.className = 'notice';
@@ -2120,6 +2142,7 @@
         complete: { ...result.complete },
         verified: { followers: true, following: true },
         source: { followers: 'authenticated-web', following: 'authenticated-web' },
+        ...engine.normalizeFollowerDiagnostics(result),
       };
       state.capture = nextCapture;
       try {
@@ -2410,7 +2433,9 @@
     if (summary) {
       const finished = dmRunnerSnapshot?.status === 'completed';
       const needsAttention = dmRunnerSnapshot?.status === 'needs-attention';
-      summary.hidden = !checked && !finished && !needsAttention;
+      const failed = dmRunnerSnapshot?.status === 'error';
+      const stopped = dmRunnerSnapshot?.status === 'stopped';
+      summary.hidden = !checked && !finished && !needsAttention && !failed && !stopped;
       setText('dm-summary-title', found
         ? `At least ${found} sent message${found === 1 ? '' : 's'} detected`
         : 'No sent messages found');
@@ -2420,9 +2445,10 @@
       if (finished) {
         setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent`);
         setText('dm-summary-detail', cleanupPreferences.showSummary ? dmRunnerSnapshot.message : '');
-      } else if (needsAttention) {
+      } else if (needsAttention || failed || stopped) {
         const uncertain = Math.max(0, Number(dmRunnerSnapshot.uncertain) || 0);
-        setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent · Needs attention`);
+        const outcome = needsAttention || uncertain ? 'Needs attention' : failed ? 'Stopped with an error' : 'Stopped';
+        setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent · ${outcome}`);
         setText('dm-summary-detail', [dmRunnerSnapshot.message, uncertain ? `${uncertain} outcome uncertain.` : ''].filter(Boolean).join(' '));
       }
     }

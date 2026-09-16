@@ -955,18 +955,31 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   function deepestMessageContainer(scroller) {
     let best = scroller;
     let bestCount = scroller?.children?.length || 0;
+    let messageContainer = null;
+    let messageCount = 0;
+    const isMessageRow = (element) => ['row', 'listitem'].includes(element?.getAttribute?.('role'))
+      || Boolean(element?.getAttribute?.('data-message-id') || element?.getAttribute?.('data-item-id'));
     const queue = [{ element: scroller, depth: 0 }];
     while (queue.length) {
       const { element, depth } = queue.shift();
       if (depth > 4) continue;
       const count = element?.children?.length || 0;
+      const directMessages = [...element?.children || []].filter(isMessageRow).length;
+      if (directMessages > messageCount) {
+        messageContainer = element;
+        messageCount = directMessages;
+      }
       if (count > bestCount) {
         best = element;
         bestCount = count;
       }
-      for (const child of element?.children || []) queue.push({ element: child, depth: depth + 1 });
+      for (const child of element?.children || []) {
+        if (!isMessageRow(child)) queue.push({ element: child, depth: depth + 1 });
+      }
     }
-    return best;
+    // Real rows outrank header/card child counts, including after a removal
+    // leaves fewer rows than the surrounding layout has children.
+    return messageContainer || best;
   }
 
   function hasMessageContent(row) {
@@ -981,16 +994,24 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if ([...row?.querySelectorAll?.('[data-sent-by-me]') || []].some((element) => (
       String(element.getAttribute?.('data-sent-by-me')).toLowerCase() === 'false'
     ))) return false;
-    // Alignment belongs to the message wrapper, never a nested reaction or
-    // menu. Follow only an unbranched wrapper chain and stop at content.
+    // Alignment belongs to the horizontal message wrapper, never a nested
+    // reaction/menu or a column's vertical placement. Empty hidden spacers do
+    // not split that wrapper chain; real content branches still do.
     let element = row;
     let aligned = false;
     for (let depth = 0; element && depth <= MAX_HOVER_DEPTH; depth += 1) {
       if (depth > 0 && element.matches?.('[dir="auto"], img, video, audio, button, [role="button"]')) break;
       const style = view.getComputedStyle?.(element);
-      if (style?.justifyContent === 'flex-start') return false;
-      if (style?.justifyContent === 'flex-end') aligned = true;
-      const children = [...element.children || []];
+      const horizontal = !style?.flexDirection || style.flexDirection === 'row';
+      const flexLayout = !style?.display || ['flex', 'inline-flex'].includes(style.display);
+      if (horizontal && flexLayout && style?.direction !== 'rtl') {
+        if (style?.justifyContent === 'flex-start') return false;
+        if (style?.justifyContent === 'flex-end') aligned = true;
+      }
+      const children = [...element.children || []].filter((child) => !(
+        child.getAttribute?.('aria-hidden') === 'true'
+        && !hasMessageContent(child) && !visibleText(child)
+      ));
       if (children.length !== 1) break;
       element = children[0];
     }
@@ -1308,12 +1329,42 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     return sessionStop(expectedThreadId);
   }
 
-  function requireAuthorization(expectedThreadId, authorizationExpiresAt) {
+  function requireAuthorization(expectedThreadId, authorizationExpiresAt, actionGrant = false) {
     if (activeController?.signal.aborted) {
       throw new DOMException('The operation was stopped.', 'AbortError');
     }
     const reason = authorizationFailure(expectedThreadId, authorizationExpiresAt);
     if (reason) throw new Error(reason);
+    const adapter = activeExecution?.workerAdapter;
+    const authorized = !adapter || (actionGrant
+      ? adapter.assertAction({ threadId: expectedThreadId, candidate: workerCandidate(activeExecution.workerRow) })
+      : adapter.assertContext({ threadId: expectedThreadId })) === true;
+    if (!authorized) {
+      const error = new Error('The reviewed worker no longer owns this action.');
+      error.code = 'DM_WORKER_STOP';
+      throw error;
+    }
+  }
+
+  function workerCandidate(row) {
+    const timestamps = new Set();
+    const nodes = [row, ...row?.querySelectorAll?.('[data-timestamp-ms], [data-timestamp], time[datetime]') || []];
+    for (const element of nodes) {
+      for (const attribute of ['data-timestamp-ms', 'data-timestamp', 'datetime']) {
+        const raw = element?.getAttribute?.(attribute);
+        if (!raw) continue;
+        const numeric = Number(raw);
+        const timestamp = Number.isFinite(numeric)
+          ? (attribute === 'data-timestamp' && numeric < 100_000_000_000 ? numeric * 1_000 : numeric)
+          : Date.parse(raw);
+        if (Number.isFinite(timestamp) && timestamp > 0) timestamps.add(timestamp);
+      }
+    }
+    return Object.freeze({
+      key: stableMessageKey(row),
+      timestamp: timestamps.size === 1 ? [...timestamps][0] : null,
+      ownershipVerified: Boolean(row?.isConnected && sentByCurrentUser(row)),
+    });
   }
 
   async function openUnsendMenu(control, signal, expectedThreadId, authorizationExpiresAt) {
@@ -1324,10 +1375,10 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       return candidates.length === 1 ? { control: candidates[0] } : null;
     }, signal, 3_000);
     pending.catch(() => {});
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     activateControl(control);
     const result = await measurePhase('menuReadiness', () => pending);
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend option.');
     return result;
   }
@@ -1369,16 +1420,16 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       3_000,
     );
     pending.catch(() => {});
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     activateControl(menuControl);
     const result = await measurePhase('confirmationReadiness', () => pending);
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend confirmation.');
     const dialogButton = result?.control;
     if (!dialogButton) return false;
 
     const before = removalEvidence(row);
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     try {
       activateControl(dialogButton);
       // Stop prevents the next click, but a dispatched mutation still needs
@@ -1869,6 +1920,17 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     return (text || 'Sent message').slice(0, 90);
   }
 
+  function retainedMessageSignature(row) {
+    const content = [...row?.querySelectorAll?.(
+      '[dir="auto"], img, video, audio, a[href], time[datetime], [data-timestamp]',
+    ) || []].map((element) => [
+      element.tagName || '',
+      element.matches?.('[dir="auto"]') ? visibleText(element) : '',
+      ...['href', 'src', 'datetime', 'data-timestamp'].map((name) => element.getAttribute?.(name) || ''),
+    ]);
+    return JSON.stringify([stableMessageKey(row), preview(row), content]);
+  }
+
   function removalEvidence(row) {
     const parent = row?.parentElement || null;
     const root = row?.closest?.("[data-pagelet='IGDMessagesList']") || parent;
@@ -1879,6 +1941,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       }
       if (element === root) break;
     }
+    const siblings = [...parent?.children || []].filter((element) => element !== row);
     return {
       key: stableMessageKey(row),
       text: preview(row),
@@ -1886,7 +1949,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       parent,
       root,
       scrollers,
-      siblings: [...parent?.children || []].filter((element) => element !== row),
+      siblings,
+      siblingSignatures: siblings.map(retainedMessageSignature),
     };
   }
 
@@ -1915,11 +1979,14 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       !element.isConnected || Math.abs((Number(element.scrollTop) || 0) - top) > 2
     ))) return false;
     if (before.key) return true;
-    // Without a logical ID, require the same local neighborhood and no copy
-    // of the original content. Scrolling/replaced containers are not removal.
-    return before.parent.children.length === before.siblings.length
-      && before.siblings.every((element) => element.isConnected && element.parentElement === before.parent)
-      && ![...before.parent.children || []].some((candidate) => preview(candidate) === before.text);
+    // Without a logical ID, prove the exact row disappeared while every
+    // neighboring message stayed unchanged and in order. Duplicate text and
+    // media-only previews do not make a surviving neighbor the removed row.
+    const remaining = [...before.parent.children || []];
+    return remaining.length === before.siblings.length
+      && before.siblings.every((element, index) => element === remaining[index]
+        && element.isConnected && element.parentElement === before.parent
+        && retainedMessageSignature(element) === before.siblingSignatures?.[index]);
   }
 
   function normalizePlaceholder(text) {
@@ -2016,6 +2083,16 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
   async function start(options = {}) {
     if (activeController) return snapshot();
+    const workerAdapter = options.workerAdapter;
+    if (workerAdapter !== undefined && (!workerAdapter
+      || typeof workerAdapter.execute !== 'function' || typeof workerAdapter.assertAction !== 'function'
+      || typeof workerAdapter.assertContext !== 'function'
+      || !workerAdapter.signal || typeof workerAdapter.signal.aborted !== 'boolean'
+      || typeof workerAdapter.signal.addEventListener !== 'function'
+      || typeof workerAdapter.signal.removeEventListener !== 'function')) {
+      publish({ status: 'error', message: 'The reviewed worker adapter is unavailable.', canStop: false });
+      return snapshot();
+    }
     const plan = validatePlan(options.plan);
     if (!plan) {
       publish({
@@ -2067,6 +2144,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const controller = new AbortController();
     activeController = controller;
     activeExecution = {
+      workerAdapter,
+      workerRow: null,
       speed: plan.speed,
       onPhaseTiming: typeof options.onPhaseTiming === 'function' ? options.onPhaseTiming : null,
       phaseTimings: {
@@ -2075,6 +2154,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       },
     };
     const signal = controller.signal;
+    const abortWorker = () => controller.abort(workerAdapter.signal.reason || 'Worker stopped');
+    workerAdapter?.signal.addEventListener('abort', abortWorker, { once: true });
+    if (workerAdapter?.signal.aborted) abortWorker();
     const unwatch = watchThread(controller, expectedThreadId);
     const maxFailures = Math.max(1, Math.min(10, Number(options.maxConsecutiveFailures) || DEFAULT_MAX_FAILURES));
     const authorizationExpiresAt = plan.expiresAt;
@@ -2204,14 +2286,35 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
         publish({ status: 'running', current: label, message: `Unsending message ${processed + 1}…` });
         let removalVerified = false;
+        let workerStopReason = null;
         try {
           // unsendRow already proves the removal: the confirmation dialog
           // closed and the row either went away or lost its content and menu.
           // Re-checking isConnected here rejected every success, because
           // Instagram leaves an "unsent" placeholder row in the thread.
-          await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+          if (workerAdapter) {
+            activeExecution.workerRow = row;
+            const result = await workerAdapter.execute({
+              candidate: workerCandidate(row),
+              threadId: expectedThreadId,
+              signal,
+              execute: async () => {
+                await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+                return { verified: true };
+              },
+            });
+            if (result?.verified !== true) {
+              const error = new Error('The worker removal outcome is uncertain. Review this conversation.');
+              error.code = 'DM_OUTCOME_UNCERTAIN';
+              throw error;
+            }
+            workerStopReason = result.stopReason || null;
+          } else {
+            await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+          }
           removalVerified = true;
         } catch (error) {
+          if (workerAdapter || error?.code === 'DM_WORKER_STOP') throw error;
           if (error?.code === 'DM_OUTCOME_UNCERTAIN') throw error;
           if (signal.aborted) throw error;
           retryAttempts += 1;
@@ -2260,6 +2363,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
             current: null,
             message: `${processed} message${processed === 1 ? '' : 's'} unsent`,
           });
+          if (workerStopReason) controller.abort(workerStopReason);
         }
       }
 
@@ -2317,6 +2421,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         });
       }
     } finally {
+      workerAdapter?.signal.removeEventListener('abort', abortWorker);
       unwatch();
       if (activeController === controller) activeController = null;
       activeExecution = null;
@@ -2378,6 +2483,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       validatePlan,
       watchThread,
       requireAuthorization,
+      workerCandidate,
     });
   }
   Object.defineProperty(globalThis, 'InstaToolboxDmThreadUnsender', {
@@ -3184,6 +3290,41 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     }
   }
 
+  function normalizeFollowerDiagnostics(value) {
+    const reasons = new Set(['pagination-complete', 'instagram-limited-list', 'cursor-missing',
+      'count-mismatch', 'count-unverified', 'count-changed', 'profile-count-disagreement', 'account-limit', 'page-limit']);
+    const count = (number) => Number.isSafeInteger(number) && number >= 0 ? number : null;
+    return {
+      expectedCounts: Object.fromEntries(['followers', 'following'].map((type) => [type, count(value?.expectedCounts?.[type])])),
+      pages: Object.fromEntries(['followers', 'following'].map((type) => [type, count(value?.pages?.[type])])),
+      reasons: Object.fromEntries(['followers', 'following'].map((type) => [type, reasons.has(value?.reasons?.[type]) ? value.reasons[type] : ''])),
+    };
+  }
+
+  function followerComparisonDetails(workspace) {
+    const diagnostics = normalizeFollowerDiagnostics(workspace);
+    return ['followers', 'following'].flatMap((type) => {
+      const reason = diagnostics.reasons[type];
+      if (!reason) return [];
+      const found = Array.isArray(workspace?.[type]) ? workspace[type].length : 0;
+      const expected = diagnostics.expectedCounts[type];
+      const label = type === 'followers' ? 'Followers' : 'Following';
+      const count = expected === null ? `${found.toLocaleString('en-US')} read` : `${found.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')} read`;
+      const explanations = {
+        'pagination-complete': 'Pagination finished and totals matched.',
+        'instagram-limited-list': 'Instagram marked this list as limited.',
+        'cursor-missing': 'Instagram reported more results but supplied no next page.',
+        'count-mismatch': 'The returned accounts did not match the profile total; the cause is unknown.',
+        'count-unverified': 'No exact profile total was available.',
+        'count-changed': 'The profile total changed during this check.',
+        'profile-count-disagreement': 'Instagram profile counters disagreed.',
+        'account-limit': 'The bounded account read limit was reached.',
+        'page-limit': 'The bounded page read limit was reached.',
+      };
+      return [`${label}: ${count}. ${explanations[reason]}`];
+    });
+  }
+
   function followerComparisonSummary(workspace) {
     const completeList = (type) => workspace?.verified?.[type] === true && workspace?.complete?.[type] === true;
     const complete = completeList('followers') && completeList('following');
@@ -3193,15 +3334,21 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const verifiedPartial = !complete && ['followers', 'following'].some((type) => (
       workspace?.verified?.[type] === true && workspace?.complete?.[type] !== true
     ));
+    const knownReason = ['followers', 'following'].some((type) => [
+      'instagram-limited-list', 'cursor-missing', 'count-changed', 'profile-count-disagreement', 'account-limit', 'page-limit',
+    ].includes(workspace?.reasons?.[type]));
     return {
       available,
       complete,
+      details: followerComparisonDetails(workspace),
       labels: {
         mutuals: 'Mutuals',
         notFollowingMeBack: complete ? "Don't follow you back" : 'Not found in followers',
         iDoNotFollowBack: complete ? "You don't follow back" : 'Not found in following',
       },
-      warning: complete ? '' : 'Partial comparison — captured accounts only. Someone missing from a list may still be a mutual. The missing accounts and the reason are unknown; check profiles before acting.',
+      warning: complete ? '' : knownReason
+        ? 'Partial comparison — captured accounts only. Someone missing from a list may still be a mutual. Check profiles before acting.'
+        : 'Partial comparison — captured accounts only. Someone missing from a list may still be a mutual. The missing accounts and the reason are unknown; check profiles before acting.',
       ageFilterGuidance: verifiedPartial
         ? 'Possible viewer-age filtering: Instagram may hide age-restricted accounts if the signed-in account has no birthday. Check Accounts Center, reload, and retry. Other causes are possible.'
         : '',
@@ -3226,6 +3373,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       warning: summary.warning,
       ageFilterGuidance: summary.ageFilterGuidance,
       accountsCenterUrl: summary.accountsCenterUrl,
+      ...normalizeFollowerDiagnostics(workspace),
       mutuals: Array.isArray(comparison?.mutuals) ? comparison.mutuals : [],
       notFollowingMeBack: Array.isArray(comparison?.notFollowingMeBack)
         ? comparison.notFollowingMeBack
@@ -3260,6 +3408,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       ...(record.warning ? [record.warning] : []),
       ...(record.ageFilterGuidance ? [record.ageFilterGuidance] : []),
       ...(record.accountsCenterUrl ? [`Accounts Center: ${record.accountsCenterUrl}`] : []),
+      ...followerComparisonDetails(workspace),
       '',
       'SUMMARY',
       '-------',
@@ -4714,6 +4863,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     followerComparisonRecord,
     followerComparisonReport,
     followerComparisonSummary,
+    normalizeFollowerDiagnostics,
     inspectPageContext,
     inspectProfile,
     inspectReviewedDmItem,
@@ -4794,6 +4944,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   const cleanupSettings = globalThis.InstaToolboxCleanupSettings;
   const LEGACY_QUEUE_KEY = 'instaToolboxManualQueueV1';
   const TAB_RUN_FIELD = 'instaToolboxAccountRunV1';
+  const TAB_CHECKER_FIELD = 'instaToolboxCheckerDraftV1';
   const ACTIONABLE_STATUSES = new Set(['pending', 'ready', 'failed', 'paused']);
   const RESERVED = new Set([
     'accounts', 'about', 'api', 'developer', 'direct', 'emails', 'explore',
@@ -4990,18 +5141,20 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (typeof GM_getTab !== 'function' || typeof GM_saveTab !== 'function') return Promise.resolve(null);
     return new Promise((resolve) => {
       let settled = false;
+      let timer = null;
       const finish = (value) => {
         if (settled) return;
         settled = true;
+        if (timer !== null) clearTimeout(timer);
         resolve(value && typeof value === 'object' ? value : null);
       };
+      timer = setTimeout(() => finish(null), 1_000);
       try {
         const pending = GM_getTab(finish);
         if (pending && typeof pending.then === 'function') pending.then(finish, () => finish(null));
       } catch {
         finish(null);
       }
-      setTimeout(() => finish(null), 1_000);
     });
   }
 
@@ -5009,7 +5162,16 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const source = GM_getValue(STATE_KEY, null);
     const defaults = stateDefaults();
     const legacyQueue = GM_getValue(LEGACY_QUEUE_KEY, null);
-    const value = source && typeof source === 'object' ? source : defaults;
+    const sharedState = source && typeof source === 'object' ? source : defaults;
+    const checkerDraft = tabState?.[TAB_CHECKER_FIELD];
+    // A new tab starts empty. The old shared capture remains untouched; it is
+    // never imported implicitly into another tab.
+    const value = {
+      ...sharedState,
+      schemaVersion: checkerDraft?.schemaVersion || 6,
+      capture: checkerDraft?.capture && typeof checkerDraft.capture === 'object'
+        ? checkerDraft.capture : defaults.capture,
+    };
     // Schema 4 is the first state whose capture completeness is reconciled
     // against an exact list read. Schema 5 records whether that read used
     // bounded authenticated pagination or the list-dialog fallback. Schema 6
@@ -5047,6 +5209,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
             ? value.capture.source.following
             : '',
         },
+        ...globalThis.InstaToolboxInstagramInspector.normalizeFollowerDiagnostics(value.capture),
       },
       queue: normalizeQueue(value.queue?.queue?.length ? value.queue : legacyQueue),
       accountCheck: value.accountCheck && typeof value.accountCheck === 'object' ? value.accountCheck : null,
@@ -5128,10 +5291,14 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   let checkerResultAnnouncementTimer = null;
 
   function saveState() {
-    GM_setValue(STATE_KEY, { ...state, run: null });
+    const { capture, ...sharedState } = state;
+    const previous = GM_getValue(STATE_KEY, null);
+    // Preserve any legacy shared capture without overwriting it from this tab.
+    GM_setValue(STATE_KEY, { ...(previous && typeof previous === 'object' ? previous : {}), ...sharedState, run: null });
     if (!managerTabStorageAvailable) return;
     const resumable = normalizeResumableAccountRun(state.run);
     managerTab = { ...managerTab };
+    managerTab[TAB_CHECKER_FIELD] = { schemaVersion: 6, capture };
     if (resumable) managerTab[TAB_RUN_FIELD] = resumable;
     else delete managerTab[TAB_RUN_FIELD];
     try {
@@ -5939,6 +6106,11 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       warning.className = 'notice';
       warning.textContent = summary.warning;
       result.append(warning);
+      for (const text of summary.details || []) {
+        const diagnostic = document.createElement('p');
+        diagnostic.textContent = text;
+        result.append(diagnostic);
+      }
       if (summary.ageFilterGuidance) {
         const guidance = document.createElement('p');
         guidance.className = 'notice';
@@ -6906,6 +7078,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         complete: { ...result.complete },
         verified: { followers: true, following: true },
         source: { followers: 'authenticated-web', following: 'authenticated-web' },
+        ...engine.normalizeFollowerDiagnostics(result),
       };
       state.capture = nextCapture;
       try {
@@ -7196,7 +7369,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (summary) {
       const finished = dmRunnerSnapshot?.status === 'completed';
       const needsAttention = dmRunnerSnapshot?.status === 'needs-attention';
-      summary.hidden = !checked && !finished && !needsAttention;
+      const failed = dmRunnerSnapshot?.status === 'error';
+      const stopped = dmRunnerSnapshot?.status === 'stopped';
+      summary.hidden = !checked && !finished && !needsAttention && !failed && !stopped;
       setText('dm-summary-title', found
         ? `At least ${found} sent message${found === 1 ? '' : 's'} detected`
         : 'No sent messages found');
@@ -7206,9 +7381,10 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       if (finished) {
         setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent`);
         setText('dm-summary-detail', cleanupPreferences.showSummary ? dmRunnerSnapshot.message : '');
-      } else if (needsAttention) {
+      } else if (needsAttention || failed || stopped) {
         const uncertain = Math.max(0, Number(dmRunnerSnapshot.uncertain) || 0);
-        setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent · Needs attention`);
+        const outcome = needsAttention || uncertain ? 'Needs attention' : failed ? 'Stopped with an error' : 'Stopped';
+        setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent · ${outcome}`);
         setText('dm-summary-detail', [dmRunnerSnapshot.message, uncertain ? `${uncertain} outcome uncertain.` : ''].filter(Boolean).join(' '));
       }
     }

@@ -2,6 +2,12 @@
 // exact-target checks; this module does not open tabs or click Instagram controls.
 const MAX_THREADS = 1_000;
 const MAX_REVIEW_AGE_MS = 20 * 60 * 1_000;
+export const INBOX_COORDINATOR_CAPABILITIES = Object.freeze({
+  maxPreparedWorkers: 5,
+  defaultConcurrentMutations: 1,
+  maxConcurrentMutations: 5,
+  assignmentModes: Object.freeze(['contiguous', 'batches']),
+});
 const TERMINAL = new Set(['completed', 'partial', 'skipped', 'failed', 'uncertain']);
 const clone = (value) => structuredClone(value);
 const fail = (reason) => { throw new Error(reason); };
@@ -22,7 +28,19 @@ export function createInboxReview(input, now = Date.now()) {
   const speed = input.speed || 'standard';
   if (!['standard', 'fast'].includes(speed)) fail('speed-invalid');
   const workerCount = input.workerCount ?? 1;
-  if (![1, 2].includes(workerCount)) fail('worker-count-invalid');
+  if (!Number.isInteger(workerCount) || workerCount < 1
+    || workerCount > INBOX_COORDINATOR_CAPABILITIES.maxPreparedWorkers) fail('worker-count-invalid');
+  const assignmentMode = input.assignmentMode ?? 'contiguous';
+  if (!INBOX_COORDINATOR_CAPABILITIES.assignmentModes.includes(assignmentMode)) fail('assignment-mode-invalid');
+  const mutationConcurrency = input.mutationConcurrency ?? 1;
+  if (!Number.isInteger(mutationConcurrency) || mutationConcurrency < 1) fail('mutation-concurrency-invalid');
+  if (mutationConcurrency > INBOX_COORDINATOR_CAPABILITIES.maxConcurrentMutations
+    || mutationConcurrency > workerCount) fail('mutation-concurrency-invalid');
+  // Preserve canonical keys for existing reviews. New scheduling choices are
+  // explicit review content, never an interpretation added to an older approval.
+  const scheduling = {};
+  if (input.assignmentMode !== undefined) scheduling.assignmentMode = assignmentMode;
+  if (input.mutationConcurrency !== undefined) scheduling.mutationConcurrency = mutationConcurrency;
   const expiresAt = input.expiresAt ?? now + MAX_REVIEW_AGE_MS;
   if (!Number.isFinite(expiresAt) || expiresAt <= now || expiresAt > now + MAX_REVIEW_AGE_MS) fail('review-expired');
   const sections = [...new Set(input.discovery?.sections || [])];
@@ -30,6 +48,7 @@ export function createInboxReview(input, now = Date.now()) {
   return Object.freeze({
     version: 1, accountId: input.accountId, threadIds: Object.freeze(threadIds),
     scope, limit, speed, workerCount, removeOwnReactions: input.removeOwnReactions === true,
+    ...scheduling,
     reviewedAt: now, expiresAt,
     arrivalPolicy: 'skip-after-review-or-pause',
     discovery: Object.freeze({ sections: Object.freeze(sections), complete: input.discovery?.complete === true }),
@@ -41,24 +60,39 @@ export function inboxReviewKey(review) {
   return JSON.stringify(review);
 }
 
-export function createInboxCoordinator({ review, save, now = Date.now, restored = null, stageTimeoutMs = 30_000 }) {
+export function createInboxCoordinator({ review, save, now = Date.now, restored = null, stageTimeoutMs = 30_000, saveTimeoutMs = 10_000, concurrencyCapability = null }) {
   if (typeof save !== 'function') fail('durable-storage-required');
   if (!Number.isFinite(stageTimeoutMs) || stageTimeoutMs < 1 || stageTimeoutMs > 120_000) fail('stage-timeout-invalid');
+  if (!Number.isFinite(saveTimeoutMs) || saveTimeoutMs < 1 || saveTimeoutMs > 120_000) fail('save-timeout-invalid');
   const frozen = createInboxReview(review, review.reviewedAt ?? now());
   const key = inboxReviewKey(frozen);
+  const concurrency = frozen.mutationConcurrency ?? 1;
+  // Only the trusted runtime may supply this admission policy. Never read it
+  // from page messages, a checkpoint, or reviewed client settings.
+  if (concurrencyCapability !== null && !record(concurrencyCapability)) fail('concurrent-mutations-unavailable');
+  const capability = concurrencyCapability ? clone(concurrencyCapability) : null;
+  if (concurrency > 1 && (!record(capability) || capability.version !== 1
+    || capability.accountId !== frozen.accountId
+    || !Number.isInteger(capability.maxConcurrentMutations) || capability.maxConcurrentMutations < concurrency
+    || capability.maxConcurrentMutations > INBOX_COORDINATOR_CAPABILITIES.maxConcurrentMutations
+    || !Number.isFinite(capability.expiresAt) || capability.expiresAt <= now())) fail('concurrent-mutations-unavailable');
   let state = {
     version: 1, review: clone(frozen), status: 'review', reason: null,
     tasks: frozen.threadIds.map((threadId, index) => ({
-      threadId, workerIndex: Math.min(frozen.workerCount - 1, Math.floor(index / Math.ceil(frozen.threadIds.length / frozen.workerCount))),
+      threadId, workerIndex: frozen.assignmentMode === 'batches' ? index % frozen.workerCount
+        : Math.min(frozen.workerCount - 1, Math.floor(index / Math.ceil(frozen.threadIds.length / frozen.workerCount))),
+      ...(frozen.assignmentMode === 'batches' ? { batchIndex: Math.floor(index / frozen.workerCount) } : {}),
       status: 'pending', messageRemovals: 0, reactionRemovals: 0, reason: null,
     })),
     pendingMutation: null, nextActionAt: 0,
+    ...(concurrency > 1 ? { pendingMutations: [] } : {}),
   };
   if (restored) {
     if (!record(restored) || restored.version !== 1 || inboxReviewKey(restored.review) !== key
       || !Array.isArray(restored.tasks) || restored.tasks.length !== frozen.threadIds.length
       || restored.tasks.some((task, index) => !record(task) || task.threadId !== frozen.threadIds[index]
         || task.workerIndex !== state.tasks[index].workerIndex
+        || task.batchIndex !== state.tasks[index].batchIndex
         || !['pending', 'running', ...TERMINAL].includes(task.status)
         || !Number.isSafeInteger(task.messageRemovals) || task.messageRemovals < 0
         || !Number.isSafeInteger(task.reactionRemovals) || task.reactionRemovals < 0)) fail('checkpoint-invalid');
@@ -76,15 +110,40 @@ export function createInboxCoordinator({ review, save, now = Date.now, restored 
       task.status = 'uncertain'; task.reason = 'interrupted-mutation';
       state.pendingMutation = { threadId: task.threadId, kind: restored.pendingMutation.kind, phase: 'uncertain' };
     }
+    if (restored.pendingMutations !== undefined) {
+      if (concurrency === 1 || !Array.isArray(restored.pendingMutations)
+        || restored.pendingMutations.length > concurrency || restored.pendingMutation) fail('checkpoint-invalid');
+      const seen = new Set();
+      state.pendingMutations = restored.pendingMutations.map((pending) => {
+        if (!record(pending) || !['message', 'reaction'].includes(pending.kind)
+          || !['prepared', 'dispatched', 'uncertain'].includes(pending.phase)
+          || seen.has(pending.threadId)) fail('checkpoint-invalid');
+        const task = state.tasks.find((item) => item.threadId === pending.threadId);
+        if (!task) fail('checkpoint-invalid');
+        seen.add(task.threadId); task.status = 'uncertain'; task.reason = 'interrupted-mutation';
+        return { threadId: task.threadId, kind: pending.kind, phase: 'uncertain' };
+      });
+    }
     state.status = 'paused'; state.reason = 'review-required-after-restart';
   }
   let tail = Promise.resolve();
   let authorized = false;
   let generation = 0;
   let abort = new AbortController();
+  let storageTimeout = null;
   const leases = new Map();
   const attempts = new Set();
+  const inFlight = new Map();
+  const pendingFor = (threadId) => state.pendingMutation?.threadId === threadId
+    || state.pendingMutations?.some((item) => item.threadId === threadId);
+  const hasPending = () => !!state.pendingMutation || !!state.pendingMutations?.length;
   const snapshot = () => clone(state);
+  function currentBatch() {
+    if (frozen.assignmentMode !== 'batches') return null;
+    const unfinished = state.tasks.find((task) => !TERMINAL.has(task.status)
+      || leases.has(task.threadId) || pendingFor(task.threadId));
+    return unfinished?.batchIndex ?? null;
+  }
   const serial = (fn) => {
     const result = tail.then(fn);
     tail = result.catch(() => {});
@@ -96,19 +155,46 @@ export function createInboxCoordinator({ review, save, now = Date.now, restored 
     // Retain leases: a missing heartbeat cannot prove an old worker stopped.
   }
   async function persist() {
-    try { await save(snapshot()); }
-    catch (error) { revoke('storage-failed'); throw error; }
+    // A timed-out adapter may still write later. Never start a newer write in
+    // this instance after that point, even if the old promise eventually settles.
+    if (storageTimeout) throw storageTimeout;
+    try {
+      const checkpoint = snapshot();
+      await new Promise((resolve, reject) => {
+        let settled = false;
+        const deadline = now() + saveTimeoutMs;
+        const finish = (error) => {
+          if (settled) return;
+          settled = true; clearTimeout(timer);
+          if (error) reject(error); else resolve();
+        };
+        const expired = () => {
+          storageTimeout = new Error('storage-timeout');
+          finish(storageTimeout);
+        };
+        const timer = setTimeout(expired, saveTimeoutMs);
+        Promise.resolve().then(() => save(checkpoint)).then(() => {
+          if (settled) return;
+          if (now() >= deadline) expired(); else finish();
+        }, (error) => finish(error instanceof Error ? error : new Error('storage-failed')));
+      });
+    } catch (error) {
+      revoke(storageTimeout ? 'storage-timeout' : 'storage-failed', state.status === 'stopped' ? 'stopped' : 'paused');
+      throw error;
+    }
   }
   function active(accountId) {
+    if (storageTimeout) fail('storage-timeout');
     if (accountId !== frozen.accountId) { revoke('account-changed'); fail('account-changed'); }
     if (now() >= frozen.expiresAt) { revoke('approval-expired'); fail('approval-expired'); }
+    if (concurrency > 1 && now() >= capability.expiresAt) { revoke('concurrency-capability-expired'); fail('concurrency-capability-expired'); }
     if (!authorized || state.status !== 'running') fail(state.reason || 'approval-required');
   }
   function taskFor(lease) {
     if (!lease || leases.get(lease.threadId) !== lease || lease.generation !== generation) fail('stale-worker');
     return state.tasks.find((task) => task.threadId === lease.threadId);
   }
-  function boundedStage(callback, signal, cancelOnAbort) {
+  function boundedStage(callback, signal, cancelOnAbort, startImmediately = false) {
     return new Promise((resolve, reject) => {
       let settled = false;
       const finish = (error, value) => {
@@ -123,16 +209,117 @@ export function createInboxCoordinator({ review, save, now = Date.now, restored 
         signal.addEventListener('abort', cancelled, { once: true });
         if (signal.aborted) { cancelled(); return; }
       }
-      Promise.resolve().then(callback).then((value) => finish(null, value), (error) => finish(error));
+      if (startImmediately) {
+        try { Promise.resolve(callback()).then((value) => finish(null, value), (error) => finish(error)); }
+        catch (error) { finish(error); }
+      } else Promise.resolve().then(callback).then((value) => finish(null, value), (error) => finish(error));
     });
+  }
+  async function concurrentMutation(lease, { accountId, actionId, kind, inspect, execute, delayMs }) {
+    const operation = await serial(async () => {
+      active(accountId);
+      const task = taskFor(lease);
+      if (!identity(actionId) || !['message', 'reaction'].includes(kind)) fail('mutation-invalid');
+      if (kind === 'reaction' && !frozen.removeOwnReactions) fail('reaction-not-approved');
+      if (kind === 'message' && frozen.limit !== null && task.messageRemovals >= frozen.limit) fail('message-limit-reached');
+      if (!Number.isFinite(delayMs) || delayMs < 0 || typeof inspect !== 'function' || typeof execute !== 'function') fail('mutation-adapter-invalid');
+      if (state.pendingMutation || state.pendingMutations.some((item) => item.phase === 'uncertain')) fail('reconciliation-required');
+      if (inFlight.has(lease.threadId)) fail('thread-mutation-in-flight');
+      if (inFlight.size >= concurrency) fail('mutation-capacity');
+      if (now() < state.nextActionAt) fail('account-pacing');
+      const actionKey = `${lease.threadId}:${kind}:${actionId}`;
+      if (attempts.has(actionKey)) fail('duplicate-action');
+      const item = { task, actionKey, signal: abort.signal, dispatched: false, marker: null };
+      inFlight.set(lease.threadId, item);
+      return item;
+    });
+    try {
+      let evidence;
+      try {
+        evidence = await boundedStage(() => inspect({ threadId: lease.threadId, signal: operation.signal, reviewedAt: frozen.reviewedAt }), operation.signal, true);
+      } catch (error) {
+        if (state.status === 'running') revoke(error.message === 'worker-response-timeout' ? 'worker-response-timeout' : 'inspection-failed');
+        throw error;
+      }
+      let execution;
+      await serial(async () => {
+        active(accountId); taskFor(lease);
+        if (['challenge', 'action-block', 'rate-limit', 'session-expired'].includes(evidence?.restriction)) {
+          revoke(evidence.restriction); fail(evidence.restriction);
+        }
+        if (evidence?.accountId !== frozen.accountId || evidence?.threadId !== lease.threadId
+          || evidence?.ownershipVerified !== true || evidence?.withinReviewedBoundary !== true
+          || evidence?.exactTarget !== true) fail('target-not-proven');
+        if (now() < state.nextActionAt) fail('account-pacing');
+        operation.marker = { threadId: lease.threadId, kind, phase: 'prepared' };
+        state.pendingMutations.push(operation.marker);
+        await persist();
+        active(accountId); taskFor(lease);
+        attempts.add(operation.actionKey);
+        operation.marker.phase = 'dispatched';
+        await persist();
+        active(accountId); taskFor(lease);
+        if (now() < state.nextActionAt) fail('account-pacing');
+        // Anchor spacing to actual adapter invocation, after every awaited save.
+        // Start synchronously inside this serial admission, but never hold the
+        // state queue while its execution/verification promise is outstanding.
+        execution = boundedStage(() => {
+          active(accountId); taskFor(lease);
+          state.nextActionAt = now() + delayMs;
+          operation.dispatched = true;
+          return execute({ threadId: lease.threadId, signal: operation.signal, evidence });
+        }, operation.signal, false, true);
+      });
+      let result;
+      try {
+        result = await execution;
+      } catch (error) {
+        if (!operation.dispatched) throw error;
+        result = { verified: false };
+      }
+      return await serial(async () => {
+        // Settlement is allowed after revocation. Each exact dispatched action
+        // owns its own marker and may report a verified outcome only once.
+        if (result?.verified === true) {
+          operation.task[kind === 'message' ? 'messageRemovals' : 'reactionRemovals'] += 1;
+          state.pendingMutations = state.pendingMutations.filter((item) => item !== operation.marker);
+        } else {
+          operation.task.status = 'uncertain'; operation.task.reason = 'removal-not-proven';
+          operation.marker.phase = 'uncertain';
+          revoke('removal-not-proven', state.status === 'stopped' ? 'stopped' : 'paused');
+        }
+        if (['challenge', 'action-block', 'rate-limit', 'session-expired'].includes(result?.restriction)) {
+          revoke(result.restriction, state.status === 'stopped' ? 'stopped' : 'paused');
+        }
+        await persist();
+        return { verified: result?.verified === true, state: snapshot() };
+      });
+    } finally {
+      await serial(async () => {
+        inFlight.delete(lease.threadId);
+        if (!operation.dispatched && operation.marker && !storageTimeout && state.reason !== 'storage-failed') {
+          state.pendingMutations = state.pendingMutations.filter((item) => item !== operation.marker);
+          await persist();
+        }
+      });
+    }
   }
   return Object.freeze({
     snapshot,
+    batchProgress: () => ({
+      mode: frozen.assignmentMode || 'contiguous',
+      currentBatchIndex: currentBatch(),
+      totalBatches: frozen.assignmentMode === 'batches' ? Math.ceil(frozen.threadIds.length / frozen.workerCount) : null,
+      preparedWorkerLimit: frozen.workerCount,
+      mutationConcurrency: concurrency,
+    }),
     approve: (reviewKey, accountId) => serial(async () => {
+      if (storageTimeout) fail('storage-timeout');
       if (reviewKey !== key || accountId !== frozen.accountId) fail('review-changed');
-      if (state.pendingMutation || leases.size) fail('reconciliation-required');
+      if (hasPending() || leases.size || inFlight.size) fail('reconciliation-required');
       if (state.status === 'stopped' || state.status === 'completed') fail('job-finished');
       if (now() >= frozen.expiresAt) fail('approval-expired');
+      if (concurrency > 1 && now() >= capability.expiresAt) fail('concurrency-capability-expired');
       authorized = true; abort = new AbortController(); state.status = 'running'; state.reason = null;
       await persist(); return snapshot();
     }),
@@ -140,12 +327,15 @@ export function createInboxCoordinator({ review, save, now = Date.now, restored 
       active(accountId);
       if (!Number.isInteger(workerIndex) || workerIndex < 0 || workerIndex >= frozen.workerCount) fail('worker-invalid');
       if ([...leases.values()].some((lease) => lease.workerIndex === workerIndex)) fail('worker-already-assigned');
-      const task = state.tasks.find((item) => item.workerIndex === workerIndex && item.status === 'pending');
+      const batch = currentBatch();
+      const task = state.tasks.find((item) => item.workerIndex === workerIndex && item.status === 'pending'
+        && (frozen.assignmentMode !== 'batches' || item.batchIndex === batch));
       if (!task) return null;
       const lease = Object.freeze({ threadId: task.threadId, workerIndex, generation });
       leases.set(task.threadId, lease); task.status = 'running'; await persist(); return lease;
     }),
-    mutate: (lease, { accountId, actionId, kind, inspect, execute, delayMs }) => serial(async () => {
+    mutate: (lease, options) => concurrency > 1 ? concurrentMutation(lease, options) : serial(async () => {
+      const { accountId, actionId, kind, inspect, execute, delayMs } = options;
       active(accountId);
       const task = taskFor(lease);
       if (!identity(actionId) || !['message', 'reaction'].includes(kind)) fail('mutation-invalid');
@@ -193,7 +383,8 @@ export function createInboxCoordinator({ review, save, now = Date.now, restored 
     }),
     finish: (lease, status, reason = null) => serial(async () => {
       const task = taskFor(lease);
-      if (!TERMINAL.has(status) || status === 'uncertain' || state.pendingMutation) fail('completion-invalid');
+      if (!TERMINAL.has(status) || status === 'uncertain' || state.pendingMutation
+        || pendingFor(lease.threadId) || inFlight.has(lease.threadId)) fail('completion-invalid');
       task.status = status; task.reason = reason; leases.delete(task.threadId);
       if (state.tasks.every((item) => TERMINAL.has(item.status))) {
         authorized = false;
@@ -207,11 +398,13 @@ export function createInboxCoordinator({ review, save, now = Date.now, restored 
     },
     retireWorker: (threadId, { terminated, reconciled = false } = {}) => serial(async () => {
       if (terminated !== true) fail('worker-termination-required');
-      if (state.pendingMutation?.threadId === threadId && reconciled !== true) fail('reconciliation-required');
+      if (inFlight.has(threadId)) fail('worker-settlement-required');
+      if (pendingFor(threadId) && reconciled !== true) fail('reconciliation-required');
       const task = state.tasks.find((item) => item.threadId === threadId);
       if (!task) fail('thread-not-reviewed');
       leases.delete(threadId);
       if (state.pendingMutation?.threadId === threadId) state.pendingMutation = null;
+      if (state.pendingMutations) state.pendingMutations = state.pendingMutations.filter((item) => item.threadId !== threadId);
       if (['running', 'partial', 'uncertain'].includes(task.status)) {
         task.status = 'skipped'; task.reason = 'worker-retired';
       }

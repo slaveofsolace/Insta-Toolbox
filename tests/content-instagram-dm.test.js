@@ -153,7 +153,7 @@ function createHarness(rows, {
     crypto: secureCrypto,
     document,
     getComputedStyle: (element) => ({
-      display: 'block',
+      display: element.justifyContent === 'normal' ? 'block' : 'flex',
       justifyContent: element.justifyContent,
       visibility: 'visible',
     }),

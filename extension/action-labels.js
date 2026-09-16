@@ -482,18 +482,31 @@
   function deepestMessageContainer(scroller) {
     let best = scroller;
     let bestCount = scroller?.children?.length || 0;
+    let messageContainer = null;
+    let messageCount = 0;
+    const isMessageRow = (element) => ['row', 'listitem'].includes(element?.getAttribute?.('role'))
+      || Boolean(element?.getAttribute?.('data-message-id') || element?.getAttribute?.('data-item-id'));
     const queue = [{ element: scroller, depth: 0 }];
     while (queue.length) {
       const { element, depth } = queue.shift();
       if (depth > 4) continue;
       const count = element?.children?.length || 0;
+      const directMessages = [...element?.children || []].filter(isMessageRow).length;
+      if (directMessages > messageCount) {
+        messageContainer = element;
+        messageCount = directMessages;
+      }
       if (count > bestCount) {
         best = element;
         bestCount = count;
       }
-      for (const child of element?.children || []) queue.push({ element: child, depth: depth + 1 });
+      for (const child of element?.children || []) {
+        if (!isMessageRow(child)) queue.push({ element: child, depth: depth + 1 });
+      }
     }
-    return best;
+    // Real rows outrank header/card child counts, including after a removal
+    // leaves fewer rows than the surrounding layout has children.
+    return messageContainer || best;
   }
 
   function hasMessageContent(row) {
@@ -508,16 +521,24 @@
     if ([...row?.querySelectorAll?.('[data-sent-by-me]') || []].some((element) => (
       String(element.getAttribute?.('data-sent-by-me')).toLowerCase() === 'false'
     ))) return false;
-    // Alignment belongs to the message wrapper, never a nested reaction or
-    // menu. Follow only an unbranched wrapper chain and stop at content.
+    // Alignment belongs to the horizontal message wrapper, never a nested
+    // reaction/menu or a column's vertical placement. Empty hidden spacers do
+    // not split that wrapper chain; real content branches still do.
     let element = row;
     let aligned = false;
     for (let depth = 0; element && depth <= MAX_HOVER_DEPTH; depth += 1) {
       if (depth > 0 && element.matches?.('[dir="auto"], img, video, audio, button, [role="button"]')) break;
       const style = view.getComputedStyle?.(element);
-      if (style?.justifyContent === 'flex-start') return false;
-      if (style?.justifyContent === 'flex-end') aligned = true;
-      const children = [...element.children || []];
+      const horizontal = !style?.flexDirection || style.flexDirection === 'row';
+      const flexLayout = !style?.display || ['flex', 'inline-flex'].includes(style.display);
+      if (horizontal && flexLayout && style?.direction !== 'rtl') {
+        if (style?.justifyContent === 'flex-start') return false;
+        if (style?.justifyContent === 'flex-end') aligned = true;
+      }
+      const children = [...element.children || []].filter((child) => !(
+        child.getAttribute?.('aria-hidden') === 'true'
+        && !hasMessageContent(child) && !visibleText(child)
+      ));
       if (children.length !== 1) break;
       element = children[0];
     }
@@ -835,12 +856,42 @@
     return sessionStop(expectedThreadId);
   }
 
-  function requireAuthorization(expectedThreadId, authorizationExpiresAt) {
+  function requireAuthorization(expectedThreadId, authorizationExpiresAt, actionGrant = false) {
     if (activeController?.signal.aborted) {
       throw new DOMException('The operation was stopped.', 'AbortError');
     }
     const reason = authorizationFailure(expectedThreadId, authorizationExpiresAt);
     if (reason) throw new Error(reason);
+    const adapter = activeExecution?.workerAdapter;
+    const authorized = !adapter || (actionGrant
+      ? adapter.assertAction({ threadId: expectedThreadId, candidate: workerCandidate(activeExecution.workerRow) })
+      : adapter.assertContext({ threadId: expectedThreadId })) === true;
+    if (!authorized) {
+      const error = new Error('The reviewed worker no longer owns this action.');
+      error.code = 'DM_WORKER_STOP';
+      throw error;
+    }
+  }
+
+  function workerCandidate(row) {
+    const timestamps = new Set();
+    const nodes = [row, ...row?.querySelectorAll?.('[data-timestamp-ms], [data-timestamp], time[datetime]') || []];
+    for (const element of nodes) {
+      for (const attribute of ['data-timestamp-ms', 'data-timestamp', 'datetime']) {
+        const raw = element?.getAttribute?.(attribute);
+        if (!raw) continue;
+        const numeric = Number(raw);
+        const timestamp = Number.isFinite(numeric)
+          ? (attribute === 'data-timestamp' && numeric < 100_000_000_000 ? numeric * 1_000 : numeric)
+          : Date.parse(raw);
+        if (Number.isFinite(timestamp) && timestamp > 0) timestamps.add(timestamp);
+      }
+    }
+    return Object.freeze({
+      key: stableMessageKey(row),
+      timestamp: timestamps.size === 1 ? [...timestamps][0] : null,
+      ownershipVerified: Boolean(row?.isConnected && sentByCurrentUser(row)),
+    });
   }
 
   async function openUnsendMenu(control, signal, expectedThreadId, authorizationExpiresAt) {
@@ -851,10 +902,10 @@
       return candidates.length === 1 ? { control: candidates[0] } : null;
     }, signal, 3_000);
     pending.catch(() => {});
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     activateControl(control);
     const result = await measurePhase('menuReadiness', () => pending);
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend option.');
     return result;
   }
@@ -896,16 +947,16 @@
       3_000,
     );
     pending.catch(() => {});
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     activateControl(menuControl);
     const result = await measurePhase('confirmationReadiness', () => pending);
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend confirmation.');
     const dialogButton = result?.control;
     if (!dialogButton) return false;
 
     const before = removalEvidence(row);
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     try {
       activateControl(dialogButton);
       // Stop prevents the next click, but a dispatched mutation still needs
@@ -1396,6 +1447,17 @@
     return (text || 'Sent message').slice(0, 90);
   }
 
+  function retainedMessageSignature(row) {
+    const content = [...row?.querySelectorAll?.(
+      '[dir="auto"], img, video, audio, a[href], time[datetime], [data-timestamp]',
+    ) || []].map((element) => [
+      element.tagName || '',
+      element.matches?.('[dir="auto"]') ? visibleText(element) : '',
+      ...['href', 'src', 'datetime', 'data-timestamp'].map((name) => element.getAttribute?.(name) || ''),
+    ]);
+    return JSON.stringify([stableMessageKey(row), preview(row), content]);
+  }
+
   function removalEvidence(row) {
     const parent = row?.parentElement || null;
     const root = row?.closest?.("[data-pagelet='IGDMessagesList']") || parent;
@@ -1406,6 +1468,7 @@
       }
       if (element === root) break;
     }
+    const siblings = [...parent?.children || []].filter((element) => element !== row);
     return {
       key: stableMessageKey(row),
       text: preview(row),
@@ -1413,7 +1476,8 @@
       parent,
       root,
       scrollers,
-      siblings: [...parent?.children || []].filter((element) => element !== row),
+      siblings,
+      siblingSignatures: siblings.map(retainedMessageSignature),
     };
   }
 
@@ -1442,11 +1506,14 @@
       !element.isConnected || Math.abs((Number(element.scrollTop) || 0) - top) > 2
     ))) return false;
     if (before.key) return true;
-    // Without a logical ID, require the same local neighborhood and no copy
-    // of the original content. Scrolling/replaced containers are not removal.
-    return before.parent.children.length === before.siblings.length
-      && before.siblings.every((element) => element.isConnected && element.parentElement === before.parent)
-      && ![...before.parent.children || []].some((candidate) => preview(candidate) === before.text);
+    // Without a logical ID, prove the exact row disappeared while every
+    // neighboring message stayed unchanged and in order. Duplicate text and
+    // media-only previews do not make a surviving neighbor the removed row.
+    const remaining = [...before.parent.children || []];
+    return remaining.length === before.siblings.length
+      && before.siblings.every((element, index) => element === remaining[index]
+        && element.isConnected && element.parentElement === before.parent
+        && retainedMessageSignature(element) === before.siblingSignatures?.[index]);
   }
 
   function normalizePlaceholder(text) {
@@ -1543,6 +1610,16 @@
 
   async function start(options = {}) {
     if (activeController) return snapshot();
+    const workerAdapter = options.workerAdapter;
+    if (workerAdapter !== undefined && (!workerAdapter
+      || typeof workerAdapter.execute !== 'function' || typeof workerAdapter.assertAction !== 'function'
+      || typeof workerAdapter.assertContext !== 'function'
+      || !workerAdapter.signal || typeof workerAdapter.signal.aborted !== 'boolean'
+      || typeof workerAdapter.signal.addEventListener !== 'function'
+      || typeof workerAdapter.signal.removeEventListener !== 'function')) {
+      publish({ status: 'error', message: 'The reviewed worker adapter is unavailable.', canStop: false });
+      return snapshot();
+    }
     const plan = validatePlan(options.plan);
     if (!plan) {
       publish({
@@ -1594,6 +1671,8 @@
     const controller = new AbortController();
     activeController = controller;
     activeExecution = {
+      workerAdapter,
+      workerRow: null,
       speed: plan.speed,
       onPhaseTiming: typeof options.onPhaseTiming === 'function' ? options.onPhaseTiming : null,
       phaseTimings: {
@@ -1602,6 +1681,9 @@
       },
     };
     const signal = controller.signal;
+    const abortWorker = () => controller.abort(workerAdapter.signal.reason || 'Worker stopped');
+    workerAdapter?.signal.addEventListener('abort', abortWorker, { once: true });
+    if (workerAdapter?.signal.aborted) abortWorker();
     const unwatch = watchThread(controller, expectedThreadId);
     const maxFailures = Math.max(1, Math.min(10, Number(options.maxConsecutiveFailures) || DEFAULT_MAX_FAILURES));
     const authorizationExpiresAt = plan.expiresAt;
@@ -1731,14 +1813,35 @@
 
         publish({ status: 'running', current: label, message: `Unsending message ${processed + 1}…` });
         let removalVerified = false;
+        let workerStopReason = null;
         try {
           // unsendRow already proves the removal: the confirmation dialog
           // closed and the row either went away or lost its content and menu.
           // Re-checking isConnected here rejected every success, because
           // Instagram leaves an "unsent" placeholder row in the thread.
-          await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+          if (workerAdapter) {
+            activeExecution.workerRow = row;
+            const result = await workerAdapter.execute({
+              candidate: workerCandidate(row),
+              threadId: expectedThreadId,
+              signal,
+              execute: async () => {
+                await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+                return { verified: true };
+              },
+            });
+            if (result?.verified !== true) {
+              const error = new Error('The worker removal outcome is uncertain. Review this conversation.');
+              error.code = 'DM_OUTCOME_UNCERTAIN';
+              throw error;
+            }
+            workerStopReason = result.stopReason || null;
+          } else {
+            await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+          }
           removalVerified = true;
         } catch (error) {
+          if (workerAdapter || error?.code === 'DM_WORKER_STOP') throw error;
           if (error?.code === 'DM_OUTCOME_UNCERTAIN') throw error;
           if (signal.aborted) throw error;
           retryAttempts += 1;
@@ -1787,6 +1890,7 @@
             current: null,
             message: `${processed} message${processed === 1 ? '' : 's'} unsent`,
           });
+          if (workerStopReason) controller.abort(workerStopReason);
         }
       }
 
@@ -1844,6 +1948,7 @@
         });
       }
     } finally {
+      workerAdapter?.signal.removeEventListener('abort', abortWorker);
       unwatch();
       if (activeController === controller) activeController = null;
       activeExecution = null;
@@ -1905,6 +2010,7 @@
       validatePlan,
       watchThread,
       requireAuthorization,
+      workerCandidate,
     });
   }
   Object.defineProperty(globalThis, 'InstaToolboxDmThreadUnsender', {

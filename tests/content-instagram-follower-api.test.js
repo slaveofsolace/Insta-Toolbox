@@ -9,6 +9,39 @@ const [actionLabelsSource, inspectorSource] = await Promise.all([
   readFile(new URL('../extension/content-instagram.js', import.meta.url), 'utf8'),
 ]);
 
+test('partial diagnostics retain exact counts and observed pagination reasons in summary and downloads', () => {
+  const inspector = createInspector();
+  const workspace = {
+    subjectUsername: 'fixture.owner', followers: [{ username: 'one' }], following: [{ username: 'two' }],
+    verified: { followers: true, following: true }, complete: { followers: false, following: false },
+    expectedCounts: { followers: 3, following: 2 }, pages: { followers: 1, following: 1 },
+    reasons: { followers: 'count-mismatch', following: 'instagram-limited-list' },
+  };
+  const summary = inspector.followerComparisonSummary(workspace);
+  assert.equal(summary.complete, false);
+  assert.match(summary.details[0], /Followers: 1 of 3 read.*cause is unknown/);
+  assert.match(summary.details[1], /Following: 1 of 2 read.*Instagram marked this list as limited/);
+  const record = inspector.followerComparisonRecord(workspace, {});
+  assert.equal(record.expectedCounts.followers, 3);
+  assert.equal(record.pages.followers, 1);
+  assert.equal(record.reasons.following, 'instagram-limited-list');
+  assert.equal(record.partial, true);
+  const report = inspector.followerComparisonReport(workspace, {});
+  assert.match(report, /Followers: 1 of 3 read/);
+  assert.match(report, /cause is unknown/);
+});
+
+test('diagnostics reject invented reasons and invalid counts rather than assert completeness', () => {
+  const inspector = createInspector();
+  const diagnostics = inspector.normalizeFollowerDiagnostics({ expectedCounts: { followers: -1, following: Infinity }, pages: { followers: '3' }, reasons: { followers: 'deactivated-users', following: 'age-blocked' } });
+  assert.equal(diagnostics.expectedCounts.followers, null);
+  assert.equal(diagnostics.expectedCounts.following, null);
+  assert.equal(diagnostics.pages.followers, null);
+  assert.equal(diagnostics.reasons.followers, '');
+  assert.equal(diagnostics.reasons.following, '');
+  assert.equal(inspector.followerComparisonSummary(diagnostics).complete, false);
+});
+
 function response(data, status = 200) {
   return {
     ok: status >= 200 && status < 300,

@@ -37,6 +37,7 @@
     "dist:mac": "pnpm run assemble && pnpm run build:desktop-assets && electron-builder --mac dmg zip --universal --publish never",
     "benchmark:zip": "node scripts/benchmark-zip-import.mjs",
     "qa:extension": "node scripts/run-extension-acceptance.mjs",
+    "qa:background": "node scripts/background-acceptance.mjs",
     "qa:chrome": "node scripts/build-extension.mjs && node scripts/chrome-pairing-acceptance.mjs",
     "qa:mac-package": "node scripts/verify-macos-package.mjs",
     "qa:browser:update": "node scripts/assemble-app.mjs && node scripts/run-browser-qa.mjs --update",
