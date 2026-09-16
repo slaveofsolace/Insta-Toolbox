@@ -273,7 +273,13 @@ export function createNativeInboxDiscovery({
         active = true; context.signal = navigationSignal;
         try {
           guard(context);
-          if (inboxThreadId(href()) !== threadId) {
+          invalidatePane();
+          const currentPane = readyMessagePane();
+          const reusablePane = verifiedPane?.threadId === threadId
+            && currentPane?.pane === verifiedPane.pane && inboxThreadId(href()) === threadId;
+          if (!reusablePane) {
+            // A fresh reviewed run cannot inherit an older navigator's pane
+            // proof. Re-enter through the native inbox even if its URL is open.
             verifiedPane = null;
             const evidence = [...navigationEvidence.get(threadId).values()][0];
             const current = inboxThreadId(href());

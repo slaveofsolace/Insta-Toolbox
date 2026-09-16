@@ -1803,8 +1803,10 @@
     };
   }
 
-  async function waitForRelationship(expectedRelationships, username, timeoutMs = 5_000) {
+  async function waitForRelationship(expectedRelationships, username, timeoutMs = 5_000, checkContext = null) {
     return waitFor(() => {
+      const contextStop = checkContext?.();
+      if (contextStop) return { contextStop };
       const session = inspectSession();
       if (session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited) {
         return { sessionStop: session };
@@ -1817,7 +1819,7 @@
     }, timeoutMs);
   }
 
-  async function performReviewedProfileAction(item) {
+  async function performReviewedProfileAction(item, runtime = {}) {
     const username = normalizeUsername(item?.username);
     const action = String(item?.action || '');
     const token = String(item?.resolutionToken || '');
@@ -1825,9 +1827,59 @@
       return { unexpectedUi: true, reason: 'invalid-live-action-request' };
     }
 
+    // Only an isolated caller can supply these dependencies. The message
+    // router deliberately passes the item alone, never options from a payload.
+    const { assertAuthorized, assertContext, signal } = runtime || {};
+    const guarded = assertAuthorized !== undefined || assertContext !== undefined || signal !== undefined;
+    if ((runtime !== null && typeof runtime !== 'object')
+      || (assertAuthorized !== undefined && typeof assertAuthorized !== 'function')
+      || (assertContext !== undefined && typeof assertContext !== 'function')
+      || (signal !== undefined && (!signal || typeof signal.aborted !== 'boolean'
+        || typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function'))) {
+      return { unexpectedUi: true, reason: 'profile-runtime-invalid', dispatched: false, uncertain: false };
+    }
+    let dispatched = false;
+    function permits(callback, phase) {
+      if (!callback) return true;
+      try {
+        const result = callback(Object.freeze({ action, username, phase }));
+        // An async answer is not a synchronous dispatch grant. Handle rejected
+        // promises without allowing them to become unhandled runtime errors.
+        if (result && typeof result.then === 'function') Promise.resolve(result).catch(() => {});
+        return result === true;
+      } catch { return false; }
+    }
+    function contextProblem(phase = 'settlement') {
+      if (guarded && normalizeUsername(location.pathname) !== username) return 'profile-context-changed';
+      return permits(assertContext, phase) ? null : 'profile-context-changed';
+    }
+    function dispatchProblem(phase) {
+      if (signal?.aborted) return 'profile-action-cancelled';
+      const problem = contextProblem(phase)
+        || (permits(assertAuthorized, phase) ? null : 'profile-approval-revoked');
+      return problem || (signal?.aborted ? 'profile-action-cancelled' : null);
+    }
+    function stopped(reason, detail = {}) {
+      return { unexpectedUi: true, reason, ...detail,
+        ...(guarded ? { dispatched, uncertain: dispatched, needsAttention: true } : {}) };
+    }
+    function preflight(result) {
+      return { ...result, ...(guarded ? { dispatched: false, uncertain: false } : {}) };
+    }
+    async function settleRelationship(expected) {
+      try { return await waitForRelationship(expected, username, 5_000, contextProblem); }
+      catch { return { contextStop: 'profile-outcome-unavailable' }; }
+    }
+    function completed(result) {
+      const problem = contextProblem();
+      if (problem) return stopped(problem);
+      return { ...result, ...(guarded ? { dispatched, uncertain: false,
+        ...(signal?.aborted ? { needsAttention: true, interruptionReason: 'profile-action-cancelled' } : {}) } : {}) };
+    }
+
     const session = inspectSession();
     if (session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited) {
-      return session;
+      return preflight(session);
     }
 
     pruneProfileResolutions();
@@ -1840,7 +1892,7 @@
       || resolution.relationship !== item.expectedRelationship
       || !resolution.control?.isConnected
     ) {
-      return { ambiguous: true, reason: 'profile-resolution-expired-or-changed' };
+      return preflight({ ambiguous: true, reason: 'profile-resolution-expired-or-changed' });
     }
 
     const current = relationshipFromButtons(username);
@@ -1853,38 +1905,58 @@
       || current.control !== resolution.control
       || normalizeUsername(location.pathname) !== username
     ) {
-      return { ambiguous: true, reason: 'profile-control-changed-before-action' };
+      return preflight({ ambiguous: true, reason: 'profile-control-changed-before-action' });
     }
 
     const dialogsBeforeAction = visibleDialogs();
     if (dialogsBeforeAction.length) {
-      return { unexpectedUi: true, reason: 'preexisting-dialog-before-live-action' };
+      return preflight({ unexpectedUi: true, reason: 'preexisting-dialog-before-live-action' });
     }
 
-    activateLiveControl(current.control);
+    const initialStop = dispatchProblem('profile-control');
+    if (initialStop) return stopped(initialStop);
+    // Opening Following's menu is not the account mutation. Follow and the
+    // final Unfollow control are; once dispatched, settle without another click.
+    dispatched = action === 'follow';
+    try { activateLiveControl(current.control); }
+    catch { return stopped('profile-action-dispatch-error'); }
     if (action === 'follow') {
-      const completion = await waitForRelationship(['following', 'requested'], username);
-      if (completion?.sessionStop) return completion.sessionStop;
-      if (!completion) return { unexpectedUi: true, reason: 'follow-not-confirmed' };
-      return {
+      const completion = await settleRelationship(['following', 'requested']);
+      if (completion?.contextStop) return stopped(completion.contextStop);
+      if (completion?.sessionStop) return guarded ? stopped('profile-session-changed', completion.sessionStop) : completion.sessionStop;
+      if (!completion) return stopped('follow-not-confirmed');
+      return completed({
         result: completion.relationship === 'requested' ? 'follow-requested' : 'followed',
         relationship: completion.relationship,
-      };
+      });
     }
 
     const excludedDialogs = new Set(dialogsBeforeAction);
-    const confirmation = await waitFor(
-      () => exactUnfollowConfirmation(username, excludedDialogs),
-      3_000,
-    );
-    if (!confirmation) {
-      return { unexpectedUi: true, reason: 'unfollow-confirmation-not-exact' };
+    let ready;
+    try {
+      ready = await waitFor(() => {
+        const problem = dispatchProblem('unfollow-confirmation-wait');
+        if (problem) return { stopped: problem };
+        const control = exactUnfollowConfirmation(username, excludedDialogs);
+        return control ? { control } : null;
+      }, 3_000, signal);
+    } catch { return stopped('unfollow-confirmation-unavailable'); }
+    const confirmationStop = ready?.stopped || dispatchProblem('unfollow-confirmation');
+    if (confirmationStop) return stopped(confirmationStop);
+    if (!ready?.control) {
+      return stopped('unfollow-confirmation-not-exact');
     }
-    activateLiveControl(confirmation);
-    const completion = await waitForRelationship(['not-following'], username);
-    if (completion?.sessionStop) return completion.sessionStop;
-    if (!completion) return { unexpectedUi: true, reason: 'unfollow-not-confirmed' };
-    return { result: 'unfollowed', relationship: completion.relationship };
+    if (!ready.control.isConnected || exactUnfollowConfirmation(username, excludedDialogs) !== ready.control) {
+      return stopped('unfollow-confirmation-not-exact');
+    }
+    dispatched = true;
+    try { activateLiveControl(ready.control); }
+    catch { return stopped('profile-action-dispatch-error'); }
+    const completion = await settleRelationship(['not-following']);
+    if (completion?.contextStop) return stopped(completion.contextStop);
+    if (completion?.sessionStop) return guarded ? stopped('profile-session-changed', completion.sessionStop) : completion.sessionStop;
+    if (!completion) return stopped('unfollow-not-confirmed');
+    return completed({ result: 'unfollowed', relationship: completion.relationship });
   }
 
   function captureVisibleAccounts(expectedListType = '') {

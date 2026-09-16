@@ -688,7 +688,16 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           }, signal);
           const own = ownRows(dialog, selectedEmoji);
           if (own.length !== 1) {
-            close(dialog, threadId, accountId, signal);
+            try {
+              close(dialog, threadId, accountId, signal);
+              await wait(() => {
+                guard(threadId, accountId, signal);
+                return !visible(dialog);
+              }, signal);
+            } catch (error) {
+              if (signal?.aborted) throw error;
+              throw Object.assign(new Error('reaction-dialog-close-unavailable'), { needsAttention: true });
+            }
             return { verified: false, skipped: true, reason: own.length ? 'ownership-ambiguous' : 'not-my-reaction' };
           }
           const others = JSON.stringify(otherRows(dialog, selectedEmoji));
@@ -747,7 +756,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           return { verified: true, skipped: false, removed: 1 };
         } catch (error) {
           if (dispatched) throw uncertain('Reaction removal could not be verified. Check this message before retrying.');
-          if (dialog && visible(dialog)) {
+          if (dialog && visible(dialog) && error?.needsAttention !== true) {
             try { close(dialog, threadId, accountId, signal); } catch { /* Leave the native dialog for review. */ }
           }
           throw error;
@@ -4929,8 +4938,10 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     };
   }
 
-  async function waitForRelationship(expectedRelationships, username, timeoutMs = 5_000) {
+  async function waitForRelationship(expectedRelationships, username, timeoutMs = 5_000, checkContext = null) {
     return waitFor(() => {
+      const contextStop = checkContext?.();
+      if (contextStop) return { contextStop };
       const session = inspectSession();
       if (session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited) {
         return { sessionStop: session };
@@ -4943,7 +4954,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     }, timeoutMs);
   }
 
-  async function performReviewedProfileAction(item) {
+  async function performReviewedProfileAction(item, runtime = {}) {
     const username = normalizeUsername(item?.username);
     const action = String(item?.action || '');
     const token = String(item?.resolutionToken || '');
@@ -4951,9 +4962,59 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       return { unexpectedUi: true, reason: 'invalid-live-action-request' };
     }
 
+    // Only an isolated caller can supply these dependencies. The message
+    // router deliberately passes the item alone, never options from a payload.
+    const { assertAuthorized, assertContext, signal } = runtime || {};
+    const guarded = assertAuthorized !== undefined || assertContext !== undefined || signal !== undefined;
+    if ((runtime !== null && typeof runtime !== 'object')
+      || (assertAuthorized !== undefined && typeof assertAuthorized !== 'function')
+      || (assertContext !== undefined && typeof assertContext !== 'function')
+      || (signal !== undefined && (!signal || typeof signal.aborted !== 'boolean'
+        || typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function'))) {
+      return { unexpectedUi: true, reason: 'profile-runtime-invalid', dispatched: false, uncertain: false };
+    }
+    let dispatched = false;
+    function permits(callback, phase) {
+      if (!callback) return true;
+      try {
+        const result = callback(Object.freeze({ action, username, phase }));
+        // An async answer is not a synchronous dispatch grant. Handle rejected
+        // promises without allowing them to become unhandled runtime errors.
+        if (result && typeof result.then === 'function') Promise.resolve(result).catch(() => {});
+        return result === true;
+      } catch { return false; }
+    }
+    function contextProblem(phase = 'settlement') {
+      if (guarded && normalizeUsername(location.pathname) !== username) return 'profile-context-changed';
+      return permits(assertContext, phase) ? null : 'profile-context-changed';
+    }
+    function dispatchProblem(phase) {
+      if (signal?.aborted) return 'profile-action-cancelled';
+      const problem = contextProblem(phase)
+        || (permits(assertAuthorized, phase) ? null : 'profile-approval-revoked');
+      return problem || (signal?.aborted ? 'profile-action-cancelled' : null);
+    }
+    function stopped(reason, detail = {}) {
+      return { unexpectedUi: true, reason, ...detail,
+        ...(guarded ? { dispatched, uncertain: dispatched, needsAttention: true } : {}) };
+    }
+    function preflight(result) {
+      return { ...result, ...(guarded ? { dispatched: false, uncertain: false } : {}) };
+    }
+    async function settleRelationship(expected) {
+      try { return await waitForRelationship(expected, username, 5_000, contextProblem); }
+      catch { return { contextStop: 'profile-outcome-unavailable' }; }
+    }
+    function completed(result) {
+      const problem = contextProblem();
+      if (problem) return stopped(problem);
+      return { ...result, ...(guarded ? { dispatched, uncertain: false,
+        ...(signal?.aborted ? { needsAttention: true, interruptionReason: 'profile-action-cancelled' } : {}) } : {}) };
+    }
+
     const session = inspectSession();
     if (session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited) {
-      return session;
+      return preflight(session);
     }
 
     pruneProfileResolutions();
@@ -4966,7 +5027,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       || resolution.relationship !== item.expectedRelationship
       || !resolution.control?.isConnected
     ) {
-      return { ambiguous: true, reason: 'profile-resolution-expired-or-changed' };
+      return preflight({ ambiguous: true, reason: 'profile-resolution-expired-or-changed' });
     }
 
     const current = relationshipFromButtons(username);
@@ -4979,38 +5040,58 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       || current.control !== resolution.control
       || normalizeUsername(location.pathname) !== username
     ) {
-      return { ambiguous: true, reason: 'profile-control-changed-before-action' };
+      return preflight({ ambiguous: true, reason: 'profile-control-changed-before-action' });
     }
 
     const dialogsBeforeAction = visibleDialogs();
     if (dialogsBeforeAction.length) {
-      return { unexpectedUi: true, reason: 'preexisting-dialog-before-live-action' };
+      return preflight({ unexpectedUi: true, reason: 'preexisting-dialog-before-live-action' });
     }
 
-    activateLiveControl(current.control);
+    const initialStop = dispatchProblem('profile-control');
+    if (initialStop) return stopped(initialStop);
+    // Opening Following's menu is not the account mutation. Follow and the
+    // final Unfollow control are; once dispatched, settle without another click.
+    dispatched = action === 'follow';
+    try { activateLiveControl(current.control); }
+    catch { return stopped('profile-action-dispatch-error'); }
     if (action === 'follow') {
-      const completion = await waitForRelationship(['following', 'requested'], username);
-      if (completion?.sessionStop) return completion.sessionStop;
-      if (!completion) return { unexpectedUi: true, reason: 'follow-not-confirmed' };
-      return {
+      const completion = await settleRelationship(['following', 'requested']);
+      if (completion?.contextStop) return stopped(completion.contextStop);
+      if (completion?.sessionStop) return guarded ? stopped('profile-session-changed', completion.sessionStop) : completion.sessionStop;
+      if (!completion) return stopped('follow-not-confirmed');
+      return completed({
         result: completion.relationship === 'requested' ? 'follow-requested' : 'followed',
         relationship: completion.relationship,
-      };
+      });
     }
 
     const excludedDialogs = new Set(dialogsBeforeAction);
-    const confirmation = await waitFor(
-      () => exactUnfollowConfirmation(username, excludedDialogs),
-      3_000,
-    );
-    if (!confirmation) {
-      return { unexpectedUi: true, reason: 'unfollow-confirmation-not-exact' };
+    let ready;
+    try {
+      ready = await waitFor(() => {
+        const problem = dispatchProblem('unfollow-confirmation-wait');
+        if (problem) return { stopped: problem };
+        const control = exactUnfollowConfirmation(username, excludedDialogs);
+        return control ? { control } : null;
+      }, 3_000, signal);
+    } catch { return stopped('unfollow-confirmation-unavailable'); }
+    const confirmationStop = ready?.stopped || dispatchProblem('unfollow-confirmation');
+    if (confirmationStop) return stopped(confirmationStop);
+    if (!ready?.control) {
+      return stopped('unfollow-confirmation-not-exact');
     }
-    activateLiveControl(confirmation);
-    const completion = await waitForRelationship(['not-following'], username);
-    if (completion?.sessionStop) return completion.sessionStop;
-    if (!completion) return { unexpectedUi: true, reason: 'unfollow-not-confirmed' };
-    return { result: 'unfollowed', relationship: completion.relationship };
+    if (!ready.control.isConnected || exactUnfollowConfirmation(username, excludedDialogs) !== ready.control) {
+      return stopped('unfollow-confirmation-not-exact');
+    }
+    dispatched = true;
+    try { activateLiveControl(ready.control); }
+    catch { return stopped('profile-action-dispatch-error'); }
+    const completion = await settleRelationship(['not-following']);
+    if (completion?.contextStop) return stopped(completion.contextStop);
+    if (completion?.sessionStop) return guarded ? stopped('profile-session-changed', completion.sessionStop) : completion.sessionStop;
+    if (!completion) return stopped('unfollow-not-confirmed');
+    return completed({ result: 'unfollowed', relationship: completion.relationship });
   }
 
   function captureVisibleAccounts(expectedListType = '') {
@@ -6163,7 +6244,13 @@ function createNativeInboxDiscovery({
         active = true; context.signal = navigationSignal;
         try {
           guard(context);
-          if (inboxThreadId(href()) !== threadId) {
+          invalidatePane();
+          const currentPane = readyMessagePane();
+          const reusablePane = verifiedPane?.threadId === threadId
+            && currentPane?.pane === verifiedPane.pane && inboxThreadId(href()) === threadId;
+          if (!reusablePane) {
+            // A fresh reviewed run cannot inherit an older navigator's pane
+            // proof. Re-enter through the native inbox even if its URL is open.
             verifiedPane = null;
             const evidence = [...navigationEvidence.get(threadId).values()][0];
             const current = inboxThreadId(href());
@@ -7155,6 +7242,7 @@ function mountUserscriptInboxPanel({
   const selectAll = create('button', 'Select all found', 'button quiet'); selectAll.type = 'button';
   const review = create('button', 'Review conversations', 'button danger'); review.type = 'button'; review.disabled = true;
   const pause = create('button', 'Pause', 'button quiet'); pause.type = 'button'; pause.hidden = true;
+  const resume = create('button', 'Review remaining', 'button quiet'); resume.type = 'button'; resume.hidden = true;
   const skip = create('button', 'Skip conversation', 'button quiet'); skip.type = 'button'; skip.hidden = true;
   const stop = create('button', 'Stop all', 'button danger'); stop.type = 'button'; stop.hidden = true;
   const results = create('ul', null, 'list list--compact');
@@ -7167,7 +7255,7 @@ function mountUserscriptInboxPanel({
   if (!window.navigator?.locks?.request) supportNote.textContent = 'Inbox cleanup is unavailable: this browser does not provide exclusive tab locks.';
   supportNote.hidden = !supportNote.textContent;
   controls.append(find, inbox);
-  const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, pause, skip, stop);
+  const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, resume, pause, skip, stop);
   container.append(note, section, acknowledgment, controls, inventoryStatus, list, supportNote, recovery, actions, storageNote, results);
 
   function context() {
@@ -7178,6 +7266,15 @@ function mountUserscriptInboxPanel({
       challenge: Boolean(value.restriction), rateLimited: false, actionBlocked: false, sessionExpired: false };
   }
   function announce(text) { onStatus(text); }
+  function remainingThreads() {
+    if (!checkpoint || !['paused', 'stopped'].includes(checkpoint.status)) return [];
+    let account;
+    try { account = context(); } catch { return []; }
+    if (!account.accountVerified || account.accountId !== checkpoint.review?.accountId) return [];
+    const found = new Set(inventory?.conversations.map(thread => thread.threadId) || []);
+    const remaining = checkpoint.tasks.filter(task => ['pending', 'partial'].includes(task.status)).map(task => task.threadId);
+    return remaining.length && remaining.every(id => found.has(id)) ? remaining : [];
+  }
   function updateControls() {
     inventoryStatus.hidden = !inventoryStatus.textContent;
     list.hidden = !rows.size;
@@ -7190,6 +7287,11 @@ function mountUserscriptInboxPanel({
     review.disabled = active || loading || loadFailed || !selected.size || !window.navigator?.locks?.request
       || (needsReconciliation && !reconciled.checked);
     review.textContent = `Review ${selected.size} conversation${selected.size === 1 ? '' : 's'}`;
+    const remaining = remainingThreads();
+    resume.hidden = active || !remaining.length;
+    resume.disabled = loading || loadFailed || !window.navigator?.locks?.request
+      || (needsReconciliation && !reconciled.checked);
+    resume.textContent = `Review ${remaining.length} remaining to resume`;
     stop.hidden = !active; pause.hidden = !active || !controller; skip.hidden = !active || !controller;
     for (const row of rows.values()) row.input.disabled = active;
   }
@@ -7241,6 +7343,7 @@ function mountUserscriptInboxPanel({
     renderCheckpoint(value);
     try { await save(value); storageNote.textContent = ''; storageNote.hidden = true; }
     catch (error) {
+      loadFailed = true;
       storageNote.textContent = 'Progress could not be saved. Cleanup stopped; the counts below include verified removals.';
       storageNote.hidden = false;
       throw error;
@@ -7259,7 +7362,7 @@ function mountUserscriptInboxPanel({
         || !Number.isSafeInteger(task.messageRemovals) || task.messageRemovals < 0)) throw new Error('inbox-checkpoint-invalid');
     renderCheckpoint(value);
     needsReconciliation = Boolean(value.pendingMutation || value.pendingMutations?.length
-      || !['completed', 'stopped'].includes(value.status)
+      || !['completed', 'stopped', 'paused'].includes(value.status)
       || value.tasks.some(task => ['running', 'uncertain'].includes(task.status)));
     recovery.hidden = !needsReconciliation;
     storageNote.textContent = needsReconciliation
@@ -7288,14 +7391,14 @@ function mountUserscriptInboxPanel({
     for (const [id, row] of rows) { selected.add(id); row.input.checked = true; }
     updateControls();
   });
-  review.addEventListener('click', async () => {
-    if (active || loading || loadFailed || busy() || !selected.size
+  async function startReview(threadIds) {
+    if (active || loading || loadFailed || busy() || !threadIds.length
       || (needsReconciliation && !reconciled.checked)) return;
     const epoch = ++operationEpoch;
     active = true; updateControls();
     let threadNavigator = null;
     try {
-      const captured = discovery.review({ threadIds: [...selected], scope: 'all' });
+      const captured = discovery.review({ threadIds, scope: 'all' });
       const { version, arrivalPolicy, ...base } = captured;
       const plan = createSingleTabInboxReview({ ...base, version: 2, messageWindow: 'during-run' });
       const key = inboxReviewKey(plan);
@@ -7336,7 +7439,9 @@ function mountUserscriptInboxPanel({
       }
       updateControls();
     }
-  });
+  }
+  review.addEventListener('click', () => startReview([...selected]));
+  resume.addEventListener('click', () => startReview(remainingThreads()));
   const stopAll = () => {
     if (!active) return false;
     operationEpoch += 1;
@@ -7536,9 +7641,880 @@ function createInboxCheckpointStore({ read, write, inspectAccount, timeoutMs = 1
 
 return Object.freeze({ createInboxCheckpointStore });
 })();
+localModules["src/core/presence.js"] = (() => {
+
+/**
+ * Presence: deterministic, account-bound planning for Live Like Me.
+ * Original implementation. No network, DOM, credentials, or action authority.
+ * Inputs describe observations; a future trusted adapter must revalidate them.
+ */
+const PRESENCE_VERSION = 1;
+const PRESENCE_CAPABILITIES = Object.freeze({
+  planning: true, preview: true, live: false, discovery: false,
+  scheduledExecution: false, likes: false, comments: false, messages: false,
+  background: false, ghostHandoff: false,
+});
+const ROUTINES = Object.freeze({
+  discover: Object.freeze({ name: 'Find my people', goal: 'discover', followLimit: 12, unfollowLimit: 0 }),
+  maintain: Object.freeze({ name: 'Stay connected', goal: 'maintain', followLimit: 6, unfollowLimit: 0 }),
+  curate: Object.freeze({ name: 'Make room', goal: 'curate', followLimit: 0, unfollowLimit: 12 }),
+});
+const DAY = 86_400_000;
+const MAX_ITEMS = 2_000;
+const RESERVED = new Set(['accounts', 'direct', 'explore', 'reels', 'stories', 'settings', 'api']);
+const RELATIONS = new Set(['following', 'not-following', 'requested', 'unknown']);
+const SOURCES = new Set(['manual', 'mutual-checker', 'managed-history']);
+const STOPS = new Set(['challenge', 'rate-limit', 'action-blocked', 'signed-out', 'uncertain']);
+
+function record(value, name) {
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new TypeError(`${name} must be a plain object.`);
+  }
+  return value;
+}
+function integer(value, min, max, fallback, name) {
+  const n = value === undefined ? fallback : value;
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < min || n > max) {
+    throw new TypeError(`${name} must be an integer from ${min} to ${max}.`);
+  }
+  return n;
+}
+function identifier(value, name) {
+  if (typeof value !== 'string' || !/^[1-9]\d{0,29}$/u.test(value)) {
+    throw new TypeError(`${name} must be a stable numeric ID string.`);
+  }
+  return value;
+}
+function timestamp(value, name) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError(`${name} must be an epoch-millisecond integer.`);
+  }
+  return value;
+}
+function bool(value, fallback, name) {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'boolean') throw new TypeError(`${name} must be true or false.`);
+  return value;
+}
+function list(value, name, max = MAX_ITEMS) {
+  if (!Array.isArray(value) || value.length > max) throw new TypeError(`${name} must contain at most ${max} items.`);
+  return value;
+}
+function strings(value, name, max = 30) {
+  return [...new Set(list(value, name, max).map((item) => {
+    if (typeof item !== 'string' || !item.trim() || item.length > 80) throw new TypeError(`Invalid ${name} item.`);
+    return item.trim().toLowerCase();
+  }))].sort();
+}
+function deepFreeze(value) {
+  for (const child of Object.values(value)) if (child && typeof child === 'object') deepFreeze(child);
+  return Object.freeze(value);
+}
+function normalizeHandle(value) {
+  const text = typeof value === 'string' ? value.trim().replace(/^@/u, '').toLowerCase() : '';
+  if (!/^[a-z0-9._]{1,30}$/u.test(text) || RESERVED.has(text)) throw new TypeError('Invalid Instagram username.');
+  return text;
+}
+
+/** Return a new allowlisted profile; imported enabled/authority fields are ignored. */
+function normalizeProfile(input = {}) {
+  const p = record(input, 'Profile');
+  if (p.version !== undefined && p.version !== PRESENCE_VERSION) throw new TypeError('Unsupported profile version.');
+  const goal = p.goal ?? 'discover';
+  if (!Object.hasOwn(ROUTINES, goal)) throw new TypeError('Unknown routine.');
+  const preset = ROUTINES[goal];
+  const timezone = p.timezone ?? 'UTC';
+  if (typeof timezone !== 'string' || timezone.length > 80) throw new TypeError('Invalid time zone.');
+  try { new Intl.DateTimeFormat('en', { timeZone: timezone }).format(0); }
+  catch { throw new TypeError('Invalid time zone.'); }
+  const window = record(p.window ?? { start: 540, end: 1200 }, 'Active window');
+  const start = integer(window.start, 0, 1439, 540, 'Start minute');
+  const end = integer(window.end, 0, 1439, 1200, 'End minute');
+  if (start === end) throw new TypeError('Choose a nonempty active window.');
+  return deepFreeze({
+    version: PRESENCE_VERSION,
+    accountId: identifier(p.accountId, 'Account ID'),
+    username: normalizeHandle(p.username), goal, timezone, window: { start, end },
+    topics: strings(p.topics ?? [], 'Topics'),
+    excludedTopics: strings(p.excludedTopics ?? [], 'Excluded topics'),
+    protectedIds: [...new Set(list(p.protectedIds ?? [], 'Protected IDs', 500)
+      .map((id) => identifier(id, 'Protected ID')))].sort(),
+    followLimit: integer(p.followLimit, 0, 50, preset.followLimit, 'Follow limit'),
+    unfollowLimit: integer(p.unfollowLimit, 0, 50, preset.unfollowLimit, 'Unfollow limit'),
+    waitDays: integer(p.waitDays, 1, 365, 7, 'Follow-up days'),
+    evidenceMaxAgeMinutes: integer(p.evidenceMaxAgeMinutes, 1, 1440, 30, 'Evidence age'),
+    skipPrivate: bool(p.skipPrivate, true, 'Skip private'),
+    keepMutuals: true, reviewRequired: true, liveEnabled: false,
+  });
+}
+
+/** Active windows are local wall time; waiting periods below use elapsed time. */
+function activeNow(profile, now) {
+  const p = normalizeProfile(profile);
+  timestamp(now, 'Now');
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: p.timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now);
+  const minute = Number(parts.find((x) => x.type === 'hour').value) * 60
+    + Number(parts.find((x) => x.type === 'minute').value);
+  const { start, end } = p.window;
+  return start < end ? minute >= start && minute < end : minute >= start || minute < end;
+}
+
+function normalizeCandidate(input) {
+  const c = record(input, 'Candidate');
+  const relation = c.relation ?? 'unknown';
+  if (!RELATIONS.has(relation)) throw new TypeError('Invalid relationship.');
+  const source = c.source ?? 'manual';
+  if (!SOURCES.has(source)) throw new TypeError('Unsupported candidate source.');
+  const proof = c.followsMeEvidence ?? 'unknown';
+  if (!['direct', 'complete-list', 'partial-list', 'unknown'].includes(proof)) throw new TypeError('Invalid relationship evidence.');
+  if (c.followsMe != null && typeof c.followsMe !== 'boolean') throw new TypeError('Invalid follow-back state.');
+  if (c.isPrivate != null && typeof c.isPrivate !== 'boolean') throw new TypeError('Invalid privacy state.');
+  return {
+    accountId: identifier(c.accountId, 'Observation account'),
+    targetId: identifier(c.targetId, 'Target ID'), username: normalizeHandle(c.username),
+    relation, source, followsMe: c.followsMe ?? null, followsMeEvidence: proof,
+    isPrivate: c.isPrivate ?? null,
+    observedAt: timestamp(c.observedAt, 'Observation time'),
+    topics: strings(c.topics ?? [], 'Candidate topics'),
+  };
+}
+function normalizeHistory(input) {
+  const h = record(input, 'History');
+  return {
+    accountId: identifier(h.accountId, 'History account'),
+    targetId: identifier(h.targetId, 'History target'),
+    followedAt: timestamp(h.followedAt, 'Follow time'),
+    outcome: ['verified', 'uncertain'].includes(h.outcome) ? h.outcome : 'uncertain',
+    origin: h.origin === 'presence' ? 'presence' : 'legacy',
+  };
+}
+
+/**
+ * Compile finite suggestions. This is NOT a signed job or permission to click.
+ * IDs/observations from a UI or import remain untrusted until runtime inspection.
+ */
+function compilePlan({ profile, candidates = [], history = [], now, usage = {} }) {
+  timestamp(now, 'Now');
+  const p = normalizeProfile(profile);
+  record(usage, 'Usage');
+  const usedFollow = integer(usage.follow, 0, 1_000_000, 0, 'Used follows');
+  const usedUnfollow = integer(usage.unfollow, 0, 1_000_000, 0, 'Used unfollows');
+  const rows = list(candidates, 'Candidates').map(normalizeCandidate);
+  const events = list(history, 'History', 10_000).map(normalizeHistory);
+  const counts = new Map();
+  const names = new Map();
+  const eventsById = new Map();
+  for (const c of rows) {
+    counts.set(c.targetId, (counts.get(c.targetId) || 0) + 1);
+    names.set(c.username, (names.get(c.username) || 0) + 1);
+  }
+  for (const h of events) {
+    if (h.accountId !== p.accountId) continue;
+    const bucket = eventsById.get(h.targetId) || [];
+    bucket.push(h); eventsById.set(h.targetId, bucket);
+  }
+  const active = activeNow(p, now);
+  const decisions = rows.map((c) => {
+    const sharedTopics = c.topics.filter((t) => p.topics.includes(t));
+    const decision = { targetId: c.targetId, username: c.username, source: c.source,
+      state: 'held', action: null, reason: '', score: sharedTopics.length, dueAt: null };
+    const end = (state, reason, action = null) => ({ ...decision, state, reason, action });
+    if (c.accountId !== p.accountId) return end('held', 'Different account');
+    if (c.targetId === p.accountId || c.username === p.username) return end('protected', 'Your own account');
+    if (counts.get(c.targetId) > 1 || names.get(c.username) > 1) return end('held', 'Duplicate or conflicting identity');
+    if (p.protectedIds.includes(c.targetId)) return end('protected', 'On your keep list');
+    if (c.observedAt > now || now - c.observedAt > p.evidenceMaxAgeMinutes * 60_000) {
+      return end('held', 'Refresh this observation');
+    }
+    const prior = eventsById.get(c.targetId) || [];
+    if (c.relation === 'requested') return end('protected', 'Follow request already pending');
+    if (c.relation === 'not-following') {
+      if (prior.length) return end('protected', 'Previously followed; no repeat cycle');
+      if (p.goal === 'curate') return end('skipped', 'This routine only revisits managed follows');
+      if (p.skipPrivate && c.isPrivate !== false) return end('held', 'Private or unknown account visibility');
+      if (c.topics.some((t) => p.excludedTopics.includes(t))) return end('skipped', 'Matches an excluded topic');
+      if (p.goal === 'maintain' && !(c.followsMe === true && ['direct', 'complete-list'].includes(c.followsMeEvidence))) {
+        return end('held', 'Follow-back evidence required for Stay connected');
+      }
+      if (p.goal === 'discover' && (!p.topics.length || !sharedTopics.length)) return end('skipped', 'No selected interest match');
+      return end('eligible', p.goal === 'maintain' ? 'Follows you; review a follow back' : `Matches ${sharedTopics.join(', ')}`, 'follow');
+    }
+    if (c.relation !== 'following') return end('held', 'Current relationship is unknown');
+    if (c.followsMe === true) return end('protected', 'Mutual connection');
+    if (prior.length !== 1 || prior[0]?.origin !== 'presence' || prior[0]?.outcome !== 'verified') {
+      return end('protected', 'No unique verified managed follow');
+    }
+    const event = prior[0];
+    if (event.followedAt > now) return end('held', 'Invalid future follow history');
+    decision.dueAt = event.followedAt + p.waitDays * DAY;
+    if (now < decision.dueAt) return end('waiting', 'Still in your follow-up window');
+    if (c.followsMe !== false || !['direct', 'complete-list'].includes(c.followsMeEvidence)) {
+      return end('held', 'Not found is not proof of a non-mutual');
+    }
+    return end('eligible', 'Follow-up due; verified non-mutual', 'unfollow');
+  }).sort((a, b) => b.score - a.score || (a.targetId < b.targetId ? -1 : a.targetId > b.targetId ? 1 : 0));
+  const available = { follow: Math.max(0, p.followLimit - usedFollow), unfollow: Math.max(0, p.unfollowLimit - usedUnfollow) };
+  const targets = [];
+  for (const d of decisions) {
+    if (d.state !== 'eligible') continue;
+    if (!active) { d.state = 'held'; d.reason = 'Outside your active window'; continue; }
+    if (!available[d.action]) { d.state = 'held'; d.reason = 'Your session allowance is used'; continue; }
+    available[d.action] -= 1;
+    d.state = 'planned';
+    targets.push({ targetId: d.targetId, username: d.username, action: d.action, reason: d.reason });
+  }
+  return deepFreeze({
+    kind: 'presence-review', version: PRESENCE_VERSION, executable: false,
+    accountId: p.accountId, profile: p, createdAt: now, expiresAt: now + 15 * 60_000,
+    activeWindow: active, targets, decisions,
+    notice: 'Planning only. Live execution requires a fresh review and a trusted browser adapter.',
+  });
+}
+
+/** Pure arbitration advice, not an inter-tab mutex or action authorization. */
+function modeHandoff({ current, next, inFlight = false, uncertain = false }) {
+  if (!['presence', 'ghost', 'idle'].includes(current) || !['presence', 'ghost', 'idle'].includes(next)) {
+    throw new TypeError('Unknown activity mode.');
+  }
+  if (uncertain) return Object.freeze({ ready: false, reason: 'Reconcile the uncertain action first.' });
+  if (inFlight) return Object.freeze({ ready: false, reason: 'Wait for the dispatched action to settle.' });
+  return Object.freeze({ ready: true, reason: 'Revoke the old mode, then review the new scope.', requiresFreshReview: next !== 'idle' });
+}
+
+/** Finite, synchronous, no-click preview state machine. No injected executor. */
+function createPreviewSession(plan, now = Date.now) {
+  record(plan, 'Plan');
+  if (plan.kind !== 'presence-review' || plan.version !== PRESENCE_VERSION || plan.executable !== false) {
+    throw new TypeError('A planning-only Presence review is required.');
+  }
+  const accountId = identifier(plan.accountId, 'Plan account');
+  const createdAt = timestamp(plan.createdAt, 'Plan creation');
+  const expiresAt = timestamp(plan.expiresAt, 'Plan expiry');
+  if (expiresAt <= createdAt || expiresAt - createdAt > 15 * 60_000) throw new TypeError('Invalid plan lifetime.');
+  const targets = list(plan.targets, 'Plan targets', 100).map((t) => {
+    record(t, 'Target');
+    if (!['follow', 'unfollow'].includes(t.action)) throw new TypeError('Unsupported preview action.');
+    return Object.freeze({ targetId: identifier(t.targetId, 'Target ID'), username: normalizeHandle(t.username), action: t.action });
+  });
+  if (new Set(targets.map((t) => t.targetId)).size !== targets.length) throw new TypeError('Duplicate plan target.');
+  let state = 'draft'; let cursor = 0; let reason = ''; const results = [];
+  const snapshot = () => deepFreeze({ mode: 'preview', live: false, state, accountId,
+    total: targets.length, simulated: cursor, reason, results: results.map((x) => ({ ...x })) });
+  return Object.freeze({ snapshot, dispatch(event, context = {}) {
+    const clock = timestamp(now(), 'Clock');
+    if (['stopped', 'expired', 'simulated'].includes(state)) return snapshot();
+    if (clock < createdAt || clock >= expiresAt) { state = 'expired'; reason = 'Review expired. Build a fresh plan.'; return snapshot(); }
+    if (context.accountId !== undefined && context.accountId !== accountId) {
+      state = 'stopped'; reason = 'Account changed.'; return snapshot();
+    }
+    if (STOPS.has(context.restriction)) { state = 'stopped'; reason = context.restriction; return snapshot(); }
+    if (event === 'stop') { state = 'stopped'; reason = 'Stopped by you.'; return snapshot(); }
+    if (event === 'ghost') { state = 'paused'; reason = 'Ghost needs a separate review; no automatic handoff.'; return snapshot(); }
+    if (event === 'review' && state === 'draft') {
+      if (context.accountId !== accountId) throw new Error('Review must name the planning account.');
+      state = 'ready';
+    } else if (event === 'start' && state === 'ready') {
+      state = targets.length ? 'previewing' : 'simulated';
+    } else if (event === 'pause' && state === 'previewing') { state = 'paused'; reason = 'Preview paused.';
+    } else if (event === 'resume' && state === 'paused') {
+      if (context.accountId !== accountId) throw new Error('Resume must name the planning account.');
+      state = 'ready'; reason = 'Review ready; start the preview again.';
+    } else if (event === 'step' && state === 'previewing') {
+      results.push({ ...targets[cursor], outcome: 'simulated' }); cursor += 1;
+      if (cursor === targets.length) state = 'simulated';
+    } else { throw new Error(`Cannot ${event} from ${state}.`); }
+    return snapshot();
+  } });
+}
+
+return Object.freeze({ PRESENCE_VERSION, PRESENCE_CAPABILITIES, ROUTINES, normalizeHandle, normalizeProfile, activeNow, compilePlan, modeHandoff, createPreviewSession });
+})();
+localModules["extension/presence-native-inputs.js"] = (() => {
+const { normalizeHandle, normalizeProfile } = localModules["src/core/presence.js"];
+
+const numericId = (value) => typeof value === 'string' && /^[1-9]\d{0,29}$/.test(value) ? value : null;
+const freeze = (value) => {
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach(freeze);
+    Object.freeze(value);
+  }
+  return value;
+};
+function unavailable(reason) {
+  return freeze({ status: 'unavailable', executable: false, reason, inputs: null });
+}
+function viewerIdentity(viewer) {
+  if (viewer?.accountVerified !== true || viewer.restriction
+    || viewer.identityKind !== 'verified-viewer-username'
+    || viewer.evidence !== 'visible-account-picker-and-navigation') return null;
+  try {
+    const username = normalizeHandle(viewer.accountId);
+    const key = `iguser-v1-${[...username].map((c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('')}`;
+    return viewer.accountKey === key ? { username, key } : null;
+  } catch { return null; }
+}
+
+function captureRows(rows) {
+  if (!Array.isArray(rows) || rows.length > 100_000) return null;
+  const identities = new Map();
+  const names = new Map();
+  const ambiguousIds = new Set();
+  const ambiguousNames = new Set();
+  let unresolved = 0;
+  for (const row of rows) {
+    let username;
+    try { username = normalizeHandle(row?.username); } catch { unresolved += 1; continue; }
+    const id = numericId(row?.instagramId);
+    if (!id || row.instagramIdAmbiguous === true || row.source !== 'authenticated-instagram-web') {
+      unresolved += 1;
+      ambiguousNames.add(username);
+      if (id) ambiguousIds.add(id);
+      continue;
+    }
+    if (identities.has(id) && identities.get(id) !== username) {
+      ambiguousIds.add(id);
+      ambiguousNames.add(identities.get(id));
+      ambiguousNames.add(username);
+    }
+    if (names.has(username) && names.get(username) !== id) {
+      ambiguousIds.add(id);
+      ambiguousIds.add(names.get(username));
+      ambiguousNames.add(username);
+    }
+    identities.set(id, username);
+    names.set(username, id);
+  }
+  const accounts = [...identities].filter(([id, username]) => (
+    !ambiguousIds.has(id) && !ambiguousNames.has(username)
+  )).map(([id, username]) => ({ id, username }));
+  return { accounts, unresolved: unresolved + identities.size - accounts.length };
+}
+
+/** Dependencies must remain in the trusted runtime closure, never page messages. */
+function createPresenceNativeInputs({ fetchFollowerComparison, inspectViewer, now = Date.now } = {}) {
+  if (typeof fetchFollowerComparison !== 'function' || typeof inspectViewer !== 'function'
+    || typeof now !== 'function') throw new TypeError('Trusted checker and viewer adapters are required.');
+  const receipts = new WeakMap();
+  const seenResults = new WeakSet();
+  let generation = 0;
+  function inspect() {
+    try { return viewerIdentity(inspectViewer()); } catch { return null; }
+  }
+
+  async function captureComparison({ username, retryRateLimits = false, signal, onProgress } = {}) {
+    const token = ++generation;
+    const start = now();
+    const before = inspect();
+    // Only these options reach the native checker; callers cannot inject a fetch implementation.
+    const result = await fetchFollowerComparison({ username, retryRateLimits, signal, onProgress });
+    const end = now();
+    const after = inspect();
+    if (result && typeof result === 'object') {
+      if (seenResults.has(result)) return result;
+      seenResults.add(result);
+    }
+    if (token !== generation || signal?.aborted || !before || !after
+      || before.key !== after.key || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+      || end < start || !result || typeof result !== 'object') return result;
+    let subject;
+    try { subject = normalizeHandle(result.username); } catch { return result; }
+    const requested = (() => { try { return normalizeHandle(username); } catch { return null; } })();
+    const accountId = numericId(result.subjectInstagramId);
+    const observedAt = Date.parse(result.capturedAt);
+    if (subject !== before.username || requested !== subject || !accountId
+      || result.source !== 'authenticated-instagram-web'
+      || !Number.isSafeInteger(observedAt) || observedAt < start || observedAt > end) return result;
+    const followers = captureRows(result.followers);
+    const following = captureRows(result.following);
+    if (!followers || !following) return result;
+    receipts.set(result, freeze({
+      token, accountId, username: subject, viewerKey: before.key, observedAt,
+      followers, following,
+      complete: { followers: result.complete?.followers === true, following: result.complete?.following === true },
+    }));
+    return result;
+  }
+
+  function prepareProductionInputs({ capture, profile = {} } = {}) {
+    const receipt = capture && typeof capture === 'object' ? receipts.get(capture) : null;
+    if (!receipt || receipt.token !== generation) return unavailable('fresh-runtime-capture-required');
+    const viewer = inspect();
+    if (!viewer || viewer.key !== receipt.viewerKey) return unavailable('viewer-changed-or-unavailable');
+    if (profile.goal !== undefined && profile.goal !== 'maintain') return unavailable('routine-source-unavailable');
+    if ((profile.accountId !== undefined && profile.accountId !== receipt.accountId)
+      || (profile.username !== undefined && normalizeHandle(profile.username) !== receipt.username)) {
+      return unavailable('profile-account-mismatch');
+    }
+    const normalized = normalizeProfile({ ...profile, accountId: receipt.accountId, username: receipt.username, goal: 'maintain' });
+    const clock = now();
+    const expiresAt = receipt.observedAt + Math.min(30, normalized.evidenceMaxAgeMinutes) * 60_000;
+    if (!Number.isSafeInteger(clock) || clock < receipt.observedAt || clock >= expiresAt) return unavailable('capture-expired');
+    const followingIds = new Map(receipt.following.accounts.map((row) => [row.id, row.username]));
+    const followingNames = new Map(receipt.following.accounts.map((row) => [row.username, row.id]));
+    const negativeEvidence = receipt.complete.following && receipt.following.unresolved === 0;
+    let identityConflicts = 0;
+    const candidates = [];
+    for (const follower of receipt.followers.accounts) {
+      if ((followingIds.has(follower.id) && followingIds.get(follower.id) !== follower.username)
+        || (followingNames.has(follower.username) && followingNames.get(follower.username) !== follower.id)) {
+        identityConflicts += 1;
+        continue;
+      }
+      candidates.push({
+        accountId: receipt.accountId, targetId: follower.id, username: follower.username,
+        relation: followingIds.has(follower.id) ? 'following' : negativeEvidence ? 'not-following' : 'unknown',
+        source: 'mutual-checker', followsMe: true, followsMeEvidence: 'direct',
+        isPrivate: null, observedAt: receipt.observedAt, topics: [],
+      });
+    }
+    const truncated = candidates.length > 2_000;
+    return freeze({
+      status: 'ready-for-review', executable: false, live: false,
+      accountBinding: { accountId: receipt.accountId, username: receipt.username, basis: 'current-viewer-and-original-checker-result' },
+      expiresAt,
+      inputs: { profile: normalized, candidates: candidates.slice(0, 2_000), history: [], usage: {} },
+      evidence: {
+        followersComplete: receipt.complete.followers, followingComplete: receipt.complete.following,
+        negativeFollowingEvidence: negativeEvidence, privacy: 'unavailable',
+        unresolvedFollowers: receipt.followers.unresolved, unresolvedFollowing: receipt.following.unresolved,
+        identityConflicts, truncated, omitted: Math.max(0, candidates.length - 2_000),
+      },
+    });
+  }
+
+  return Object.freeze({ captureComparison, prepareProductionInputs, invalidate() { generation += 1; } });
+}
+
+return Object.freeze({ createPresenceNativeInputs });
+})();
+localModules["extension/presence-batch-review.js"] = (() => {
+const { compilePlan, normalizeProfile, PRESENCE_VERSION } = localModules["src/core/presence.js"];
+
+const PRESENCE_BATCH_CAPABILITIES = Object.freeze({
+  reviewDraft: true,
+  live: false,
+  scheduledExecution: false,
+});
+
+function freeze(value) {
+  if (value && typeof value === 'object') {
+    for (const child of Object.values(value)) freeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+function record(value, name) {
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new TypeError(`${name} must be a plain record.`);
+  }
+  return value;
+}
+
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
+  }
+  return value;
+}
+
+function same(left, right) {
+  return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
+}
+
+function reject(reason) {
+  return freeze({
+    kind: 'presence-batch-review-draft', version: 1,
+    status: 'unavailable', executable: false, reason,
+    capabilities: PRESENCE_BATCH_CAPABILITIES,
+    queueDraft: null, confirmationDraft: null,
+  });
+}
+
+/** Build presentation data only. Neither a plan nor this draft is action authority. */
+function createPresenceBatchDraft({ reviewedPlan, current, selectedTargetIds, now } = {}) {
+  record(reviewedPlan, 'Reviewed plan');
+  record(current, 'Current observations');
+  if (!Number.isSafeInteger(now) || now <= 0) throw new TypeError('A current timestamp is required.');
+  if (reviewedPlan.kind !== 'presence-review'
+    || reviewedPlan.version !== PRESENCE_VERSION || reviewedPlan.executable !== false) {
+    return reject('presence-review-required');
+  }
+  const { createdAt, expiresAt } = reviewedPlan;
+  if (!Number.isSafeInteger(createdAt) || !Number.isSafeInteger(expiresAt)
+    || createdAt <= 0 || expiresAt <= createdAt || expiresAt - createdAt > 15 * 60_000) {
+    return reject('invalid-review-lifetime');
+  }
+  if (now < createdAt || now >= expiresAt) return reject('review-expired');
+  if (!Array.isArray(reviewedPlan.targets) || !reviewedPlan.targets.length
+    || reviewedPlan.targets.length > 100) return reject('finite-targets-required');
+  if (!Array.isArray(selectedTargetIds) || !selectedTargetIds.length
+    || selectedTargetIds.length > 100
+    || selectedTargetIds.some((id) => typeof id !== 'string' || !/^[1-9]\d{0,29}$/.test(id))
+    || new Set(selectedTargetIds).size !== selectedTargetIds.length) {
+    return reject('exact-selection-required');
+  }
+
+  // Recompile observations rather than accepting previously simulated decisions.
+  const fresh = compilePlan({
+    profile: current.profile, candidates: current.candidates,
+    history: current.history, usage: current.usage, now,
+  });
+  if (reviewedPlan.accountId !== fresh.accountId) return reject('account-changed');
+  if (!same(normalizeProfile(reviewedPlan.profile), fresh.profile)) return reject('routine-changed');
+  if (reviewedPlan.activeWindow !== true || fresh.activeWindow !== true) return reject('outside-active-window');
+  if (!same(reviewedPlan.targets, fresh.targets)) return reject('targets-changed');
+  const selectedSet = new Set(selectedTargetIds);
+  const targets = fresh.targets.filter((target) => selectedSet.has(target.targetId));
+  if (targets.length !== selectedSet.size) return reject('selection-outside-review');
+  const action = targets[0].action;
+  if (!['follow', 'unfollow'].includes(action) || targets.some((target) => target.action !== action)) {
+    return reject('single-action-required');
+  }
+
+  const selected = targets.map((target) => target.username);
+  const partial = (current.candidates || []).some((candidate) => (
+    selectedSet.has(candidate.targetId) && candidate.followsMeEvidence === 'partial-list'
+  ));
+  const source = 'presence';
+  const requested = selected.length;
+  const skipped = [];
+  for (const decision of fresh.decisions) {
+    if (fresh.targets.some((target) => target.targetId === decision.targetId)) continue;
+    const existing = skipped.find((entry) => entry.reason === decision.reason);
+    if (existing) existing.count += 1;
+    else skipped.push({ count: 1, reason: decision.reason });
+  }
+  const queueDraft = {
+    action, omitted: fresh.targets.length - targets.length, removed: 0,
+    requested, partial, selected, skipped, source,
+    signature: JSON.stringify({ action, requested, selected, source, partial }),
+  };
+  return freeze({
+    kind: 'presence-batch-review-draft', version: 1,
+    status: 'review-required', executable: false,
+    capabilities: PRESENCE_BATCH_CAPABILITIES,
+    liveUnavailableReason: 'presence-trusted-runtime-required',
+    accountId: fresh.accountId, createdAt: now, expiresAt,
+    bindings: targets.map(({ targetId, username, action: targetAction }) => ({
+      accountId: fresh.accountId, targetId, username, action: targetAction,
+    })),
+    queueDraft,
+    confirmationDraft: {
+      kind: 'account', action,
+      items: targets.map((target, index) => ({
+        id: `presence-${action}-${target.targetId}-${index}`, username: target.username,
+      })),
+      description: `${selected.length} reviewed ${action} target${selected.length === 1 ? '' : 's'}. Nothing has run.`,
+    },
+  });
+}
+
+return Object.freeze({ PRESENCE_BATCH_CAPABILITIES, createPresenceBatchDraft });
+})();
+localModules["extension/presence-userscript-panel.js"] = (() => {
+const { compilePlan, normalizeHandle } = localModules["src/core/presence.js"];
+const { createPresenceBatchDraft } = localModules["extension/presence-batch-review.js"];
+
+
+const MESSAGES = Object.freeze({
+  'fresh-runtime-capture-required': 'Run Mutual Checker for your account from the inbox, then build a plan.',
+  'viewer-changed-or-unavailable': 'Open your inbox so the signed-in account can be checked.',
+  'capture-expired': 'These lists are out of date. Run Mutual Checker again.',
+  'profile-account-mismatch': 'The saved routine belongs to another account.',
+  'routine-source-unavailable': 'Only Stay connected is available from these lists.',
+  'review-expired': 'This plan expired. Build it again.',
+  'capture-changed': 'The checked lists changed. Build a new plan.',
+  'targets-changed': 'The suggested accounts changed. Build a new plan.',
+  'routine-changed': 'The routine changed. Build a new plan.',
+  'account-changed': 'The signed-in account changed. Build a new plan.',
+  'outside-active-window': 'This is outside your routine’s active hours.',
+});
+const LIVE_REASON = 'Plan preview only. Use manual Follow / Unfollow to run actions.';
+const PAGE_SIZE = 25;
+
+function mountUserscriptPresencePanel({
+  container, document = globalThis.document, nativeAdapter, getCapture, getProfile,
+  onReview = null, onManual, onStatus = () => {}, now = Date.now,
+} = {}) {
+  if (!container || !document?.createElement || typeof nativeAdapter?.prepareProductionInputs !== 'function'
+    || typeof getCapture !== 'function' || typeof getProfile !== 'function'
+    || typeof onManual !== 'function' || (onReview !== null && typeof onReview !== 'function')
+    || typeof onStatus !== 'function' || typeof now !== 'function') throw new Error('presence-panel-adapter-required');
+  const create = (tag, text, className) => {
+    const node = document.createElement(tag);
+    if (text !== undefined && text !== null) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  };
+  const root = create('section', null, 'presence-routine');
+  root.setAttribute('aria-label', 'Presence — Stay connected');
+  const style = create('style', `
+    .presence-routine{display:grid;gap:16px;min-width:0;color:var(--insta-toolbox-text);font:inherit}
+    .presence-routine h3,.presence-routine p{margin:0;overflow-wrap:anywhere}
+    .presence-routine h3{font-size:16px;line-height:1.4}
+    .presence-routine .presence-fields{display:grid;gap:12px;min-width:0}
+    .presence-routine label{display:grid;gap:4px;min-width:0}
+    .presence-routine input:not([type=checkbox]),.presence-routine textarea{box-sizing:border-box;width:100%;min-height:44px;font:inherit;color:inherit;background:var(--insta-toolbox-bg-sunken);border:1px solid var(--insta-toolbox-line);border-radius:8px;padding:8px}
+    .presence-routine textarea{min-height:64px;resize:vertical}
+    .presence-routine .presence-choice{display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere}
+    .presence-routine input[type=checkbox]{flex:0 0 auto;accent-color:var(--insta-toolbox-accent)}
+    .presence-routine .presence-actions{display:flex;flex-wrap:wrap;gap:8px}
+    .presence-routine .presence-actions button{flex:1 1 140px;white-space:normal}
+    .presence-routine .presence-note{font-size:12px;line-height:1.5;color:var(--insta-toolbox-muted,var(--insta-toolbox-text))}
+    .presence-routine .presence-results{display:grid;gap:8px;min-width:0}
+    .presence-routine ul{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+    .presence-routine li{min-width:0;overflow-wrap:anywhere}
+    .presence-routine .presence-target-text{display:grid;gap:4px;min-width:0}
+    .presence-routine details{border-top:1px solid var(--insta-toolbox-line);padding-top:8px}
+    .presence-routine summary{display:list-item;cursor:pointer;min-height:44px;align-content:center;list-style:disclosure-closed inside}
+    .presence-routine details[open]>summary{list-style-type:disclosure-open}
+    .presence-routine :focus-visible{outline:2px solid var(--insta-toolbox-accent,Highlight);outline-offset:2px}
+    .presence-routine [hidden]{display:none!important}
+    @media(forced-colors:active){.presence-routine input,.presence-routine textarea,.presence-routine button{border:1px solid ButtonText}.presence-routine summary{color:CanvasText;-webkit-text-fill-color:CanvasText}.presence-routine :focus-visible{outline-color:Highlight}}
+  `);
+  const heading = create('h3', 'Stay connected');
+  const context = create('p', 'Follow back from your latest checked lists.', 'presence-note');
+  const fields = create('div', null, 'presence-fields');
+  const allowanceLabel = create('label', 'Accounts in this plan');
+  const allowance = create('input'); allowance.type = 'number'; allowance.min = '0'; allowance.max = '50'; allowance.step = '1';
+  allowance.setAttribute('data-presence', 'allowance');
+  const keepLabel = create('label', 'Keep these accounts unchanged');
+  const keep = create('textarea'); keep.rows = 2; keep.placeholder = '@account, @another';
+  keep.setAttribute('data-presence', 'protected');
+  const includeLabel = create('label', null, 'presence-choice');
+  const includePrivate = create('input'); includePrivate.type = 'checkbox'; includePrivate.setAttribute('data-presence', 'private');
+  includeLabel.append(includePrivate, document.createTextNode('Include private accounts'));
+  const privacyNote = create('p', 'Privacy is not included in checked lists. Leave this off to hold accounts with unknown privacy.', 'presence-note');
+  const hours = create('details');
+  const hoursSummary = create('summary', 'Plan options');
+  const hoursFields = create('div', null, 'presence-fields');
+  const startLabel = create('label', 'From');
+  const start = create('input'); start.type = 'time'; start.setAttribute('data-presence', 'start');
+  const endLabel = create('label', 'Until');
+  const end = create('input'); end.type = 'time'; end.setAttribute('data-presence', 'end');
+  const zone = create('p', '', 'presence-note');
+  startLabel.append(start); endLabel.append(end);
+  hoursFields.append(startLabel, endLabel, zone, includeLabel, privacyNote);
+  hours.append(hoursSummary, hoursFields);
+  allowanceLabel.append(allowance); keepLabel.append(keep);
+  fields.append(allowanceLabel, keepLabel, hours);
+  const actions = create('div', null, 'presence-actions');
+  const buildButton = create('button', 'Build my plan', 'button primary'); buildButton.type = 'button';
+  const reviewButton = create('button', 'Review selected', 'button primary'); reviewButton.type = 'button'; reviewButton.hidden = true;
+  const manualButton = create('button', 'Manual Follow / Unfollow', 'button quiet'); manualButton.type = 'button';
+  actions.append(buildButton, reviewButton, manualButton);
+  const feedback = create('p', '', 'presence-note');
+  feedback.hidden = true;
+  const results = create('div', null, 'presence-results'); results.hidden = true;
+  const summary = create('p');
+  const targets = create('ul'); targets.setAttribute('aria-label', 'Suggested accounts');
+  const held = create('details');
+  const heldSummary = create('summary');
+  const heldList = create('ul');
+  const moreHeld = create('button', 'Show more', 'button quiet'); moreHeld.type = 'button';
+  held.append(heldSummary, heldList, moreHeld);
+  const executionNote = create('p', LIVE_REASON, 'presence-note');
+  results.append(summary, targets, held);
+  root.append(style, heading, context, fields, actions, feedback, results, executionNote);
+  container.append(root);
+
+  const listeners = [];
+  const listen = (node, type, handler) => { node.addEventListener(type, handler); listeners.push(() => node.removeEventListener(type, handler)); };
+  let disposed = false, epoch = 0, status = 'idle', reason = null;
+  let plan = null, capture = null, heldRows = [], heldCount = PAGE_SIZE, reviewPending = false;
+  const selected = new Set();
+  const initial = getProfile() || {};
+  allowance.value = String(initial.followLimit ?? 6);
+  includePrivate.checked = initial.skipPrivate === false;
+  const formatMinute = value => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+  start.value = formatMinute(initial.window?.start ?? 540);
+  end.value = formatMinute(initial.window?.end ?? 1200);
+  zone.textContent = `Plan hours · ${initial.timezone || 'UTC'}`;
+
+  function announce(text) { feedback.textContent = text; feedback.hidden = !text; onStatus(text); }
+  function controls() {
+    reviewButton.hidden = !plan?.targets.length || typeof onReview !== 'function';
+    reviewButton.disabled = reviewPending || !selected.size || typeof onReview !== 'function';
+    reviewButton.textContent = `Review ${selected.size} account${selected.size === 1 ? '' : 's'}`;
+    buildButton.className = plan?.targets.length && typeof onReview === 'function' ? 'button quiet' : 'button primary';
+  }
+  function invalidate(message = 'Build a new plan to review these choices.') {
+    if (disposed) return;
+    epoch += 1; plan = null; capture = null; selected.clear(); reviewPending = false;
+    status = 'idle'; reason = null; results.hidden = true; targets.replaceChildren(); heldList.replaceChildren();
+    context.textContent = 'Follow back from your latest checked lists.';
+    controls();
+    if (message) announce(message);
+    else { feedback.textContent = ''; feedback.hidden = true; }
+  }
+  function unavailable(code) {
+    invalidate(null); status = 'unavailable'; reason = code;
+    announce(MESSAGES[code] || 'This plan is unavailable. Check the lists and choices, then try again.');
+  }
+  function prepare() {
+    const countText = String(allowance.value).trim();
+    if (!/^\d+$/.test(countText) || Number(countText) > 50) throw new Error('Choose a whole number from 0 to 50.');
+    const base = getProfile() || {};
+    const readMinute = value => {
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error('Choose valid plan hours.');
+      const [hour, minute] = value.split(':').map(Number);
+      return hour * 60 + minute;
+    };
+    const window = { start: readMinute(start.value), end: readMinute(end.value) };
+    if (window.start === window.end) throw new Error('Choose different start and end times.');
+    const preferences = { ...base, goal: 'maintain', followLimit: Number(countText), skipPrivate: !includePrivate.checked, window };
+    const original = getCapture();
+    const prepared = nativeAdapter.prepareProductionInputs({ capture: original, profile: preferences });
+    if (prepared.status !== 'ready-for-review') return { original, prepared };
+    const tokens = String(keep.value || '').split(/[\s,;]+/).filter(Boolean);
+    if (tokens.length > 500) throw new Error('Keep at most 500 protected accounts.');
+    const names = [...new Set(tokens.map((name) => normalizeHandle(name)))];
+    const protectedIds = new Set(prepared.inputs.profile.protectedIds);
+    const unresolved = [];
+    for (const name of names) {
+      const matches = prepared.inputs.candidates.filter((candidate) => candidate.username === name);
+      if (matches.length !== 1) unresolved.push(`@${name}`);
+      else protectedIds.add(matches[0].targetId);
+    }
+    if (unresolved.length) throw new Error(`Not found in these checked lists: ${unresolved.slice(0, 3).join(', ')}${unresolved.length > 3 ? '…' : ''}. Refresh the lists or update the protected accounts.`);
+    const final = nativeAdapter.prepareProductionInputs({ capture: original, profile: { ...preferences, protectedIds: [...protectedIds] } });
+    return { original, prepared: final };
+  }
+  function renderHeld() {
+    heldList.replaceChildren();
+    for (const decision of heldRows.slice(0, heldCount)) {
+      const row = create('li');
+      row.append(create('strong', `@${decision.username}`), create('p', decision.reason, 'presence-note'));
+      heldList.append(row);
+    }
+    moreHeld.hidden = heldRows.length <= heldCount;
+    moreHeld.textContent = `Show ${Math.min(PAGE_SIZE, Math.max(0, heldRows.length - heldCount))} more`;
+  }
+  function renderPlan(prepared) {
+    context.textContent = `@${plan.profile.username} · Stay connected`;
+    results.hidden = false; targets.replaceChildren();
+    summary.textContent = `${plan.targets.length} suggested · ${plan.decisions.length - plan.targets.length} held`;
+    for (const target of plan.targets) {
+      const row = create('li');
+      const text = create('span', null, 'presence-target-text');
+      text.append(create('strong', `@${target.username}`), create('span', target.reason, 'presence-note'));
+      if (typeof onReview !== 'function') { row.append(text); targets.append(row); continue; }
+      const label = create('label', null, 'presence-choice');
+      const input = create('input'); input.type = 'checkbox'; input.checked = true;
+      input.setAttribute('data-presence-target', target.targetId);
+      label.append(input, text); row.append(label); targets.append(row);
+      input.addEventListener('change', () => {
+        if (disposed || !plan) return;
+        if (input.checked) selected.add(target.targetId); else selected.delete(target.targetId);
+        epoch += 1; reviewPending = false; status = 'planned'; controls();
+      });
+    }
+    heldRows = plan.decisions.filter((decision) => !plan.targets.some((target) => target.targetId === decision.targetId));
+    heldCount = PAGE_SIZE; held.hidden = !heldRows.length;
+    heldSummary.textContent = `Held accounts (${heldRows.length})`; renderHeld(); controls();
+    const extras = [];
+    if (!prepared.evidence.followersComplete) extras.push('Follower list is partial; only found accounts are considered.');
+    if (!prepared.evidence.negativeFollowingEvidence) extras.push('Following is incomplete or unresolved; missing accounts stay unknown.');
+    if (prepared.evidence.unresolvedFollowers || prepared.evidence.identityConflicts) extras.push('Unresolved account identities were left out.');
+    if (prepared.evidence.truncated) extras.push(`${prepared.evidence.omitted} accounts are outside this plan’s input limit.`);
+    const message = plan.targets.length
+      ? typeof onReview === 'function' ? 'Choose the accounts to review.' : 'Suggested accounts are listed below.'
+      : 'No accounts match these choices.';
+    announce(`${message}${extras.length ? ` ${extras.join(' ')}` : ''}`);
+  }
+  function build() {
+    if (disposed) return false;
+    invalidate(null);
+    try {
+      const value = prepare();
+      if (value.prepared.status !== 'ready-for-review') { unavailable(value.prepared.reason); return false; }
+      capture = value.original;
+      plan = compilePlan({ ...value.prepared.inputs, now: now() });
+      selected.clear(); for (const target of plan.targets) selected.add(target.targetId);
+      status = 'planned'; renderPlan(value.prepared);
+      return true;
+    } catch (error) {
+      invalidate(null); status = 'unavailable'; reason = 'invalid-choices';
+      const message = String(error?.message || '');
+      announce(/^(Choose a whole number|Choose valid plan hours|Choose different start|Keep at most|Not found in these checked lists)/.test(message)
+        ? message : 'Check the account names and routine choices.');
+      return false;
+    }
+  }
+  function currentDraft({ allowEmptySelection = false } = {}) {
+    if (!plan || (!selected.size && !allowEmptySelection)) return { status: 'unavailable', reason: 'exact-selection-required' };
+    const value = prepare();
+    if (value.original !== capture) return { status: 'unavailable', reason: 'capture-changed' };
+    if (value.prepared.status !== 'ready-for-review') return value.prepared;
+    return createPresenceBatchDraft({ reviewedPlan: plan, current: value.prepared.inputs,
+      selectedTargetIds: selected.size ? [...selected] : plan.targets.map((target) => target.targetId), now: now() });
+  }
+  async function review() {
+    if (disposed || reviewPending || typeof onReview !== 'function') return false;
+    let token = epoch;
+    try {
+      const draft = currentDraft();
+      if (draft.status !== 'review-required') { unavailable(draft.reason); return false; }
+      token = ++epoch; reviewPending = true; status = 'reviewing'; controls();
+      await onReview(draft);
+      if (disposed || token !== epoch) return false;
+      const checked = currentDraft();
+      if (checked.status !== 'review-required') { unavailable(checked.reason); return false; }
+      reviewPending = false; status = 'reviewed'; controls();
+      announce('Selection reviewed. No actions have run.');
+      return true;
+    } catch {
+      if (!disposed && token === epoch) { invalidate(null); status = 'unavailable'; reason = 'review-unavailable'; announce('Review could not open. Build the plan again.'); }
+      return false;
+    }
+  }
+  function refresh() {
+    if (disposed) return;
+    if (plan?.targets.length) {
+      try { const draft = currentDraft({ allowEmptySelection: true }); if (draft.status !== 'review-required') unavailable(draft.reason); }
+      catch { unavailable('routine-changed'); }
+    } else if (plan) {
+      try {
+        const value = prepare();
+        if (value.original !== capture) unavailable('capture-changed');
+        else if (value.prepared.status !== 'ready-for-review') unavailable(value.prepared.reason);
+        else if (now() < plan.createdAt || now() >= plan.expiresAt) unavailable('review-expired');
+        else {
+          const fresh = compilePlan({ ...value.prepared.inputs, now: now() });
+          if (JSON.stringify(fresh.profile) !== JSON.stringify(plan.profile)
+            || JSON.stringify(fresh.targets) !== JSON.stringify(plan.targets)) unavailable('routine-changed');
+        }
+      } catch { unavailable('routine-changed'); }
+    }
+  }
+  listen(buildButton, 'click', build); listen(reviewButton, 'click', review);
+  listen(manualButton, 'click', () => { invalidate(null); onManual(); });
+  for (const node of [allowance, keep, start, end]) listen(node, 'input', () => invalidate());
+  listen(includePrivate, 'change', () => invalidate());
+  listen(moreHeld, 'click', () => { heldCount += PAGE_SIZE; renderHeld(); });
+  controls();
+  return Object.freeze({
+    build, review, refresh, invalidate,
+    snapshot: () => ({ status, reason, executable: false, selectedTargetIds: [...selected], plan: plan ? structuredClone(plan) : null }),
+    dispose() {
+      if (disposed) return;
+      invalidate(null); disposed = true; status = 'disposed'; listeners.forEach((remove) => remove());
+      root.remove();
+    },
+  });
+}
+
+return Object.freeze({ mountUserscriptPresencePanel });
+})();
 globalThis.InstaToolboxInboxDiscovery = Object.freeze({ create: localModules['extension/inbox-userscript-discovery.js'].createUserscriptInboxDiscovery });
 globalThis.InstaToolboxInboxPanel = Object.freeze({ mount: localModules['extension/inbox-userscript-panel.js'].mountUserscriptInboxPanel });
 globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['extension/inbox-checkpoint-store.js'].createInboxCheckpointStore });
+globalThis.InstaToolboxPresenceInputs = Object.freeze({ create: localModules['extension/presence-native-inputs.js'].createPresenceNativeInputs });
+globalThis.InstaToolboxPresencePanel = Object.freeze({ mount: localModules['extension/presence-userscript-panel.js'].mountUserscriptPresencePanel });
 (async () => {
   'use strict';
 
@@ -8450,7 +9426,7 @@ globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['
           <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
           <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
           <p class="lead" data-role="account-run-summary">Choose a source, then review the accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p></section>
+          <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p><details class="settings-inline" data-role="presence-disclosure"><summary>Presence · Live Like Me</summary><div data-role="presence-routine"></div></details></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
@@ -9059,8 +10035,19 @@ globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['
   let reactionCleanup = null;
   let reactionSnapshot = null;
   let inboxPanel = null;
+  let presencePanel = null;
+  let presenceCapture = null;
 
   const engine = globalThis.InstaToolboxInstagramInspector;
+  const presenceInputs = globalThis.InstaToolboxPresenceInputs?.create({
+    fetchFollowerComparison: options => engine.fetchFollowerComparison(options),
+    inspectViewer: () => globalThis.InstaToolboxInstagramViewer.inspect({ document, location }),
+  });
+  const invalidatePresence = () => {
+    presenceCapture = null;
+    presenceInputs?.invalidate();
+    presencePanel?.invalidate(null);
+  };
   const dmRunner = globalThis.InstaToolboxDmThreadUnsender;
   if (dmRunner) {
     dmRunnerSnapshot = dmRunner.snapshot();
@@ -9655,12 +10642,15 @@ globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['
     if (input) input.value = username;
     const controller = new AbortController();
     relationshipController = controller;
+    invalidatePresence();
     resetRelationshipProgress();
     renderAll();
     showScanProgress(null, 0, false);
     setText('scan-detail', `Finding the exact @${username} account…`);
     try {
-      const result = await engine.fetchFollowerComparison({
+      const result = await (presenceInputs
+        ? options => presenceInputs.captureComparison(options)
+        : options => engine.fetchFollowerComparison(options))({
         username,
         retryRateLimits: true,
         signal: controller.signal,
@@ -9741,6 +10731,7 @@ globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['
         state.capture = previousCapture;
         throw error;
       }
+      if (!controller.signal.aborted) presenceCapture = result;
       const partialDetails = [];
       for (const [listType, accounts] of [
         ['followers', result.followers],
@@ -10485,6 +11476,7 @@ globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['
       status(`Captured ${visible.length} rendered ${listType} rows; ${state.capture[listType].length - before} were new.`);
     },
     'clear-capture': () => {
+      invalidatePresence();
       state.capture = stateDefaults().capture;
       checkerResultKey = '';
       checkerResultLimit = CHECKER_RESULTS_PAGE_SIZE;
@@ -10860,6 +11852,7 @@ globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['
       state.sentDms = [];
       state.sentDmsComplete = false;
       state.sentDmsChecked = false;
+      invalidatePresence();
       saveState();
       renderAll();
     } else if (records.some((record) => [...record.addedNodes, ...record.removedNodes].some((node) => (
@@ -10873,6 +11866,10 @@ globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['
     window.removeEventListener('keydown', toggleToolboxShortcut, true);
     confirmationController?.destroy();
     inboxPanel?.dispose();
+    presencePanel?.dispose();
+    invalidatePresence();
+    window.removeEventListener('pagehide', invalidatePresence);
+    document.removeEventListener('freeze', invalidatePresence);
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -10882,6 +11879,22 @@ globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['
   saveState();
   savePreferences(preferences);
   renderCleanupSettings({ initializeDraft: true });
+  if (presenceInputs && globalThis.InstaToolboxPresencePanel) {
+    presencePanel = globalThis.InstaToolboxPresencePanel.mount({
+      container: query('[data-role="presence-routine"]'), document,
+      nativeAdapter: presenceInputs,
+      getCapture: () => presenceCapture,
+      getProfile: () => ({ goal: 'maintain', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+      onManual: () => {
+        query('[data-role="presence-disclosure"]').open = false;
+        query('[data-role="bot-action"]').focus();
+      },
+      onStatus: status,
+    });
+    query('[data-role="presence-disclosure"]').addEventListener('toggle', () => presencePanel.refresh());
+    window.addEventListener('pagehide', invalidatePresence);
+    document.addEventListener('freeze', invalidatePresence);
+  }
   if (globalThis.InstaToolboxInboxPanel) {
     const inspectInboxAccount = () => {
       const value = globalThis.InstaToolboxInstagramViewer.inspect({ document, location });

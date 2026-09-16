@@ -143,7 +143,8 @@ test('pre-proof missing or ambiguous Close never reports a removal', async () =>
       if (closeState === 'missing') close.remove();
       else f.dialog.append(new f.Node('button', { 'aria-label': 'Close' }));
     };
-    await assert.rejects(f.remove(), /reaction-close-unavailable/);
+    await assert.rejects(f.remove(), (error) => error.message === 'reaction-dialog-close-unavailable'
+      && error.needsAttention === true);
     assert.equal(f.counters.mutations, 0, closeState);
     assert.equal(f.dialog.isConnected, true, closeState);
     assert.equal(f.badge.isConnected, true, closeState);
@@ -182,6 +183,54 @@ test('another person reaction is skipped without mutation', async () => {
   const f = fixture({ mine: false, shared: true });
   const result = await f.remove();
   assert.equal(result.reason, 'not-my-reaction'); assert.equal(f.counters.mutations, 0);
+});
+test('skipped reaction waits for the native dialog to close before returning', async () => {
+  for (const options of [{ mine: false, shared: true }, { ambiguous: true }]) {
+    const f = fixture(options);
+    let startedClose, finishClose;
+    const closing = new Promise((resolve) => { startedClose = resolve; });
+    const show = f.badge.onclick;
+    f.badge.onclick = () => {
+      show();
+      f.dialog.querySelectorAll('button')[0].onclick = () => {
+        finishClose = () => f.dialog.remove(); startedClose();
+      };
+    };
+    let settled = false;
+    const removal = f.remove().then((result) => { settled = true; return result; });
+    await closing;
+    assert.equal(settled, false);
+    assert.equal(f.dialog.isConnected, true);
+    finishClose();
+    const result = await removal;
+    assert.equal(result.skipped, true);
+    assert.equal(result.verified, false);
+    assert.equal(f.dialog.isConnected, false);
+    assert.equal(f.counters.mutations, 0);
+  }
+});
+test('no-op skip Close reports attention once, not a silent skip or another cleanup click', async () => {
+  const f = fixture({ mine: false, shared: true });
+  let closes = 0;
+  const show = f.badge.onclick;
+  f.badge.onclick = () => { show(); f.dialog.querySelectorAll('button')[0].onclick = () => { closes += 1; }; };
+  await assert.rejects(f.remove(), (error) => error.message === 'reaction-dialog-close-unavailable'
+    && error.needsAttention === true);
+  assert.equal(closes, 1);
+  assert.equal(f.dialog.isConnected, true);
+  assert.equal(f.counters.mutations, 0);
+  await assert.rejects(f.remove(), /reaction-dialog-already-open/);
+  assert.equal(f.counters.opens, 1);
+});
+test('Stop during skipped-dialog settlement does not remove a reaction or retry Close', async () => {
+  const f = fixture({ mine: false, shared: true });
+  const controller = new AbortController();
+  let closes = 0;
+  const show = f.badge.onclick;
+  f.badge.onclick = () => { show(); f.dialog.querySelectorAll('button')[0].onclick = () => { closes += 1; controller.abort(); }; };
+  await assert.rejects(f.remove(controller.signal), { name: 'AbortError' });
+  assert.equal(closes, 1);
+  assert.equal(f.counters.mutations, 0);
 });
 test('skin-tone and joined Unicode emoji remain exact targets', async () => {
   for (const emoji of ['👍🏽', '❤️', '👩‍💻']) {

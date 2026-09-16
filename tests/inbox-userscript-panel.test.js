@@ -333,6 +333,7 @@ test('a verified result remains visible when its checkpoint save fails and no fu
   assert.ok(f.saveAttempts.some(value => value.tasks[0].messageRemovals === 1));
   assert.ok(f.checkpoints.every(value => value.tasks[0].messageRemovals === 0), 'the failed save was not treated as durable');
   assert.equal(f.lockNames.size, 0); assert.equal(f.panel.busy(), false);
+  assert.equal(f.button('Find conversations').disabled, true, 'failed writes require a fresh readable runtime');
 });
 
 function interruptedCheckpoint(phase) {
@@ -411,4 +412,67 @@ test('pending load and failed history reads cannot silently start a fresh cleanu
   assert.match(failed.visibleText(), /Saved cleanup progress could not be read/);
   await failed.button('Find conversations').click();
   assert.deepEqual(failed.navigation, []); assert.deepEqual(failed.starts, []); assert.deepEqual(failed.checkpoints, []);
+});
+
+test('resume reviews only unfinished discovered threads and never restores old approval', { timeout: 15_000 }, async t => {
+  const saved = interruptedCheckpoint('prepared');
+  saved.status = 'paused'; saved.reason = 'paused'; saved.pendingMutation = null;
+  saved.tasks[0].status = 'completed'; saved.tasks[1].status = 'pending';
+  let accept = false;
+  const f = fixture({ load: async () => structuredClone(saved), confirm: value => accept ? { ...value.binding } : null });
+  t.after(() => f.dispose()); await f.panel.ready;
+  assert.equal(f.button(/remaining to resume/).hidden, true, 'saved IDs alone are not discovered navigation evidence');
+  assert.deepEqual(f.starts, []);
+  await f.find();
+  const resume = f.button('Review 1 remaining to resume');
+  assert.equal(resume.hidden, false); assert.equal(resume.disabled, false);
+  await resume.click();
+  assert.equal(f.confirmations[0].facts.find(item => item.label === 'Conversations').value, '202');
+  assert.deepEqual(f.starts, []); assert.deepEqual(f.panel.snapshot(), saved, 'Cancel preserves prior verified counts');
+  accept = true; await resume.click();
+  assert.equal(f.confirmations.length, 2);
+  assert.deepEqual(f.starts.map(plan => plan.threadId), ['202']);
+  assert.deepEqual(f.panel.snapshot().review.threadIds, ['202']);
+  assert.equal(f.panel.snapshot().tasks[0].messageRemovals, 1, 'new run counts do not duplicate prior removals');
+  assert.equal(resume.hidden, true);
+});
+
+test('resume omits uncertain, failed and skipped conversations instead of silently retrying them', { timeout: 10_000 }, async t => {
+  const saved = interruptedCheckpoint('uncertain');
+  saved.pendingMutation = null; saved.tasks[1].status = 'skipped';
+  const f = fixture({ load: async () => structuredClone(saved), confirm: value => ({ ...value.binding }) });
+  t.after(() => f.dispose()); await f.find();
+  assert.equal(f.button(/remaining to resume/).hidden, true);
+  await f.button(/remaining to resume/).click();
+  assert.deepEqual(f.confirmations, []); assert.deepEqual(f.dispatches, []);
+});
+
+test('same-page Pause and reviewed Resume reopen the exact conversation through the native inbox', { timeout: 15_000 }, async t => {
+  const entered = deferred(), release = deferred(); let first = true;
+  const f = fixture({ confirm: value => ({ ...value.binding }), afterDispatch: async () => {
+    if (!first) return;
+    first = false; entered.resolve(); await release.promise;
+  } });
+  t.after(() => { release.resolve(); f.dispose(); });
+  await f.find(); await f.select(0);
+  const running = f.button('Review 1 conversation').click();
+  await entered.promise;
+  await f.button('Pause').click();
+  release.resolve(); await running;
+  assert.equal(f.panel.snapshot().status, 'paused');
+  assert.equal(f.panel.snapshot().tasks[0].status, 'partial');
+  assert.equal(f.panel.snapshot().tasks[0].messageRemovals, 1);
+  assert.equal(f.navigation.at(-1), '101', 'the paused run remains in its conversation');
+  assert.equal(f.lockNames.size, 0);
+  const before = f.navigation.length;
+  const resume = f.button('Review 1 remaining to resume');
+  assert.equal(resume.hidden, false); assert.equal(resume.disabled, false);
+  await resume.click();
+  assert.equal(f.confirmations.length, 2, 'Resume obtains new exact approval');
+  assert.deepEqual(f.navigation.slice(before), ['inbox', '101']);
+  assert.deepEqual(f.starts.map(plan => plan.threadId), ['101', '101']);
+  assert.deepEqual(f.dispatches, ['101', '101']);
+  assert.equal(f.panel.snapshot().status, 'completed');
+  assert.equal(f.panel.snapshot().tasks[0].messageRemovals, 1, 'the new run does not count old removals again');
+  assert.equal(f.lockNames.size, 0);
 });

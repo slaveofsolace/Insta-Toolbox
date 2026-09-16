@@ -909,7 +909,7 @@
           <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
           <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
           <p class="lead" data-role="account-run-summary">Choose a source, then review the accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p></section>
+          <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p><details class="settings-inline" data-role="presence-disclosure"><summary>Presence · Live Like Me</summary><div data-role="presence-routine"></div></details></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
@@ -1518,8 +1518,19 @@
   let reactionCleanup = null;
   let reactionSnapshot = null;
   let inboxPanel = null;
+  let presencePanel = null;
+  let presenceCapture = null;
 
   const engine = globalThis.InstaToolboxInstagramInspector;
+  const presenceInputs = globalThis.InstaToolboxPresenceInputs?.create({
+    fetchFollowerComparison: options => engine.fetchFollowerComparison(options),
+    inspectViewer: () => globalThis.InstaToolboxInstagramViewer.inspect({ document, location }),
+  });
+  const invalidatePresence = () => {
+    presenceCapture = null;
+    presenceInputs?.invalidate();
+    presencePanel?.invalidate(null);
+  };
   const dmRunner = globalThis.InstaToolboxDmThreadUnsender;
   if (dmRunner) {
     dmRunnerSnapshot = dmRunner.snapshot();
@@ -2114,12 +2125,15 @@
     if (input) input.value = username;
     const controller = new AbortController();
     relationshipController = controller;
+    invalidatePresence();
     resetRelationshipProgress();
     renderAll();
     showScanProgress(null, 0, false);
     setText('scan-detail', `Finding the exact @${username} account…`);
     try {
-      const result = await engine.fetchFollowerComparison({
+      const result = await (presenceInputs
+        ? options => presenceInputs.captureComparison(options)
+        : options => engine.fetchFollowerComparison(options))({
         username,
         retryRateLimits: true,
         signal: controller.signal,
@@ -2200,6 +2214,7 @@
         state.capture = previousCapture;
         throw error;
       }
+      if (!controller.signal.aborted) presenceCapture = result;
       const partialDetails = [];
       for (const [listType, accounts] of [
         ['followers', result.followers],
@@ -2944,6 +2959,7 @@
       status(`Captured ${visible.length} rendered ${listType} rows; ${state.capture[listType].length - before} were new.`);
     },
     'clear-capture': () => {
+      invalidatePresence();
       state.capture = stateDefaults().capture;
       checkerResultKey = '';
       checkerResultLimit = CHECKER_RESULTS_PAGE_SIZE;
@@ -3319,6 +3335,7 @@
       state.sentDms = [];
       state.sentDmsComplete = false;
       state.sentDmsChecked = false;
+      invalidatePresence();
       saveState();
       renderAll();
     } else if (records.some((record) => [...record.addedNodes, ...record.removedNodes].some((node) => (
@@ -3332,6 +3349,10 @@
     window.removeEventListener('keydown', toggleToolboxShortcut, true);
     confirmationController?.destroy();
     inboxPanel?.dispose();
+    presencePanel?.dispose();
+    invalidatePresence();
+    window.removeEventListener('pagehide', invalidatePresence);
+    document.removeEventListener('freeze', invalidatePresence);
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -3341,6 +3362,22 @@
   saveState();
   savePreferences(preferences);
   renderCleanupSettings({ initializeDraft: true });
+  if (presenceInputs && globalThis.InstaToolboxPresencePanel) {
+    presencePanel = globalThis.InstaToolboxPresencePanel.mount({
+      container: query('[data-role="presence-routine"]'), document,
+      nativeAdapter: presenceInputs,
+      getCapture: () => presenceCapture,
+      getProfile: () => ({ goal: 'maintain', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+      onManual: () => {
+        query('[data-role="presence-disclosure"]').open = false;
+        query('[data-role="bot-action"]').focus();
+      },
+      onStatus: status,
+    });
+    query('[data-role="presence-disclosure"]').addEventListener('toggle', () => presencePanel.refresh());
+    window.addEventListener('pagehide', invalidatePresence);
+    document.addEventListener('freeze', invalidatePresence);
+  }
   if (globalThis.InstaToolboxInboxPanel) {
     const inspectInboxAccount = () => {
       const value = globalThis.InstaToolboxInstagramViewer.inspect({ document, location });

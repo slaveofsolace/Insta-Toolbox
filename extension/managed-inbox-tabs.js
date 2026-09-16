@@ -29,10 +29,23 @@ export function createManagedInboxTabs({ review, tabs, extensionId, inspectWorke
   };
   const snapshot = () => ({ status, reason, workers: slots.map(({ index, tabId, threadId, phase }) => ({ index, tabId, threadId, phase })) });
   const bounded = (operation) => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('worker-response-timeout')), timeoutMs);
+    const started = now();
+    let settled = false;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      error ? reject(error) : resolve(value);
+    };
+    const timer = setTimeout(() => finish(new Error('worker-response-timeout')), timeoutMs);
     Promise.resolve().then(operation).then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (error) => { clearTimeout(timer); reject(error); },
+      (value) => {
+        const ended = now();
+        if (!Number.isFinite(started) || !Number.isFinite(ended)
+          || ended < started || ended - started >= timeoutMs) finish(new Error('worker-response-timeout'));
+        else finish(null, value);
+      },
+      (error) => finish(error),
     );
   });
   function pause(why) {
@@ -73,7 +86,8 @@ export function createManagedInboxTabs({ review, tabs, extensionId, inspectWorke
       runnable();
       const slot = slots[workerIndex];
       const position = plan.threadIds.indexOf(threadId);
-      const group = Math.min(plan.workerCount - 1, Math.floor(position / Math.ceil(plan.threadIds.length / plan.workerCount)));
+      const group = plan.assignmentMode === 'batches' ? position % plan.workerCount
+        : Math.min(plan.workerCount - 1, Math.floor(position / Math.ceil(plan.threadIds.length / plan.workerCount)));
       if (!Number.isInteger(workerIndex) || !slot || position < 0 || group !== workerIndex) throw new Error('thread-not-assigned');
       if (!['idle', 'released'].includes(slot.phase)) throw new Error('worker-not-released');
       if (slots.some((other) => other !== slot && other.threadId === threadId)) throw new Error('duplicate-thread');

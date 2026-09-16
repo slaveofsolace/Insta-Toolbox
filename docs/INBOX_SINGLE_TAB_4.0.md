@@ -43,8 +43,11 @@ The controller exposes:
 - `pause()`, `stop()`, and `skip()` for the current conversation.
 - `snapshot()` and `subscribe(listener)` for progress.
 
-Pause revokes the current approval. Continue through a fresh review of the
-remaining conversations, not by restoring old authority. `restored` checkpoints
+Pause revokes the current approval. **Review remaining to resume** presents a
+fresh confirmation for pending or partially completed conversations in the
+currently discovered inventory. Completed, skipped, failed and uncertain
+conversations are not silently retried. After reload, Find conversations must
+establish navigation evidence again. `restored` checkpoints
 are available for inspection only; they cannot approve or start a run.
 
 ## Single-flight and outcome handling
@@ -79,8 +82,9 @@ Implemented: same-tab serial controller, explicit message-window review,
 runtime token, shared lock, progress, interruption handling, durable coordinator
 checkpoints and runner worker-adapter integration. The userscript panel connects
 native discovery, selection, exact confirmation, navigation and the existing
-runner. It exposes Pause, Skip and Stop all, with current results separate from
-storage success. Reload never resumes execution or restores approval.
+runner. It exposes Pause, reviewed Resume, Skip and Stop all, with current results
+separate from storage success. A failed save prevents another run in that runtime.
+Reload never resumes execution or restores approval.
 
 Deterministic tests cover multiple threads, ID-less candidates, account-lock
 collisions, Stop, Pause, Skip, context drift, expiry, replay, storage failure and

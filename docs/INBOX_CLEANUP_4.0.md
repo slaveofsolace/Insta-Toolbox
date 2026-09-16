@@ -2,7 +2,7 @@
 
 ## Current status
 
-The userscript now connects native conversation discovery, selection, exact confirmation, and a serial same-tab controller to the existing Unsend engine. Pause, Skip, Stop, interruption recovery, and recent-job storage have deterministic coverage. This development path still needs authenticated inbox acceptance; a fixture pass is not proof of current Instagram compatibility. See [Serial inbox cleanup](INBOX_SINGLE_TAB_4.0.md).
+The userscript now connects native conversation discovery, selection, exact confirmation, and a serial same-tab controller to the existing Unsend engine. Pause, reviewed Resume, Skip, Stop, interruption recovery, and recent-job storage have deterministic coverage. This development path still needs authenticated inbox acceptance; a fixture pass is not proof of current Instagram compatibility. See [Serial inbox cleanup](INBOX_SINGLE_TAB_4.0.md).
 
 The extension tab-pool and metadata runtime remain unregistered in `background.js`; managed tabs are unavailable. The userscript adds no grants and does not open worker tabs or collect sessions. Discovery opens selected native conversation controls and may mark conversations read; its acknowledgment is separate from Unsend approval.
 
@@ -10,9 +10,10 @@ The extension tab-pool and metadata runtime remain unregistered in `background.j
 runner through an optional per-message adapter. It verifies the reviewed cutoff
 and current identity before dispatch, checks authority at native action
 boundaries, and records only verified outcomes. This connection passes unit tests
-and a real hidden Chromium fixture. Production context inspection, runtime
-registration, native discovery, and managed-tab orchestration are still missing;
-the adapter is not an enabled Ghost mode.
+and a real hidden Chromium fixture. The extension's production context messages,
+runtime registration, and managed-tab orchestration remain missing. The separate
+same-tab userscript controller is connected; it does not use this unregistered
+extension runtime.
 
 ## Source audit
 
@@ -51,7 +52,7 @@ The save adapter must atomically replace one job checkpoint in private local sto
 
 `extension/inbox-discovery.js` reads already-rendered anchors from a supplied inbox container. It accepts only the exact `https://www.instagram.com/direct/t/<digits>` origin/path, excludes hidden/detached rows, accumulates stable IDs across recycled row windows, and records section provenance without names or message previews. Cancellation, account switching, and sample/thread bounds preserve the collected inventory with an incomplete status.
 
-This collector neither clicks nor scrolls. It does not claim that the mounted rows represent the full inbox. Completion requires a trusted native-terminal adapter with account/section-specific stable evidence and no pending load. **No native-terminal adapter ships yet**, so default results remain partial. Repeated last rows or a quiet viewport are not accepted as completion. The current fallback is to keep using the open conversation while discovery/navigation integration is developed.
+This older anchor collector neither clicks nor scrolls. It does not claim that the mounted rows represent the full inbox. Completion requires a trusted native-terminal adapter with account/section-specific stable evidence and no pending load. **No native-terminal adapter ships yet**, so default results remain partial. Repeated last rows or a quiet viewport are not accepted as completion. The userscript's current navigation adapter additionally opens captured native rows after a read-receipt acknowledgment and records the resulting exact thread routes.
 
 A read-only Chrome inspection on September 16, 2026 found a native container
 labelled `Thread list`, Primary/General/Request tabs, and button-based rows. In
@@ -61,11 +62,14 @@ evidence that the current anchor collector cannot discover that inbox. It is not
 evidence that the inbox is empty or that no alternate native identity exists.
 No conversation was opened and no private identifiers, previews, or screenshots
 were retained. Opening unknown rows merely to learn their URL may mark them read,
-so it is not an accepted substitute for the requested non-changing discovery.
+so current userscript discovery explicitly explains that effect and requires an
+acknowledgment before navigation. It is not described as non-changing discovery.
 
 ## Message-arrival boundary
 
-The frozen review uses `skip-after-review-or-pause`. The adapter must skip messages demonstrably newer than review. If it cannot establish that a target belongs to the reviewed history, it pauses rather than adding that message to scope. The current single-chat streaming runner does not yet provide this guarantee for all message types without stable IDs/timestamps. Inbox cleanup therefore remains disabled until this adapter and limitation disclosure are accepted.
+Version 1 historical reviews use `skip-after-review-or-pause`: the worker must skip messages demonstrably newer than review and pause when it cannot establish the boundary. The single-chat streaming runner cannot provide this guarantee for every ID-less message type.
+
+The connected serial userscript uses an explicit version 2 `during-run` review instead. Its confirmation states that messages sent during cleanup may also be removed. It never invents a historical timestamp or silently upgrades an old review. This distinction is preserved in checkpoints; see [Serial inbox cleanup](INBOX_SINGLE_TAB_4.0.md).
 
 No raw message bodies are stored by the coordinator. Durable fields are reviewed account/thread identities, settings, statuses, counters, interruption reasons, and the in-flight thread/kind marker. These records are private local data and must not enter public diagnostics, screenshots, or Git.
 
@@ -74,6 +78,8 @@ No raw message bodies are stored by the coordinator. Durable fields are reviewed
 `extension/managed-inbox-tabs.js` wraps injected Chrome tab methods without registering any runtime listeners. It creates at most two inactive tabs, reuses them for their frozen assignment groups, never sets `active: true`, and removes only tab IDs returned by this adapter instance's own creation calls. A timed-out create request that returns late retains ownership and closes only that returned tab. Closure failure remains visible.
 
 Readiness requires an exact owned tab, reviewed numeric thread URL, extension ID, top frame, browser-provided document ID, and a one-use memory challenge. A trusted isolated-world inspection must independently confirm account, thread, document, usable evidence, and absence of restriction signals. A page payload containing an account name or `ready: true` is not proof. Copied handles, stale generations, and repeated challenges fail. Frozen, discarded, closed, wrong-thread, expired, or unusable workers pause; merely inactive workers are allowed by the model. Browser calls and inspection have bounded deadlines.
+
+The tab pool honors the review's contiguous or batch assignments by stable thread ID. Readiness deadlines are checked when an inspection settles, not only by a timer callback; a throttled late response cannot restore readiness.
 
 This is fixture-tested **tab readiness**, not deletion authority. Before connecting it to a runner, the runtime protocol must:
 
@@ -126,13 +132,13 @@ These are account-free state-machine fixtures. They do not open two real browser
 
 | Item / owner | Missing capability and fallback | Next implementation and release criterion | Status |
 | --- | --- | --- | --- |
-| Inbox discovery / browser integration | Read-only rendered-link collector exists; native section selection, traversal, and terminal proof do not. Continue using the open conversation. | Connect the collector to actual native inbox containers and bounded traversal; prove section coverage without changing unread state unexpectedly. Keep incomplete status whenever full discovery cannot be proven. | Collector implemented and fixture-tested; native integration absent and disabled. |
-| Reviewed serial runner / browser integration + runner | No trusted runtime adapter connects the core to the existing runner or enforces the historical boundary. | Bind one reviewed plan to exact account/thread/scope; use existing deletion engine; prove arrivals, thread switches, cancellation, uncertain outcomes, and no scope widening in fixtures and disposable acceptance. | Core implemented; integration absent and disabled. |
+| Inbox discovery / browser integration | Native row navigation, section selection and bounded traversal are connected after read-receipt acknowledgment. Terminal completeness and broad current-layout compatibility remain unproven. | Verify installed native navigation, section coverage and conservative incomplete status. Unknown pane reuse/empty-chat evidence stops before Unsend. | Implemented in the userscript; authenticated acceptance pending. |
+| Reviewed serial runner / browser integration + runner | Connected controller uses the existing engine with explicit during-run scope. Historical ID-less cutoff is not claimed. | Verify two disposable threads, Stop, Skip, reviewed Resume, new arrivals and uncertainty against the installed candidate. | Implemented and fixture-tested; authenticated acceptance pending. |
 | Metadata runtime / browser integration | Service exists but no accepted native account/discovery context provider or background installation. | Register only the metadata namespace after review; implement isolated read-only context inspection and prove forged page inputs, account switching, stale documents, restart, and interrupted storage cannot produce authority. | Service fixture-tested; not registered; mutations unavailable. |
 | Extension worker pool / browser integration | Tab readiness/ownership adapter exists; no runtime registration, accepted isolated inspector, complete per-click fencing, or verified retirement. | Integrate one coordinator and exact sender/tab/document protocol; test one then two real workers, restart, duplicate assignment, closure, freeze, discard, lost acknowledgment, and storage failure. Close only job-created tabs. | Pool adapter fixture-tested; runtime integration absent and disabled. |
 | Tampermonkey workers / browser integration | Existing grants cannot open/manage the required tab pool; cross-tab atomicity/isolation is not established. | Review least-privilege API additions and private messaging/election design; prove unauthorized page messages cannot mint authority and suspended workers cannot resume after reassignment. | Proposed; disabled; no new grants. |
-| Own reactions / runner + QA | No accepted native removal interaction for current-user ownership on surviving messages. Message ownership is insufficient. | Inspect disposable content with fresh specific approval; implement a separate exact-reaction adapter; verify message and others' reactions survive, including grouped emoji, Unicode variants, localization, recycling, idempotence, and Stop. | Not integrated; disabled. |
-| Background lifecycle / browser integration + QA | Core timer simulation does not prove live inactive-tab readiness or browser suspension behavior. | Run source-matched Chrome and Firefox/Tampermonkey fixtures, then approved disposable checks across inactive, throttled, frozen, discarded, closed, expired, sleep, and restart states. No focus stealing. | Unverified; no expanded support claim. |
+| Own reactions / runner + QA | Native instruction was inspected; adapter, traversal and userscript follow-up are connected behind a disabled capability. Removal acceptance is missing. | Specifically approved disposable removal must preserve the message and other reactions, including grouped emoji, recycling, idempotence and Stop. | Implemented and fixture-tested; disabled pending native acceptance. |
+| Background lifecycle / browser integration + QA | Hidden Chromium coverage proves fixture behavior, not authenticated inactive-tab compatibility. | Verify the installed userscript while inactive, throttled and interrupted; no focus stealing or claims after browser closure/sleep. | Seven Chromium fixture cases passed; native support claim pending. |
 | Desktop workers / browser integration | No authenticated Instagram renderer/session exists. Keep the local workspace and browser handoff. | Separate isolation/session threat model and permission design before any browser-controller implementation. | Proposed; unavailable. |
 
 No live Instagram mutation is authorized by the development brief. Disposable-message/reaction acceptance requires specific targets and scope before execution.

@@ -2,6 +2,11 @@
 
 Continue the work in `slaveofsolace/Insta-Toolbox` on `feat/live-like-me-scaffold`.
 
+Current integration status is recorded in [Production integration](PRODUCTION_INTEGRATION.md).
+The userscript now bundles native-data Stay connected planning and serial inbox
+cleanup. Live Presence and managed tabs remain unavailable. The scaffold history
+below describes the original branch point; preserve the newer integrated work.
+
 ## 1. Read this before editing
 
 The user wants the old Follow / Unfollow experience to evolve into a personally configured routine that feels like it lives alongside their account: **Live Like Me**, **Be Me**, and a **Grow my account** goal. The companion concept is **Ghost**, which separately handles inbox cleanup. Preserve that product ambition. Do not reduce the final product to another exported list or leave an enabled-looking session control that only simulates work.

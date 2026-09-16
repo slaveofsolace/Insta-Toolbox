@@ -113,3 +113,43 @@ test('late tab creation after a timeout closes only the newly created tab', asyn
   assert.equal(f.current.has(200), false); assert.equal(f.current.has(9), true);
   assert.deepEqual(f.calls.filter(([kind]) => kind === 'remove'), [['remove', 200]]);
 });
+
+test('batch assignment uses reviewed thread positions rather than contiguous groups', async () => {
+  const review = createInboxReview({ accountId: 'account_fixture', threadIds: ['104', '102', '101', '103'],
+    workerCount: 2, assignmentMode: 'batches' }, 1_000);
+  const f = fixture({ review });
+  const first = await f.pool.prepare(0, '104');
+  const second = await f.pool.prepare(1, '102');
+  await assert.rejects(f.pool.prepare(0, '102'), /thread-not-assigned/);
+  await assert.rejects(f.pool.prepare(1, '101'), /thread-not-assigned/);
+  await f.pool.release(await f.pool.handshake(f.sender(first), first.challenge));
+  await f.pool.release(await f.pool.handshake(f.sender(second), second.challenge));
+  assert.equal((await f.pool.prepare(0, '101')).tabId, first.tabId);
+  assert.equal((await f.pool.prepare(1, '103')).tabId, second.tabId);
+  assert.equal(f.calls.filter(([method]) => method === 'create').length, 2);
+});
+
+test('elapsed readiness deadline rejects a late result even before a throttled timeout callback runs', async () => {
+  let f;
+  f = fixture({ timeoutMs: 10, inspectWorker: async ({ documentId, threadId }) => {
+    f.advance(10);
+    return { accountId: 'account_fixture', documentId, threadId, usable: true };
+  } });
+  const prepared = await f.pool.prepare(0, '101');
+  await assert.rejects(f.pool.handshake(f.sender(prepared), prepared.challenge), /worker-evidence-unavailable/);
+  assert.equal(f.pool.snapshot().status, 'paused');
+  assert.equal(f.pool.snapshot().workers[0].phase, 'needs-attention');
+  await assert.rejects(f.pool.handshake(f.sender(prepared), prepared.challenge), /worker-evidence-unavailable/);
+});
+
+test('late timed-out inspection acknowledgment cannot restore a worker handle', async () => {
+  let resolveInspection;
+  const f = fixture({ timeoutMs: 5, inspectWorker: ({ documentId, threadId }) => new Promise((resolve) => {
+    resolveInspection = () => resolve({ accountId: 'account_fixture', documentId, threadId, usable: true });
+  }) });
+  const prepared = await f.pool.prepare(0, '101');
+  await assert.rejects(f.pool.handshake(f.sender(prepared), prepared.challenge), /worker-evidence-unavailable/);
+  resolveInspection(); await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(f.pool.snapshot().status, 'paused');
+  assert.equal(f.pool.snapshot().workers[0].phase, 'needs-attention');
+});

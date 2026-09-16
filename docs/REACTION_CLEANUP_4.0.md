@@ -78,6 +78,9 @@ closes the walker.
 If removal succeeds but Instagram's reaction dialog cannot close, the verified
 reaction stays counted and the pass stops for attention. That UI cleanup failure
 is not reported as an uncertain removal and does not permit another click.
+When an ambiguous or other-person reaction is skipped, the native details dialog
+must also close before traversal continues. An ineffective Close stops for
+attention with zero reaction removals; it cannot leave a dialog over the next target.
 
 Stable exhaustion means the bounded traversal reached the end of the exposed
 conversation. It does not prove Instagram supplied every server-side historical

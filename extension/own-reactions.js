@@ -215,7 +215,16 @@
           }, signal);
           const own = ownRows(dialog, selectedEmoji);
           if (own.length !== 1) {
-            close(dialog, threadId, accountId, signal);
+            try {
+              close(dialog, threadId, accountId, signal);
+              await wait(() => {
+                guard(threadId, accountId, signal);
+                return !visible(dialog);
+              }, signal);
+            } catch (error) {
+              if (signal?.aborted) throw error;
+              throw Object.assign(new Error('reaction-dialog-close-unavailable'), { needsAttention: true });
+            }
             return { verified: false, skipped: true, reason: own.length ? 'ownership-ambiguous' : 'not-my-reaction' };
           }
           const others = JSON.stringify(otherRows(dialog, selectedEmoji));
@@ -274,7 +283,7 @@
           return { verified: true, skipped: false, removed: 1 };
         } catch (error) {
           if (dispatched) throw uncertain('Reaction removal could not be verified. Check this message before retrying.');
-          if (dialog && visible(dialog)) {
+          if (dialog && visible(dialog) && error?.needsAttention !== true) {
             try { close(dialog, threadId, accountId, signal); } catch { /* Leave the native dialog for review. */ }
           }
           throw error;

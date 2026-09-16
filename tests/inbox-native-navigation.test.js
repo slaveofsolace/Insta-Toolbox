@@ -394,16 +394,18 @@ test('same-pane recycling without exact native identity is not authorized by the
   assert.equal(f.events.size, 0);
 });
 
-test('an already-open exact route has no authority without a privately verified pane', async () => {
+test('an already-open unverified pane is deliberately re-entered through the native inbox', async () => {
   const f = fixture({ pages: [['101']] }), adapter = f.adapter();
   await adapter.run();
-  f.win.location.href = 'https://www.instagram.com/direct/t/101/'; f.replacePane();
-  const navigator = adapter.createNavigator({ expiresAt: Date.now() + 10_000 }), before = f.rowClicks;
-  await assert.rejects(navigator.navigate('101'), /conversation-pane-unverified/);
-  assert.equal(f.rowClicks, before); assert.equal(f.events.size, 0);
+  f.win.location.href = 'https://www.instagram.com/direct/t/101/'; const old = f.replacePane();
+  const navigator = adapter.createNavigator({ expiresAt: Date.now() + 10_000 }), before = f.rowClicks, returns = f.returnClicks;
+  assert.equal((await navigator.navigate('101')).verified, true);
+  assert.equal(f.rowClicks, before + 1); assert.equal(f.returnClicks, returns + 1);
+  assert.equal(old.isConnected, false); assert.notEqual(f.panes[0], old);
+  navigator.stop(); assert.equal(f.events.size, 0);
 });
 
-test('already-open verified panes are reusable, but an unobserved pane replacement revokes that proof', async () => {
+test('already-open verified panes are reusable, but replacement requires a new native transition', async () => {
   const f = fixture({ pages: [['101']] }), adapter = f.adapter(); await adapter.run();
   const navigator = adapter.createNavigator({ expiresAt: Date.now() + 10_000 });
   await navigator.navigate('101');
@@ -411,8 +413,9 @@ test('already-open verified panes are reusable, but an unobserved pane replaceme
   assert.equal((await navigator.navigate('101')).verified, true);
   assert.equal(f.rowClicks, before);
   f.replacePane();
-  await assert.rejects(navigator.navigate('101'), /conversation-pane-unverified/);
-  assert.equal(f.rowClicks, before); assert.equal(f.events.size, 0);
+  assert.equal((await navigator.navigate('101')).verified, true);
+  assert.equal(f.rowClicks, before + 1);
+  navigator.stop(); assert.equal(f.events.size, 0);
 });
 
 test('leaving a verified route invalidates its pane even when the same root later reappears', async () => {
@@ -421,7 +424,35 @@ test('leaving a verified route invalidates its pane even when the same root late
   await navigator.navigate('101');
   f.win.location.href = 'https://www.instagram.com/direct/t/102/'; f.fire('popstate');
   f.win.location.href = 'https://www.instagram.com/direct/t/101/'; f.fire('popstate');
-  await assert.rejects(navigator.navigate('101'), /conversation-pane-unverified/);
+  const before = f.rowClicks;
+  assert.equal((await navigator.navigate('101')).verified, true);
+  assert.equal(f.rowClicks, before + 1);
+  navigator.stop();
+});
+
+test('a newly reviewed navigator can resume the same open thread only after native re-entry', async () => {
+  const f = fixture({ pages: [['101']] }), adapter = f.adapter(); await adapter.run();
+  const previous = adapter.createNavigator({ expiresAt: Date.now() + 10_000 });
+  await previous.navigate('101'); const old = f.panes[0]; previous.stop();
+  const resumed = adapter.createNavigator({ expiresAt: Date.now() + 10_000 });
+  const before = f.rowClicks, returns = f.returnClicks;
+  assert.equal((await resumed.navigate('101')).verified, true);
+  assert.equal(f.rowClicks, before + 1); assert.equal(f.returnClicks, returns + 1);
+  assert.equal(old.isConnected, false); assert.notEqual(f.panes[0], old);
+  resumed.stop(); assert.equal(f.events.size, 0);
+});
+
+test('same-page re-entry still refuses missing return controls and a reused native pane', async () => {
+  for (const failure of ['return', 'pane']) {
+    const options = { pages: [['101']] }, f = fixture(options), adapter = f.adapter({ routeTimeoutMs: 75 });
+    await adapter.run();
+    f.win.location.href = 'https://www.instagram.com/direct/t/101/'; f.replacePane();
+    if (failure === 'return') options.noReturn = true;
+    else { options.keepPaneInInbox = true; options.noPane = true; }
+    const navigator = adapter.createNavigator({ expiresAt: Date.now() + 10_000 });
+    await assert.rejects(navigator.navigate('101'), /inbox-return-unavailable|conversation-pane-unverified/);
+    assert.equal(f.events.size, 0);
+  }
 });
 
 test('new panes must finish native loading before execution readiness resolves', async () => {

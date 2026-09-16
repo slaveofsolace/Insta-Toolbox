@@ -41,6 +41,7 @@ export function mountUserscriptInboxPanel({
   const selectAll = create('button', 'Select all found', 'button quiet'); selectAll.type = 'button';
   const review = create('button', 'Review conversations', 'button danger'); review.type = 'button'; review.disabled = true;
   const pause = create('button', 'Pause', 'button quiet'); pause.type = 'button'; pause.hidden = true;
+  const resume = create('button', 'Review remaining', 'button quiet'); resume.type = 'button'; resume.hidden = true;
   const skip = create('button', 'Skip conversation', 'button quiet'); skip.type = 'button'; skip.hidden = true;
   const stop = create('button', 'Stop all', 'button danger'); stop.type = 'button'; stop.hidden = true;
   const results = create('ul', null, 'list list--compact');
@@ -53,7 +54,7 @@ export function mountUserscriptInboxPanel({
   if (!window.navigator?.locks?.request) supportNote.textContent = 'Inbox cleanup is unavailable: this browser does not provide exclusive tab locks.';
   supportNote.hidden = !supportNote.textContent;
   controls.append(find, inbox);
-  const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, pause, skip, stop);
+  const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, resume, pause, skip, stop);
   container.append(note, section, acknowledgment, controls, inventoryStatus, list, supportNote, recovery, actions, storageNote, results);
 
   function context() {
@@ -64,6 +65,15 @@ export function mountUserscriptInboxPanel({
       challenge: Boolean(value.restriction), rateLimited: false, actionBlocked: false, sessionExpired: false };
   }
   function announce(text) { onStatus(text); }
+  function remainingThreads() {
+    if (!checkpoint || !['paused', 'stopped'].includes(checkpoint.status)) return [];
+    let account;
+    try { account = context(); } catch { return []; }
+    if (!account.accountVerified || account.accountId !== checkpoint.review?.accountId) return [];
+    const found = new Set(inventory?.conversations.map(thread => thread.threadId) || []);
+    const remaining = checkpoint.tasks.filter(task => ['pending', 'partial'].includes(task.status)).map(task => task.threadId);
+    return remaining.length && remaining.every(id => found.has(id)) ? remaining : [];
+  }
   function updateControls() {
     inventoryStatus.hidden = !inventoryStatus.textContent;
     list.hidden = !rows.size;
@@ -76,6 +86,11 @@ export function mountUserscriptInboxPanel({
     review.disabled = active || loading || loadFailed || !selected.size || !window.navigator?.locks?.request
       || (needsReconciliation && !reconciled.checked);
     review.textContent = `Review ${selected.size} conversation${selected.size === 1 ? '' : 's'}`;
+    const remaining = remainingThreads();
+    resume.hidden = active || !remaining.length;
+    resume.disabled = loading || loadFailed || !window.navigator?.locks?.request
+      || (needsReconciliation && !reconciled.checked);
+    resume.textContent = `Review ${remaining.length} remaining to resume`;
     stop.hidden = !active; pause.hidden = !active || !controller; skip.hidden = !active || !controller;
     for (const row of rows.values()) row.input.disabled = active;
   }
@@ -127,6 +142,7 @@ export function mountUserscriptInboxPanel({
     renderCheckpoint(value);
     try { await save(value); storageNote.textContent = ''; storageNote.hidden = true; }
     catch (error) {
+      loadFailed = true;
       storageNote.textContent = 'Progress could not be saved. Cleanup stopped; the counts below include verified removals.';
       storageNote.hidden = false;
       throw error;
@@ -145,7 +161,7 @@ export function mountUserscriptInboxPanel({
         || !Number.isSafeInteger(task.messageRemovals) || task.messageRemovals < 0)) throw new Error('inbox-checkpoint-invalid');
     renderCheckpoint(value);
     needsReconciliation = Boolean(value.pendingMutation || value.pendingMutations?.length
-      || !['completed', 'stopped'].includes(value.status)
+      || !['completed', 'stopped', 'paused'].includes(value.status)
       || value.tasks.some(task => ['running', 'uncertain'].includes(task.status)));
     recovery.hidden = !needsReconciliation;
     storageNote.textContent = needsReconciliation
@@ -174,14 +190,14 @@ export function mountUserscriptInboxPanel({
     for (const [id, row] of rows) { selected.add(id); row.input.checked = true; }
     updateControls();
   });
-  review.addEventListener('click', async () => {
-    if (active || loading || loadFailed || busy() || !selected.size
+  async function startReview(threadIds) {
+    if (active || loading || loadFailed || busy() || !threadIds.length
       || (needsReconciliation && !reconciled.checked)) return;
     const epoch = ++operationEpoch;
     active = true; updateControls();
     let threadNavigator = null;
     try {
-      const captured = discovery.review({ threadIds: [...selected], scope: 'all' });
+      const captured = discovery.review({ threadIds, scope: 'all' });
       const { version, arrivalPolicy, ...base } = captured;
       const plan = createSingleTabInboxReview({ ...base, version: 2, messageWindow: 'during-run' });
       const key = inboxReviewKey(plan);
@@ -222,7 +238,9 @@ export function mountUserscriptInboxPanel({
       }
       updateControls();
     }
-  });
+  }
+  review.addEventListener('click', () => startReview([...selected]));
+  resume.addEventListener('click', () => startReview(remainingThreads()));
   const stopAll = () => {
     if (!active) return false;
     operationEpoch += 1;

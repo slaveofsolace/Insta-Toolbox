@@ -9,6 +9,7 @@ import { app, BrowserWindow, session } from 'electron';
 
 import { createAppServer } from './serve.mjs';
 import { instagramScriptOrder } from './instagram-script-order.mjs';
+import { acceptUserscriptPresence } from './lib/userscript-presence-acceptance.mjs';
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(moduleDirectory, '..');
@@ -2997,6 +2998,13 @@ async function run() {
     const pwaAddress = await listen(pwaServer);
     const overlayBaseUrl = `http://127.0.0.1:${overlayAddress.port}`;
     const pwaBaseUrl = `http://127.0.0.1:${pwaAddress.port}/`;
+    const presenceOptions = { window: overlay.window, isolatedSession: overlay.isolatedSession,
+      fixtureAssets, resultsRoot, releaseVersion, withTimeout, waitForPageValue, resizeViewport };
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_PRESENCE_ONLY === '1') {
+      await acceptUserscriptPresence(presenceOptions);
+      assert.deepEqual(overlay.problems, [], 'userscript Presence browser problems');
+      return;
+    }
     if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_TOOLS_ONLY === '1') {
       await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
       await acceptUserscriptPartialAccountReview(overlay.window.webContents, overlayBaseUrl);
@@ -3067,6 +3075,7 @@ async function run() {
     await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptPartialAccountReview(overlay.window.webContents, overlayBaseUrl);
+    await acceptUserscriptPresence(presenceOptions);
     await acceptBackgroundComparison(background);
     await acceptPwaInstallability(pwa.window.webContents, pwaBaseUrl);
     assert.deepEqual(overlay.problems, [], 'extension fixture browser problems');

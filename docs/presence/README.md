@@ -2,7 +2,7 @@
 
 An account routine that feels personal without hiding what it does.
 
-**Status: branch-only scaffold.** The planner and an interactive no-click concept are implemented. This is not a released replacement for Follow / Unfollow and does not automate a live Instagram account.
+**Status: development build, planning only.** Stay connected is available under Follow / Unfollow → Presence in the userscript. It builds suggestions from the original, fresh Mutual Checker response for the verified signed-in account. Live Presence actions are not connected; the manual tool remains available. The separate design concept still uses synthetic data.
 
 ## Branch and dependency
 
@@ -10,7 +10,7 @@ An account routine that feels personal without hiding what it does.
 - Branch point: `9e9bcb6c3ea62f0b6bd4c42076742987088097dd` on `sol/settings-dm-4.0` ([draft PR #52](https://github.com/slaveofsolace/Insta-Toolbox/pull/52)).
 - Stable main at the start of this work: `7ffbcf8a95253f37fec09fbd6c2351e0fca6fc68`, release 3.1.12.
 - The inherited 4.0.0 package version belongs to PR #52's candidate. This scaffold does not publish or promote that candidate.
-- Parent Ghost/settings files, existing Follow / Unfollow behavior, manifests, generated userscript, release channel and existing notices are unchanged by this scaffold.
+- Parent Ghost/settings work is preserved in the integrated branch. The generated userscript now includes the planning interface; the stable release channel is unchanged.
 
 Read [the continuation brief](CODEX_HANDOFF.md), [source review](SOURCE_REVIEW.md) and [validation record](VALIDATION.md) before integration.
 
@@ -51,8 +51,11 @@ The current default allowances (12, 6, or 12 depending on routine) are editable 
 | `experiments/presence/presence.css` | Light/dark layout, responsive dimensions, reduced motion, focus and forced-color handling. |
 | `experiments/presence/presence.js` | Synthetic candidates, form binding, explicit preference saving, demo export and simulated progress. |
 | `scripts/serve-presence-preview.mjs` | Separate loopback-only allowlisted preview server; does not alter the production asset server. |
+| `extension/presence-native-inputs.js` | Private capture receipts, current viewer binding, and observed numeric planning identities. |
+| `extension/presence-batch-review.js` | Finite review mapping without execution authority. |
+| `extension/presence-userscript-panel.js` | Native-data Stay connected composer, protected accounts, plan hours, explained suggestions, and manual-tool return. |
 
-No new dependencies are added. No third-party implementation is vendored. The production build can include the unused core module through existing core-directory packaging, but no production entrypoint invokes it and the experiment is not part of the shipped interface.
+No new dependencies are added. No third-party implementation is vendored. The userscript bundles the planner and thin input/interface adapters from source. The experiment is not part of the shipped interface. See [production integration](PRODUCTION_INTEGRATION.md) for the exact boundary and remaining work.
 
 ## Try the scaffold
 
