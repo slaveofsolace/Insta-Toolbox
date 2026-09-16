@@ -111,3 +111,12 @@ short window, 320px width, 200% zoom, reduced motion, forced colors, keyboard-on
 open/close/reset, outside-click close, focus restoration, and readable translucent
 text. Fixtures establish controlled-runtime behavior, not authenticated Instagram
 compatibility. Review changed screenshots without widening tolerances.
+
+## Remaining settings adapters
+
+| Item / responsible area | Current fallback and missing capability | Source and release criterion |
+| --- | --- | --- |
+| Clear history / Delete local data — UI/settings | Disabled in the new dialog. Existing tool-specific clear controls and workspace deletion retain their established scope. There is no shared cross-tab idle check or scoped deletion adapter. | `extension/instagram-overlay.js`, `userscripts/src/toolbox-shell.js`: implement an explicit scoped confirmation and storage adapter, then prove active runs block deletion, unrelated stores survive, and failed persistence leaves a recoverable state. |
+| Completion notifications — browser integration | Disabled; run results remain in the tool. No notification runtime or permission flow is connected. | `extension/cleanup-settings.js` and each shell: verify supported APIs and minimal permissions, notify only after settled completion, and test denied permission, cancelled runs, and duplicate terminal events before enabling. |
+
+These are disabled controls with explanations, not completed integrations.

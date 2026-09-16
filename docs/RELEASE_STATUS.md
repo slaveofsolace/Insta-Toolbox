@@ -30,7 +30,7 @@ The development matrix contains:
 - 11 PWA screenshot states;
 - service-worker cache generation `insta-toolbox-v400`.
 
-Version-refreshed local visual checks passed. Packaging, remote CI, and authenticated acceptance remain separate gates. See the acceptance record for the exact scope of each completed check.
+Version-refreshed local visual checks, Chrome pairing, Windows packaging, archive inspection, and local checksums passed. Windows installation lifecycle, macOS packaging, remote CI, and authenticated acceptance remain separate gates. See the acceptance record for the exact scope of each completed check.
 
 Before a release is promoted, the exact `main` commit must pass assembly, tests, repository hygiene, dependency audit, generated-userscript parity, extension and userscript acceptance, Chrome pairing, browser QA, overlay/PWA visual checks, Windows packaging, macOS packaging, archive inspection, checksum generation, and `git diff --check`.
 
