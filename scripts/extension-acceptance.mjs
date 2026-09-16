@@ -1304,12 +1304,46 @@ async function acceptUserscriptSettings(webContents) {
   const result = await webContents.executeJavaScript(`(async () => {
     const host = document.querySelector('#insta-toolbox-userscript-root');
     const shadow = host.shadowRoot;
+    const appearanceSnapshot = () => ({
+      storedTheme: globalThis.fixtureGmStore.instaToolboxUserscriptPreferencesV1?.theme,
+      storedDensity: globalThis.fixtureGmStore.instaToolboxUserscriptPreferencesV1?.density,
+      themeAttribute: host.dataset.themePreference,
+      densityAttribute: host.dataset.density,
+      themeControl: shadow.querySelector('[data-preference="theme"]').value,
+      textToken: getComputedStyle(host).getPropertyValue('--insta-toolbox-text').trim(),
+      panelColor: getComputedStyle(shadow.querySelector('.panel')).color,
+      panelHidden: shadow.querySelector('.panel').hidden,
+      cardPadding: getComputedStyle(shadow.querySelector('.card')).paddingTop,
+    });
+    const waitForAppearance = async (preference, value) => {
+      const deadline = performance.now() + 1500;
+      let snapshot;
+      while (true) {
+        snapshot = appearanceSnapshot();
+        const ready = preference === 'theme'
+          ? snapshot.storedTheme === value && snapshot.themeAttribute === value
+            && snapshot.themeControl === value
+            && snapshot.textToken === (value === 'dark' ? '#f3f3f3' : '#171717')
+            && snapshot.panelColor === (value === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)')
+          : snapshot.storedDensity === value && snapshot.densityAttribute === value
+            && snapshot.cardPadding === (value === 'comfortable' ? '16px' : '12px');
+        if (ready) return snapshot;
+        if (performance.now() >= deadline) {
+          throw new Error('Settings appearance did not settle: ' + JSON.stringify({ preference, value, ...snapshot }));
+        }
+        // Yield to the renderer; microtasks alone do not advance a render cycle.
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    };
     const change = async (selector, value) => {
       const control = shadow.querySelector(selector);
       if (control.type === 'checkbox') control.checked = value;
       else control.value = value;
       control.dispatchEvent(new Event('change', { bubbles: true }));
       await Promise.resolve(); await Promise.resolve();
+      if (control.dataset.preference === 'theme' || control.dataset.preference === 'density') {
+        await waitForAppearance(control.dataset.preference, value);
+      }
     };
     const preferences = () => structuredClone(globalThis.fixtureGmStore.instaToolboxUserscriptPreferencesV1);
     const cleanup = () => structuredClone(globalThis.fixtureGmStore.instaToolboxCleanupPreferencesV1);
@@ -1319,6 +1353,10 @@ async function acceptUserscriptSettings(webContents) {
     const darkText = getComputedStyle(shadow.querySelector('.panel')).color;
     await change('[data-preference="theme"]', 'light');
     const lightText = getComputedStyle(shadow.querySelector('.panel')).color;
+    await change('[data-preference="theme"]', 'dark');
+    const repeatedDark = appearanceSnapshot();
+    await change('[data-preference="theme"]', 'light');
+    const repeatedLight = appearanceSnapshot();
     await change('[data-preference="density"]', 'comfortable');
     const comfortable = getComputedStyle(shadow.querySelector('.card')).paddingTop;
     await change('[data-preference="density"]', 'compact');
@@ -1344,11 +1382,13 @@ async function acceptUserscriptSettings(webContents) {
     await change('[data-cleanup-preference="showSummary"]', true);
     shadow.querySelector('[data-action="reset-layout"]').click();
     shadow.querySelector('[data-action="close-settings"]').click();
-    return { darkText, lightText, comfortable, compact, draftBefore, draftAfter,
+    return { darkText, lightText, repeatedDark, repeatedLight, comfortable, compact, draftBefore, draftAfter,
       savedCleanup, retainedCleanup, resetLayout, resetAppearance, dataUntouched };
   })()`, true);
   assert.equal(result.darkText, 'rgb(243, 243, 243)', 'explicit dark theme affects rendered text');
   assert.equal(result.lightText, 'rgb(23, 23, 23)', 'explicit light theme affects rendered text');
+  assert.equal(result.repeatedDark.panelColor, 'rgb(243, 243, 243)', JSON.stringify(result.repeatedDark));
+  assert.equal(result.repeatedLight.panelColor, 'rgb(23, 23, 23)', JSON.stringify(result.repeatedLight));
   assert.equal(result.comfortable, '16px');
   assert.equal(result.compact, '12px');
   assert.equal(result.savedCleanup.messageScope, 'newest');
