@@ -8,11 +8,12 @@ This project uses [Semantic Versioning](https://semver.org/).
 - Verify native removals across timestamp changes and history backfill without mistaking recycled rows for success.
 - Add the bounded reaction follow-up and separate result accounting behind the existing disabled capability; native acceptance remains pending.
 - Group settings into Appearance, Cleanup defaults, Execution, and Data and troubleshooting; preserve existing preferences and separate appearance and layout resets.
-- Add Standard and Fast single-conversation cleanup choices with the same ownership, confirmation, pacing, and removal checks.
+- Restore pre-Fast single-conversation traversal and adaptive 1–2 second pacing. Remove the speed selector and normalize saved Fast preferences without changing other settings.
 - Clean up cancelled waits and strengthen removal verification for recycled rows, temporary loading states, and reverted changes.
 - Stop safely on page suspension or lost evidence while preserving verified and uncertain outcomes separately.
 - Make blur and completion-summary preferences consistent across the extension and userscript.
-- Add tested inbox coordination modules. Inbox execution, managed background workers, and own-reaction cleanup remain disabled pending native adapters and acceptance.
+- Add reviewed, serial inbox cleanup to the userscript: discover conversations, select exact threads, confirm, and use the existing Unsend runner with Pause, Skip, and Stop. Native acceptance remains pending.
+- Keep managed worker tabs and own-reaction cleanup unavailable until their native adapters pass acceptance.
 
 ## 3.1.12 - 2026-09-12
 

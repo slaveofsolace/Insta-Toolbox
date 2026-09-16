@@ -159,18 +159,18 @@ if (typeof electron === 'string') {
       }
     }
 
-    for (const speed of ['standard', 'fast']) {
+    for (const speed of ['standard']) {
       const result = await runCase(`hidden-${speed}`, { speed });
       assert.equal(result.result.status, 'completed');
       assert.equal(result.result.processed, 3);
       assert.equal(result.dispatches, 3);
       assert.equal(result.ledger.length, 3);
     }
-    const stopped = await runCase('hidden-stop', { speed: 'fast', stopAfter: 1 });
+    const stopped = await runCase('hidden-stop', { speed: 'standard', stopAfter: 1 });
     assert.equal(stopped.result.status, 'stopped');
     assert.equal(stopped.result.processed, 1);
     assert.equal(stopped.dispatches, 1);
-    const expired = await runCase('hidden-expiry', { speed: 'fast', ttlMs: 1_500 });
+    const expired = await runCase('hidden-expiry', { speed: 'standard', ttlMs: 1_500 });
     assert.equal(expired.result.status, 'error');
     assert.match(expired.result.message, /expired/);
     assert.ok(expired.dispatches < 3);
@@ -197,21 +197,21 @@ if (typeof electron === 'string') {
     assert.equal(frozen.result.status, 'needs-attention');
     assert.equal(frozen.result.interruptionReason, 'page-frozen');
     assert.equal(frozen.dispatches, 0);
-    const settled = await runCase('freeze-after-dispatch-verified', { speed: 'fast' }, freezeAndResume(true));
+    const settled = await runCase('freeze-after-dispatch-verified', { speed: 'standard' }, freezeAndResume(true));
     assert.equal(settled.result.status, 'needs-attention');
     assert.equal(settled.result.processed, 1);
     assert.equal(settled.result.uncertain, 0);
     assert.equal(settled.dispatches, 1);
     assert.equal(settled.ledger.length, 1);
     assert.ok(settled.freezeEvents >= 1 && settled.resumeEvents >= 1);
-    const uncertain = await runCase('freeze-after-dispatch-uncertain', { speed: 'fast', mutationDelayMs: 60_000 }, freezeAndResume(true));
+    const uncertain = await runCase('freeze-after-dispatch-uncertain', { speed: 'standard', mutationDelayMs: 60_000 }, freezeAndResume(true));
     assert.equal(uncertain.result.status, 'needs-attention');
     assert.equal(uncertain.result.processed, 0);
     assert.equal(uncertain.result.uncertain, 1);
     assert.equal(uncertain.dispatches, 1);
     assert.equal(uncertain.ledger.length, 0);
     assert.ok(uncertain.freezeEvents >= 1 && uncertain.resumeEvents >= 1);
-    const worker = await runCase('hidden-reviewed-worker', { speed: 'fast', worker: true });
+    const worker = await runCase('hidden-reviewed-worker', { speed: 'standard', worker: true });
     assert.equal(worker.result.status, 'completed');
     assert.equal(worker.result.processed, 3);
     assert.equal(worker.dispatches, 3);

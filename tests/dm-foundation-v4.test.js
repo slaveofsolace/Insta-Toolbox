@@ -321,7 +321,10 @@ test('two visible message-options controls remain ambiguous after selector dedup
   assert.equal(runner.__test.actionButton(row), controls[0]);
 });
 
-function interactionFixture(onDispatch, { speed = 'standard', runtime = {}, beforeDispatch = null, nativeLayout = false } = {}) {
+function interactionFixture(onDispatch, {
+  speed = 'standard', runtime = {}, beforeDispatch = null, nativeLayout = false,
+  messageCount = 1, scope = 'newest',
+} = {}) {
   const observers = new Set();
   const documentEvents = new EventTarget();
   const windowEvents = new EventTarget();
@@ -418,10 +421,18 @@ function interactionFixture(onDispatch, { speed = 'standard', runtime = {}, befo
     target.append(group);
   }
   root.append(received(), target, received());
+  const outgoing = [[target, options]];
+  for (let index = 1; index < messageCount; index += 1) {
+    const extra = new Element('div', { 'data-sent-by-me': 'true', 'data-message-id': `target-${index}` });
+    const extraOptions = new Element('button', { 'aria-haspopup': 'menu', 'aria-label': 'More options' }, 'More options');
+    extra.append(new Element('div', { dir: 'auto' }, `Disposable message ${index}`), extraOptions);
+    root.append(extra);
+    outgoing.push([extra, extraOptions]);
+  }
   body.append(root);
   let dispatches = 0;
   let runner;
-  options.onClick = () => {
+  for (const [selectedTarget, selectedOptions] of outgoing) selectedOptions.onClick = () => {
     beforeDispatch?.({ runner, emitLifecycle });
     const menu = new Element('button', {}, 'Unsend');
     menu.onClick = () => {
@@ -431,7 +442,7 @@ function interactionFixture(onDispatch, { speed = 'standard', runtime = {}, befo
       confirm.onClick = () => {
         dispatches += 1;
         dialog.remove();
-        onDispatch({ target, runner, emitLifecycle, root, Element });
+        onDispatch({ target: selectedTarget, runner, emitLifecycle, root, Element, observerCount: observers.size });
       };
       dialog.append(confirm);
       body.append(dialog);
@@ -458,7 +469,7 @@ function interactionFixture(onDispatch, { speed = 'standard', runtime = {}, befo
     ledgerWrites: () => ledgerWrites,
     replay: () => runner.start({ plan: lastPlan }),
     run: () => runner.start({
-      plan: lastPlan = runner.createPlan({ threadId: 'disposable', scope: 'newest', speed, limit: 1, expiresAt: (runtime.Date || Date).now() + 60_000 }),
+      plan: lastPlan = runner.createPlan({ threadId: 'disposable', scope, speed, limit: 1, expiresAt: (runtime.Date || Date).now() + 60_000 }),
       onVerifiedRemoval() { ledgerWrites += 1; },
     }),
   };
@@ -487,19 +498,18 @@ test('Stop after dispatch settles a proven removal once without dispatching anot
   assert.equal(result.status, 'stopped');
 });
 
-test('Standard and Fast count one native id-less removal despite layout reconciliation', async () => {
-  for (const speed of ['standard', 'fast']) {
-    const fixture = interactionFixture(({ target, root, Element }) => {
-      target.remove();
-      root.append(new Element('span', {}, 'Seen'));
-    }, { speed, nativeLayout: true });
-    const result = await fixture.run();
-    assert.equal(result.status, 'completed', JSON.stringify(result));
-    assert.equal(result.processed, 1);
-    assert.equal(result.uncertain, 0);
-    assert.equal(fixture.dispatches(), 1);
-    assert.equal(fixture.ledgerWrites(), 1);
-  }
+test('the restored runner counts one native id-less removal despite layout reconciliation', async () => {
+  const fixture = interactionFixture(({ target, root, Element, observerCount }) => {
+    assert.ok(observerCount >= 3, 'thread, dialog and removal observers are armed before dispatch');
+    target.remove();
+    root.append(new Element('span', {}, 'Seen'));
+  }, { nativeLayout: true });
+  const result = await fixture.run();
+  assert.equal(result.status, 'completed', JSON.stringify(result));
+  assert.equal(result.processed, 1);
+  assert.equal(result.uncertain, 0);
+  assert.equal(fixture.dispatches(), 1);
+  assert.equal(fixture.ledgerWrites(), 1);
 });
 
 test('freeze before dispatch interrupts readiness with a clear needs-attention result', async () => {
@@ -567,12 +577,14 @@ test('normal tab focus and visibility changes leave a valid run active', async (
   assert.equal(fixture.dispatches(), 1);
 });
 
-test('speed is bound to v3 plans and authentic legacy v2 plans remain Standard only', () => {
+test('v3 and authentic legacy v2 plans accept only the original execution pace', () => {
   const runner = load();
-  const plan = runner.createPlan({ threadId: 'disposable', scope: 'all', speed: 'fast', expiresAt: Date.now() + 60_000 });
+  const plan = runner.createPlan({ threadId: 'disposable', scope: 'all', expiresAt: Date.now() + 60_000 });
   assert.equal(plan.version, 3);
-  assert.equal(plan.speed, 'fast');
-  assert.equal(runner.__test.validatePlan({ ...plan, speed: 'standard' }), null);
+  assert.equal(plan.speed, 'standard');
+  assert.equal(runner.__test.validatePlan(plan).reviewedDigest, plan.reviewedDigest);
+  assert.equal(runner.createPlan({ ...plan, speed: 'fast' }), null);
+  assert.equal(runner.__test.validatePlan({ ...plan, speed: 'fast' }), null);
   assert.equal(runner.createPlan({ ...plan, speed: 'turbo' }), null);
   const legacy = { version: 2, threadId: plan.threadId, scope: 'all', limit: null, detectedCount: null, expiresAt: plan.expiresAt };
   let hash = 0x811c9dc5;
@@ -581,12 +593,25 @@ test('speed is bound to v3 plans and authentic legacy v2 plans remain Standard o
   legacy.reviewedDigest = (hash >>> 0).toString(16).padStart(8, '0');
   assert.equal(runner.__test.validatePlan(legacy).speed, 'standard');
   assert.equal(runner.__test.validatePlan({ ...legacy, speed: 'fast' }), null);
-  assert.equal(runner.SPEED_PROFILES.standard.minDelayMs, 1_000);
-  assert.equal(runner.SPEED_PROFILES.fast.minDelayMs, 1_000);
-  assert.equal(Object.isFrozen(runner.SPEED_PROFILES.fast), true);
+  assert.equal(runner.SPEED_PROFILES, undefined);
+  const staleFast = { ...plan, speed: 'fast' };
+  delete staleFast.reviewedDigest;
+  hash = 0x811c9dc5;
+  const staleText = JSON.stringify(staleFast);
+  for (let index = 0; index < staleText.length; index += 1) hash = Math.imul(hash ^ staleText.charCodeAt(index), 0x01000193);
+  staleFast.reviewedDigest = (hash >>> 0).toString(16).padStart(8, '0');
+  assert.equal(runner.__test.validatePlan(staleFast), null, 'an authentic old Fast digest grants no current authority');
 });
 
-async function timedFixture(speed) {
+test('a stale Fast request dispatches no native controls and writes no ledger entries', async () => {
+  const fixture = interactionFixture(() => assert.fail('obsolete speed must never dispatch'), { speed: 'fast' });
+  const result = await fixture.run();
+  assert.equal(result.status, 'error');
+  assert.equal(fixture.dispatches(), 0);
+  assert.equal(fixture.ledgerWrites(), 0);
+});
+
+async function timedFixture(speed, fixtureOptions = {}) {
   let now = Date.now();
   const startedAt = now;
   let timerId = 0;
@@ -600,7 +625,7 @@ async function timedFixture(speed) {
     },
     clearTimeout(id) { timers.delete(id); },
   };
-  const fixture = interactionFixture(({ target }) => target.remove(), { speed, runtime });
+  const fixture = interactionFixture(({ target }) => target.remove(), { ...fixtureOptions, speed, runtime });
   let result;
   const pending = fixture.run().then((value) => { result = value; });
   for (let step = 0; step < 1_000 && !result; step += 1) {
@@ -618,32 +643,36 @@ async function timedFixture(speed) {
   return { fixture, result, durationMs: now - startedAt };
 }
 
-test('Fast removes avoidable hover waiting while preserving Standard results and verification', async (context) => {
+test('restored hover timing remains 110ms with verified bounded settlement', async (context) => {
   const standard = await timedFixture('standard');
-  const fast = await timedFixture('fast');
-  for (const outcome of [standard, fast]) {
-    assert.equal(outcome.result.status, 'completed');
-    assert.equal(outcome.result.processed, 1);
-    assert.equal(outcome.result.failed, 0);
-    assert.equal(outcome.result.retryAttempts, 0);
-    assert.equal(outcome.fixture.dispatches(), 1);
-    assert.equal(outcome.fixture.ledgerWrites(), 1);
-    assert.ok(outcome.result.phaseTimings.verification >= 350);
-    const copy = outcome.fixture.runner.snapshot();
-    copy.phaseTimings.verification = -1;
-    assert.ok(outcome.fixture.runner.snapshot().phaseTimings.verification >= 350);
-  }
-  assert.equal(standard.durationMs - fast.durationMs, 110);
-  assert.equal(standard.result.phaseTimings.menuReadiness - fast.result.phaseTimings.menuReadiness, 110);
-  assert.equal(standard.result.phaseTimings.verification, fast.result.phaseTimings.verification);
+  assert.equal(standard.result.status, 'completed');
+  assert.equal(standard.result.processed, 1);
+  assert.equal(standard.result.failed, 0);
+  assert.equal(standard.result.retryAttempts, 0);
+  assert.equal(standard.fixture.dispatches(), 1);
+  assert.equal(standard.fixture.ledgerWrites(), 1);
+  assert.ok(standard.result.phaseTimings.verification >= 350);
+  const copy = standard.fixture.runner.snapshot();
+  copy.phaseTimings.verification = -1;
+  assert.ok(standard.fixture.runner.snapshot().phaseTimings.verification >= 350);
+  assert.equal(standard.result.phaseTimings.menuReadiness, 110);
   context.diagnostic(JSON.stringify({
     fixture: 'one immediate-menu disposable message; virtual clock',
     standardMs: standard.durationMs,
-    fastMs: fast.durationMs,
     standardPhases: standard.result.phaseTimings,
-    fastPhases: fast.result.phaseTimings,
     verifiedPerRun: 1,
     failuresPerRun: 0,
     uncertainPerRun: 0,
   }));
+});
+
+test('All continues after each verified removal and reaches stable exhaustion without counting received rows', async () => {
+  const { fixture, result } = await timedFixture('standard', { scope: 'all', messageCount: 3 });
+  assert.equal(result.status, 'completed', JSON.stringify(result));
+  assert.equal(result.processed, 3);
+  assert.equal(result.failed, 0);
+  assert.equal(result.uncertain, 0);
+  assert.equal(fixture.dispatches(), 3);
+  assert.equal(fixture.ledgerWrites(), 3);
+  assert.ok(result.phaseTimings.pacing > 0, 'the original pacing remains between successful actions');
 });

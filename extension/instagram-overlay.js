@@ -289,8 +289,6 @@
       const count = query('[data-insta-toolbox-role="unsend-count"]');
       if (scope) scope.value = model.cleanupPreferences.messageScope;
       if (count) count.value = String(model.cleanupPreferences.messageLimit);
-      const speed = query('[data-insta-toolbox-role="unsend-speed"]');
-      if (speed) speed.value = model.cleanupPreferences.speed;
     }
   }
 

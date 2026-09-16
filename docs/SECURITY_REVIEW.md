@@ -37,7 +37,7 @@ The userscript may retain the original run expiry across navigation through tab-
 
 ## DM Unsend
 
-Thread-wide Unsend binds a versioned plan to the exact open thread, scope (`all`, `newest`, or `oldest`), speed, optional finite limit, digest, and expiry. After one confirmation it performs one streaming traversal; a read-only mounted-row count is not authorization. Version 3 plans bind Standard/Fast into the digest; compatible version 2 plans remain Standard only.
+Thread-wide Unsend binds a versioned plan to the exact open thread, scope (`all`, `newest`, or `oldest`), optional finite limit, digest, and expiry. After one confirmation it performs one streaming traversal; a read-only mounted-row count is not authorization. Version 3 and compatible version 2 plans use the restored Standard pacing only. Fast preferences normalize to Standard; stale Fast plans are rejected.
 
 Before each removal the runner rechecks:
 
@@ -50,7 +50,7 @@ Before each removal the runner rechecks:
 
 The traversal handles virtualized rows, normal and reversed layouts, scroller replacement, DOM shrinkage, bounded retries, and stable-empty exhaustion. Successful actions use adaptive one-to-two-second pacing. The runner records only verified removals and never reports the mounted DOM window as the conversation total.
 
-Fast removes an avoidable menu-readiness delay without relaxing pacing, ownership, or postcondition checks. Nested right-aligned controls cannot establish message ownership; contradictory ownership evidence stops preflight. Changed preview text, temporary loading states, recycled row identities, and optimistic removals that revert are not success evidence. Removal must remain proven through the bounded settlement window.
+The restored runner retains bounded menu readiness and adaptive 1–2 second successful-action pacing. Nested right-aligned controls cannot establish message ownership; contradictory ownership evidence stops preflight. Changed preview text, temporary loading states, recycled row identities, and optimistic removals that revert are not success evidence. Removal must remain proven through the bounded settlement window.
 
 Page freeze and page exit revoke current action authority. Already-dispatched removals settle as verified or uncertain; the next mutation is not dispatched. Resuming the page does not restore authority. Ordinary focus changes do not themselves revoke a run, but reliable inactive-tab execution still needs separate acceptance. Waits release listeners, observers, and timers on settlement.
 

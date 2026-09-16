@@ -8,7 +8,7 @@ import { createInboxWorker } from '../extension/inbox-worker.js';
 async function setup(options = {}) {
   let clock = 1_700_000_000_000;
   const review = createInboxReview({ accountId: 'account_1', threadIds: ['123'],
-    scope: options.scope || 'all', limit: options.limit, speed: 'fast' }, clock);
+    scope: options.scope || 'all', limit: options.limit, speed: 'standard' }, clock);
   const saved = [];
   let failSave = false;
   const coordinator = createInboxCoordinator({ review, now: () => clock,
@@ -44,7 +44,7 @@ test('worker reuses one reviewed thread runner and counts each verified message 
   assert.equal(env.calls, 1);
   assert.equal(env.captured.plan.scope, 'newest');
   assert.equal(env.captured.plan.limit, 2);
-  assert.equal(env.captured.plan.speed, 'fast');
+  assert.equal(env.captured.plan.speed, 'standard');
   assert.equal(env.captured.plan.expiresAt, env.review.expiresAt);
   let controls = 0;
   const result = await action(env, candidate(), async () => {

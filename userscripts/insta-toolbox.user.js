@@ -245,7 +245,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const limit = Number(source.messageLimit);
     return {
       schemaVersion: 1,
-      speed: choice(source.speed, ['standard', 'fast'], 'standard'),
+      speed: 'standard',
       messageScope: choice(source.messageScope, ['all', 'newest', 'oldest'], 'all'),
       messageLimit: Number.isSafeInteger(limit) && limit >= 1 && limit <= 250 ? limit : 1,
       removeOwnReactions: boolean(source, 'removeOwnReactions', false),
@@ -276,13 +276,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const inPage = ['extension', 'userscript'].includes(surface);
     return Object.freeze({
       singleConversation: inPage,
-      fast: inPage,
+      fast: false,
       reactions: false,
       background: false,
       managedWorkers: false,
       notifications: false,
       reasons: Object.freeze({
-        fast: inPage ? '' : 'This app does not control an authenticated Instagram tab.',
+        fast: 'Unsend uses one pacing mode.',
         reactions: 'Own-reaction removal has not been verified on Instagram.',
         background: inPage ? 'Background execution is awaiting suspension and resume checks.' : 'This app does not control an authenticated Instagram tab.',
         managedWorkers: 'Managed tabs are awaiting browser integration and collision checks.',
@@ -297,7 +297,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const support = capabilities(surface);
     return {
       ...saved,
-      speed: support.fast ? saved.speed : 'standard',
+      speed: 'standard',
       removeOwnReactions: support.reactions && saved.removeOwnReactions,
       execution: support.background ? saved.execution : 'foreground',
       workerCount: support.managedWorkers ? saved.workerCount : 1,
@@ -860,10 +860,6 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   const OLDEST_BOUNDARY_STABLE_MS = 2_000;
   const STABLE_EMPTY_PASSES = 3;
   const PLAN_VERSION = 3;
-  const SPEED_PROFILES = Object.freeze({
-    standard: Object.freeze({ minDelayMs: 1_000, maxDelayMs: 2_000 }),
-    fast: Object.freeze({ minDelayMs: 1_000, maxDelayMs: 2_000 }),
-  });
   const PLAN_SCOPES = new Set(['all', 'newest', 'oldest']);
   const listeners = new Set();
   const consumedPlanDigests = new Map();
@@ -996,7 +992,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (!PLAN_SCOPES.has(requestedScope)) return null;
     const scope = requestedScope;
     const speed = value.speed === undefined ? 'standard' : String(value.speed);
-    if (!Object.hasOwn(SPEED_PROFILES, speed)) return null;
+    if (speed !== 'standard') return null;
     const requestedLimit = Math.floor(Number(value.limit));
     const limit = scope === 'all'
       ? null
@@ -1648,13 +1644,11 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const targets = hoverTargets(row);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       for (const target of targets) hoverIn(target);
-      const fast = activeExecution?.speed === 'fast';
-      const control = fast
-        ? await waitForElement(row, () => actionButton(row), signal, 110)
-        : (await delay(110, signal), actionButton(row));
+      await delay(110, signal);
+      const control = actionButton(row);
       if (control) return control;
       for (const target of targets) hoverOut(target);
-      if (!fast) await delay(60, signal);
+      await delay(60, signal);
     }
     for (const target of targets) hoverIn(target);
     return waitForElement(row, () => actionButton(row), signal, 3_000);
@@ -1765,21 +1759,47 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (!dialogButton) return false;
 
     const before = removalEvidence(row);
-    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
+    const settlement = new AbortController();
+    const deadline = Date.now() + 5_000;
+    // Observe both native transitions before clicking, as in the original
+    // runner. The separate settlement signal lets Stop prevent the next
+    // action without abandoning the outcome of this dispatched action.
+    const closed = waitForElement(
+      document.body,
+      () => (!dialogButton.isConnected || !isVisible(dialogButton) ? true : null),
+      settlement.signal,
+      5_000,
+    );
+    const removed = waitForElement(
+      document.body,
+      () => (currentThreadId() === expectedThreadId && removalProven(row, before) ? true : null),
+      settlement.signal,
+      5_000,
+    ).then((ready) => ready === true && waitForRemoval(row, before, {
+      dialogButton,
+      contextValid: () => currentThreadId() === expectedThreadId,
+      timeoutMs: Math.max(0, deadline - Date.now()),
+      signal: settlement.signal,
+    }));
+    closed.catch(() => {});
+    removed.catch(() => {});
+    let dispatched = false;
     try {
+      requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
+      dispatched = true;
       activateControl(dialogButton);
-      // Stop prevents the next click, but a dispatched mutation still needs
-      // bounded settlement. Never retry an outcome that could have succeeded.
-      const verified = await measurePhase('verification', () => waitForRemoval(row, before, {
-        dialogButton,
-        contextValid: () => currentThreadId() === expectedThreadId,
-      }));
+      const verified = await measurePhase('verification', async () => (
+        (await closed) === true && (await removed) === true
+      ));
       if (!verified) throw new Error('Removal could not be verified.');
       return true;
-    } catch {
+    } catch (cause) {
+      if (!dispatched) throw cause;
       const error = new Error('The last Unsend outcome is uncertain. Check the conversation before starting again.');
       error.code = 'DM_OUTCOME_UNCERTAIN';
       throw error;
+    } finally {
+      settlement.abort();
     }
   }
 
@@ -2188,8 +2208,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       scroller = current.scroller;
     }
 
-    // Scope order outranks viewport convenience. An older visible message must
-    // never replace a newer mounted message just because the latter is clipped.
+    // Whole-conversation cleanup keeps the original visible-first streaming
+    // path. Finite scopes must not substitute an older visible message for
+    // the reviewed newest target merely because that target is clipped.
+    if (traversal.preferVisible) {
+      const visible = firstVisibleCandidate(scroller, traversal.order, traversal);
+      if (visible && await exposeRow(visible, scroller, signal, traversal)) return visible;
+    }
     const [mounted] = orderedCandidates(scroller, traversal.order, traversal);
     if (mounted && await exposeRow(mounted, scroller, signal, traversal)) return mounted;
     if (mounted && readOnlyTraversals.has(traversal)
@@ -2197,7 +2222,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       traversal.lastSearchIncomplete = true;
       return null;
     }
-    if (mounted) throw new Error('The next message could not be brought into view. Nothing else was selected.');
+    if (mounted && !traversal.preferVisible) throw new Error('The next message could not be brought into view. Nothing else was selected.');
 
     for (let pass = 0; pass < MAX_SCAN_PASSES; pass += 1) {
       if (signal.aborted) return null;
@@ -2236,7 +2261,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           }
         }
 
-        const [row] = orderedCandidates(scroller, traversal.order, traversal);
+        const row = traversal.preferVisible
+          ? firstVisibleCandidate(scroller, traversal.order, traversal)
+          : orderedCandidates(scroller, traversal.order, traversal)[0];
         if (row && await exposeRow(row, scroller, signal, traversal)) {
           traversal.lastScrollHeight = Number(scroller?.scrollHeight) || heightBeforePass;
           return row;
@@ -2246,7 +2273,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           traversal.lastSearchIncomplete = true;
           return null;
         }
-        if (row) throw new Error('The next message could not be brought into view. Nothing else was selected.');
+        if (row && !traversal.preferVisible) throw new Error('The next message could not be brought into view. Nothing else was selected.');
         if (position === end) break;
         position = direction > 0
           ? Math.min(end, position + step)
@@ -2431,6 +2458,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     contextValid = () => true,
     timeoutMs = 5_000,
     stableMs = 350,
+    signal = null,
   } = {}) {
     const deadline = Date.now() + timeoutMs;
     let stableSince = null;
@@ -2441,7 +2469,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         if (stableSince === null) stableSince = Date.now();
         if (Date.now() - stableSince >= stableMs) return true;
       } else stableSince = null;
-      await delay(Math.min(75, Math.max(0, deadline - Date.now())));
+      await delay(Math.min(75, Math.max(0, deadline - Date.now())), signal);
     }
     return false;
   }
@@ -2747,7 +2775,6 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     activeExecution = {
       workerAdapter,
       workerRow: null,
-      speed: plan.speed,
       onPhaseTiming: typeof options.onPhaseTiming === 'function' ? options.onPhaseTiming : null,
       phaseTimings: {
         historyLoading: 0, messageResolution: 0, menuReadiness: 0,
@@ -2766,6 +2793,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const maxMessages = plan.limit === null ? MAX_PLAN_MESSAGES : plan.limit;
     const order = plan.scope === 'oldest' ? 'oldest' : 'newest';
     const traversal = createTraversal(order);
+    traversal.preferVisible = plan.scope === 'all';
     let processed = 0;
     let failed = 0;
     let retryAttempts = 0;
@@ -3052,7 +3080,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   const messageProof = Object.freeze({ sentByCurrentUser, removalEvidence, removalProven, waitForRemoval });
-  const publicApi = { createPlan, createMessageWalker, inspect, inspectAll, snapshot, start, stop, subscribe, SPEED_PROFILES, messageProof };
+  const publicApi = { createPlan, createMessageWalker, inspect, inspectAll, snapshot, start, stop, subscribe, messageProof };
   if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
       candidateRows,
@@ -5556,6 +5584,11 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const normalized = String(value || '').trim().toLowerCase();
     return /^[a-z0-9._]{1,30}$/.test(normalized) ? normalized : null;
   };
+  function accountKey(value) {
+    const normalized = username(value);
+    if (!normalized) return null;
+    return `iguser-v1-${[...normalized].map((character) => character.charCodeAt(0).toString(16).padStart(2, '0')).join('')}`;
+  }
   const visible = (node) => Boolean(node?.isConnected
     && !node.closest?.('[hidden], [aria-hidden="true"]')
     && node.getClientRects?.().length);
@@ -5601,10 +5634,11 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     });
     if (profiles.length !== 1) return { ...unavailable, threadId, reason: 'account-navigation-unavailable' };
     return { accountVerified: true, accountId, threadId, usable: Boolean(threadId),
+      accountKey: accountKey(accountId), identityKind: 'verified-viewer-username',
       restriction: false, evidence: 'visible-account-picker-and-navigation' };
   }
   Object.defineProperty(globalThis, 'InstaToolboxInstagramViewer', {
-    configurable: false, writable: false, value: Object.freeze({ inspect }),
+    configurable: false, writable: false, value: Object.freeze({ inspect, accountKey }),
   });
 })();
 
@@ -5770,6 +5804,1741 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   });
 })();
 
+const localModules = Object.create(null);
+localModules["extension/inbox-discovery.js"] = (() => {
+
+const ORIGIN = 'https://www.instagram.com';
+const SECTIONS = ['primary', 'general', 'requests'];
+const validAccount = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+
+function inboxThreadId(href) {
+  if (typeof href !== 'string' || href.length > 2_048) return null;
+  try {
+    const url = new URL(href, ORIGIN);
+    if (url.origin !== ORIGIN || url.username || url.password) return null;
+    return /^\/direct\/t\/([0-9]{1,128})\/?$/.exec(url.pathname)?.[1] || null;
+  } catch { return null; }
+}
+
+// Collects already rendered links. Navigation/scrolling and terminal evidence
+// belong to a separately reviewed native-inbox adapter, not this collector.
+function createInboxDiscovery({ accountId, sections = ['primary'], maxThreads = 1_000, maxSamples = 250, proveTerminal = null }) {
+  if (!validAccount(accountId)) throw new Error('account-identity-required');
+  if (!Array.isArray(sections) || !sections.length || !sections.every((section) => SECTIONS.includes(section))) throw new Error('inbox-section-invalid');
+  if (!Number.isSafeInteger(maxThreads) || maxThreads < 1 || maxThreads > 10_000
+    || !Number.isSafeInteger(maxSamples) || maxSamples < 1 || maxSamples > 1_000) throw new Error('discovery-bound-invalid');
+  if (proveTerminal !== null && typeof proveTerminal !== 'function') throw new Error('terminal-adapter-invalid');
+  const sectionNames = [...new Set(sections)];
+  const inventory = new Map();
+  const sectionState = new Map(sectionNames.map((section) => [section, { section, samples: 0, complete: false, reason: 'not-scanned' }]));
+  let stopped = false;
+  let stopReason = null;
+  const snapshot = () => ({
+    version: 1, accountId, complete: !stopped && [...sectionState.values()].every((section) => section.complete),
+    stopped, reason: stopReason,
+    sections: [...sectionState.values()].map((section) => ({ ...section })),
+    conversations: [...inventory.values()].map((conversation) => ({ threadId: conversation.threadId, sections: [...conversation.sections] })),
+  });
+  function stop(reason) { stopped = true; stopReason = reason; return snapshot(); }
+  return Object.freeze({
+    snapshot,
+    stop: () => stop('stopped'),
+    observe({ root, section, observedAccountId, loading = false, signal } = {}) {
+      if (stopped) return snapshot();
+      if (signal?.aborted) return stop('cancelled');
+      if (observedAccountId !== accountId) return stop('account-changed');
+      const state = sectionState.get(section);
+      if (!state) throw new Error('section-not-requested');
+      if (!root || typeof root.querySelectorAll !== 'function' || root.isConnected === false) {
+        state.complete = false; state.reason = 'inbox-container-unavailable'; return snapshot();
+      }
+      if (state.samples >= maxSamples) return stop('sample-limit');
+      state.samples += 1;
+      state.complete = false;
+      state.reason = loading ? 'loading' : 'partial';
+      for (const anchor of root.querySelectorAll('a[href]')) {
+        if (signal?.aborted) return stop('cancelled');
+        if (anchor.isConnected === false || anchor.closest?.('[aria-hidden="true"], [hidden]')) continue;
+        const threadId = inboxThreadId(anchor.getAttribute('href'));
+        if (!threadId) continue;
+        let conversation = inventory.get(threadId);
+        if (!conversation) {
+          if (inventory.size >= maxThreads) return stop('thread-limit');
+          conversation = { threadId, sections: new Set() }; inventory.set(threadId, conversation);
+        }
+        conversation.sections.add(section);
+      }
+      // A quiet viewport or repeated last row alone is not exhaustion evidence.
+      // No native proof adapter ships with this module, so default is partial.
+      if (!loading && proveTerminal) {
+        try {
+          const proof = proveTerminal({ root, section, accountId, samples: state.samples });
+          state.complete = proof?.kind === 'native-terminal-marker'
+            && proof.accountId === accountId && proof.section === section
+            && proof.noPendingLoad === true && proof.stable === true;
+          if (state.complete) state.reason = null;
+        } catch { state.reason = 'terminal-proof-unavailable'; }
+      }
+      if (signal?.aborted) return stop('cancelled');
+      return snapshot();
+    },
+  });
+}
+
+return Object.freeze({ inboxThreadId, createInboxDiscovery });
+})();
+localModules["extension/inbox-native-navigation.js"] = (() => {
+const { inboxThreadId } = localModules["extension/inbox-discovery.js"];
+
+const ORIGIN = 'https://www.instagram.com';
+const SECTION_LABELS = { primary: 'Primary', general: 'General', requests: 'Requests' };
+function nativeInboxSection(value) {
+  const label = String(value || '').trim();
+  if (/^Requests?(?:\s*\(\d+\))?$/.test(label)) return 'requests';
+  return Object.keys(SECTION_LABELS).find((section) => SECTION_LABELS[section] === label) || null;
+}
+const visible = (node) => node?.isConnected !== false && !node?.closest?.('[hidden], [aria-hidden="true"]')
+  && (!node?.getClientRects || node.getClientRects().length > 0);
+const inboxUrl = (href) => {
+  try { const url = new URL(href, ORIGIN); return url.origin === ORIGIN && !url.username && !url.password && /^\/direct\/inbox\/?$/.test(url.pathname); }
+  catch { return false; }
+};
+
+// Navigation can mark a conversation read. It never starts a cleanup runner.
+function createNativeInboxDiscovery({
+  accountId, resolveAccount, navigationAcknowledged = false,
+  document = globalThis.document, window = globalThis.window,
+  sections = ['primary'], expiresAt, now = Date.now, signal,
+  maxThreads = 1_000, maxSamples = 100, maxVisits = 2_000,
+  routeTimeoutMs = 8_000, settleMs = 400, proveTerminal = null, resolveSection = null, onProgress = null,
+} = {}) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(accountId || '') || typeof resolveAccount !== 'function') throw new Error('account-identity-required');
+  if (!Array.isArray(sections) || !sections.length || sections.some((name) => !Object.hasOwn(SECTION_LABELS, name))) throw new Error('inbox-section-invalid');
+  for (const [value, ceiling] of [[maxThreads, 10_000], [maxSamples, 1_000], [maxVisits, 20_000], [routeTimeoutMs, 30_000], [settleMs, 5_000]]) {
+    if (!Number.isSafeInteger(value) || value < 1 || value > ceiling) throw new Error('discovery-bound-invalid');
+  }
+  if (!Number.isFinite(expiresAt) || expiresAt <= now()) throw new Error('discovery-expired');
+  if (proveTerminal !== null && typeof proveTerminal !== 'function') throw new Error('terminal-adapter-invalid');
+  if (resolveSection !== null && typeof resolveSection !== 'function') throw new Error('section-adapter-invalid');
+  if (onProgress !== null && typeof onProgress !== 'function') throw new Error('progress-adapter-invalid');
+  const sectionState = [...new Set(sections)].map((section) => ({ section, samples: 0, complete: false, reason: 'not-scanned' }));
+  const inventory = new Map();
+  // Native row evidence is private to this instance; snapshots never retain it.
+  const navigationEvidence = new Map();
+  const controller = new AbortController();
+  const discoveryContext = { expiresAt, signal, controller, expiryReason: 'discovery-expired' };
+  let started = false, finished = false, stopped = false, reason = null, visits = 0;
+  let navigator = null;
+  const href = () => String(window.location.href);
+  const snapshot = () => ({
+    version: 1, accountId, complete: !stopped && sectionState.every((state) => state.complete),
+    stopped, reason, visits, needsInboxReturn: !inboxUrl(href()),
+    sections: sectionState.map((state) => ({ ...state })),
+    conversations: [...inventory].map(([threadId, names]) => ({ threadId, sections: [...names] })),
+  });
+  const publish = () => { try { onProgress?.(snapshot()); } catch {} };
+  function guard(context = discoveryContext) {
+    if (context.controller.signal.aborted || context.signal?.aborted) throw new Error(context.stopReason || 'cancelled');
+    if (now() >= context.expiresAt) throw new Error(context.expiryReason);
+    if (new URL(href()).origin !== ORIGIN) throw new Error('origin-changed');
+    // A synchronous isolated-world resolver prevents a hung identity lookup
+    // from retaining navigation authority. Page storage is not an authority.
+    const identity = resolveAccount();
+    if (identity?.then || identity?.verified !== true || identity.accountId !== accountId) throw new Error('account-changed');
+    if (identity.restriction) throw new Error('account-restricted');
+  }
+  function waitFor(check, timeout = routeTimeoutMs, context = discoveryContext) {
+    return new Promise((resolve, reject) => {
+      let timer, poll, observer, settled = false;
+      const deadline = Math.min(now() + timeout, context.expiresAt);
+      const finish = (error, value) => {
+        if (settled) return; settled = true;
+        clearTimeout(timer); clearInterval(poll); observer?.disconnect();
+        window.removeEventListener?.('popstate', inspect); window.removeEventListener?.('hashchange', inspect);
+        context.signal?.removeEventListener('abort', inspect); context.controller.signal.removeEventListener('abort', inspect);
+        error ? reject(error) : resolve(value);
+      };
+      function inspect() {
+        if (settled) return;
+        try {
+          guard(context);
+          if (now() >= deadline) return finish(new Error('navigation-timeout'));
+          const result = check(); if (result) finish(null, result);
+        }
+        catch (error) { finish(error); }
+      }
+      try {
+        inspect(); if (settled) return;
+        if (window.MutationObserver) { observer = new window.MutationObserver(inspect); observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true }); }
+        window.addEventListener?.('popstate', inspect); window.addEventListener?.('hashchange', inspect);
+        context.signal?.addEventListener('abort', inspect, { once: true }); context.controller.signal.addEventListener('abort', inspect, { once: true });
+        poll = setInterval(inspect, Math.min(50, Math.max(1, Math.floor(timeout / 4))));
+        timer = setTimeout(() => { inspect(); if (!settled) finish(new Error('navigation-timeout')); }, Math.max(0, deadline - now()));
+        inspect();
+      } catch (error) { finish(error); }
+    });
+  }
+  const settle = async (context = discoveryContext) => {
+    const until = now() + settleMs;
+    await waitFor(() => now() >= until, settleMs + 100, context);
+  };
+  function listRoot() {
+    const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
+    if (roots.length !== 1) throw new Error('inbox-container-unavailable');
+    return roots[0];
+  }
+  function messagePanes() {
+    return [...document.querySelectorAll('[data-pagelet="IGDMessagesList"]')];
+  }
+  function readyMessagePane() {
+    const panes = messagePanes().filter(visible);
+    if (panes.length !== 1) return null;
+    const pane = panes[0];
+    if (pane.getAttribute?.('aria-busy') === 'true'
+      || pane.closest?.('[aria-busy="true"]')
+      || [...pane.querySelectorAll('[aria-busy="true"], [role="progressbar"]')].some(visible)) return null;
+    const actions = [...pane.querySelectorAll('[aria-label="Message actions"]')].filter(visible);
+    // No observed native empty-state marker binds an empty pane to a thread.
+    // A shell or skeleton alone cannot authorize the message runner.
+    return actions.length ? { pane, actions } : null;
+  }
+  function auxiliaryCollection(node, root) {
+    // Notes occupy a separate native role=list inside Thread list. Avatar
+    // images alone do not distinguish those profile buttons from threads.
+    for (let current = node; current && current !== root; current = current.parentElement) {
+      if (current.getAttribute?.('role') === 'list'
+        || current.getAttribute?.('aria-roledescription')?.trim().toLowerCase() === 'carousel') return true;
+    }
+    return false;
+  }
+  function rows(root) {
+    return [...root.querySelectorAll('[role="button"], a[href]')].filter((row) => {
+      if (!visible(row) || auxiliaryCollection(row, root)) return false;
+      if (row.getAttribute?.('aria-disabled') === 'true' || row.disabled) return false;
+      if (row.tagName === 'A' && !inboxThreadId(row.getAttribute('href'))) return false;
+      if (row.tagName !== 'A' && !row.querySelector?.('img')) return false;
+      const parentRow = row.parentElement?.closest?.('[role="button"], a[href]');
+      return !parentRow || !root.contains(parentRow);
+    });
+  }
+  function scroller(root) {
+    const candidates = [root, ...root.querySelectorAll('*')].filter((node) => {
+      if (!visible(node) || auxiliaryCollection(node, root) || node.clientHeight <= 0 || node.scrollHeight <= node.clientHeight + 1) return false;
+      const overflow = window.getComputedStyle?.(node)?.overflowY;
+      return /^(auto|scroll|overlay)$/.test(overflow || '');
+    });
+    // Multiple scroll owners cannot be selected safely by size alone.
+    if (candidates.length > 1) throw new Error('inbox-scroller-ambiguous');
+    if (candidates.length) return candidates[0];
+    if (root.scrollHeight > root.clientHeight + 1) throw new Error('inbox-scroller-unavailable');
+    return root;
+  }
+  function fingerprint(row) {
+    const text = String(row.textContent || '').replace(/\s+/g, ' ').trim();
+    const label = String(row.getAttribute?.('aria-label') || '').trim();
+    const images = [...(row.querySelectorAll?.('img[alt]') || [])].map((image) => image.getAttribute('alt') || '');
+    if (!text && !label && !images.some(Boolean)) return null;
+    const value = JSON.stringify([text, label, images]);
+    return value.length <= 8_192 ? value : null;
+  }
+  async function selectSection(section, context = discoveryContext) {
+    guard(context);
+    const tabs = [...document.querySelectorAll('[role="tab"]')].filter(visible);
+    const matches = tabs.filter((tab) => nativeInboxSection(tab.getAttribute('aria-label') || tab.textContent) === section);
+    if (!matches.length && resolveSection?.() === section) return;
+    if (matches.length !== 1) throw new Error('section-control-unavailable');
+    if (matches[0].getAttribute('aria-selected') !== 'true') {
+      matches[0].click();
+      await waitFor(() => [...document.querySelectorAll('[role="tab"]')].some((tab) => visible(tab)
+        && nativeInboxSection(tab.getAttribute('aria-label') || tab.textContent) === section
+        && tab.getAttribute('aria-selected') === 'true'), routeTimeoutMs, context);
+    }
+    await settle(context);
+  }
+  async function returnToInbox(threadId, position, section, context = discoveryContext) {
+    guard(context);
+    if (inboxThreadId(href()) !== threadId) throw new Error('conversation-changed');
+    const links = [...document.querySelectorAll('a[href]')].filter((node) => visible(node) && inboxUrl(node.getAttribute('href')));
+    if (!links.length) throw new Error('inbox-return-unavailable');
+    links[0].click();
+    await waitFor(() => inboxUrl(href()) && [...document.querySelectorAll('[aria-label="Thread list"]')].some(visible), routeTimeoutMs, context);
+    await selectSection(section, context);
+    const scroll = scroller(listRoot()); scroll.scrollTop = position;
+    await settle(context);
+  }
+  async function scan(state) {
+    await selectSection(state.section);
+    let priorWindow = null;
+    for (; state.samples < maxSamples;) {
+      guard(); if (!inboxUrl(href())) throw new Error('inbox-route-changed');
+      state.samples += 1; state.reason = 'partial';
+      const root = listRoot(), scroll = scroller(root), position = scroll.scrollTop || 0;
+      const count = rows(root).length, windowIds = [];
+      for (let index = 0; index < count; index += 1) {
+        guard(); if (!inboxUrl(href())) throw new Error('inbox-route-changed');
+        if (visits >= maxVisits) throw new Error('visit-limit');
+        const currentRoot = listRoot(), row = rows(currentRoot)[index];
+        if (!row || !currentRoot.contains(row)) throw new Error('inbox-window-changed');
+        // The position is only used to observe a row. Resulting route IDs,
+        // never row positions or preview text, identify conversations.
+        const evidence = { row, fingerprint: fingerprint(row), href: row.tagName === 'A' ? row.getAttribute('href') : null,
+          section: state.section, position };
+        visits += 1; row.click();
+        const threadId = await waitFor(() => {
+          const id = inboxThreadId(href());
+          if (!id && !inboxUrl(href())) throw new Error('unexpected-route');
+          return id;
+        });
+        if (evidence.href && inboxThreadId(evidence.href) !== threadId) throw new Error('conversation-changed');
+        if (!inventory.has(threadId)) {
+          if (inventory.size >= maxThreads) throw new Error('thread-limit');
+          inventory.set(threadId, new Set());
+        }
+        inventory.get(threadId).add(state.section);
+        const captures = navigationEvidence.get(threadId) || new Map();
+        captures.set(state.section, evidence); navigationEvidence.set(threadId, captures);
+        windowIds.push(threadId); publish();
+        await returnToInbox(threadId, position, state.section);
+      }
+      guard();
+      const nextRoot = listRoot();
+      if (proveTerminal) {
+        const proof = proveTerminal({ root: nextRoot, accountId, section: state.section, samples: state.samples });
+        if (proof?.kind === 'native-terminal-marker' && proof.accountId === accountId && proof.section === state.section && proof.noPendingLoad === true && proof.stable === true) {
+          state.complete = true; state.reason = null; return;
+        }
+      }
+      const signature = windowIds.join(',');
+      if (signature === priorWindow) { state.reason = 'repeated-window-unverified'; return; }
+      priorWindow = signature;
+      const next = scroller(nextRoot), end = Math.max(0, next.scrollHeight - next.clientHeight);
+      const destination = Math.min(end, (next.scrollTop || 0) + Math.max(1, Math.floor(next.clientHeight * 0.8)));
+      if (destination <= (next.scrollTop || 0)) { state.reason = 'end-unverified'; return; }
+      next.scrollTop = destination; await settle();
+    }
+    state.reason = 'sample-limit';
+  }
+  function createNavigator({ expiresAt: navigationExpiresAt } = {}) {
+    if (!finished || !inventory.size) throw new Error('inbox-discovery-required');
+    if (!Number.isFinite(navigationExpiresAt) || navigationExpiresAt <= now()
+      || navigationExpiresAt > now() + 20 * 60_000) throw new Error('navigation-expired');
+    navigator?.stop();
+    const context = { expiresAt: navigationExpiresAt, controller: new AbortController(),
+      expiryReason: 'navigation-expired', signal: null, stopReason: null };
+    guard(context);
+    let active = false, verifiedPane = null, paneObserver = null;
+    const invalidatePane = () => {
+      if (!verifiedPane) return;
+      const current = messagePanes().filter(visible);
+      if (inboxThreadId(href()) !== verifiedPane.threadId || current.length !== 1
+        || current[0] !== verifiedPane.pane) verifiedPane = null;
+    };
+    const stop = (stopReason = 'cancelled') => {
+      context.stopReason = stopReason; context.controller.abort();
+      verifiedPane = null; paneObserver?.disconnect();
+      clearTimeout(expiryTimer);
+      document.removeEventListener?.('freeze', interrupted);
+      window.removeEventListener?.('pagehide', interrupted);
+      window.removeEventListener?.('popstate', invalidatePane);
+      window.removeEventListener?.('hashchange', invalidatePane);
+    };
+    const interrupted = () => stop('page-interrupted');
+    const expiryTimer = setTimeout(() => stop('navigation-expired'), Math.max(0, navigationExpiresAt - now()));
+    expiryTimer.unref?.();
+    document.addEventListener?.('freeze', interrupted);
+    window.addEventListener?.('pagehide', interrupted);
+    window.addEventListener?.('popstate', invalidatePane);
+    window.addEventListener?.('hashchange', invalidatePane);
+    try {
+      if (window.MutationObserver) {
+        paneObserver = new window.MutationObserver(invalidatePane);
+        paneObserver.observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+      }
+    } catch (error) { stop('conversation-pane-observer-unavailable'); throw error; }
+    navigator = Object.freeze({
+      stop: () => stop(),
+      async navigate(threadId, { signal: navigationSignal } = {}) {
+        if (active) throw new Error('inbox-navigation-active');
+        if (!inventory.has(threadId)) throw new Error('thread-not-discovered');
+        active = true; context.signal = navigationSignal;
+        try {
+          guard(context);
+          if (inboxThreadId(href()) !== threadId) {
+            verifiedPane = null;
+            const evidence = [...navigationEvidence.get(threadId).values()][0];
+            const current = inboxThreadId(href());
+            if (current) await returnToInbox(current, evidence.position, evidence.section, context);
+            else if (!inboxUrl(href())) throw new Error('inbox-route-changed');
+            else {
+              await selectSection(evidence.section, context);
+              scroller(listRoot()).scrollTop = evidence.position;
+              await settle(context);
+            }
+            guard(context);
+            if (!inboxUrl(href())) throw new Error('inbox-route-changed');
+            const currentRows = rows(listRoot());
+            const exactLinks = currentRows.filter((row) => row.tagName === 'A'
+              && inboxThreadId(row.getAttribute('href')) === threadId);
+            if (!exactLinks.length && evidence.fingerprint) {
+              const capturedIds = [...navigationEvidence].filter(([, captures]) => [...captures.values()]
+                .some((capture) => capture.fingerprint === evidence.fingerprint)).map(([id]) => id);
+              if (capturedIds.length !== 1 || capturedIds[0] !== threadId) throw new Error('conversation-row-ambiguous');
+            }
+            const matches = exactLinks.length ? exactLinks : currentRows.filter((row) => evidence.fingerprint
+              && fingerprint(row) === evidence.fingerprint);
+            if (matches.length !== 1) throw new Error(matches.length ? 'conversation-row-ambiguous' : 'conversation-row-changed');
+            const row = matches[0];
+            if (row.tagName === 'A' && inboxThreadId(row.getAttribute('href')) !== threadId) throw new Error('conversation-row-changed');
+            // Capture every mounted pane, including hidden cached ones. A URL
+            // transition can precede React replacing the previous chat.
+            const priorPanes = messagePanes();
+            const priorActions = priorPanes.flatMap((pane) => [...pane.querySelectorAll('[aria-label="Message actions"]')]);
+            let candidate = null, stableSince = null;
+            guard(context); row.click();
+            try {
+              await waitFor(() => {
+                const actual = inboxThreadId(href());
+                if (actual && actual !== threadId) throw new Error('conversation-changed');
+                if (!actual && !inboxUrl(href())) throw new Error('unexpected-route');
+                const ready = actual === threadId ? readyMessagePane() : null;
+                if (!ready || priorPanes.includes(ready.pane)
+                  || priorPanes.some((pane) => pane.isConnected !== false)
+                  || priorActions.some((action) => ready.pane.contains(action))) {
+                  candidate = null; stableSince = null; return false;
+                }
+                if (candidate?.pane !== ready.pane || candidate.actions.length !== ready.actions.length
+                  || candidate.actions.some((action, index) => action !== ready.actions[index])) {
+                  candidate = ready; stableSince = now(); return false;
+                }
+                if (now() - stableSince < settleMs) return false;
+                verifiedPane = { pane: ready.pane, threadId };
+                return true;
+              }, routeTimeoutMs, context);
+            } catch (error) {
+              if (error.message === 'navigation-timeout' && inboxThreadId(href()) === threadId) {
+                throw new Error('conversation-pane-unverified');
+              }
+              throw error;
+            }
+          }
+          guard(context);
+          if (inboxThreadId(href()) !== threadId) throw new Error('conversation-changed');
+          invalidatePane();
+          const ready = readyMessagePane();
+          if (!verifiedPane || verifiedPane.threadId !== threadId || ready?.pane !== verifiedPane.pane) {
+            throw new Error('conversation-pane-unverified');
+          }
+          return Object.freeze({ accountId, threadId, verified: true });
+        } catch (error) {
+          stop(error.message);
+          throw error;
+        } finally { active = false; context.signal = null; }
+      },
+    });
+    return navigator;
+  }
+  return Object.freeze({
+    snapshot, createNavigator,
+    stop() { stopped = true; reason = 'cancelled'; controller.abort(); navigator?.stop(); return snapshot(); },
+    async run() {
+      if (started) throw new Error('discovery-already-started');
+      started = true;
+      if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');
+      try {
+        guard(); if (!inboxUrl(href())) throw new Error('inbox-route-required');
+        for (const state of sectionState) {
+          try { await scan(state); }
+          catch (error) { state.reason = error.message; throw error; }
+          publish();
+        }
+      } catch (error) { stopped = true; reason = error.message; }
+      finished = true;
+      publish(); return snapshot();
+    },
+  });
+}
+
+return Object.freeze({ nativeInboxSection, createNativeInboxDiscovery });
+})();
+localModules["extension/inbox-coordinator.js"] = (() => {
+
+// Browser-neutral job state. Runtime adapters must supply trusted identity and
+// exact-target checks; this module does not open tabs or click Instagram controls.
+const MAX_THREADS = 1_000;
+const MAX_REVIEW_AGE_MS = 20 * 60 * 1_000;
+const INBOX_COORDINATOR_CAPABILITIES = Object.freeze({
+  maxPreparedWorkers: 5,
+  defaultConcurrentMutations: 1,
+  maxConcurrentMutations: 5,
+  assignmentModes: Object.freeze(['contiguous', 'batches']),
+});
+const TERMINAL = new Set(['completed', 'partial', 'skipped', 'failed', 'uncertain']);
+const clone = (value) => structuredClone(value);
+const fail = (reason) => { throw new Error(reason); };
+const identity = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+const record = (value) => value !== null && typeof value === 'object'
+  && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+
+function createInboxReview(input, now = Date.now()) {
+  if (!record(input) || !Number.isFinite(now) || (input.discovery && !record(input.discovery))) fail('review-invalid');
+  if (input.version !== undefined && ![1, 2].includes(input.version)) fail('review-version-invalid');
+  const duringRun = input.messageWindow === 'during-run';
+  if (input.messageWindow !== undefined && !duringRun) fail('message-window-invalid');
+  if ((duringRun && input.version === 1) || (input.version === 2 && !duringRun)) fail('message-window-invalid');
+  const arrivalPolicy = duringRun ? 'include-sent-while-running' : 'skip-after-review-or-pause';
+  if (input.arrivalPolicy !== undefined && input.arrivalPolicy !== arrivalPolicy) fail('message-window-invalid');
+  if (!identity(input?.accountId)) fail('account-identity-required');
+  if (!Array.isArray(input.threadIds) || !input.threadIds.length
+    || input.threadIds.length > MAX_THREADS || !input.threadIds.every(identity)) fail('thread-inventory-invalid');
+  const threadIds = [...new Set(input.threadIds)];
+  const scope = input.scope || 'all';
+  if (!['all', 'newest', 'oldest'].includes(scope)) fail('message-scope-invalid');
+  const limit = scope === 'all' ? null : input.limit;
+  if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > 5_000)) fail('message-limit-invalid');
+  const speed = input.speed || 'standard';
+  if (speed !== 'standard') fail('speed-invalid');
+  const workerCount = input.workerCount ?? 1;
+  if (!Number.isInteger(workerCount) || workerCount < 1
+    || workerCount > INBOX_COORDINATOR_CAPABILITIES.maxPreparedWorkers) fail('worker-count-invalid');
+  const assignmentMode = input.assignmentMode ?? 'contiguous';
+  if (!INBOX_COORDINATOR_CAPABILITIES.assignmentModes.includes(assignmentMode)) fail('assignment-mode-invalid');
+  const mutationConcurrency = input.mutationConcurrency ?? 1;
+  if (!Number.isInteger(mutationConcurrency) || mutationConcurrency < 1) fail('mutation-concurrency-invalid');
+  if (mutationConcurrency > INBOX_COORDINATOR_CAPABILITIES.maxConcurrentMutations
+    || mutationConcurrency > workerCount) fail('mutation-concurrency-invalid');
+  // Preserve canonical keys for existing reviews. New scheduling choices are
+  // explicit review content, never an interpretation added to an older approval.
+  const scheduling = {};
+  if (input.assignmentMode !== undefined) scheduling.assignmentMode = assignmentMode;
+  if (input.mutationConcurrency !== undefined) scheduling.mutationConcurrency = mutationConcurrency;
+  const expiresAt = input.expiresAt ?? now + MAX_REVIEW_AGE_MS;
+  if (!Number.isFinite(expiresAt) || expiresAt <= now || expiresAt > now + MAX_REVIEW_AGE_MS) fail('review-expired');
+  const sections = [...new Set(input.discovery?.sections || [])];
+  if (!sections.every((entry) => ['primary', 'general', 'requests'].includes(entry))) fail('inbox-section-invalid');
+  return Object.freeze({
+    version: duringRun ? 2 : 1, accountId: input.accountId, threadIds: Object.freeze(threadIds),
+    scope, limit, speed, workerCount, removeOwnReactions: input.removeOwnReactions === true,
+    ...scheduling,
+    reviewedAt: now, expiresAt,
+    arrivalPolicy,
+    ...(duringRun ? { messageWindow: 'during-run' } : {}),
+    discovery: Object.freeze({ sections: Object.freeze(sections), complete: input.discovery?.complete === true }),
+  });
+}
+
+function inboxReviewKey(review) {
+  // Exact canonical content, not an authentication token or a lossy digest.
+  return JSON.stringify(review);
+}
+
+function createInboxCoordinator({ review, save, now = Date.now, restored = null, stageTimeoutMs = 30_000, saveTimeoutMs = 10_000, concurrencyCapability = null }) {
+  if (typeof save !== 'function') fail('durable-storage-required');
+  if (!Number.isFinite(stageTimeoutMs) || stageTimeoutMs < 1 || stageTimeoutMs > 120_000) fail('stage-timeout-invalid');
+  if (!Number.isFinite(saveTimeoutMs) || saveTimeoutMs < 1 || saveTimeoutMs > 120_000) fail('save-timeout-invalid');
+  const frozen = createInboxReview(review, review.reviewedAt ?? now());
+  const key = inboxReviewKey(frozen);
+  const concurrency = frozen.mutationConcurrency ?? 1;
+  // Only the trusted runtime may supply this admission policy. Never read it
+  // from page messages, a checkpoint, or reviewed client settings.
+  if (concurrencyCapability !== null && !record(concurrencyCapability)) fail('concurrent-mutations-unavailable');
+  const capability = concurrencyCapability ? clone(concurrencyCapability) : null;
+  if (concurrency > 1 && (!record(capability) || capability.version !== 1
+    || capability.accountId !== frozen.accountId
+    || !Number.isInteger(capability.maxConcurrentMutations) || capability.maxConcurrentMutations < concurrency
+    || capability.maxConcurrentMutations > INBOX_COORDINATOR_CAPABILITIES.maxConcurrentMutations
+    || !Number.isFinite(capability.expiresAt) || capability.expiresAt <= now())) fail('concurrent-mutations-unavailable');
+  let state = {
+    version: 1, review: clone(frozen), status: 'review', reason: null,
+    tasks: frozen.threadIds.map((threadId, index) => ({
+      threadId, workerIndex: frozen.assignmentMode === 'batches' ? index % frozen.workerCount
+        : Math.min(frozen.workerCount - 1, Math.floor(index / Math.ceil(frozen.threadIds.length / frozen.workerCount))),
+      ...(frozen.assignmentMode === 'batches' ? { batchIndex: Math.floor(index / frozen.workerCount) } : {}),
+      status: 'pending', messageRemovals: 0, reactionRemovals: 0, reason: null,
+    })),
+    pendingMutation: null, nextActionAt: 0,
+    ...(concurrency > 1 ? { pendingMutations: [] } : {}),
+  };
+  if (restored) {
+    if (!record(restored) || restored.version !== 1 || inboxReviewKey(restored.review) !== key
+      || !Array.isArray(restored.tasks) || restored.tasks.length !== frozen.threadIds.length
+      || restored.tasks.some((task, index) => !record(task) || task.threadId !== frozen.threadIds[index]
+        || task.workerIndex !== state.tasks[index].workerIndex
+        || task.batchIndex !== state.tasks[index].batchIndex
+        || !['pending', 'running', ...TERMINAL].includes(task.status)
+        || !Number.isSafeInteger(task.messageRemovals) || task.messageRemovals < 0
+        || !Number.isSafeInteger(task.reactionRemovals) || task.reactionRemovals < 0)) fail('checkpoint-invalid');
+    state.tasks = clone(restored.tasks);
+    state.nextActionAt = Number.isFinite(restored.nextActionAt) ? restored.nextActionAt : 0;
+    for (const task of state.tasks) {
+      if (task.status === 'running') { task.status = 'partial'; task.reason = 'worker-restart'; }
+    }
+    if (restored.pendingMutation) {
+      if (!record(restored.pendingMutation)
+        || !['message', 'reaction'].includes(restored.pendingMutation.kind)
+        || !['prepared', 'dispatched', 'uncertain'].includes(restored.pendingMutation.phase)) fail('checkpoint-invalid');
+      const task = state.tasks.find((item) => item.threadId === restored.pendingMutation.threadId);
+      if (!task) fail('checkpoint-invalid');
+      task.status = 'uncertain'; task.reason = 'interrupted-mutation';
+      state.pendingMutation = { threadId: task.threadId, kind: restored.pendingMutation.kind, phase: 'uncertain' };
+    }
+    if (restored.pendingMutations !== undefined) {
+      if (concurrency === 1 || !Array.isArray(restored.pendingMutations)
+        || restored.pendingMutations.length > concurrency || restored.pendingMutation) fail('checkpoint-invalid');
+      const seen = new Set();
+      state.pendingMutations = restored.pendingMutations.map((pending) => {
+        if (!record(pending) || !['message', 'reaction'].includes(pending.kind)
+          || !['prepared', 'dispatched', 'uncertain'].includes(pending.phase)
+          || seen.has(pending.threadId)) fail('checkpoint-invalid');
+        const task = state.tasks.find((item) => item.threadId === pending.threadId);
+        if (!task) fail('checkpoint-invalid');
+        seen.add(task.threadId); task.status = 'uncertain'; task.reason = 'interrupted-mutation';
+        return { threadId: task.threadId, kind: pending.kind, phase: 'uncertain' };
+      });
+    }
+    state.status = 'paused'; state.reason = 'review-required-after-restart';
+  }
+  let tail = Promise.resolve();
+  let authorized = false;
+  let generation = 0;
+  let abort = new AbortController();
+  let storageTimeout = null;
+  const leases = new Map();
+  const attempts = new Set();
+  const inFlight = new Map();
+  const pendingFor = (threadId) => state.pendingMutation?.threadId === threadId
+    || state.pendingMutations?.some((item) => item.threadId === threadId);
+  const hasPending = () => !!state.pendingMutation || !!state.pendingMutations?.length;
+  const snapshot = () => clone(state);
+  function currentBatch() {
+    if (frozen.assignmentMode !== 'batches') return null;
+    const unfinished = state.tasks.find((task) => !TERMINAL.has(task.status)
+      || leases.has(task.threadId) || pendingFor(task.threadId));
+    return unfinished?.batchIndex ?? null;
+  }
+  const serial = (fn) => {
+    const result = tail.then(fn);
+    tail = result.catch(() => {});
+    return result;
+  };
+  function revoke(reason, status = 'paused') {
+    authorized = false; generation += 1; abort.abort(reason);
+    state.status = status; state.reason = reason;
+    // Retain leases: a missing heartbeat cannot prove an old worker stopped.
+  }
+  async function persist() {
+    // A timed-out adapter may still write later. Never start a newer write in
+    // this instance after that point, even if the old promise eventually settles.
+    if (storageTimeout) throw storageTimeout;
+    try {
+      const checkpoint = snapshot();
+      await new Promise((resolve, reject) => {
+        let settled = false;
+        const deadline = now() + saveTimeoutMs;
+        const finish = (error) => {
+          if (settled) return;
+          settled = true; clearTimeout(timer);
+          if (error) reject(error); else resolve();
+        };
+        const expired = () => {
+          storageTimeout = new Error('storage-timeout');
+          finish(storageTimeout);
+        };
+        const timer = setTimeout(expired, saveTimeoutMs);
+        Promise.resolve().then(() => save(checkpoint)).then(() => {
+          if (settled) return;
+          if (now() >= deadline) expired(); else finish();
+        }, (error) => finish(error instanceof Error ? error : new Error('storage-failed')));
+      });
+    } catch (error) {
+      revoke(storageTimeout ? 'storage-timeout' : 'storage-failed', state.status === 'stopped' ? 'stopped' : 'paused');
+      throw error;
+    }
+  }
+  function active(accountId) {
+    if (storageTimeout) fail('storage-timeout');
+    if (accountId !== frozen.accountId) { revoke('account-changed'); fail('account-changed'); }
+    if (now() >= frozen.expiresAt) { revoke('approval-expired'); fail('approval-expired'); }
+    if (concurrency > 1 && now() >= capability.expiresAt) { revoke('concurrency-capability-expired'); fail('concurrency-capability-expired'); }
+    if (!authorized || state.status !== 'running') fail(state.reason || 'approval-required');
+  }
+  function taskFor(lease) {
+    if (!lease || leases.get(lease.threadId) !== lease || lease.generation !== generation) fail('stale-worker');
+    return state.tasks.find((task) => task.threadId === lease.threadId);
+  }
+  function boundedStage(callback, signal, cancelOnAbort, startImmediately = false) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error, value) => {
+        if (settled) return;
+        settled = true; clearTimeout(timer);
+        signal.removeEventListener('abort', cancelled);
+        if (error) reject(error); else resolve(value);
+      };
+      const cancelled = () => finish(new Error('inspection-cancelled'));
+      const timer = setTimeout(() => finish(new Error('worker-response-timeout')), stageTimeoutMs);
+      if (cancelOnAbort) {
+        signal.addEventListener('abort', cancelled, { once: true });
+        if (signal.aborted) { cancelled(); return; }
+      }
+      if (startImmediately) {
+        try { Promise.resolve(callback()).then((value) => finish(null, value), (error) => finish(error)); }
+        catch (error) { finish(error); }
+      } else Promise.resolve().then(callback).then((value) => finish(null, value), (error) => finish(error));
+    });
+  }
+  async function concurrentMutation(lease, { accountId, actionId, kind, inspect, execute, delayMs }) {
+    const operation = await serial(async () => {
+      active(accountId);
+      const task = taskFor(lease);
+      if (!identity(actionId) || !['message', 'reaction'].includes(kind)) fail('mutation-invalid');
+      if (kind === 'reaction' && !frozen.removeOwnReactions) fail('reaction-not-approved');
+      if (kind === 'message' && frozen.limit !== null && task.messageRemovals >= frozen.limit) fail('message-limit-reached');
+      if (!Number.isFinite(delayMs) || delayMs < 0 || typeof inspect !== 'function' || typeof execute !== 'function') fail('mutation-adapter-invalid');
+      if (state.pendingMutation || state.pendingMutations.some((item) => item.phase === 'uncertain')) fail('reconciliation-required');
+      if (inFlight.has(lease.threadId)) fail('thread-mutation-in-flight');
+      if (inFlight.size >= concurrency) fail('mutation-capacity');
+      if (now() < state.nextActionAt) fail('account-pacing');
+      const actionKey = `${lease.threadId}:${kind}:${actionId}`;
+      if (attempts.has(actionKey)) fail('duplicate-action');
+      const item = { task, actionKey, signal: abort.signal, dispatched: false, marker: null };
+      inFlight.set(lease.threadId, item);
+      return item;
+    });
+    try {
+      let evidence;
+      try {
+        evidence = await boundedStage(() => inspect({ threadId: lease.threadId, signal: operation.signal, reviewedAt: frozen.reviewedAt }), operation.signal, true);
+      } catch (error) {
+        if (state.status === 'running') revoke(error.message === 'worker-response-timeout' ? 'worker-response-timeout' : 'inspection-failed');
+        throw error;
+      }
+      let execution;
+      await serial(async () => {
+        active(accountId); taskFor(lease);
+        if (['challenge', 'action-block', 'rate-limit', 'session-expired'].includes(evidence?.restriction)) {
+          revoke(evidence.restriction); fail(evidence.restriction);
+        }
+        if (evidence?.accountId !== frozen.accountId || evidence?.threadId !== lease.threadId
+          || evidence?.ownershipVerified !== true || evidence?.withinReviewedBoundary !== true
+          || evidence?.exactTarget !== true) fail('target-not-proven');
+        if (now() < state.nextActionAt) fail('account-pacing');
+        operation.marker = { threadId: lease.threadId, kind, phase: 'prepared' };
+        state.pendingMutations.push(operation.marker);
+        await persist();
+        active(accountId); taskFor(lease);
+        attempts.add(operation.actionKey);
+        operation.marker.phase = 'dispatched';
+        await persist();
+        active(accountId); taskFor(lease);
+        if (now() < state.nextActionAt) fail('account-pacing');
+        // Anchor spacing to actual adapter invocation, after every awaited save.
+        // Start synchronously inside this serial admission, but never hold the
+        // state queue while its execution/verification promise is outstanding.
+        execution = boundedStage(() => {
+          active(accountId); taskFor(lease);
+          state.nextActionAt = now() + delayMs;
+          operation.dispatched = true;
+          return execute({ threadId: lease.threadId, signal: operation.signal, evidence });
+        }, operation.signal, false, true);
+      });
+      let result;
+      try {
+        result = await execution;
+      } catch (error) {
+        if (!operation.dispatched) throw error;
+        result = { verified: false };
+      }
+      return await serial(async () => {
+        // Settlement is allowed after revocation. Each exact dispatched action
+        // owns its own marker and may report a verified outcome only once.
+        if (result?.verified === true) {
+          operation.task[kind === 'message' ? 'messageRemovals' : 'reactionRemovals'] += 1;
+          state.pendingMutations = state.pendingMutations.filter((item) => item !== operation.marker);
+        } else {
+          operation.task.status = 'uncertain'; operation.task.reason = 'removal-not-proven';
+          operation.marker.phase = 'uncertain';
+          revoke('removal-not-proven', state.status === 'stopped' ? 'stopped' : 'paused');
+        }
+        if (['challenge', 'action-block', 'rate-limit', 'session-expired'].includes(result?.restriction)) {
+          revoke(result.restriction, state.status === 'stopped' ? 'stopped' : 'paused');
+        }
+        await persist();
+        return { verified: result?.verified === true, state: snapshot() };
+      });
+    } finally {
+      await serial(async () => {
+        inFlight.delete(lease.threadId);
+        if (!operation.dispatched && operation.marker && !storageTimeout && state.reason !== 'storage-failed') {
+          state.pendingMutations = state.pendingMutations.filter((item) => item !== operation.marker);
+          await persist();
+        }
+      });
+    }
+  }
+  return Object.freeze({
+    snapshot,
+    batchProgress: () => ({
+      mode: frozen.assignmentMode || 'contiguous',
+      currentBatchIndex: currentBatch(),
+      totalBatches: frozen.assignmentMode === 'batches' ? Math.ceil(frozen.threadIds.length / frozen.workerCount) : null,
+      preparedWorkerLimit: frozen.workerCount,
+      mutationConcurrency: concurrency,
+    }),
+    approve: (reviewKey, accountId) => serial(async () => {
+      if (storageTimeout) fail('storage-timeout');
+      if (reviewKey !== key || accountId !== frozen.accountId) fail('review-changed');
+      if (hasPending() || leases.size || inFlight.size) fail('reconciliation-required');
+      if (state.status === 'stopped' || state.status === 'completed') fail('job-finished');
+      if (now() >= frozen.expiresAt) fail('approval-expired');
+      if (concurrency > 1 && now() >= capability.expiresAt) fail('concurrency-capability-expired');
+      authorized = true; abort = new AbortController(); state.status = 'running'; state.reason = null;
+      await persist(); return snapshot();
+    }),
+    claim: (workerIndex, accountId) => serial(async () => {
+      active(accountId);
+      if (!Number.isInteger(workerIndex) || workerIndex < 0 || workerIndex >= frozen.workerCount) fail('worker-invalid');
+      if ([...leases.values()].some((lease) => lease.workerIndex === workerIndex)) fail('worker-already-assigned');
+      const batch = currentBatch();
+      const task = state.tasks.find((item) => item.workerIndex === workerIndex && item.status === 'pending'
+        && (frozen.assignmentMode !== 'batches' || item.batchIndex === batch));
+      if (!task) return null;
+      const lease = Object.freeze({ threadId: task.threadId, workerIndex, generation });
+      leases.set(task.threadId, lease); task.status = 'running'; await persist(); return lease;
+    }),
+    mutate: (lease, options) => concurrency > 1 ? concurrentMutation(lease, options) : serial(async () => {
+      const { accountId, actionId, kind, inspect, execute, delayMs } = options;
+      active(accountId);
+      const task = taskFor(lease);
+      if (!identity(actionId) || !['message', 'reaction'].includes(kind)) fail('mutation-invalid');
+      if (kind === 'reaction' && !frozen.removeOwnReactions) fail('reaction-not-approved');
+      if (kind === 'message' && frozen.limit !== null && task.messageRemovals >= frozen.limit) fail('message-limit-reached');
+      if (!Number.isFinite(delayMs) || delayMs < 0 || typeof inspect !== 'function' || typeof execute !== 'function') fail('mutation-adapter-invalid');
+      if (state.pendingMutation) fail('reconciliation-required');
+      if (now() < state.nextActionAt) fail('account-pacing');
+      const actionKey = `${lease.threadId}:${kind}:${actionId}`;
+      if (attempts.has(actionKey)) fail('duplicate-action');
+      const signal = abort.signal;
+      let evidence;
+      try {
+        evidence = await boundedStage(() => inspect({ threadId: lease.threadId, signal, reviewedAt: frozen.reviewedAt }), signal, true);
+      } catch (error) {
+        if (state.status === 'running') revoke(error.message === 'worker-response-timeout' ? 'worker-response-timeout' : 'inspection-failed');
+        throw error;
+      }
+      active(accountId); taskFor(lease);
+      if (evidence?.accountId !== frozen.accountId || evidence?.threadId !== lease.threadId
+        || evidence?.ownershipVerified !== true || evidence?.withinReviewedBoundary !== true
+        || evidence?.exactTarget !== true) fail('target-not-proven');
+      state.pendingMutation = { threadId: lease.threadId, kind, phase: 'prepared' };
+      await persist();
+      active(accountId); taskFor(lease);
+      attempts.add(actionKey);
+      state.pendingMutation.phase = 'dispatched';
+      // Persist the dispatch marker before the adapter can affect Instagram.
+      await persist();
+      active(accountId); taskFor(lease);
+      let result;
+      try { result = await boundedStage(() => execute({ threadId: lease.threadId, signal, evidence }), signal, false); }
+      catch { result = { verified: false }; }
+      if (result?.verified === true) {
+        task[kind === 'message' ? 'messageRemovals' : 'reactionRemovals'] += 1;
+        state.pendingMutation = null;
+        state.nextActionAt = now() + delayMs;
+      } else {
+        task.status = 'uncertain'; task.reason = 'removal-not-proven';
+        state.pendingMutation.phase = 'uncertain';
+        revoke('removal-not-proven', state.status === 'stopped' ? 'stopped' : 'paused');
+      }
+      await persist();
+      return { verified: result?.verified === true, state: snapshot() };
+    }),
+    finish: (lease, status, reason = null) => serial(async () => {
+      const task = taskFor(lease);
+      if (!TERMINAL.has(status) || status === 'uncertain' || state.pendingMutation
+        || pendingFor(lease.threadId) || inFlight.has(lease.threadId)) fail('completion-invalid');
+      task.status = status; task.reason = reason; leases.delete(task.threadId);
+      if (state.tasks.every((item) => TERMINAL.has(item.status))) {
+        authorized = false;
+        state.status = state.tasks.every((item) => item.status === 'completed') ? 'completed' : 'partial';
+      }
+      await persist(); return snapshot();
+    }),
+    settleInterrupted: (lease) => serial(async () => {
+      if (!['paused', 'stopped'].includes(state.status) || authorized
+        || !lease || leases.get(lease.threadId) !== lease) fail('interrupted-settlement-invalid');
+      if (state.pendingMutation || pendingFor(lease.threadId) || inFlight.has(lease.threadId)) fail('reconciliation-required');
+      const task = state.tasks.find(item => item.threadId === lease.threadId);
+      if (!task || task.status !== 'running') fail('interrupted-settlement-invalid');
+      task.status = 'partial'; task.reason = state.reason || 'interrupted';
+      leases.delete(lease.threadId);
+      await persist(); return snapshot();
+    }),
+    interrupt: (reason = 'paused', { stop = false } = {}) => {
+      revoke(reason, stop ? 'stopped' : 'paused');
+      return serial(async () => { await persist(); return snapshot(); });
+    },
+    retireWorker: (threadId, { terminated, reconciled = false } = {}) => serial(async () => {
+      if (terminated !== true) fail('worker-termination-required');
+      if (inFlight.has(threadId)) fail('worker-settlement-required');
+      if (pendingFor(threadId) && reconciled !== true) fail('reconciliation-required');
+      const task = state.tasks.find((item) => item.threadId === threadId);
+      if (!task) fail('thread-not-reviewed');
+      leases.delete(threadId);
+      if (state.pendingMutation?.threadId === threadId) state.pendingMutation = null;
+      if (state.pendingMutations) state.pendingMutations = state.pendingMutations.filter((item) => item.threadId !== threadId);
+      if (['running', 'partial', 'uncertain'].includes(task.status)) {
+        task.status = 'skipped'; task.reason = 'worker-retired';
+      }
+      await persist(); return snapshot();
+    }),
+  });
+}
+
+return Object.freeze({ INBOX_COORDINATOR_CAPABILITIES, createInboxReview, inboxReviewKey, createInboxCoordinator });
+})();
+localModules["extension/inbox-userscript-discovery.js"] = (() => {
+const { createNativeInboxDiscovery, nativeInboxSection } = localModules["extension/inbox-native-navigation.js"];
+const { createInboxReview } = localModules["extension/inbox-coordinator.js"];
+
+
+const ORIGIN = 'https://www.instagram.com';
+const visible = (node) => Boolean(node?.isConnected && !node.closest?.('[hidden], [aria-hidden="true"]')
+  && node.getClientRects?.().length);
+const copy = (value) => structuredClone(value);
+
+// Inventory, review, and captured native navigation never approve cleanup.
+function createUserscriptInboxDiscovery({
+  document = globalThis.document, window = globalThis.window,
+  viewer = globalThis.InstaToolboxInstagramViewer, now = Date.now, onProgress = null,
+  routeTimeoutMs = 8_000, settleMs = 400,
+} = {}) {
+  if (!document || !window?.location || typeof viewer?.inspect !== 'function'
+    || typeof viewer.accountKey !== 'function' || typeof now !== 'function'
+    || (onProgress !== null && typeof onProgress !== 'function')) throw new Error('inbox-discovery-unavailable');
+  let active = null, inventory = null, captured = null, navigator = null;
+  let state = { status: 'idle', reason: null, inventory: null, executionAvailable: false };
+  const snapshot = () => copy(state);
+  const publish = (patch) => {
+    state = { ...state, ...patch };
+    try { onProgress?.(snapshot()); } catch {}
+    return snapshot();
+  };
+  function rejectContext(reason) {
+    navigator?.stop(); navigator = null; captured = null; inventory = null;
+    publish({ status: 'needs-attention', reason, inventory: null });
+    throw new Error(reason);
+  }
+  function context() {
+    const evidence = viewer.inspect({ document, location: window.location });
+    const key = viewer.accountKey(evidence?.accountId);
+    if (evidence?.then || evidence?.accountVerified !== true || !key
+      || evidence.accountKey !== key || evidence.identityKind !== 'verified-viewer-username'
+      || window.location.origin !== ORIGIN) return rejectContext('inbox-viewer-unverified');
+    if (evidence.restriction) return rejectContext('inbox-account-restricted');
+    return { accountId: key, verified: true, restriction: null };
+  }
+  function section() {
+    const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
+    if (roots.length !== 1) return null;
+    const selected = [...roots[0].querySelectorAll('[role="tab"][aria-selected="true"]')].filter(visible);
+    if (selected.length !== 1) return null;
+    const label = (selected[0].getAttribute('aria-label') || selected[0].textContent || '').trim();
+    return nativeInboxSection(label);
+  }
+  const stop = () => {
+    if (navigator) { navigator.stop(); navigator = null; return true; }
+    if (!active) return false;
+    active.stop(); publish({ status: 'stopping', reason: 'cancelled', inventory: active.snapshot() });
+    return true;
+  };
+  return Object.freeze({
+    snapshot, stop,
+    async discover({ navigationAcknowledged = false, sections = ['primary'], expiresAt = now() + 5 * 60_000 } = {}) {
+      if (active) throw new Error('inbox-discovery-active');
+      if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');
+      if (!Number.isFinite(expiresAt) || expiresAt <= now() || expiresAt > now() + 20 * 60_000) throw new Error('discovery-expired');
+      if (!/^\/direct\/inbox\/?$/.test(window.location.pathname)) throw new Error('inbox-route-required');
+      const identity = context();
+      navigator?.stop(); navigator = null; captured = null; inventory = null;
+      const operation = createNativeInboxDiscovery({
+        accountId: identity.accountId, resolveAccount: context,
+        navigationAcknowledged, document, window, sections, expiresAt, now,
+        routeTimeoutMs, settleMs, resolveSection: section,
+        onProgress: (value) => publish({ inventory: value }),
+      });
+      active = operation;
+      const interrupted = () => { operation.stop(); publish({ status: 'stopping', reason: 'page-interrupted' }); };
+      document.addEventListener?.('freeze', interrupted);
+      window.addEventListener?.('pagehide', interrupted);
+      publish({ status: 'discovering', reason: null, inventory: operation.snapshot() });
+      try {
+        const result = await operation.run();
+        const current = context();
+        if (current.accountId !== identity.accountId) throw new Error('inbox-account-changed');
+        inventory = copy(result);
+        captured = operation;
+        return publish({ status: result.stopped ? 'needs-attention' : 'ready',
+          reason: result.reason, inventory: result });
+      } catch (error) {
+        captured = null; inventory = null;
+        publish({ status: 'needs-attention', reason: error.message, inventory: null });
+        throw error;
+      } finally {
+        document.removeEventListener?.('freeze', interrupted);
+        window.removeEventListener?.('pagehide', interrupted);
+        if (active === operation) active = null;
+      }
+    },
+    createNavigator({ expiresAt } = {}) {
+      if (active) throw new Error('inbox-discovery-active');
+      if (!inventory || !captured) throw new Error('inbox-discovery-required');
+      const current = context();
+      if (current.accountId !== inventory.accountId) {
+        navigator?.stop(); navigator = null; captured = null; inventory = null;
+        publish({ status: 'needs-attention', reason: 'inbox-account-changed', inventory: null });
+        throw new Error('inbox-account-changed');
+      }
+      const native = captured.createNavigator({ expiresAt });
+      navigator?.stop();
+      navigator = Object.freeze({
+        stop: () => native.stop(),
+        async navigate(threadId, options) {
+          try { return await native.navigate(threadId, options); }
+          catch (error) {
+            if (/account-changed|viewer-unverified|origin-changed/.test(error.message)) {
+              captured = null; inventory = null;
+            }
+            publish({ status: 'needs-attention', reason: error.message, inventory });
+            throw error;
+          }
+        },
+      });
+      return navigator;
+    },
+    review({ threadIds, scope = 'all', limit = null } = {}) {
+      if (active) throw new Error('inbox-discovery-active');
+      if (!inventory) throw new Error('inbox-discovery-required');
+      const current = context();
+      if (current.accountId !== inventory.accountId) {
+        return rejectContext('inbox-account-changed');
+      }
+      const available = new Set(inventory.conversations.map((entry) => entry.threadId));
+      if (!Array.isArray(threadIds) || !threadIds.length
+        || !threadIds.every((id) => available.has(id))) throw new Error('thread-not-discovered');
+      return createInboxReview({ accountId: current.accountId, threadIds, scope, limit,
+        speed: 'standard', workerCount: 1, removeOwnReactions: false,
+        discovery: { sections: inventory.sections.filter((entry) => entry.samples > 0).map((entry) => entry.section),
+          complete: inventory.complete === true },
+      }, now());
+    },
+  });
+}
+
+return Object.freeze({ createUserscriptInboxDiscovery });
+})();
+localModules["extension/inbox-single-tab.js"] = (() => {
+const { createInboxCoordinator, createInboxReview, inboxReviewKey } = localModules["extension/inbox-coordinator.js"];
+
+const fail = (reason) => { throw new Error(reason); };
+const restricted = (context) => context?.restriction || context?.challenge || context?.rateLimited
+  || context?.actionBlocked || context?.sessionExpired;
+
+// This adapter has no page-message entry point. Its runner, navigation and
+// identity readers must all belong to the same isolated runtime.
+function createSingleTabInboxReview(input, now = Date.now()) {
+  if (input?.messageWindow !== 'during-run') fail('message-window-review-required');
+  if (input.workerCount !== undefined && input.workerCount !== 1) fail('single-tab-worker-required');
+  if (input.mutationConcurrency !== undefined && input.mutationConcurrency !== 1) fail('serial-mutations-required');
+  if (input.removeOwnReactions === true) fail('inbox-reactions-unavailable');
+  const review = createInboxReview({ ...input, workerCount: 1, mutationConcurrency: 1,
+    messageWindow: 'during-run', removeOwnReactions: false }, now);
+  if (review.messageWindow !== 'during-run') fail('message-window-contract-unavailable');
+  return review;
+}
+
+function createSingleTabInboxController({
+  review, runner, navigate, inspectCurrent, locks, save, now = Date.now,
+  restored = null, stageTimeoutMs = 30_000, saveTimeoutMs = 10_000,
+} = {}) {
+  if (typeof runner?.start !== 'function' || typeof runner?.createPlan !== 'function'
+    || typeof navigate !== 'function' || typeof inspectCurrent !== 'function'
+    || typeof locks?.request !== 'function' || typeof save !== 'function'
+    || typeof now !== 'function') fail('single-tab-runtime-unavailable');
+  const frozen = createSingleTabInboxReview(review, review?.reviewedAt ?? now());
+  const reviewKey = inboxReviewKey(frozen);
+  if (inboxReviewKey(review) !== reviewKey) fail('single-tab-review-invalid');
+  const coordinator = createInboxCoordinator({ review: frozen, save, now, restored, stageTimeoutMs, saveTimeoutMs });
+  const listeners = new Set();
+  const abort = new AbortController();
+  const lockName = `insta-toolbox:account-activity:${frozen.accountId}`;
+  let authority = null, used = false, running = null, active = null, lockHeld = false;
+  let phase = restored ? 'review-required' : 'review', documentId = null, actionSequence = 0;
+  const pendingNative = new Set();
+  const snapshot = () => {
+    const state = coordinator.snapshot();
+    return { ...state, phase,
+      currentThreadId: active?.lease.threadId || null, lockHeld,
+      canStart: !restored && !used && !abort.signal.aborted,
+      canStop: Boolean(running && phase !== 'finished' && !abort.signal.aborted),
+      canSkip: Boolean(active && !active.abort.signal.aborted && !abort.signal.aborted),
+    };
+  };
+  function publish(nextPhase = phase) {
+    phase = nextPhase;
+    for (const listener of listeners) { try { listener(snapshot()); } catch {} }
+  }
+  function context(threadId = null, requireAuthority = true) {
+    if (abort.signal.aborted) fail('inbox-run-stopped');
+    if (now() >= frozen.expiresAt) fail('approval-expired');
+    if (requireAuthority && (!authority || !lockHeld || coordinator.snapshot().status !== 'running')) fail('inbox-approval-revoked');
+    const value = inspectCurrent();
+    if (!value || value.then || value.accountVerified !== true || value.accountId !== frozen.accountId
+      || value.usable !== true || typeof value.documentId !== 'string' || !value.documentId
+      || (documentId && documentId !== value.documentId)) fail('inbox-context-changed');
+    if (restricted(value)) fail('inbox-account-restricted');
+    if (threadId !== null && value.threadId !== threadId) fail('inbox-thread-changed');
+    return value;
+  }
+  async function pacing(signal) {
+    while (coordinator.snapshot().nextActionAt > now()) {
+      context(active.lease.threadId);
+      if (signal.aborted || active.abort.signal.aborted) fail('inbox-thread-stopped');
+      await new Promise((resolve, reject) => {
+        let timer, settled = false;
+        const finish = (error) => {
+          if (settled) return; settled = true;
+          clearTimeout(timer);
+          signal.removeEventListener('abort', cancelled);
+          active?.abort.signal.removeEventListener('abort', cancelled);
+          error ? reject(error) : resolve();
+        };
+        const cancelled = () => finish(new Error('inbox-thread-stopped'));
+        signal.addEventListener('abort', cancelled, { once: true });
+        active.abort.signal.addEventListener('abort', cancelled, { once: true });
+        timer = setTimeout(() => finish(), Math.min(250, coordinator.snapshot().nextActionAt - now()));
+        if (signal.aborted || active.abort.signal.aborted) cancelled();
+      });
+    }
+  }
+  function adapterFor(item, token) {
+    let grant = null, inFlight = false;
+    const attemptedKeys = new Set();
+    const guard = () => {
+      if (token !== authority || active !== item || item.abort.signal.aborted) fail('inbox-thread-stopped');
+      context(item.lease.threadId);
+      return true;
+    };
+    const validCandidate = (candidate) => candidate?.ownershipVerified === true
+      && (candidate.key === null || (typeof candidate.key === 'string' && candidate.key.length > 0 && candidate.key.length <= 512))
+      && (candidate.timestamp === null || (Number.isFinite(candidate.timestamp) && candidate.timestamp > 0));
+    const assertAction = ({ threadId, candidate }) => {
+      guard();
+      if (!grant || grant.signal.aborted || threadId !== item.lease.threadId || !validCandidate(candidate)
+        || candidate.key !== grant.candidate.key || candidate.timestamp !== grant.candidate.timestamp) fail('inbox-target-changed');
+      return true;
+    };
+    return Object.freeze({
+      signal: item.abort.signal,
+      assertContext({ threadId }) { guard(); if (threadId !== item.lease.threadId) fail('inbox-thread-changed'); return true; },
+      assertAction,
+      async execute({ candidate, threadId, signal, execute }) {
+        guard();
+        if (threadId !== item.lease.threadId || !validCandidate(candidate) || typeof execute !== 'function'
+          || !signal || signal.aborted) fail('inbox-target-unproven');
+        if (candidate.key && attemptedKeys.has(candidate.key)) fail('inbox-target-already-attempted');
+        if (inFlight) fail('inbox-action-in-flight');
+        const approvedCandidate = Object.freeze({ key: candidate.key, timestamp: candidate.timestamp,
+          ownershipVerified: true });
+        inFlight = true;
+        let verified = false;
+        try {
+          await pacing(signal);
+          guard();
+          const result = await coordinator.mutate(item.lease, {
+            accountId: frozen.accountId, actionId: `single_${++actionSequence}`, kind: 'message', delayMs: 1_000,
+            inspect: async ({ signal: coordinatorSignal }) => {
+              guard();
+              if (signal.aborted || coordinatorSignal.aborted) fail('inbox-thread-stopped');
+              return { accountId: frozen.accountId, threadId, ownershipVerified: true,
+                withinReviewedBoundary: frozen.messageWindow === 'during-run', exactTarget: true };
+            },
+            execute: async ({ signal: coordinatorSignal }) => {
+              const cancel = () => item.abort.abort(coordinatorSignal.reason || 'inbox-approval-revoked');
+              coordinatorSignal.addEventListener('abort', cancel, { once: true });
+              grant = { candidate: approvedCandidate, signal: coordinatorSignal };
+              try {
+                assertAction({ threadId, candidate: approvedCandidate });
+                if (signal.aborted || coordinatorSignal.aborted) fail('inbox-thread-stopped');
+                if (approvedCandidate.key) attemptedKeys.add(approvedCandidate.key);
+                const native = Promise.resolve().then(execute);
+                pendingNative.add(native);
+                try { verified = (await native)?.verified === true; }
+                finally { pendingNative.delete(native); }
+                return { verified };
+              } finally {
+                grant = null;
+                coordinatorSignal.removeEventListener('abort', cancel);
+              }
+            },
+          });
+          publish();
+          return { verified: result.verified === true };
+        } catch (error) {
+          if (!verified) throw error;
+          // Keep a proven result counted in the runner even if its checkpoint
+          // failed. The coordinator has already revoked further authority.
+          item.abort.abort('inbox-checkpoint-failed');
+          return { verified: true, stopReason: 'inbox-checkpoint-failed' };
+        } finally {
+          inFlight = false;
+        }
+      },
+    });
+  }
+  async function executeQueue(token) {
+    return locks.request(lockName, { mode: 'exclusive', ifAvailable: true }, async (lock) => {
+      if (!lock || lock.name !== lockName || lock.mode !== 'exclusive') fail('inbox-account-busy');
+      lockHeld = true;
+      try {
+        documentId = context(null, false).documentId;
+        await coordinator.approve(reviewKey, frozen.accountId);
+        context();
+        while (!abort.signal.aborted && coordinator.snapshot().status === 'running') {
+          context();
+          const lease = await coordinator.claim(0, frozen.accountId);
+          if (!lease) break;
+          const item = { lease, abort: new AbortController(), skipped: false };
+          active = item;
+          const cancel = () => item.abort.abort(abort.signal.reason || 'inbox-run-stopped');
+          abort.signal.addEventListener('abort', cancel, { once: true });
+          try {
+            publish('opening-conversation');
+            await navigate({ accountId: frozen.accountId, threadId: lease.threadId,
+              expiresAt: frozen.expiresAt, signal: item.abort.signal,
+              assertCurrent: () => { context(); if (item.abort.signal.aborted) fail('inbox-thread-stopped'); return true; } });
+            if (!item.abort.signal.aborted) {
+              context(lease.threadId);
+              const plan = runner.createPlan({ threadId: lease.threadId, scope: frozen.scope,
+                limit: frozen.limit, speed: 'standard', expiresAt: frozen.expiresAt });
+              if (!plan) fail('inbox-thread-plan-invalid');
+              publish('unsending');
+              const outcome = await runner.start({ plan, workerAdapter: adapterFor(item, token) });
+              if (outcome?.uncertain > 0 || coordinator.snapshot().pendingMutation) {
+                if (coordinator.snapshot().status === 'running') await coordinator.interrupt('removal-not-proven');
+              } else if (!abort.signal.aborted && coordinator.snapshot().status === 'running') {
+                const status = item.skipped ? 'skipped' : outcome?.status === 'completed' ? 'completed'
+                  : outcome?.processed > 0 ? 'partial' : 'failed';
+                await coordinator.finish(lease, status, status === 'completed' ? null : item.skipped ? 'skipped' : 'conversation-incomplete');
+                if (!item.skipped && outcome?.status !== 'completed') await coordinator.interrupt('conversation-incomplete');
+              }
+            } else if (item.skipped && !abort.signal.aborted && coordinator.snapshot().status === 'running') {
+              await coordinator.finish(lease, 'skipped', 'skipped');
+            }
+          } catch (error) {
+            if (item.skipped && !abort.signal.aborted && coordinator.snapshot().status === 'running'
+              && !coordinator.snapshot().pendingMutation) await coordinator.finish(lease, 'skipped', 'skipped');
+            else {
+              if (coordinator.snapshot().status === 'running') await coordinator.interrupt('execution-interrupted').catch(() => {});
+              throw error;
+            }
+          } finally {
+            abort.signal.removeEventListener('abort', cancel);
+            item.abort.abort('conversation-finished');
+            if (pendingNative.size) publish('settling');
+            await Promise.allSettled([...pendingNative]);
+            const settled = coordinator.snapshot();
+            if (['paused', 'stopped'].includes(settled.status) && !settled.pendingMutation
+              && settled.tasks.find(task => task.threadId === lease.threadId)?.status === 'running') {
+              await coordinator.settleInterrupted(lease).catch(() => {});
+            }
+            active = null;
+          }
+        }
+      } catch (error) {
+        if (coordinator.snapshot().status === 'running') await coordinator.interrupt('execution-interrupted').catch(() => {});
+        throw error;
+      } finally {
+        // An adapter timeout is not proof that a native action finished. Keep
+        // the account lock until every dispatched native promise has settled.
+        await Promise.allSettled([...pendingNative]);
+        lockHeld = false;
+        authority = null;
+        publish('finished');
+      }
+      return snapshot();
+    });
+  }
+  function interrupt(reason, stop) {
+    if (used && phase === 'finished') return Promise.resolve(snapshot());
+    abort.abort(reason);
+    authority = null;
+    publish('settling');
+    const persisted = coordinator.interrupt(reason, { stop });
+    return Promise.allSettled([persisted, running]).then(() => snapshot());
+  }
+  return Object.freeze({
+    snapshot,
+    reviewKey: () => reviewKey,
+    subscribe(listener) {
+      if (typeof listener !== 'function') fail('inbox-listener-invalid');
+      listeners.add(listener); listener(snapshot()); return () => listeners.delete(listener);
+    },
+    approve(key) {
+      if (restored) fail('review-required-after-restart');
+      if (used || abort.signal.aborted || authority) fail('inbox-review-already-used');
+      if (key !== reviewKey) fail('inbox-review-changed');
+      documentId = context(null, false).documentId;
+      authority = Object.freeze({});
+      return authority;
+    },
+    start(token) {
+      if (restored || token !== authority || !authority || used || abort.signal.aborted) return Promise.reject(new Error('inbox-runtime-approval-required'));
+      used = true;
+      publish('starting');
+      running = executeQueue(token).finally(() => { authority = null; publish('finished'); });
+      return running;
+    },
+    pause: () => interrupt('paused', false),
+    stop: () => interrupt('stopped', true),
+    skip() {
+      if (!active || abort.signal.aborted || active.abort.signal.aborted) return false;
+      active.skipped = true; active.abort.abort('conversation-skipped'); publish('settling'); return true;
+    },
+  });
+}
+
+return Object.freeze({ createSingleTabInboxReview, createSingleTabInboxController });
+})();
+localModules["extension/inbox-userscript-panel.js"] = (() => {
+const { createUserscriptInboxDiscovery } = localModules["extension/inbox-userscript-discovery.js"];
+const { inboxReviewKey } = localModules["extension/inbox-coordinator.js"];
+const { createSingleTabInboxController, createSingleTabInboxReview } = localModules["extension/inbox-single-tab.js"];
+
+
+
+function mountUserscriptInboxPanel({
+  container, document = globalThis.document, window = globalThis.window,
+  viewer = globalThis.InstaToolboxInstagramViewer,
+  runner = globalThis.InstaToolboxDmThreadUnsender,
+  confirmAction, cancelConfirmation = () => {}, save, load = async () => null,
+  busy = () => false, onStatus = () => {},
+}) {
+  if (!container || typeof confirmAction !== 'function' || typeof save !== 'function') throw new Error('inbox-panel-unavailable');
+  const documentId = crypto.randomUUID();
+  const selected = new Set();
+  const rows = new Map();
+  let inventory = null, controller = null, active = false, checkpoint = null, operationEpoch = 0;
+  let loading = true, loadFailed = false, needsReconciliation = false, unsubscribe = null;
+  const create = (tag, text, className) => {
+    const node = document.createElement(tag);
+    if (text) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  };
+  const controls = create('div', null, 'toolbar');
+  const find = create('button', 'Find conversations', 'button quiet');
+  find.type = 'button';
+  const section = create('select');
+  section.setAttribute('aria-label', 'Inbox section');
+  for (const [value, label] of [['primary', 'Primary'], ['general', 'General'], ['requests', 'Requests']]) {
+    const option = create('option', label); option.value = value; section.append(option);
+  }
+  const acknowledgment = create('label', null, 'inbox-choice');
+  const acknowledged = create('input'); acknowledged.type = 'checkbox';
+  acknowledgment.append(acknowledged, document.createTextNode(' Opening conversations may mark them read.'));
+  const note = create('p', 'Open your inbox to find conversations. Nothing is removed during this step.', 'lead');
+  const inbox = create('a', 'Open inbox', 'button quiet');
+  inbox.href = 'https://www.instagram.com/direct/inbox/';
+  const inventoryStatus = create('p', '', 'lead');
+  const list = create('div', null, 'inbox-selection');
+  list.setAttribute('role', 'group'); list.setAttribute('aria-label', 'Conversations to clean up');
+  const selectAll = create('button', 'Select all found', 'button quiet'); selectAll.type = 'button';
+  const review = create('button', 'Review conversations', 'button danger'); review.type = 'button'; review.disabled = true;
+  const pause = create('button', 'Pause', 'button quiet'); pause.type = 'button'; pause.hidden = true;
+  const skip = create('button', 'Skip conversation', 'button quiet'); skip.type = 'button'; skip.hidden = true;
+  const stop = create('button', 'Stop all', 'button danger'); stop.type = 'button'; stop.hidden = true;
+  const results = create('ul', null, 'list list--compact');
+  const recovery = create('label', null, 'inbox-choice');
+  const reconciled = create('input'); reconciled.type = 'checkbox';
+  recovery.append(reconciled, document.createTextNode(' I checked the interrupted conversation before starting again.'));
+  recovery.hidden = true;
+  const storageNote = create('p', '', 'lead');
+  const supportNote = create('p', '', 'lead');
+  if (!window.navigator?.locks?.request) supportNote.textContent = 'Inbox cleanup is unavailable: this browser does not provide exclusive tab locks.';
+  supportNote.hidden = !supportNote.textContent;
+  controls.append(find, inbox);
+  const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, pause, skip, stop);
+  container.append(note, section, acknowledgment, controls, inventoryStatus, list, supportNote, recovery, actions, storageNote, results);
+
+  function context() {
+    const value = viewer.inspect({ document, location: window.location });
+    return { ...value, accountId: value.accountKey, documentId,
+      usable: value.accountVerified === true && !value.restriction
+        && (value.usable === true || /^\/direct\/inbox\/?$/.test(window.location.pathname)),
+      challenge: Boolean(value.restriction), rateLimited: false, actionBlocked: false, sessionExpired: false };
+  }
+  function announce(text) { onStatus(text); }
+  function updateControls() {
+    inventoryStatus.hidden = !inventoryStatus.textContent;
+    list.hidden = !rows.size;
+    results.hidden = !checkpoint?.tasks?.length;
+    storageNote.hidden = !storageNote.textContent;
+    find.disabled = active || loading || loadFailed;
+    section.disabled = active; acknowledged.disabled = active;
+    selectAll.hidden = !inventory?.conversations.length; selectAll.disabled = active;
+    review.hidden = !inventory?.conversations.length;
+    review.disabled = active || loading || loadFailed || !selected.size || !window.navigator?.locks?.request
+      || (needsReconciliation && !reconciled.checked);
+    review.textContent = `Review ${selected.size} conversation${selected.size === 1 ? '' : 's'}`;
+    stop.hidden = !active; pause.hidden = !active || !controller; skip.hidden = !active || !controller;
+    for (const row of rows.values()) row.input.disabled = active;
+  }
+  function showInventory(value) {
+    inventory = value.inventory;
+    const threads = inventory?.conversations || [];
+    for (const thread of threads) {
+      if (rows.has(thread.threadId)) continue;
+      const label = create('label', null, 'inbox-choice');
+      const input = create('input'); input.type = 'checkbox';
+      const name = create('span', `Conversation ${rows.size + 1}`);
+      const identity = create('small', `Thread ${thread.threadId}`);
+      const text = create('span'); text.append(name, identity); label.append(input, text);
+      input.addEventListener('change', () => {
+        if (input.checked) selected.add(thread.threadId); else selected.delete(thread.threadId);
+        updateControls();
+      });
+      rows.set(thread.threadId, { label, input }); list.append(label);
+    }
+    if (!inventory) { selected.clear(); rows.clear(); list.replaceChildren(); }
+    const finding = value.status === 'discovering';
+    inventoryStatus.textContent = finding ? `Found ${threads.length} conversations…`
+      : `${threads.length} conversations found.${inventory?.complete ? '' : ' This may not include your whole inbox.'}`;
+    if (value.reason) inventoryStatus.textContent += ` ${friendlyReason(value.reason)}`;
+    updateControls();
+  }
+  const discovery = createUserscriptInboxDiscovery({ document, window, viewer, onProgress: showInventory });
+  function friendlyReason(reason) {
+    const labels = {
+      'inbox-route-required': 'Open your inbox first.',
+      'inbox-viewer-unverified': 'Your signed-in account could not be verified.',
+      'section-control-unavailable': 'This inbox section could not be identified.',
+      'inbox-account-changed': 'The signed-in account changed. Find conversations again.',
+      'account-activity-busy': 'Another cleanup is already running.',
+      'account-pacing': 'Waiting before the next removal.',
+      cancelled: 'Stopped.', 'end-unverified': '', 'repeated-window-unverified': '',
+    };
+    return labels[reason] ?? String(reason || '').replaceAll('-', ' ');
+  }
+  function renderCheckpoint(value) {
+    checkpoint = structuredClone(value);
+    results.hidden = !value.tasks?.length;
+    results.replaceChildren(...(value.tasks || []).map(task => {
+      const count = Number(task.messageRemovals) || 0;
+      return create('li', `Thread ${task.threadId}: ${count} unsent · ${task.status}${task.reason ? ` — ${friendlyReason(task.reason)}` : ''}`);
+    }));
+  }
+  async function persist(value) {
+    renderCheckpoint(value);
+    try { await save(value); storageNote.textContent = ''; storageNote.hidden = true; }
+    catch (error) {
+      storageNote.textContent = 'Progress could not be saved. Cleanup stopped; the counts below include verified removals.';
+      storageNote.hidden = false;
+      throw error;
+    }
+  }
+  reconciled.addEventListener('change', updateControls);
+  async function loadCheckpoint() {
+    const value = await load();
+    if (!value) {
+      checkpoint = null; results.replaceChildren(); needsReconciliation = false;
+      recovery.hidden = true; reconciled.checked = false; storageNote.textContent = '';
+      return;
+    }
+    if (value.version !== 1 || !Array.isArray(value.tasks) || value.tasks.length > 1000
+      || value.tasks.some(task => !/^[A-Za-z0-9_-]{1,128}$/.test(task.threadId)
+        || !Number.isSafeInteger(task.messageRemovals) || task.messageRemovals < 0)) throw new Error('inbox-checkpoint-invalid');
+    renderCheckpoint(value);
+    needsReconciliation = Boolean(value.pendingMutation || value.pendingMutations?.length
+      || !['completed', 'stopped'].includes(value.status)
+      || value.tasks.some(task => ['running', 'uncertain'].includes(task.status)));
+    recovery.hidden = !needsReconciliation;
+    storageNote.textContent = needsReconciliation
+      ? 'Previous cleanup was interrupted. Check its last conversation; nothing resumes automatically.'
+      : 'Previous cleanup. Find conversations to start a new review.';
+  }
+  const ready = Promise.resolve().then(loadCheckpoint).catch(() => {
+    loadFailed = true;
+    storageNote.textContent = 'Saved cleanup progress could not be read. Reload before starting another cleanup.';
+  }).finally(() => { loading = false; updateControls(); });
+  find.addEventListener('click', async () => {
+    if (active || loading || loadFailed || busy()) return;
+    if (!acknowledged.checked) { announce('Confirm that opening conversations may mark them read.'); acknowledged.focus(); return; }
+    const epoch = ++operationEpoch;
+    active = true; inventory = null; selected.clear(); rows.clear(); list.replaceChildren(); unsubscribe?.(); controller = null; updateControls();
+    try {
+      await loadCheckpoint();
+      if (epoch !== operationEpoch) return;
+      await discovery.discover({ navigationAcknowledged: true, sections: [section.value] });
+    }
+    catch (error) { announce(friendlyReason(error.message)); }
+    finally { active = false; updateControls(); }
+  });
+  selectAll.addEventListener('click', () => {
+    if (active) return;
+    for (const [id, row] of rows) { selected.add(id); row.input.checked = true; }
+    updateControls();
+  });
+  review.addEventListener('click', async () => {
+    if (active || loading || loadFailed || busy() || !selected.size
+      || (needsReconciliation && !reconciled.checked)) return;
+    const epoch = ++operationEpoch;
+    active = true; updateControls();
+    let threadNavigator = null;
+    try {
+      const captured = discovery.review({ threadIds: [...selected], scope: 'all' });
+      const { version, arrivalPolicy, ...base } = captured;
+      const plan = createSingleTabInboxReview({ ...base, version: 2, messageWindow: 'during-run' });
+      const key = inboxReviewKey(plan);
+      const account = viewer.inspect({ document, location: window.location });
+      const confirmed = await confirmAction({
+        title: `Clean up ${plan.threadIds.length} conversation${plan.threadIds.length === 1 ? '' : 's'}?`,
+        message: 'Permanently unsend your messages in the selected conversations.',
+        detail: 'Messages you send while cleanup is running may also be removed. Keep this Instagram tab loaded and do not send messages in these conversations until it finishes.',
+        confirmLabel: 'Start cleanup',
+        facts: [{ label: 'Account', value: `@${account.accountId}` },
+          { label: 'Conversations', value: plan.threadIds.join(', ') },
+          { label: 'Messages', value: 'All messages you sent; one conversation at a time' }],
+        binding: { action: 'inbox-unsend', reviewKey: key },
+      });
+      if (!confirmed || epoch !== operationEpoch) { announce('Canceled. Nothing was removed.'); return; }
+      if (confirmed.action !== 'inbox-unsend' || confirmed.reviewKey !== key || busy()) throw new Error('inbox-review-changed');
+      threadNavigator = discovery.createNavigator({ expiresAt: plan.expiresAt });
+      controller = createSingleTabInboxController({
+        review: plan, runner, inspectCurrent: context, locks: window.navigator?.locks,
+        navigate: ({ threadId, signal }) => threadNavigator.navigate(threadId, { signal }), save: persist,
+      });
+      needsReconciliation = false; recovery.hidden = true; reconciled.checked = false;
+      unsubscribe = controller.subscribe(renderCheckpoint);
+      updateControls();
+      const token = controller.approve(key);
+      await controller.start(token);
+      const state = controller.snapshot();
+      announce(state.reason ? friendlyReason(state.reason) : 'Selected conversations finished.');
+    } catch (error) { announce(friendlyReason(error.message)); }
+    finally {
+      threadNavigator?.stop(); active = false;
+      const latest = controller?.snapshot();
+      if (latest) {
+        renderCheckpoint(latest);
+        needsReconciliation = Boolean(latest.pendingMutation || latest.pendingMutations?.length
+          || latest.tasks.some(task => task.status === 'uncertain'));
+        recovery.hidden = !needsReconciliation;
+      }
+      updateControls();
+    }
+  });
+  const stopAll = () => {
+    if (!active) return false;
+    operationEpoch += 1;
+    cancelConfirmation();
+    if (controller) void controller.stop().catch(error => announce(friendlyReason(error.message))); else discovery.stop();
+    return true;
+  };
+  stop.addEventListener('click', stopAll);
+  pause.addEventListener('click', () => { void controller?.pause().catch(error => announce(friendlyReason(error.message))); });
+  skip.addEventListener('click', () => { void controller?.skip(); });
+  document.addEventListener('freeze', stopAll);
+  window.addEventListener('pagehide', stopAll);
+  updateControls();
+  return Object.freeze({ ready, busy: () => active, stop: stopAll, snapshot: () => checkpoint && structuredClone(checkpoint),
+    dispose() { stopAll(); unsubscribe?.(); document.removeEventListener('freeze', stopAll); window.removeEventListener('pagehide', stopAll); },
+  });
+}
+
+return Object.freeze({ mountUserscriptInboxPanel });
+})();
+localModules["extension/inbox-checkpoint-store.js"] = (() => {
+const { createInboxReview, inboxReviewKey } = localModules["extension/inbox-coordinator.js"];
+
+const TASK_STATUSES = new Set(['pending', 'running', 'completed', 'partial', 'skipped', 'failed', 'uncertain']);
+const JOB_STATUSES = new Set(['review', 'running', 'paused', 'stopped', 'completed', 'partial']);
+const REASONS = new Set([
+  'paused', 'stopped', 'completed', 'stable-exhaustion', 'limit-reached', 'expired',
+  'thread-changed', 'wrong-thread', 'account-changed', 'viewer-changed', 'user-stop',
+  'worker-restart', 'worker-retired', 'worker-response-timeout', 'worker-closed',
+  'interrupted', 'interrupted-mutation', 'review-required-after-restart',
+  'removal-not-proven', 'inspection-failed', 'storage-timeout', 'storage-failed',
+  'challenge', 'rate-limited', 'action-blocked', 'session-expired',
+  'context-changed', 'context-unavailable', 'document-frozen', 'page-hidden',
+  'pagehide', 'freeze', 'reconciliation-required', 'other',
+]);
+const record = (value) => value && typeof value === 'object'
+  && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+const clone = (value) => structuredClone(value);
+const fail = (reason) => { throw new Error(reason); };
+const reason = (value) => value == null ? null : REASONS.has(value) ? value : 'other';
+const count = (value) => Number.isSafeInteger(value) && value >= 0;
+
+function sanitize(snapshot) {
+  if (!record(snapshot) || snapshot.version !== 1 || !record(snapshot.review)
+    || !Number.isSafeInteger(snapshot.review.reviewedAt) || snapshot.review.reviewedAt <= 0
+    || !JOB_STATUSES.has(snapshot.status)) fail('checkpoint-invalid');
+  const review = createInboxReview(snapshot.review, snapshot.review.reviewedAt);
+  if (!Array.isArray(snapshot.tasks) || snapshot.tasks.length !== review.threadIds.length) fail('checkpoint-invalid');
+  const tasks = snapshot.tasks.map((task, index) => {
+    const workerIndex = review.assignmentMode === 'batches' ? index % review.workerCount
+      : Math.min(review.workerCount - 1, Math.floor(index / Math.ceil(review.threadIds.length / review.workerCount)));
+    const batchIndex = review.assignmentMode === 'batches' ? Math.floor(index / review.workerCount) : undefined;
+    if (!record(task) || task.threadId !== review.threadIds[index] || task.workerIndex !== workerIndex
+      || task.batchIndex !== batchIndex || !TASK_STATUSES.has(task.status)
+      || !count(task.messageRemovals) || !count(task.reactionRemovals)) fail('checkpoint-invalid');
+    return {
+      threadId: task.threadId, workerIndex, ...(batchIndex !== undefined ? { batchIndex } : {}),
+      status: task.status, messageRemovals: task.messageRemovals,
+      reactionRemovals: task.reactionRemovals, reason: reason(task.reason),
+    };
+  });
+  const seen = new Set();
+  const pending = (value) => {
+    if (!record(value) || !review.threadIds.includes(value.threadId) || seen.has(value.threadId)
+      || !['message', 'reaction'].includes(value.kind)
+      || !['prepared', 'dispatched', 'uncertain'].includes(value.phase)) fail('checkpoint-invalid');
+    seen.add(value.threadId);
+    return { threadId: value.threadId, kind: value.kind, phase: value.phase };
+  };
+  const pendingMutation = snapshot.pendingMutation == null ? null : pending(snapshot.pendingMutation);
+  const concurrency = review.mutationConcurrency ?? 1;
+  let pendingMutations;
+  if (snapshot.pendingMutations !== undefined) {
+    if (concurrency === 1 || pendingMutation || !Array.isArray(snapshot.pendingMutations)
+      || snapshot.pendingMutations.length > concurrency) fail('checkpoint-invalid');
+    pendingMutations = snapshot.pendingMutations.map(pending);
+  }
+  if (!Number.isFinite(snapshot.nextActionAt) || snapshot.nextActionAt < 0) fail('checkpoint-invalid');
+  return {
+    version: 1, review: clone(review), status: snapshot.status, reason: reason(snapshot.reason), tasks,
+    pendingMutation, nextActionAt: snapshot.nextActionAt,
+    ...(pendingMutations !== undefined ? { pendingMutations } : {}),
+  };
+}
+
+function parseRecord(value) {
+  if (value == null) return { version: 1, jobs: [] };
+  // Earlier candidates stored one plain coordinator snapshot at this same key.
+  if (record(value) && value.version === 1 && value.jobs === undefined
+    && record(value.review) && Array.isArray(value.tasks)) {
+    return { version: 1, jobs: [sanitize(value)] };
+  }
+  if (!record(value) || value.version !== 1 || !Array.isArray(value.jobs) || value.jobs.length > 20) fail('checkpoint-history-invalid');
+  const jobs = value.jobs.map(sanitize);
+  const keys = jobs.map((job) => inboxReviewKey(job.review));
+  if (new Set(keys).size !== keys.length) fail('checkpoint-history-invalid');
+  return { version: 1, jobs };
+}
+
+function recover(snapshot) {
+  const copy = clone(snapshot);
+  const markers = [copy.pendingMutation, ...(copy.pendingMutations || [])].filter(Boolean);
+  for (const task of copy.tasks) {
+    if (task.status === 'running') { task.status = 'partial'; task.reason = 'worker-restart'; }
+    if (markers.some((marker) => marker.threadId === task.threadId)) {
+      task.status = 'uncertain'; task.reason = 'interrupted-mutation';
+    }
+  }
+  for (const marker of markers) marker.phase = 'uncertain';
+  if (markers.length || ['review', 'running', 'paused'].includes(copy.status)) {
+    copy.status = 'paused'; copy.reason = 'review-required-after-restart';
+  }
+  return copy;
+}
+
+/** One trusted coordinator owns a store instance and its single backing key. */
+function createInboxCheckpointStore({ read, write, inspectAccount, timeoutMs = 10_000, now = Date.now } = {}) {
+  if (typeof read !== 'function' || typeof write !== 'function' || typeof inspectAccount !== 'function'
+    || typeof now !== 'function' || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) fail('checkpoint-storage-adapter-invalid');
+  let tail = Promise.resolve();
+  let writeFailure = null;
+  const serial = (operation) => {
+    const result = tail.then(operation);
+    tail = result.catch(() => {});
+    return result;
+  };
+  function account() {
+    const context = inspectAccount();
+    if (!record(context) || context.accountVerified !== true || context.restriction
+      || typeof context.accountId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(context.accountId)) fail('verified-account-required');
+    return context.accountId;
+  }
+  const sameAccount = (expected) => { if (account() !== expected) fail('checkpoint-account-changed'); };
+  async function bounded(operation, kind) {
+    let timer;
+    const started = now();
+    if (!Number.isFinite(started)) fail('checkpoint-clock-invalid');
+    try {
+      const value = await Promise.race([
+        Promise.resolve().then(operation),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`checkpoint-${kind}-timeout`)), timeoutMs); }),
+      ]);
+      const ended = now();
+      if (!Number.isFinite(ended) || ended < started || ended - started >= timeoutMs) fail(`checkpoint-${kind}-timeout`);
+      return value;
+    } finally { clearTimeout(timer); }
+  }
+  async function readFor(expected) {
+    const stored = parseRecord(await bounded(read, 'read'));
+    sameAccount(expected);
+    return stored;
+  }
+  return Object.freeze({
+    load: () => serial(async () => {
+      const expected = account();
+      const stored = await readFor(expected);
+      const latest = stored.jobs.find((job) => job.review.accountId === expected);
+      return latest ? recover(latest) : null;
+    }),
+    history: () => serial(async () => {
+      const expected = account();
+      const stored = await readFor(expected);
+      return stored.jobs.filter((job) => job.review.accountId === expected).map(recover);
+    }),
+    save: (snapshot) => {
+      // Copy immediately: a queued persistence call must not observe later mutations.
+      let clean;
+      let expected;
+      try {
+        expected = account(); clean = sanitize(snapshot);
+        if (clean.review.accountId !== expected) fail('checkpoint-account-mismatch');
+      } catch (error) { return Promise.reject(error); }
+      return serial(async () => {
+        if (writeFailure) throw writeFailure;
+        sameAccount(expected);
+        const stored = await readFor(expected);
+        const key = inboxReviewKey(clean.review);
+        const previous = stored.jobs.find((job) => inboxReviewKey(job.review) === key);
+        if (previous && clean.tasks.some((task, index) => (
+          task.messageRemovals < previous.tasks[index].messageRemovals
+          || task.reactionRemovals < previous.tasks[index].reactionRemovals
+        ))) fail('checkpoint-count-regression');
+        const next = { version: 1, jobs: [clean, ...stored.jobs.filter((job) => inboxReviewKey(job.review) !== key)].slice(0, 20) };
+        sameAccount(expected);
+        try { await bounded(() => write(clone(next)), 'write'); }
+        catch (error) {
+          // A timed-out or rejected write may still settle. Fence all newer writes.
+          writeFailure = new Error(error?.message === 'checkpoint-write-timeout' ? 'checkpoint-write-timeout' : 'checkpoint-write-failed');
+          throw writeFailure;
+        }
+        sameAccount(expected);
+        return clone(clean);
+      });
+    },
+  });
+}
+
+return Object.freeze({ createInboxCheckpointStore });
+})();
+globalThis.InstaToolboxInboxDiscovery = Object.freeze({ create: localModules['extension/inbox-userscript-discovery.js'].createUserscriptInboxDiscovery });
+globalThis.InstaToolboxInboxPanel = Object.freeze({ mount: localModules['extension/inbox-userscript-panel.js'].mountUserscriptInboxPanel });
+globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['extension/inbox-checkpoint-store.js'].createInboxCheckpointStore });
 (async () => {
   'use strict';
 
@@ -6617,6 +8386,11 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       .confirm-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
       .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
       .confirm-dialog .toolbar { justify-content: flex-end; }
+      [data-role="inbox-cleanup"] { display:grid; gap:12px; margin-top:12px; }
+      .inbox-selection { display:grid; gap:4px; max-height:240px; overflow:auto; }
+      .inbox-choice { display:flex; align-items:center; gap:12px; min-height:44px; padding:4px 8px; }
+      .inbox-choice > span { display:grid; gap:4px; min-width:0; }
+      .inbox-choice small { color:var(--insta-toolbox-text-muted, #687068); overflow-wrap:anywhere; }
       .settings-dialog { width: min(440px, calc(100vw - 28px)); max-height: min(720px, calc(100dvh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); font-family: var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
       .settings-dialog::backdrop { background: rgba(12,14,12,.44); backdrop-filter: grayscale(.65) blur(1px); }
       .settings-dialog form { display: grid; gap: 16px; margin: 0; padding: 16px; }
@@ -6679,9 +8453,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
-          <div class="field"><label for="insta-toolbox-unsend-speed">Speed</label><select id="insta-toolbox-unsend-speed" data-role="unsend-speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
-          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul></section>
+          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><details class="settings-inline"><summary>Inbox cleanup</summary><div data-role="inbox-cleanup"></div></details></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
@@ -6705,7 +8478,6 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
         <button class="button quiet" type="button" data-action="reset-appearance">Reset appearance</button></details></section>
         <details class="settings-inline settings-section"><summary>Cleanup defaults</summary>
-        <div class="field"><label for="insta-toolbox-default-speed">Speed</label><select id="insta-toolbox-default-speed" data-cleanup-preference="speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
         <div class="field"><label for="insta-toolbox-default-scope">Messages</label><select id="insta-toolbox-default-scope" data-cleanup-preference="messageScope"><option value="all">All my messages</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div>
         <div class="field"><label for="insta-toolbox-default-limit">Message count</label><input id="insta-toolbox-default-limit" type="number" min="1" max="250" data-cleanup-preference="messageLimit"></div>
         <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="removeOwnReactions" aria-describedby="insta-toolbox-reactions-note" disabled> Remove my reactions</label><p class="setting-note" id="insta-toolbox-reactions-note">Not available yet</p></div>
@@ -6916,7 +8688,6 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (initializeDraft) {
       query('[data-role="unsend-scope"]').value = effective.messageScope;
       query('[data-role="unsend-count"]').value = String(effective.messageLimit);
-      query('[data-role="unsend-speed"]').value = effective.speed;
       query('[data-role="unsend-reactions"]').checked = effective.removeOwnReactions;
     }
   }
@@ -7287,6 +9058,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   let dmCleanupController = null;
   let reactionCleanup = null;
   let reactionSnapshot = null;
+  let inboxPanel = null;
 
   const engine = globalThis.InstaToolboxInstagramInspector;
   const dmRunner = globalThis.InstaToolboxDmThreadUnsender;
@@ -7378,7 +9150,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const reviewedDigest = String(plan?.reviewedDigest || '');
     if (
       ![2, 3].includes(plan?.version)
-      || (plan?.version === 3 && !['standard', 'fast'].includes(plan.speed))
+      || (plan?.version === 3 && plan.speed !== 'standard')
       || (plan?.version === 2 && plan?.speed != null && plan.speed !== 'standard')
       || (finite && (!Number.isInteger(count) || count < 1))
       || !/^[0-9a-f]{8}$/.test(reviewedDigest)
@@ -7830,6 +9602,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   async function scanInto(listType) {
+    if (inboxPanel?.busy()) throw new Error('Stop inbox cleanup before scanning a list.');
     const select = query('[data-role="list-type"]');
     if (select) select.value = listType;
     resetRelationshipProgress();
@@ -7860,6 +9633,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   async function checkAccountRelationships() {
+    if (inboxPanel?.busy()) { status('Stop inbox cleanup before checking mutuals.'); return; }
     if (relationshipController) {
       relationshipController.abort();
       status('Stopping the mutual check. Saved comparison data was not changed.');
@@ -8290,6 +10064,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   async function scanSentConversation() {
+    if (inboxPanel?.busy()) throw new Error('Stop inbox cleanup before checking the conversation.');
     if (dmCleanupController) throw new Error('Stop cleanup before checking the conversation.');
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
     status('Checking this conversation for messages you sent. Nothing will be removed.');
@@ -8306,6 +10081,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   async function runDmUnsend() {
+    if (inboxPanel?.busy()) { inboxPanel.stop(); return; }
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
     if (stopDmCleanup()) return;
     if (confirmationController?.isPending()) return;
@@ -8318,7 +10094,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (!inspection?.ready) throw new Error(inspection?.reason || 'Open a conversation first.');
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
     const requested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
-    const speed = query('[data-role="unsend-speed"]')?.value || 'standard';
+    const speed = 'standard';
     const removeReactions = cleanupSettings.capabilities('userscript').reactions
       && query('[data-role="unsend-reactions"]')?.checked === true;
     const viewer = removeReactions ? globalThis.InstaToolboxInstagramViewer?.inspect() : null;
@@ -8354,7 +10130,6 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         { label: 'Action', value: 'Permanently unsend messages' },
         { label: 'Conversation', value: `Thread ${plan.threadId}` },
         { label: 'Messages', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
-        { label: 'Speed', value: speed === 'fast' ? 'Fast' : 'Standard' },
         ...(removeReactions ? [{ label: 'Reactions', value: `Remove reactions added by @${viewer.accountId}` }] : []),
       ],
       binding: {
@@ -8385,7 +10160,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       || confirmation.threadId !== plan.threadId
       || confirmation.scope !== plan.scope
       || confirmation.speed !== plan.speed
-      || (query('[data-role="unsend-speed"]')?.value || 'standard') !== plan.speed
+      || plan.speed !== 'standard'
       || confirmation.limit !== plan.limit
       || confirmation.reviewedDigest !== plan.reviewedDigest
       || Number(confirmation.expiresAt) !== plan.expiresAt
@@ -8545,6 +10320,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       status('Run stopped. It will not resume.');
     },
     'scan-list': async () => {
+      if (inboxPanel?.busy()) throw new Error('Stop inbox cleanup before scanning a list.');
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
       status(`Scanning the open ${listType} list. Keep the dialog open.`);
       const outcome = await engine.collectAccountList({ listType });
@@ -8599,6 +10375,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     },
     'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
+      if (inboxPanel?.busy()) { status('Inbox cleanup is active. Use Stop all to end it.'); return; }
       if (confirmationController?.isPending()) return;
       const current = accountRunPlan();
       if (!accountRunDraft || accountRunDraft.signature !== current.signature) {
@@ -8836,7 +10613,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         announceComparisonCount();
         return;
       }
-      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"], [data-role="unsend-speed"]')) {
+      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"]')) {
         renderDmSummary();
         return;
       }
@@ -9095,6 +10872,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     duplicateObserver.disconnect();
     window.removeEventListener('keydown', toggleToolboxShortcut, true);
     confirmationController?.destroy();
+    inboxPanel?.dispose();
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -9104,6 +10882,33 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   saveState();
   savePreferences(preferences);
   renderCleanupSettings({ initializeDraft: true });
+  if (globalThis.InstaToolboxInboxPanel) {
+    const inspectInboxAccount = () => {
+      const value = globalThis.InstaToolboxInstagramViewer.inspect({ document, location });
+      return { ...value, accountId: value.accountKey };
+    };
+    const inboxStorageKey = () => {
+      const account = inspectInboxAccount();
+      if (!account.accountVerified || !account.accountId) throw new Error('inbox-viewer-unverified');
+      return `instaToolboxInboxHistoryV1:${account.accountId}`;
+    };
+    const inboxCheckpoints = globalThis.InstaToolboxInboxCheckpoints.create({
+      inspectAccount: inspectInboxAccount,
+      read: () => GM_getValue(inboxStorageKey(), GM_getValue('instaToolboxInboxCheckpointV1', null)),
+      write: value => GM_setValue(inboxStorageKey(), value),
+    });
+    inboxPanel = globalThis.InstaToolboxInboxPanel.mount({
+      container: query('[data-role="inbox-cleanup"]'), document, window,
+      viewer: globalThis.InstaToolboxInstagramViewer, runner: dmRunner,
+      confirmAction: confirmRun,
+      cancelConfirmation: () => confirmationController?.cancel(),
+      load: () => inspectInboxAccount().accountVerified ? inboxCheckpoints.load() : null,
+      save: checkpoint => inboxCheckpoints.save(checkpoint),
+      busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
+        || relationshipController || state.run?.status === 'running'),
+      onStatus: status,
+    });
+  }
   renderAll();
 
   // Pick a paused account run back up after the navigation that advanced it.

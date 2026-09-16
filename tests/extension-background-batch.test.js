@@ -314,17 +314,17 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
   }
 });
 
-test('version-three thread reservations preserve speed without weakening pacing or legacy plans', async () => {
+test('thread reservations accept restored pacing and reject obsolete Fast plans', async () => {
   const stored = baseStored();
   const { cleanup, deliver } = await loadBackground({ profileResponses: {}, performResponses: {}, stored });
   const threadSender = { url: 'https://www.instagram.com/direct/t/123/', tab: { id: 7, url: 'https://www.instagram.com/direct/t/123/' } };
   const plan = { version: 3, threadId: '123', scope: 'all', limit: null, detectedCount: null,
-    reviewedDigest: 'a1b2c3d4', speed: 'fast', expiresAt: Date.now() + 60_000 };
+    reviewedDigest: 'a1b2c3d4', speed: 'standard', expiresAt: Date.now() + 60_000 };
   try {
     const response = await deliver({ kind: 'insta-toolbox-reserve-thread-unsend', plan }, threadSender);
-    assert.equal(response.reservation.speed, 'fast');
+    assert.equal(response.reservation.speed, 'standard');
     assert.deepEqual(response.pacing, { minDelayMs: 1_000, maxDelayMs: 2_000 });
-    for (const invalid of [{ ...plan, speed: 'turbo' }, { ...plan, version: 2 }, { ...plan, speed: undefined }]) {
+    for (const invalid of [{ ...plan, speed: 'turbo' }, { ...plan, speed: 'fast' }, { ...plan, version: 2, speed: 'fast' }, { ...plan, speed: undefined }]) {
       const result = await deliver({ kind: 'insta-toolbox-reserve-thread-unsend', plan: invalid }, threadSender);
       assert.equal(result.error, 'thread-unsend-plan-invalid');
     }

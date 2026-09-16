@@ -845,6 +845,11 @@
       .confirm-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
       .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
       .confirm-dialog .toolbar { justify-content: flex-end; }
+      [data-role="inbox-cleanup"] { display:grid; gap:12px; margin-top:12px; }
+      .inbox-selection { display:grid; gap:4px; max-height:240px; overflow:auto; }
+      .inbox-choice { display:flex; align-items:center; gap:12px; min-height:44px; padding:4px 8px; }
+      .inbox-choice > span { display:grid; gap:4px; min-width:0; }
+      .inbox-choice small { color:var(--insta-toolbox-text-muted, #687068); overflow-wrap:anywhere; }
       .settings-dialog { width: min(440px, calc(100vw - 28px)); max-height: min(720px, calc(100dvh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); font-family: var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
       .settings-dialog::backdrop { background: rgba(12,14,12,.44); backdrop-filter: grayscale(.65) blur(1px); }
       .settings-dialog form { display: grid; gap: 16px; margin: 0; padding: 16px; }
@@ -907,9 +912,8 @@
           <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
-          <div class="field"><label for="insta-toolbox-unsend-speed">Speed</label><select id="insta-toolbox-unsend-speed" data-role="unsend-speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
-          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul></section>
+          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><details class="settings-inline"><summary>Inbox cleanup</summary><div data-role="inbox-cleanup"></div></details></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
@@ -933,7 +937,6 @@
         <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
         <button class="button quiet" type="button" data-action="reset-appearance">Reset appearance</button></details></section>
         <details class="settings-inline settings-section"><summary>Cleanup defaults</summary>
-        <div class="field"><label for="insta-toolbox-default-speed">Speed</label><select id="insta-toolbox-default-speed" data-cleanup-preference="speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
         <div class="field"><label for="insta-toolbox-default-scope">Messages</label><select id="insta-toolbox-default-scope" data-cleanup-preference="messageScope"><option value="all">All my messages</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div>
         <div class="field"><label for="insta-toolbox-default-limit">Message count</label><input id="insta-toolbox-default-limit" type="number" min="1" max="250" data-cleanup-preference="messageLimit"></div>
         <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="removeOwnReactions" aria-describedby="insta-toolbox-reactions-note" disabled> Remove my reactions</label><p class="setting-note" id="insta-toolbox-reactions-note">Not available yet</p></div>
@@ -1144,7 +1147,6 @@
     if (initializeDraft) {
       query('[data-role="unsend-scope"]').value = effective.messageScope;
       query('[data-role="unsend-count"]').value = String(effective.messageLimit);
-      query('[data-role="unsend-speed"]').value = effective.speed;
       query('[data-role="unsend-reactions"]').checked = effective.removeOwnReactions;
     }
   }
@@ -1515,6 +1517,7 @@
   let dmCleanupController = null;
   let reactionCleanup = null;
   let reactionSnapshot = null;
+  let inboxPanel = null;
 
   const engine = globalThis.InstaToolboxInstagramInspector;
   const dmRunner = globalThis.InstaToolboxDmThreadUnsender;
@@ -1606,7 +1609,7 @@
     const reviewedDigest = String(plan?.reviewedDigest || '');
     if (
       ![2, 3].includes(plan?.version)
-      || (plan?.version === 3 && !['standard', 'fast'].includes(plan.speed))
+      || (plan?.version === 3 && plan.speed !== 'standard')
       || (plan?.version === 2 && plan?.speed != null && plan.speed !== 'standard')
       || (finite && (!Number.isInteger(count) || count < 1))
       || !/^[0-9a-f]{8}$/.test(reviewedDigest)
@@ -2058,6 +2061,7 @@
   }
 
   async function scanInto(listType) {
+    if (inboxPanel?.busy()) throw new Error('Stop inbox cleanup before scanning a list.');
     const select = query('[data-role="list-type"]');
     if (select) select.value = listType;
     resetRelationshipProgress();
@@ -2088,6 +2092,7 @@
   }
 
   async function checkAccountRelationships() {
+    if (inboxPanel?.busy()) { status('Stop inbox cleanup before checking mutuals.'); return; }
     if (relationshipController) {
       relationshipController.abort();
       status('Stopping the mutual check. Saved comparison data was not changed.');
@@ -2518,6 +2523,7 @@
   }
 
   async function scanSentConversation() {
+    if (inboxPanel?.busy()) throw new Error('Stop inbox cleanup before checking the conversation.');
     if (dmCleanupController) throw new Error('Stop cleanup before checking the conversation.');
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
     status('Checking this conversation for messages you sent. Nothing will be removed.');
@@ -2534,6 +2540,7 @@
   }
 
   async function runDmUnsend() {
+    if (inboxPanel?.busy()) { inboxPanel.stop(); return; }
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
     if (stopDmCleanup()) return;
     if (confirmationController?.isPending()) return;
@@ -2546,7 +2553,7 @@
     if (!inspection?.ready) throw new Error(inspection?.reason || 'Open a conversation first.');
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
     const requested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
-    const speed = query('[data-role="unsend-speed"]')?.value || 'standard';
+    const speed = 'standard';
     const removeReactions = cleanupSettings.capabilities('userscript').reactions
       && query('[data-role="unsend-reactions"]')?.checked === true;
     const viewer = removeReactions ? globalThis.InstaToolboxInstagramViewer?.inspect() : null;
@@ -2582,7 +2589,6 @@
         { label: 'Action', value: 'Permanently unsend messages' },
         { label: 'Conversation', value: `Thread ${plan.threadId}` },
         { label: 'Messages', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
-        { label: 'Speed', value: speed === 'fast' ? 'Fast' : 'Standard' },
         ...(removeReactions ? [{ label: 'Reactions', value: `Remove reactions added by @${viewer.accountId}` }] : []),
       ],
       binding: {
@@ -2613,7 +2619,7 @@
       || confirmation.threadId !== plan.threadId
       || confirmation.scope !== plan.scope
       || confirmation.speed !== plan.speed
-      || (query('[data-role="unsend-speed"]')?.value || 'standard') !== plan.speed
+      || plan.speed !== 'standard'
       || confirmation.limit !== plan.limit
       || confirmation.reviewedDigest !== plan.reviewedDigest
       || Number(confirmation.expiresAt) !== plan.expiresAt
@@ -2773,6 +2779,7 @@
       status('Run stopped. It will not resume.');
     },
     'scan-list': async () => {
+      if (inboxPanel?.busy()) throw new Error('Stop inbox cleanup before scanning a list.');
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
       status(`Scanning the open ${listType} list. Keep the dialog open.`);
       const outcome = await engine.collectAccountList({ listType });
@@ -2827,6 +2834,7 @@
     },
     'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
+      if (inboxPanel?.busy()) { status('Inbox cleanup is active. Use Stop all to end it.'); return; }
       if (confirmationController?.isPending()) return;
       const current = accountRunPlan();
       if (!accountRunDraft || accountRunDraft.signature !== current.signature) {
@@ -3064,7 +3072,7 @@
         announceComparisonCount();
         return;
       }
-      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"], [data-role="unsend-speed"]')) {
+      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"]')) {
         renderDmSummary();
         return;
       }
@@ -3323,6 +3331,7 @@
     duplicateObserver.disconnect();
     window.removeEventListener('keydown', toggleToolboxShortcut, true);
     confirmationController?.destroy();
+    inboxPanel?.dispose();
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -3332,6 +3341,33 @@
   saveState();
   savePreferences(preferences);
   renderCleanupSettings({ initializeDraft: true });
+  if (globalThis.InstaToolboxInboxPanel) {
+    const inspectInboxAccount = () => {
+      const value = globalThis.InstaToolboxInstagramViewer.inspect({ document, location });
+      return { ...value, accountId: value.accountKey };
+    };
+    const inboxStorageKey = () => {
+      const account = inspectInboxAccount();
+      if (!account.accountVerified || !account.accountId) throw new Error('inbox-viewer-unverified');
+      return `instaToolboxInboxHistoryV1:${account.accountId}`;
+    };
+    const inboxCheckpoints = globalThis.InstaToolboxInboxCheckpoints.create({
+      inspectAccount: inspectInboxAccount,
+      read: () => GM_getValue(inboxStorageKey(), GM_getValue('instaToolboxInboxCheckpointV1', null)),
+      write: value => GM_setValue(inboxStorageKey(), value),
+    });
+    inboxPanel = globalThis.InstaToolboxInboxPanel.mount({
+      container: query('[data-role="inbox-cleanup"]'), document, window,
+      viewer: globalThis.InstaToolboxInstagramViewer, runner: dmRunner,
+      confirmAction: confirmRun,
+      cancelConfirmation: () => confirmationController?.cancel(),
+      load: () => inspectInboxAccount().accountVerified ? inboxCheckpoints.load() : null,
+      save: checkpoint => inboxCheckpoints.save(checkpoint),
+      busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
+        || relationshipController || state.run?.status === 'running'),
+      onStatus: status,
+    });
+  }
   renderAll();
 
   // Pick a paused account run back up after the navigation that advanced it.

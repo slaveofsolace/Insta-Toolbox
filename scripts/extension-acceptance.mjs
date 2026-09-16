@@ -721,8 +721,7 @@ async function acceptOverlayDmConfirmation(webContents, baseUrl) {
     facts: [
       ['Action', 'Permanently unsend messages'],
       ['Conversation', 'Thread 123'],
-      ['Scope', 'All messages you sent'],
-      ['Speed', 'Standard'],
+      ['Messages', 'All messages you sent'],
     ],
     focusedRole: 'confirm-cancel',
     scope: 'all',
@@ -1039,7 +1038,7 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
   const fixtureLabel = nativeLayout ? `native-${newestKind}-backfill`
     : media ? `idless-reels-${groupStyle ? 'group' : 'direct'}${uncertain ? '-uncertain' : ''}` : 'primary';
   for (const surface of surfaces) {
-    for (const speed of ['standard', 'fast']) {
+    for (const speed of ['standard']) {
       const extension = surface === 'extension';
       if (extension) await loadFixture(webContents, baseUrl, 'messages-live');
       else {
@@ -1071,10 +1070,8 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
         const scope = shadow.querySelector('[${role}="unsend-scope"]');
         scope.value = '${media ? 'all' : 'newest'}'; scope.dispatchEvent(new Event('change', { bubbles: true }));
         shadow.querySelector('[${role}="unsend-count"]').value = '${expectedRemovals}';
-        const speed = shadow.querySelector('[${role}="unsend-speed"]');
-        if (speed.querySelector('option[value="fast"]').disabled)
-          throw new Error('The tested Fast mode must be available on this surface.');
-        speed.value = '${speed}'; speed.dispatchEvent(new Event('change', { bubbles: true }));
+        if (shadow.querySelector('[${role}="unsend-speed"]'))
+          throw new Error('Unsend must not expose a removed speed choice.');
         globalThis.fixtureSpeedStartedAt = performance.now();
         shadow.querySelector('[${action}="${extension ? 'mass-unsend' : 'run-unsend'}"]').click();
       })()`, true);
@@ -1083,7 +1080,7 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
         if (!shadow.querySelector('[${role}="action-confirmation"]').open) return null;
         return [...shadow.querySelectorAll('[${role}="confirm-facts"] dt')].map(term => [term.textContent, term.nextElementSibling?.textContent]);
       })()`, `${surface} ${speed} primary review`);
-      assert.ok(review.some(([label, value]) => label === 'Speed' && value === (speed === 'fast' ? 'Fast' : 'Standard')));
+      assert.equal(review.some(([label]) => label === 'Speed'), false);
       if (nativeLayout) assert.ok(review.some(([label, value]) => label === 'Messages' && value === 'newest 1'));
       assert.equal(await webContents.executeJavaScript('globalThis.fixtureUnsentCount'), 0);
       await trustedClick(webContents, `document.querySelector(${JSON.stringify(host)}).shadowRoot.querySelector('[${action}="confirm-accept"]')`, `${surface} ${speed} reviewed fixture start`);
@@ -1154,7 +1151,7 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
     }
   }
   await writeFile(path.join(resultsRoot, `speed-${fixtureLabel}-fixture.json`), `${JSON.stringify({ fixtureOnly: true, measurements }, null, 2)}\n`);
-  console.log(`Accepted Standard/Fast ${fixtureLabel} flow: ${expectedRemovals} verified removals, received message retained${uncertain ? ', uncertain outcome visible without retry' : ', no failures or uncertain outcomes'}.`);
+  console.log(`Accepted restored Unsend ${fixtureLabel} flow: ${expectedRemovals} verified removals, received message retained${uncertain ? ', uncertain outcome visible without retry' : ', no failures or uncertain outcomes'}.`);
 }
 
 async function acceptThreadUnsendStop(webContents, baseUrl) {
@@ -1319,7 +1316,6 @@ function assertUserscriptConfirmationLayout(review, label) {
       ['Action', 'Permanently unsend messages'],
       ['Conversation', 'Thread 123'],
       ['Messages', 'All messages you sent'],
-      ['Speed', 'Standard'],
     ],
     focusedRole: 'confirm-cancel',
     message: 'Permanently unsend every message you sent in this conversation?',
@@ -1527,7 +1523,7 @@ async function acceptUserscriptFieldSpacing(webContents, baseUrl) {
             s.querySelector('[data-cleanup-preference="messageScope"]').closest('details').open = true;
             const limit = s.querySelector('[data-cleanup-preference="messageScope"]');
             limit.value = 'newest'; limit.dispatchEvent(new Event('change', { bubbles: true }));
-            s.querySelector('.settings-dialog').scrollTop = s.querySelector('[data-cleanup-preference="speed"]').offsetTop - 80;
+            s.querySelector('.settings-dialog').scrollTop = s.querySelector('[data-cleanup-preference="messageScope"]').offsetTop - 80;
           } else {
             s.querySelector('[data-view="' + ${JSON.stringify(state)} + '"]').click();
             if (${JSON.stringify(state)} === 'messages') {
@@ -1611,6 +1607,139 @@ async function acceptUserscriptFieldSpacing(webContents, baseUrl) {
   }
   await writeFile(path.join(screenshotRoot, 'metrics.json'), `${JSON.stringify(evidence, null, 2)}\n`);
   console.log(`Accepted userscript field spacing and plain labels in ${evidence.length} rendered states.`);
+}
+
+async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
+  await withTimeout(webContents.loadURL(`${baseUrl}/userscript-fixture.html`), 'inbox panel fixture');
+  await waitForPageValue(webContents,
+    `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'inbox panel shell');
+  await webContents.executeJavaScript('globalThis.fixtureSetMessages()', true);
+  await waitForPageValue(webContents, `(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    return root.querySelector('[data-role="inbox-cleanup"] button')?.disabled === false
+      && root.querySelector('[data-role="unsend-primary"]')?.disabled === false;
+  })()`, 'inbox panel mounted and checkpoint loaded');
+  const screenshotRoot = path.join(resultsRoot, 'userscript-inbox-layout');
+  await mkdir(screenshotRoot, { recursive: true });
+  const evidence = [];
+  const viewports = [
+    { label: 'desktop-dark', width: 1200, height: 800, zoom: 1, theme: 'dark' },
+    { label: 'desktop-light', width: 1200, height: 800, zoom: 1, theme: 'light' },
+    { label: 'narrow', width: 320, height: 720, zoom: 1, theme: 'dark' },
+    { label: 'short', width: 900, height: 500, zoom: 1, theme: 'dark' },
+    { label: 'zoom-200', width: 1280, height: 900, zoom: 2, theme: 'dark' },
+  ];
+  try {
+    for (const viewport of viewports) {
+      webContents.setZoomFactor(1);
+      await resizeViewport(webContents, viewport);
+      webContents.setZoomFactor(viewport.zoom);
+      await webContents.executeJavaScript(`(() => {
+        const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+        root.querySelector('[data-action="close-settings"]').click();
+        const theme = root.querySelector('[data-preference="theme"]');
+        theme.value = ${JSON.stringify(viewport.theme)};
+        theme.dispatchEvent(new Event('change', { bubbles: true }));
+        if (root.querySelector('.panel').hidden) root.querySelector('.launcher').click();
+        root.querySelector('[data-view="messages"]').click();
+        for (const details of root.querySelectorAll('[data-panel="messages"] details')) details.open = false;
+        root.querySelector('[data-role="inbox-cleanup"]').closest('details').open = true;
+        return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      })()`, true);
+      await waitForPageValue(webContents, `(() => {
+        const host = document.querySelector('#insta-toolbox-userscript-root');
+        return host.dataset.themePreference === ${JSON.stringify(viewport.theme)}
+          && getComputedStyle(host.shadowRoot.querySelector('.panel')).color
+            === ${JSON.stringify(viewport.theme === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)')};
+      })()`, `${viewport.label}: inbox theme rendered`);
+      assert.equal(webContents.getZoomFactor(), viewport.zoom, 'use actual Chromium zoom');
+      const metrics = await webContents.executeJavaScript(`(async () => {
+        const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+        const panel = root.querySelector('.panel');
+        const scroll = root.querySelector('.scroll');
+        const inbox = root.querySelector('[data-role="inbox-cleanup"]');
+        const details = inbox.closest('details');
+        const summary = details.querySelector('summary');
+        const visible = node => node.getClientRects().length && !node.closest('[hidden]')
+          && getComputedStyle(node).visibility !== 'hidden';
+        const targets = [summary, ...inbox.querySelectorAll('button, select, a, input')]
+          .filter(visible).map(node => node.matches('input[type="checkbox"]') ? node.closest('label') : node);
+        const controls = [];
+        for (const target of targets) {
+          target.scrollIntoView({ block: 'center', inline: 'nearest' });
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const bounds = target.getBoundingClientRect(), clip = scroll.getBoundingClientRect();
+          const x = bounds.left + bounds.width / 2, y = bounds.top + bounds.height / 2;
+          const hit = root.elementFromPoint(x, y);
+          controls.push({ name: target.getAttribute('aria-label') || target.textContent.trim(),
+            width: bounds.width, height: bounds.height,
+            reachable: bounds.top >= clip.top - 1 && bounds.bottom <= clip.bottom + 1,
+            receivesPointer: hit === target || target.contains(hit),
+            left: bounds.left, right: bounds.right });
+        }
+        const bounds = panel.getBoundingClientRect(), area = inbox.getBoundingClientRect();
+        return { controls, viewport: { width: innerWidth, height: innerHeight },
+          panel: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
+          inbox: { left: area.left, right: area.right, overflow: inbox.scrollWidth - inbox.clientWidth },
+          scrollOverflow: scroll.scrollWidth - scroll.clientWidth,
+          summary: summary.textContent.trim(), disclosureOpen: details.open,
+          sectionOptions: [...inbox.querySelector('select').options].map(option => option.textContent),
+          reviewHidden: [...inbox.querySelectorAll('button')].find(button => /^Review /.test(button.textContent)).hidden,
+          liveRegions: root.querySelectorAll('[aria-live]').length,
+          fastControls: root.querySelectorAll('[data-role="unsend-speed"], [data-cleanup-preference="speed"]').length,
+          fastLabels: [...root.querySelectorAll('[data-panel="messages"] button, [data-panel="messages"] label, [data-panel="messages"] option')]
+            .filter(node => /\\bFast\\b/.test(node.textContent)).map(node => node.textContent),
+          removals: globalThis.fixtureUnsentCount,
+          confirmationOpen: root.querySelector('[data-role="action-confirmation"]').open };
+      })()`, true);
+      assert.deepEqual(metrics.controls.map(control => control.name), [
+        'Inbox cleanup', 'Inbox section', 'Opening conversations may mark them read.', 'Find conversations', 'Open inbox',
+      ], `${viewport.label}: initial inbox controls`);
+      assert.ok(metrics.controls.every(control => control.height >= 44 && control.width >= 44),
+        `${viewport.label}: inbox targets below 44px ${JSON.stringify(metrics.controls)}`);
+      assert.ok(metrics.controls.every(control => control.reachable && control.receivesPointer),
+        `${viewport.label}: inbox controls obscured or unreachable ${JSON.stringify(metrics.controls)}`);
+      assert.ok(metrics.controls.every(control => control.left >= metrics.panel.left - 1 && control.right <= metrics.panel.right + 1),
+        `${viewport.label}: control escapes panel ${JSON.stringify(metrics)}`);
+      assert.ok(metrics.panel.left >= -1 && metrics.panel.top >= -1
+        && metrics.panel.right <= metrics.viewport.width + 1 && metrics.panel.bottom <= metrics.viewport.height + 1,
+      `${viewport.label}: panel escapes viewport ${JSON.stringify(metrics)}`);
+      assert.ok(metrics.inbox.overflow <= 1 && metrics.scrollOverflow <= 1,
+        `${viewport.label}: horizontal overflow ${JSON.stringify(metrics)}`);
+      assert.equal(metrics.disclosureOpen, true);
+      assert.deepEqual(metrics.sectionOptions, ['Primary', 'General', 'Requests']);
+      assert.equal(metrics.reviewHidden, true, 'no enabled-looking review before discovery');
+      assert.equal(metrics.liveRegions, 1);
+      assert.equal(metrics.fastControls, 0);
+      assert.deepEqual(metrics.fastLabels, []);
+      assert.equal(metrics.removals, 0, 'layout check never dispatches Unsend');
+      assert.equal(metrics.confirmationOpen, false);
+      if (viewport.zoom === 2) assert.ok(metrics.viewport.width <= 650, '200% zoom shrinks the layout viewport');
+      const screenshots = [];
+      for (const position of ['heading', 'actions']) {
+        await webContents.executeJavaScript(`(() => {
+          const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+          const inbox = root.querySelector('[data-role="inbox-cleanup"]');
+          const target = ${JSON.stringify(position)} === 'heading' ? inbox.closest('details').querySelector('summary')
+            : [...inbox.querySelectorAll('button')].find(button => button.textContent === 'Find conversations');
+          target.scrollIntoView({ block: ${JSON.stringify(position === 'heading' ? 'start' : 'center')}, inline: 'nearest' });
+          return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        })()`, true);
+        await withTimeout(new Promise(resolve => {
+          webContents.once('paint', resolve); webContents.invalidate();
+        }), `${viewport.label}/${position}: inbox paint`);
+        const filename = `${viewport.label}-${position}.png`;
+        await writeFile(path.join(screenshotRoot, filename), (await webContents.capturePage()).toPNG());
+        screenshots.push(filename);
+      }
+      evidence.push({ viewport, metrics, screenshots });
+    }
+  } finally {
+    webContents.setZoomFactor(1);
+  }
+  await writeFile(path.join(screenshotRoot, 'metrics.json'),
+    `${JSON.stringify({ fixtureOnly: true, version: releaseVersion, states: evidence }, null, 2)}\n`);
+  console.log(`Accepted userscript Inbox cleanup layout in ${evidence.length} rendered states: 44px targets, reachable controls, actual 200% zoom, no Fast controls, zero removals.`);
 }
 
 async function acceptToolboxLayout(webContents, baseUrl) {
@@ -2497,7 +2626,6 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       ['Action', 'Permanently unsend messages'],
       ['Conversation', 'Thread 123'],
       ['Messages', 'All messages you sent'],
-      ['Speed', 'Standard'],
     ],
     focusedRole: 'confirm-cancel',
     scope: 'all',
@@ -2901,6 +3029,7 @@ async function run() {
         await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
           { surfaces: ['userscript'], nativeLayout: true, newestKind });
       }
+      await acceptUserscriptInboxPanelLayout(overlay.window.webContents, overlayBaseUrl);
       assert.deepEqual(overlay.problems, [], 'userscript native message fixture browser problems');
       return;
     }
@@ -2931,6 +3060,7 @@ async function run() {
       await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
         { surfaces: ['userscript'], nativeLayout: true, newestKind });
     }
+    await acceptUserscriptInboxPanelLayout(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsendStop(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsend(overlay.window.webContents, overlayBaseUrl);
     await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);

@@ -96,10 +96,6 @@
   const OLDEST_BOUNDARY_STABLE_MS = 2_000;
   const STABLE_EMPTY_PASSES = 3;
   const PLAN_VERSION = 3;
-  const SPEED_PROFILES = Object.freeze({
-    standard: Object.freeze({ minDelayMs: 1_000, maxDelayMs: 2_000 }),
-    fast: Object.freeze({ minDelayMs: 1_000, maxDelayMs: 2_000 }),
-  });
   const PLAN_SCOPES = new Set(['all', 'newest', 'oldest']);
   const listeners = new Set();
   const consumedPlanDigests = new Map();
@@ -232,7 +228,7 @@
     if (!PLAN_SCOPES.has(requestedScope)) return null;
     const scope = requestedScope;
     const speed = value.speed === undefined ? 'standard' : String(value.speed);
-    if (!Object.hasOwn(SPEED_PROFILES, speed)) return null;
+    if (speed !== 'standard') return null;
     const requestedLimit = Math.floor(Number(value.limit));
     const limit = scope === 'all'
       ? null
@@ -884,13 +880,11 @@
     const targets = hoverTargets(row);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       for (const target of targets) hoverIn(target);
-      const fast = activeExecution?.speed === 'fast';
-      const control = fast
-        ? await waitForElement(row, () => actionButton(row), signal, 110)
-        : (await delay(110, signal), actionButton(row));
+      await delay(110, signal);
+      const control = actionButton(row);
       if (control) return control;
       for (const target of targets) hoverOut(target);
-      if (!fast) await delay(60, signal);
+      await delay(60, signal);
     }
     for (const target of targets) hoverIn(target);
     return waitForElement(row, () => actionButton(row), signal, 3_000);
@@ -1001,21 +995,47 @@
     if (!dialogButton) return false;
 
     const before = removalEvidence(row);
-    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
+    const settlement = new AbortController();
+    const deadline = Date.now() + 5_000;
+    // Observe both native transitions before clicking, as in the original
+    // runner. The separate settlement signal lets Stop prevent the next
+    // action without abandoning the outcome of this dispatched action.
+    const closed = waitForElement(
+      document.body,
+      () => (!dialogButton.isConnected || !isVisible(dialogButton) ? true : null),
+      settlement.signal,
+      5_000,
+    );
+    const removed = waitForElement(
+      document.body,
+      () => (currentThreadId() === expectedThreadId && removalProven(row, before) ? true : null),
+      settlement.signal,
+      5_000,
+    ).then((ready) => ready === true && waitForRemoval(row, before, {
+      dialogButton,
+      contextValid: () => currentThreadId() === expectedThreadId,
+      timeoutMs: Math.max(0, deadline - Date.now()),
+      signal: settlement.signal,
+    }));
+    closed.catch(() => {});
+    removed.catch(() => {});
+    let dispatched = false;
     try {
+      requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
+      dispatched = true;
       activateControl(dialogButton);
-      // Stop prevents the next click, but a dispatched mutation still needs
-      // bounded settlement. Never retry an outcome that could have succeeded.
-      const verified = await measurePhase('verification', () => waitForRemoval(row, before, {
-        dialogButton,
-        contextValid: () => currentThreadId() === expectedThreadId,
-      }));
+      const verified = await measurePhase('verification', async () => (
+        (await closed) === true && (await removed) === true
+      ));
       if (!verified) throw new Error('Removal could not be verified.');
       return true;
-    } catch {
+    } catch (cause) {
+      if (!dispatched) throw cause;
       const error = new Error('The last Unsend outcome is uncertain. Check the conversation before starting again.');
       error.code = 'DM_OUTCOME_UNCERTAIN';
       throw error;
+    } finally {
+      settlement.abort();
     }
   }
 
@@ -1424,8 +1444,13 @@
       scroller = current.scroller;
     }
 
-    // Scope order outranks viewport convenience. An older visible message must
-    // never replace a newer mounted message just because the latter is clipped.
+    // Whole-conversation cleanup keeps the original visible-first streaming
+    // path. Finite scopes must not substitute an older visible message for
+    // the reviewed newest target merely because that target is clipped.
+    if (traversal.preferVisible) {
+      const visible = firstVisibleCandidate(scroller, traversal.order, traversal);
+      if (visible && await exposeRow(visible, scroller, signal, traversal)) return visible;
+    }
     const [mounted] = orderedCandidates(scroller, traversal.order, traversal);
     if (mounted && await exposeRow(mounted, scroller, signal, traversal)) return mounted;
     if (mounted && readOnlyTraversals.has(traversal)
@@ -1433,7 +1458,7 @@
       traversal.lastSearchIncomplete = true;
       return null;
     }
-    if (mounted) throw new Error('The next message could not be brought into view. Nothing else was selected.');
+    if (mounted && !traversal.preferVisible) throw new Error('The next message could not be brought into view. Nothing else was selected.');
 
     for (let pass = 0; pass < MAX_SCAN_PASSES; pass += 1) {
       if (signal.aborted) return null;
@@ -1472,7 +1497,9 @@
           }
         }
 
-        const [row] = orderedCandidates(scroller, traversal.order, traversal);
+        const row = traversal.preferVisible
+          ? firstVisibleCandidate(scroller, traversal.order, traversal)
+          : orderedCandidates(scroller, traversal.order, traversal)[0];
         if (row && await exposeRow(row, scroller, signal, traversal)) {
           traversal.lastScrollHeight = Number(scroller?.scrollHeight) || heightBeforePass;
           return row;
@@ -1482,7 +1509,7 @@
           traversal.lastSearchIncomplete = true;
           return null;
         }
-        if (row) throw new Error('The next message could not be brought into view. Nothing else was selected.');
+        if (row && !traversal.preferVisible) throw new Error('The next message could not be brought into view. Nothing else was selected.');
         if (position === end) break;
         position = direction > 0
           ? Math.min(end, position + step)
@@ -1667,6 +1694,7 @@
     contextValid = () => true,
     timeoutMs = 5_000,
     stableMs = 350,
+    signal = null,
   } = {}) {
     const deadline = Date.now() + timeoutMs;
     let stableSince = null;
@@ -1677,7 +1705,7 @@
         if (stableSince === null) stableSince = Date.now();
         if (Date.now() - stableSince >= stableMs) return true;
       } else stableSince = null;
-      await delay(Math.min(75, Math.max(0, deadline - Date.now())));
+      await delay(Math.min(75, Math.max(0, deadline - Date.now())), signal);
     }
     return false;
   }
@@ -1983,7 +2011,6 @@
     activeExecution = {
       workerAdapter,
       workerRow: null,
-      speed: plan.speed,
       onPhaseTiming: typeof options.onPhaseTiming === 'function' ? options.onPhaseTiming : null,
       phaseTimings: {
         historyLoading: 0, messageResolution: 0, menuReadiness: 0,
@@ -2002,6 +2029,7 @@
     const maxMessages = plan.limit === null ? MAX_PLAN_MESSAGES : plan.limit;
     const order = plan.scope === 'oldest' ? 'oldest' : 'newest';
     const traversal = createTraversal(order);
+    traversal.preferVisible = plan.scope === 'all';
     let processed = 0;
     let failed = 0;
     let retryAttempts = 0;
@@ -2288,7 +2316,7 @@
   }
 
   const messageProof = Object.freeze({ sentByCurrentUser, removalEvidence, removalProven, waitForRemoval });
-  const publicApi = { createPlan, createMessageWalker, inspect, inspectAll, snapshot, start, stop, subscribe, SPEED_PROFILES, messageProof };
+  const publicApi = { createPlan, createMessageWalker, inspect, inspectAll, snapshot, start, stop, subscribe, messageProof };
   if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
       candidateRows,

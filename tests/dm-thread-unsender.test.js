@@ -1118,7 +1118,7 @@ test('a clipped sent-message row is centered once before hover', async () => {
   assert.equal(scrollCalls, 1);
 });
 
-test('newest scope reveals its clipped target instead of choosing an older visible message', async () => {
+test('All keeps visible-first streaming while Newest reveals its exact clipped target', async () => {
   const runner = loadRunner();
   const documentElement = { parentElement: null };
   const ownerDocument = { documentElement, defaultView: {
@@ -1144,6 +1144,11 @@ test('newest scope reveals its clipped target instead of choosing an older visib
   const older = makeRow(false);
   const newest = makeRow(true);
   scroller.children.push(older, newest);
+  const allTraversal = runner.__test.createTraversal('newest');
+  allTraversal.preferVisible = true;
+  const first = await runner.__test.nextSentRow({ scroller }, new AbortController().signal, 'newest', allTraversal);
+  assert.equal(first, older, 'All starts with the comfortably visible candidate');
+  assert.equal(exposed, false, 'All does not scroll away from a ready message');
   const selected = await runner.__test.nextSentRow({ scroller }, new AbortController().signal, 'newest');
   assert.equal(selected, newest);
   assert.equal(exposed, true);
@@ -1243,11 +1248,13 @@ test('whole-scroll streaming finds sent rows beyond replaced virtual windows', a
     scroller.addEventListener('scroll', renderWindow);
     renderWindow();
 
+    const traversal = runner.__test.createTraversal('newest');
+    traversal.preferVisible = true;
     const selected = await runner.__test.nextSentRow(
       { scroller },
       { aborted: false, addEventListener: () => {} },
       'newest',
-      runner.__test.createTraversal('newest'),
+      traversal,
     );
     assert.ok(selected, `${reversed ? 'reversed' : 'normal'} virtual scroller should yield a sent row`);
     assert.equal(sentIndexes.has(Number(selected.getAttribute('data-message-id').split('-')[1])), true);

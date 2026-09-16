@@ -660,6 +660,7 @@ test('failed manual scans replace the visible scanning message', async () => {
   const fill = { style: {} };
   const select = { value: '' };
   const scanInto = loadShellFunction('scanInto', {
+    inboxPanel: null,
     actions: { 'scan-list': async () => outcome },
     query(selector) {
       if (selector === '[data-role="list-type"]') return select;
@@ -686,6 +687,13 @@ test('failed manual scans replace the visible scanning message', async () => {
     assert.equal(fill.style.width, '0%');
   }
   assert.equal((shell.match(/return \{ applied: false, detail \};/g) || []).length, 3);
+});
+
+test('inbox cleanup owns the conversation while ordinary read scans are requested', async () => {
+  for (const name of ['scanInto', 'scanSentConversation']) {
+    const action = loadShellFunction(name, { inboxPanel: { busy: () => true } });
+    await assert.rejects(action('followers'), /Stop inbox cleanup/);
+  }
 });
 
 test('verified empty extension lists are rendered as scanned', () => {

@@ -11,7 +11,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 test('cleanup preferences add defaults without restoring authority or old global unlocks', () => {
   const old = { liveActionEnabled: true, dailyDmLimit: 50, token: 'not-authority', speed: 'fast' };
   const normalized = settings.normalize(old);
-  assert.equal(normalized.speed, 'fast');
+  assert.equal(normalized.speed, 'standard');
   assert.equal(normalized.messageScope, 'all');
   assert.equal(normalized.workerCount, 1);
   assert.equal('token' in normalized, false);
@@ -22,7 +22,8 @@ test('cleanup preferences add defaults without restoring authority or old global
 test('unsupported saved preferences cannot enable unfinished adapters', () => {
   for (const surface of ['userscript', 'extension', 'desktop', 'pwa']) {
     const effective = settings.effective({ speed: 'fast', removeOwnReactions: true, execution: 'background', workerCount: 2, notifications: true }, surface);
-    assert.deepEqual(plain(effective), { ...plain(settings.defaults()), speed: ['userscript', 'extension'].includes(surface) ? 'fast' : 'standard', showSummary: true });
+    assert.deepEqual(plain(effective), { ...plain(settings.defaults()), speed: 'standard', showSummary: true });
+    assert.equal(settings.capabilities(surface).fast, false);
     assert.ok(settings.capabilities(surface).reasons.reactions);
   }
 });

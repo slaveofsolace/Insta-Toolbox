@@ -20,7 +20,7 @@
     const limit = Number(source.messageLimit);
     return {
       schemaVersion: 1,
-      speed: choice(source.speed, ['standard', 'fast'], 'standard'),
+      speed: 'standard',
       messageScope: choice(source.messageScope, ['all', 'newest', 'oldest'], 'all'),
       messageLimit: Number.isSafeInteger(limit) && limit >= 1 && limit <= 250 ? limit : 1,
       removeOwnReactions: boolean(source, 'removeOwnReactions', false),
@@ -51,13 +51,13 @@
     const inPage = ['extension', 'userscript'].includes(surface);
     return Object.freeze({
       singleConversation: inPage,
-      fast: inPage,
+      fast: false,
       reactions: false,
       background: false,
       managedWorkers: false,
       notifications: false,
       reasons: Object.freeze({
-        fast: inPage ? '' : 'This app does not control an authenticated Instagram tab.',
+        fast: 'Unsend uses one pacing mode.',
         reactions: 'Own-reaction removal has not been verified on Instagram.',
         background: inPage ? 'Background execution is awaiting suspension and resume checks.' : 'This app does not control an authenticated Instagram tab.',
         managedWorkers: 'Managed tabs are awaiting browser integration and collision checks.',
@@ -72,7 +72,7 @@
     const support = capabilities(surface);
     return {
       ...saved,
-      speed: support.fast ? saved.speed : 'standard',
+      speed: 'standard',
       removeOwnReactions: support.reactions && saved.removeOwnReactions,
       execution: support.background ? saved.execution : 'foreground',
       workerCount: support.managedWorkers ? saved.workerCount : 1,

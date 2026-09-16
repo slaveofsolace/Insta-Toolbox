@@ -1,7 +1,18 @@
 # DM Unsend restoration
 
 The 4.0.1 development branch repairs two regressions found during native
-Instagram testing. It is not a published release.
+Instagram testing and restores the pre-Fast execution path. It is not a published release.
+
+## Pre-Fast execution
+
+The runner again uses the 3.1.12 visible-first streaming traversal for **All**,
+the original bounded hover/menu attempts, and adaptive 1–2 second successful
+action pacing. Removal observers are armed before confirming Unsend. There is
+no Fast selector or separate Fast execution path. Saved Fast preferences become
+Standard; stale Fast action plans cannot execute.
+
+This is not a wholesale rollback: finite Newest/Oldest ordering, received-message
+protection, abort-listener cleanup, and the genuine removal checks below remain.
 
 ## Newest-message selection
 
@@ -41,9 +52,8 @@ that message automatically.
 - Focused regression tests cover reply/story ownership, newest ordering,
   received-message protection, backfill, duplicate text, layout changes,
   loading, scroll changes, and optimistic reversions.
-- Standard and Fast one-item fixture runs each verify one removal and one
-  ledger update.
-- Generated-userscript button flows cover both speeds with native-shaped reply
+- One-item fixtures verify the restored pacing path and one ledger update.
+- Generated-userscript button flows cover native-shaped reply
   and story rows, co-removed timestamps, and older-history backfill. Each case
   selects the newest sent row and reports one verified removal.
 - The rebuilt development candidate still needs a successful disposable-message

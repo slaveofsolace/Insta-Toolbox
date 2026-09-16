@@ -6,6 +6,11 @@
     const normalized = String(value || '').trim().toLowerCase();
     return /^[a-z0-9._]{1,30}$/.test(normalized) ? normalized : null;
   };
+  function accountKey(value) {
+    const normalized = username(value);
+    if (!normalized) return null;
+    return `iguser-v1-${[...normalized].map((character) => character.charCodeAt(0).toString(16).padStart(2, '0')).join('')}`;
+  }
   const visible = (node) => Boolean(node?.isConnected
     && !node.closest?.('[hidden], [aria-hidden="true"]')
     && node.getClientRects?.().length);
@@ -51,9 +56,10 @@
     });
     if (profiles.length !== 1) return { ...unavailable, threadId, reason: 'account-navigation-unavailable' };
     return { accountVerified: true, accountId, threadId, usable: Boolean(threadId),
+      accountKey: accountKey(accountId), identityKind: 'verified-viewer-username',
       restriction: false, evidence: 'visible-account-picker-and-navigation' };
   }
   Object.defineProperty(globalThis, 'InstaToolboxInstagramViewer', {
-    configurable: false, writable: false, value: Object.freeze({ inspect }),
+    configurable: false, writable: false, value: Object.freeze({ inspect, accountKey }),
   });
 })();

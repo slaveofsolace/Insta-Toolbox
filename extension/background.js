@@ -221,7 +221,7 @@ function validateThreadUnsendReservation(request, sender, now = Date.now()) {
   const speed = plan?.version === 2 ? 'standard' : plan?.speed;
   if (
     ![2, 3].includes(plan?.version)
-    || !['standard', 'fast'].includes(speed)
+    || speed !== 'standard'
     || (plan?.version === 2 && plan?.speed != null && plan.speed !== 'standard')
     || !/^[^/?#\\]{1,256}$/.test(threadId)
     || threadId !== observedThreadId

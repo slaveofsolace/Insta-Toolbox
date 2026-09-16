@@ -92,7 +92,7 @@ export function createInboxWorker({
       try {
         const mutation = {
           accountId: plan.accountId, actionId, kind: 'message',
-          delayMs: runner.SPEED_PROFILES?.[plan.speed]?.minDelayMs ?? 1_000,
+          delayMs: 1_000,
           inspect: async ({ signal: coordinatorSignal }) => {
             if (signal.aborted || coordinatorSignal.aborted) fail('worker-stopped');
             await managedTabs.check(handle);

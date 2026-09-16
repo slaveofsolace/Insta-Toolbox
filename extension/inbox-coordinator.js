@@ -17,6 +17,12 @@ const record = (value) => value !== null && typeof value === 'object'
 
 export function createInboxReview(input, now = Date.now()) {
   if (!record(input) || !Number.isFinite(now) || (input.discovery && !record(input.discovery))) fail('review-invalid');
+  if (input.version !== undefined && ![1, 2].includes(input.version)) fail('review-version-invalid');
+  const duringRun = input.messageWindow === 'during-run';
+  if (input.messageWindow !== undefined && !duringRun) fail('message-window-invalid');
+  if ((duringRun && input.version === 1) || (input.version === 2 && !duringRun)) fail('message-window-invalid');
+  const arrivalPolicy = duringRun ? 'include-sent-while-running' : 'skip-after-review-or-pause';
+  if (input.arrivalPolicy !== undefined && input.arrivalPolicy !== arrivalPolicy) fail('message-window-invalid');
   if (!identity(input?.accountId)) fail('account-identity-required');
   if (!Array.isArray(input.threadIds) || !input.threadIds.length
     || input.threadIds.length > MAX_THREADS || !input.threadIds.every(identity)) fail('thread-inventory-invalid');
@@ -26,7 +32,7 @@ export function createInboxReview(input, now = Date.now()) {
   const limit = scope === 'all' ? null : input.limit;
   if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > 5_000)) fail('message-limit-invalid');
   const speed = input.speed || 'standard';
-  if (!['standard', 'fast'].includes(speed)) fail('speed-invalid');
+  if (speed !== 'standard') fail('speed-invalid');
   const workerCount = input.workerCount ?? 1;
   if (!Number.isInteger(workerCount) || workerCount < 1
     || workerCount > INBOX_COORDINATOR_CAPABILITIES.maxPreparedWorkers) fail('worker-count-invalid');
@@ -46,11 +52,12 @@ export function createInboxReview(input, now = Date.now()) {
   const sections = [...new Set(input.discovery?.sections || [])];
   if (!sections.every((entry) => ['primary', 'general', 'requests'].includes(entry))) fail('inbox-section-invalid');
   return Object.freeze({
-    version: 1, accountId: input.accountId, threadIds: Object.freeze(threadIds),
+    version: duringRun ? 2 : 1, accountId: input.accountId, threadIds: Object.freeze(threadIds),
     scope, limit, speed, workerCount, removeOwnReactions: input.removeOwnReactions === true,
     ...scheduling,
     reviewedAt: now, expiresAt,
-    arrivalPolicy: 'skip-after-review-or-pause',
+    arrivalPolicy,
+    ...(duringRun ? { messageWindow: 'during-run' } : {}),
     discovery: Object.freeze({ sections: Object.freeze(sections), complete: input.discovery?.complete === true }),
   });
 }
@@ -390,6 +397,16 @@ export function createInboxCoordinator({ review, save, now = Date.now, restored 
         authorized = false;
         state.status = state.tasks.every((item) => item.status === 'completed') ? 'completed' : 'partial';
       }
+      await persist(); return snapshot();
+    }),
+    settleInterrupted: (lease) => serial(async () => {
+      if (!['paused', 'stopped'].includes(state.status) || authorized
+        || !lease || leases.get(lease.threadId) !== lease) fail('interrupted-settlement-invalid');
+      if (state.pendingMutation || pendingFor(lease.threadId) || inFlight.has(lease.threadId)) fail('reconciliation-required');
+      const task = state.tasks.find(item => item.threadId === lease.threadId);
+      if (!task || task.status !== 'running') fail('interrupted-settlement-invalid');
+      task.status = 'partial'; task.reason = state.reason || 'interrupted';
+      leases.delete(lease.threadId);
       await persist(); return snapshot();
     }),
     interrupt: (reason = 'paused', { stop = false } = {}) => {

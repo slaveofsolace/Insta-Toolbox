@@ -15,13 +15,14 @@ function fixture(options = {}) {
     dmStops: 0, reactionStops: 0, saves: 0, renders: 0, confirmations: [], statuses: [] };
   const controls = {
     'unsend-scope': { value: 'all' }, 'unsend-count': { value: '3' },
-    'unsend-speed': { value: 'standard' }, 'unsend-reactions': { checked: options.selected ?? false },
+    'unsend-reactions': { checked: options.selected ?? false },
   };
   const inspection = { ready: true, threadId: '12345' };
   const viewer = { accountId: 'fixture_owner', accountVerified: true, usable: true, threadId: '12345' };
   const state = { ledger: { day: 'fixture-day', actions: 4, unsends: 8, reactions: 2 },
     cleanupPreferences: { removeOwnReactions: true } };
   const context = vm.createContext({
+    fixtureInboxPanel: options.inboxPanel || null,
     AbortController, Date: class extends Date { static now() { return clock; } },
     DM_PLAN_CAPABILITY_MS: 900_000, state,
     dmRunner: {
@@ -55,7 +56,7 @@ function fixture(options = {}) {
     status: (...args) => calls.statuses.push(args),
     today: () => 'fixture-day', saveState: async () => { calls.saves += 1; },
   });
-  vm.runInContext(`let dmThreadPreview = null, reactionSnapshot = null;
+  vm.runInContext(`let dmThreadPreview = null, reactionSnapshot = null, inboxPanel = fixtureInboxPanel;
     let dmCleanupController = null, activeUnsendCapability = {};
     ${handlers}
     globalThis.flow = { run: runDmUnsend, stop: stopDmCleanup,
@@ -77,6 +78,16 @@ test('ordinary Unsend has no viewer dependency and no reaction pass', async () =
   assert.equal(f.calls.dm[0].minDelayMs, 1000);
   assert.equal(f.active(), false);
   assert.equal(f.capability(), null);
+});
+
+test('the primary Stop button stops an active inbox cleanup instead of starting another run', async () => {
+  let stopped = 0;
+  const f = fixture({ inboxPanel: { busy: () => true, stop: () => { stopped += 1; } } });
+  await f.run();
+  assert.equal(stopped, 1);
+  assert.equal(f.calls.dm.length, 0);
+  assert.equal(f.calls.confirmations.length, 0);
+  assert.equal(f.calls.reservations, 0);
 });
 
 test('unsupported saved preferences or a forged checked control cannot enable reactions', async () => {

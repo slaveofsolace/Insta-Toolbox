@@ -439,7 +439,7 @@
       throw new Error(inspection.reason);
     }
     const scope = runtime.query('[data-insta-toolbox-role="unsend-scope"]')?.value || 'all';
-    const speed = runtime.query('[data-insta-toolbox-role="unsend-speed"]')?.value || 'standard';
+    const speed = 'standard';
     const requested = Math.floor(Number(runtime.query('[data-insta-toolbox-role="unsend-count"]')?.value) || 1);
     const limit = scope === 'all' ? null : Math.max(1, requested);
     let plan;
@@ -473,8 +473,7 @@
         facts: [
           { label: 'Action', value: 'Permanently unsend messages' },
           { label: 'Conversation', value: `Thread ${plan.threadId}` },
-          { label: 'Scope', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
-          { label: 'Speed', value: speed === 'fast' ? 'Fast' : 'Standard' },
+          { label: 'Messages', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
         ],
         binding: {
           action: 'unsend',
@@ -503,7 +502,6 @@
       throw error;
     }
     const confirmedScope = runtime.query('[data-insta-toolbox-role="unsend-scope"]')?.value || 'all';
-    const confirmedSpeed = runtime.query('[data-insta-toolbox-role="unsend-speed"]')?.value || 'standard';
     const confirmedRequested = Math.floor(Number(runtime.query('[data-insta-toolbox-role="unsend-count"]')?.value) || 1);
     const confirmedLimit = confirmedScope === 'all' ? null : Math.max(1, confirmedRequested);
     if (
@@ -518,7 +516,7 @@
       || Number(confirmation.expiresAt) !== plan.expiresAt
       || plan.expiresAt <= Date.now()
       || confirmedScope !== plan.scope
-      || confirmedSpeed !== (plan.speed || 'standard')
+      || (plan.speed || 'standard') !== 'standard'
       || confirmedLimit !== plan.limit
     ) {
       pendingReviews.delete(runtime.model);

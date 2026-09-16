@@ -2,9 +2,9 @@
 
 ## Current status
 
-The browser-neutral coordinator in `extension/inbox-coordinator.js`, read-only link collector in `extension/inbox-discovery.js`, extension tab-pool adapter in `extension/managed-inbox-tabs.js`, and metadata runtime service in `extension/inbox-runtime.js` are implemented and covered by deterministic tests. The runtime service has an explicit installation helper but is **not yet registered in `background.js`**. None is connected to Instagram mutation controls or the userscript. Selected-conversation cleanup, inbox cleanup, and managed worker tabs remain disabled. Passing these tests is not proof of a working inbox-cleanup product or authenticated Instagram compatibility.
+The userscript now connects native conversation discovery, selection, exact confirmation, and a serial same-tab controller to the existing Unsend engine. Pause, Skip, Stop, interruption recovery, and recent-job storage have deterministic coverage. This development path still needs authenticated inbox acceptance; a fixture pass is not proof of current Instagram compatibility. See [Serial inbox cleanup](INBOX_SINGLE_TAB_4.0.md).
 
-The existing single-conversation runner remains the only live DM execution path. This change does not request new permissions, open tabs, collect sessions, or perform account actions.
+The extension tab-pool and metadata runtime remain unregistered in `background.js`; managed tabs are unavailable. The userscript adds no grants and does not open worker tabs or collect sessions. Discovery opens selected native conversation controls and may mark conversations read; its acknowledgment is separate from Unsend approval.
 
 `extension/inbox-worker.js` now connects coordinator admission to the existing
 runner through an optional per-message adapter. It verifies the reviewed cutoff
@@ -103,7 +103,7 @@ Current blocker: `content-instagram.js` exposes session restrictions but does no
 An inactive but loaded Instagram tab is different from a frozen, discarded, closed, or expired-session tab. The planned runtime must allow ordinary tab switching without focus stealing, while loss of usable page evidence produces a paused or needs-attention state. Browser restart and computer sleep do not preserve action authority. No visibility spoofing, fake audio, forced focus, global browser-policy changes, or offscreen-document substitution is used.
 
 `pnpm run qa:background` exercises the actual runner in a hidden Chromium page
-with background throttling enabled. Its eight cases cover Standard/Fast, Stop,
+with background throttling enabled. Its seven cases cover restored pacing, Stop,
 expiry, native page freeze, verified and uncertain actions settling after freeze,
 and the coordinator/worker/runner connection. They preserve received messages,
 never steal focus, and never restore consumed authority after resume. Account

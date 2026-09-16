@@ -30,6 +30,19 @@ test('viewer identity requires matching account picker and global navigation', (
   const f = fixture(), result = f.inspect();
   assert.equal(result.accountVerified, true); assert.equal(result.accountId, 'fixture_viewer');
   assert.equal(result.threadId, '12345'); assert.equal(result.usable, true);
+  assert.equal(result.identityKind, 'verified-viewer-username');
+  assert.equal(result.accountKey, 'iguser-v1-666978747572655f766965776572');
+});
+
+test('versioned viewer keys preserve dotted usernames without claiming a numeric identity', () => {
+  const context = vm.createContext({ URL, Object }); vm.runInContext(source, context);
+  const key = context.InstaToolboxInstagramViewer.accountKey;
+  assert.equal(key('Example.Name'), key('example.name'));
+  assert.notEqual(key('example.name'), key('example_name'));
+  assert.match(key('example.name'), /^iguser-v1-[a-f0-9]+$/);
+  assert.equal(key('a'.repeat(30)).length, 70);
+  assert.equal(key('not a username'), null);
+  assert.equal(key(''), null);
 });
 
 test('a conversation peer or generic avatar does not identify the viewer', () => {

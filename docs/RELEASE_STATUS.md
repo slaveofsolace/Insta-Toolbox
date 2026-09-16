@@ -2,7 +2,7 @@
 
 Current candidate: **4.0.0**
 
-Development candidate only. The published release remains **3.1.12**; the stable update URL is unchanged. Reaction cleanup and managed inbox/background execution are not enabled in this candidate.
+Development candidate only. The published release remains **3.1.12**; the stable update URL is unchanged. The userscript contains reviewed serial inbox cleanup awaiting native acceptance. Own-reaction cleanup and managed worker tabs are not enabled.
 
 The active development branch is preparing **4.0.1**. Its package metadata
 remains 4.0.0 until integration is complete. See [DM restoration](./DM_RESTORATION_4.0.1.md)
@@ -29,12 +29,12 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 726 automated tests at the latest completed source checkpoint;
+- 869 automated tests at the restored-Unsend and serial-inbox source checkpoint;
 - 45 overlay screenshot states;
 - 11 PWA screenshot states;
 - service-worker cache generation `insta-toolbox-v400`.
 
-The native DM regression matrix also covers Standard/Fast handling of sent
+The native DM regression matrix also covers restored pre-Fast handling of sent
 replies and story replies through the generated userscript's primary action.
 Read-only native selection passed; post-removal authenticated acceptance is
 still pending for the repaired candidate.

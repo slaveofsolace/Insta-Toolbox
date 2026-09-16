@@ -40,6 +40,7 @@ const evidenceRoot = path.join(
 const manifestPath = path.join(evidenceRoot, 'manifest.json');
 const fidelityPath = path.join(evidenceRoot, 'fidelity-ledger.json');
 const runnerLogPath = path.join(resultsRoot, 'runner.log');
+const bootstrapTimeoutMs = 30_000;
 const rasterProblems = [];
 const userDataRoot = path.resolve(
   process.env.INSTA_TOOLBOX_OVERLAY_QA_USER_DATA
@@ -139,6 +140,44 @@ function withTimeout(promise, label, timeoutMs = 15_000) {
       timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms.`)), timeoutMs);
     }),
   ]).finally(() => clearTimeout(timer));
+}
+
+async function bootstrapFixture(browserWindow, url) {
+  const { webContents } = browserWindow;
+  const startedAt = Date.now();
+  const log = (message) => report(`BOOTSTRAP +${Date.now() - startedAt}ms ${message}`);
+  let rejectFailure;
+  const failure = new Promise((_resolve, reject) => { rejectFailure = reject; });
+  const listeners = [
+    ['did-start-loading', () => log('loading')],
+    ['dom-ready', () => log('DOM ready')],
+    ['did-finish-load', () => log('loaded')],
+    ['did-fail-load', (_event, code, description, _url, isMainFrame) => {
+      if (isMainFrame !== false) {
+        rejectFailure(new Error(`Overlay fixture load failed ${code}: ${description}`));
+      }
+    }],
+    ['render-process-gone', (_event, details) => {
+      rejectFailure(new Error(`Overlay fixture renderer exited: ${details.reason} (${details.exitCode})`));
+    }],
+  ];
+  for (const [event, listener] of listeners) webContents.on(event, listener);
+  log(`starting; deadline ${bootstrapTimeoutMs}ms`);
+  try {
+    // A fresh Windows runner must start Chromium before its first loopback load.
+    // This allowance does not change scenario, performance, or raster checks.
+    await withTimeout(
+      Promise.race([browserWindow.loadURL(url), failure]),
+      'overlay QA first fixture load',
+      bootstrapTimeoutMs,
+    );
+    log('complete');
+  } catch (error) {
+    log(`failed: ${error?.message || error}`);
+    throw error;
+  } finally {
+    for (const [event, listener] of listeners) webContents.off(event, listener);
+  }
 }
 
 function listen(server) {
@@ -682,8 +721,7 @@ function assertScenario(metrics, scenario) {
       facts: [
         ['Action', 'Permanently unsend messages'],
         ['Conversation', 'Thread 123'],
-        ['Scope', 'All messages you sent'],
-        ['Speed', 'Standard'],
+        ['Messages', 'All messages you sent'],
       ],
       message: 'Permanently unsend every message you sent in this conversation?',
       title: 'Unsend DMs?',
@@ -1051,11 +1089,7 @@ async function run() {
     if (check) expectedManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     const address = await listen(server);
     const baseUrl = `http://127.0.0.1:${address.port}`;
-    await withTimeout(
-      browserWindow.loadURL(scenarioUrl(baseUrl, overlayQaScenarios[0])),
-      'overlay QA debugger bootstrap',
-      5_000,
-    );
+    await bootstrapFixture(browserWindow, scenarioUrl(baseUrl, overlayQaScenarios[0]));
     browserWindow.webContents.debugger.attach('1.3');
     const results = [];
     for (const scenario of overlayQaScenarios) {
@@ -1117,7 +1151,7 @@ async function run() {
     }
   } catch (error) {
     exitCode = 1;
-    console.error(error?.stack || error);
+    report(`FAIL ${error?.stack || error}`);
   } finally {
     if (browserWindow.webContents.debugger.isAttached()) browserWindow.webContents.debugger.detach();
     if (!browserWindow.isDestroyed()) browserWindow.destroy();
@@ -1128,7 +1162,7 @@ async function run() {
 }
 
 const readinessTimer = setTimeout(() => {
-  console.error('Overlay QA readiness timed out after 15 seconds.');
+  report('FAIL Overlay QA readiness timed out after 15 seconds.');
   app.exit(1);
 }, 15_000);
 app.whenReady().then(() => {

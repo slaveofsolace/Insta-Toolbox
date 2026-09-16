@@ -24,8 +24,9 @@ test('userscript settings use a responsive appearance grid and one dialog scroll
   assert.equal([...styles.matchAll(/overflow:\s*auto/g)].length, 1);
 });
 
-test('per-run userscript speed changes do not fall through to file-input clearing', () => {
-  assert.match(userscript, /event\.target\.matches\('\[data-role="unsend-scope"\], \[data-role="unsend-count"\], \[data-role="unsend-speed"\]'\)[\s\S]*?renderDmSummary\(\);\s*return;/);
+test('message selection changes do not fall through to file-input clearing', () => {
+  assert.match(userscript, /event\.target\.matches\('\[data-role="unsend-scope"\], \[data-role="unsend-count"\]'\)[\s\S]*?renderDmSummary\(\);\s*return;/);
+  assert.doesNotMatch(userscript, /unsend-speed|default-speed/);
 });
 
 test('userscript fields group labels tightly without shrinking controls or crowding disclosures', () => {
@@ -75,8 +76,7 @@ test('settings group real controls and explain unavailable cleanup capabilities'
   assert.match(shell, /data-insta-toolbox-action="reset-appearance"/);
   assert.match(shell, /data-insta-toolbox-role="layout-size"/);
   assert.doesNotMatch(shell, /id="insta-toolbox-pref-width"/);
-  assert.match(shell, /<option value="fast">Fast<\/option>/);
-  assert.doesNotMatch(shell, /<option value="fast" disabled>/);
+  assert.doesNotMatch(shell, /unsend-speed|cleanup-speed|<option value="fast"/);
   assert.match(shell, /<option value="background" disabled>/);
   assert.match(shell, /disabled data-insta-toolbox-cleanup-preference="removeOwnReactions" aria-describedby=/);
   assert.match(shell, /disabled data-insta-toolbox-cleanup-preference="workerCount" aria-describedby=/);
@@ -111,8 +111,7 @@ function messageView(runner) {
   return context.__instaToolboxOverlayModules.messagesView;
 }
 
-test('changing per-run speed after confirmation cannot reserve or dispatch', async () => {
-  let selectedSpeed = 'standard';
+test('tampering with the confirmed pacing cannot reserve or dispatch', async () => {
   let request;
   let reserved = 0;
   let started = 0;
@@ -127,21 +126,19 @@ test('changing per-run speed after confirmation cannot reserve or dispatch', asy
   await view.massUnsend({
     model: {}, shadow: { append() {} }, document: { createElement: () => ({}) },
     query(selector) {
-      if (selector.endsWith('="unsend-speed"]')) return { value: selectedSpeed };
       if (selector.endsWith('="unsend-scope"]')) return { value: 'all' };
       return null;
     },
     confirmAction: async value => {
       request = value;
-      selectedSpeed = 'fast';
-      return value.binding;
+      return { ...value.binding, speed: 'fast' };
     },
     sendBridge: () => { reserved += 1; },
     status: value => statuses.push(value),
     setText() {},
   });
   assert.equal(request.binding.speed, 'standard');
-  assert.equal(request.facts.find(fact => fact.label === 'Speed').value, 'Standard');
+  assert.equal(request.facts.some(fact => fact.label === 'Speed'), false);
   assert.equal(reserved, 0);
   assert.equal(started, 0);
   assert.match(statuses.at(-1), /settings changed after review/);
