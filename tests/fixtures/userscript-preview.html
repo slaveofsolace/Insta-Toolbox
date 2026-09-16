@@ -219,6 +219,109 @@
       }
       addMessage(false); addMessage(true); addMessage(true);
     };
+    globalThis.fixtureSetNativeReplyMessages = ({ newestKind = 'reply' } = {}) => {
+      history.replaceState({}, '', '/direct/t/123/');
+      globalThis.fixtureUnsentCount = 0;
+      globalThis.fixtureDmClickCount = 0;
+      globalThis.fixtureOpenedIds = [];
+      globalThis.fixtureRemovedIds = [];
+      globalThis.fixtureNativeTimestampRemoved = false;
+      globalThis.fixtureNativeBackfillCount = 0;
+      const main = document.querySelector('main');
+      main.innerHTML = '<section data-pagelet="IGDMessagesList"><div data-fixture-native-scroller style="height:360px;overflow-y:scroll;display:flex;flex-direction:column-reverse"><div data-fixture-native-list style="flex:none"></div></div></section>';
+      const list = main.querySelector('[data-fixture-native-list]');
+      const scroller = main.querySelector('[data-fixture-native-scroller]');
+      const messageGroups = new Map();
+      const slots = new Map();
+      function addNativeMessage(id, { sent = false, kind = 'plain', prepend = false } = {}) {
+        const timestamp = document.createElement('div');
+        timestamp.dataset.fixtureNativeTimestamp = id;
+        timestamp.style.cssText = 'height:22px;font-size:12px;color:#777;';
+        timestamp.textContent = 'Fixture timestamp';
+        const slot = document.createElement('div');
+        slot.dataset.fixtureNativeSlot = id;
+        slot.dataset[sent ? 'fixtureSent' : 'fixtureReceived'] = 'true';
+        const wrapper = document.createElement('div');
+        const group = document.createElement('div'); group.setAttribute('role', 'group');
+        const column = document.createElement('div');
+        column.style.cssText = 'display:flex;flex-direction:column;justify-content:flex-start;';
+        const rowStyle = `display:flex;flex-direction:row;justify-content:${sent ? 'flex-end' : 'flex-start'};`;
+        if (kind !== 'plain') {
+          const heading = document.createElement('div'); heading.style.cssText = rowStyle;
+          const label = document.createElement('span'); label.setAttribute('dir', 'auto');
+          label.textContent = kind === 'story' ? 'Replied to a story' : 'Replied to a message';
+          heading.append(label); column.append(heading);
+        }
+        if (kind === 'reply') {
+          const quoteLane = document.createElement('div'); quoteLane.style.cssText = rowStyle;
+          const quote = document.createElement('div'); quote.setAttribute('role', 'button');
+          quote.textContent = 'Quoted fixture message'; quoteLane.append(quote); column.append(quoteLane);
+        }
+        const lane = document.createElement('div'); lane.style.cssText = rowStyle;
+        const spacer = document.createElement('div'); spacer.setAttribute('aria-hidden', 'true');
+        const payloadLane = document.createElement('div');
+        payloadLane.style.cssText = `display:flex;flex-direction:${sent ? 'row-reverse' : 'row'};justify-content:flex-start;`;
+        const body = document.createElement('div'); body.setAttribute('dir', 'auto');
+        body.style.cssText = 'padding:10px;min-height:24px;background:#ddd;color:#111;';
+        body.textContent = `${kind} fixture ${id}`;
+        const controlsColumn = document.createElement('div');
+        controlsColumn.style.cssText = 'display:flex;flex-direction:column;justify-content:flex-start;';
+        const actions = document.createElement('div'); actions.setAttribute('role', 'group'); actions.setAttribute('aria-label', 'Message actions');
+        const author = sent ? 'demo_creator' : 'fixture_peer';
+        const menuButton = document.createElement('div'); menuButton.setAttribute('role', 'button'); menuButton.tabIndex = 0;
+        menuButton.setAttribute('aria-label', `See more options for message from ${author}`);
+        menuButton.textContent = 'More';
+        for (const action of ['React to', 'Reply to']) {
+          const control = document.createElement('div'); control.setAttribute('role', 'button');
+          control.setAttribute('aria-label', `${action} message from ${author}`); actions.append(control);
+        }
+        actions.append(menuButton); controlsColumn.append(actions); payloadLane.append(body, controlsColumn);
+        lane.append(spacer, payloadLane); column.append(lane); group.append(column); wrapper.append(group); slot.append(wrapper);
+        if (prepend) list.prepend(timestamp, slot); else list.append(timestamp, slot);
+        messageGroups.set(id, group); slots.set(id, slot);
+        menuButton.addEventListener('click', () => {
+          globalThis.fixtureDmClickCount += 1;
+          globalThis.fixtureOpenedIds.push(id);
+          if (!sent) throw new Error('A received native message was targeted');
+          const menu = document.createElement('div'); menu.setAttribute('role', 'menu');
+          menu.style.cssText = 'position:fixed;top:160px;left:24px;z-index:20;background:white;padding:16px;';
+          const choice = document.createElement('button'); choice.textContent = 'Unsend'; menu.append(choice); document.body.append(menu);
+          choice.addEventListener('click', () => {
+            globalThis.fixtureDmClickCount += 1; menu.remove();
+            const dialog = document.createElement('div'); dialog.setAttribute('role', 'dialog');
+            dialog.style.cssText = 'position:fixed;top:160px;left:24px;z-index:20;background:white;padding:16px;';
+            const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.addEventListener('click', () => dialog.remove());
+            const confirm = document.createElement('button'); confirm.textContent = 'Unsend';
+            confirm.addEventListener('click', () => {
+              globalThis.fixtureDmClickCount += 1; dialog.remove(); slot.remove(); timestamp.remove();
+              globalThis.fixtureRemovedIds.push(id); globalThis.fixtureUnsentCount += 1;
+              globalThis.fixtureNativeTimestampRemoved = !timestamp.isConnected;
+              addNativeMessage('older-backfill', { prepend: true });
+              globalThis.fixtureNativeBackfillCount += 1;
+            });
+            dialog.append(cancel, confirm); document.body.append(dialog);
+          });
+        });
+      }
+      addNativeMessage('older-sent', { sent: true });
+      addNativeMessage('received-before');
+      addNativeMessage('sent-before', { sent: true, kind: newestKind === 'reply' ? 'story' : 'reply' });
+      addNativeMessage('newest-sent', { sent: true, kind: newestKind });
+      addNativeMessage('received-after', { kind: 'reply' });
+      addNativeMessage('received-last', { kind: 'story' });
+      scroller.scrollTop = 0;
+      globalThis.fixtureNativeEvidence = () => ({
+        openedIds: [...globalThis.fixtureOpenedIds],
+        removedIds: [...globalThis.fixtureRemovedIds],
+        timestampRemoved: globalThis.fixtureNativeTimestampRemoved,
+        backfillCount: globalThis.fixtureNativeBackfillCount,
+        receivedRetained: ['received-before', 'received-after', 'received-last'].every((id) => slots.get(id).isConnected),
+        retainedNeighborGroups: ['received-before', 'sent-before', 'received-after', 'received-last']
+          .every((id) => messageGroups.get(id).isConnected && slots.get(id).contains(messageGroups.get(id))),
+        olderSentRetained: slots.get('older-sent').isConnected,
+        newestSentRetained: slots.get('newest-sent').isConnected,
+      });
+    };
     globalThis.fixtureSetMessages = () => {
       history.replaceState({}, '', '/direct/t/123/');
       document.querySelector('main').innerHTML = `

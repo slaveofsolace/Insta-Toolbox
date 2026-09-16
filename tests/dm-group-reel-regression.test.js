@@ -47,7 +47,8 @@ function fixture() {
   const context = vm.createContext({ __instaToolboxTestHooks: true, Date, Map, Set, Object,
     getComputedStyle: view.getComputedStyle });
   vm.runInContext(source, context);
-  return { Element, root, proof: context.InstaToolboxDmThreadUnsender.messageProof, view };
+  return { Element, root, proof: context.InstaToolboxDmThreadUnsender.messageProof,
+    runner: context.InstaToolboxDmThreadUnsender, view };
 }
 
 test('outgoing payload wrapper remains discoverable beside a non-content spacer', () => {
@@ -95,6 +96,65 @@ test('multiple native message groups cannot provide combined ownership proof', (
   const row = new Element('div', {}, [makeGroup(), makeGroup()]);
   root.append(row);
   assert.equal(proof.sentByCurrentUser(row, view), false);
+});
+
+test('native own story and reply messages keep ownership across branched group headings', () => {
+  for (const headingCount of [1, 2]) {
+    const { Element, root, proof, view } = fixture();
+    const actions = new Element('div', { role: 'group', 'aria-label': 'Message actions' },
+      [new Element('button', { text: 'Options' })]);
+    const content = new Element('span', { dir: 'auto', text: 'Newest disposable reply' });
+    const reverseBody = new Element('div', {}, [actions, content],
+      { display: 'flex', flexDirection: 'row-reverse', justifyContent: 'flex-start' });
+    const lane = new Element('div', {}, [reverseBody],
+      { display: 'flex', flexDirection: 'row', justifyContent: 'flex-end' });
+    const column = new Element('div', {}, [
+      ...Array.from({ length: headingCount }, (_, index) => new Element('div', {
+        dir: 'auto', text: `Reply or story context ${index}`,
+      })), lane,
+    ], { display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' });
+    const group = new Element('div', { role: 'group' }, [column]);
+    const row = new Element('div', {}, [new Element('span', { text: 'Timestamp' }), group]);
+    root.append(row);
+    assert.equal(proof.sentByCurrentUser(row, view), true, `${headingCount} context headings`);
+    lane.style.justifyContent = 'flex-start';
+    assert.equal(proof.sentByCurrentUser(row, view), false, 'the same received layout is not outgoing');
+  }
+});
+
+test('native received message with nested right-aligned controls retains contradictory ownership', () => {
+  const { Element, root, proof, view } = fixture();
+  const actions = new Element('div', { role: 'group', 'aria-label': 'Message actions' },
+    [new Element('button')]);
+  const controlLane = new Element('div', {}, [
+    new Element('span', { dir: 'auto', text: 'Reaction' }), actions,
+  ], { display: 'flex', flexDirection: 'row', justifyContent: 'flex-end' });
+  const receivedLane = new Element('div', {}, [
+    new Element('span', { dir: 'auto', text: 'Received message' }), controlLane,
+  ], { display: 'flex', flexDirection: 'row', justifyContent: 'flex-start' });
+  const group = new Element('div', { role: 'group' }, [receivedLane]);
+  root.append(group);
+  assert.equal(proof.sentByCurrentUser(group, view), false);
+});
+
+test('newest candidates include a branched reply rather than skipping back to older plain text', () => {
+  const { Element, root, runner } = fixture();
+  const make = (headings, text) => {
+    const actions = new Element('div', { role: 'group', 'aria-label': 'Message actions' },
+      [new Element('button', { text: 'Options' })]);
+    const lane = new Element('div', {}, [new Element('span', { dir: 'auto', text }), actions],
+      { display: 'flex', flexDirection: 'row', justifyContent: 'flex-end' });
+    const column = new Element('div', {}, [
+      ...Array.from({ length: headings }, () => new Element('span', { text: 'Context heading' })), lane,
+    ], { display: 'flex', flexDirection: 'column' });
+    return new Element('div', {}, [new Element('div', { role: 'group' }, [column])]);
+  };
+  const older = make(0, 'Older plain message');
+  const story = make(1, 'Story reply');
+  const newest = make(2, 'Newest replied message');
+  root.append(older, story, newest);
+  assert.deepEqual([...runner.__test.orderedCandidates(root, 'newest')], [newest, story, older]);
+  assert.deepEqual([...runner.__test.orderedCandidates(root, 'oldest')], [older, story, newest]);
 });
 
 test('vertical start alignment does not override an outgoing horizontal payload wrapper', () => {

@@ -4,6 +4,10 @@ Current candidate: **4.0.0**
 
 Development candidate only. The published release remains **3.1.12**; the stable update URL is unchanged. Reaction cleanup and managed inbox/background execution are not enabled in this candidate.
 
+The active development branch is preparing **4.0.1**. Its package metadata
+remains 4.0.0 until integration is complete. See [DM restoration](./DM_RESTORATION_4.0.1.md)
+for the native selection and removal-reporting regressions under repair.
+
 ## Release files
 
 | Surface | File |
@@ -25,12 +29,21 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 503 automated tests at the last completed source checkpoint;
+- 681 automated tests at the latest completed source checkpoint;
 - 45 overlay screenshot states;
 - 11 PWA screenshot states;
 - service-worker cache generation `insta-toolbox-v400`.
 
-Version-refreshed local visual checks, Chrome pairing, Windows packaging, archive inspection, and local checksums passed. Windows installation lifecycle, macOS packaging, remote CI, and authenticated acceptance remain separate gates. See the acceptance record for the exact scope of each completed check.
+The native DM regression matrix also covers Standard/Fast handling of sent
+replies and story replies through the generated userscript's primary action.
+Read-only native selection passed; post-removal authenticated acceptance is
+still pending for the repaired candidate.
+
+Earlier version-refreshed visual checks, Chrome pairing, Windows packaging,
+archive inspection, and local checksums do not certify the current source
+checkpoint. Packaging, remote CI, and authenticated acceptance remain separate
+gates. Desktop/PWA expansion is deferred while the Tampermonkey workflow is
+being completed. See the acceptance record for each check's exact scope.
 
 Before a release is promoted, the exact `main` commit must pass assembly, tests, repository hygiene, dependency audit, generated-userscript parity, extension and userscript acceptance, Chrome pairing, browser QA, overlay/PWA visual checks, Windows packaging, macOS packaging, archive inspection, checksum generation, and `git diff --check`.
 

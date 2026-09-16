@@ -1032,10 +1032,12 @@ async function acceptThreadUnsendScopes(webContents, baseUrl) {
 
 async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
   surfaces = ['extension', 'userscript'], media = false, groupStyle = false, uncertain = false,
+  nativeLayout = false, newestKind = 'reply',
 } = {}) {
   const measurements = [];
   const expectedRemovals = uncertain ? 0 : media ? 2 : 1;
-  const fixtureLabel = media ? `idless-reels-${groupStyle ? 'group' : 'direct'}${uncertain ? '-uncertain' : ''}` : 'primary';
+  const fixtureLabel = nativeLayout ? `native-${newestKind}-backfill`
+    : media ? `idless-reels-${groupStyle ? 'group' : 'direct'}${uncertain ? '-uncertain' : ''}` : 'primary';
   for (const surface of surfaces) {
     for (const speed of ['standard', 'fast']) {
       const extension = surface === 'extension';
@@ -1043,9 +1045,11 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
       else {
         await withTimeout(webContents.loadURL(`${baseUrl}/userscript-fixture.html`), 'speed userscript fixture load');
         await waitForPageValue(webContents, `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'speed userscript ready');
-        await webContents.executeJavaScript(media
-          ? `globalThis.fixtureSetMediaMessages({groupStyle:${groupStyle},uncertain:${uncertain}})`
-          : 'globalThis.fixtureSetMessages()', true);
+        await webContents.executeJavaScript(nativeLayout
+          ? `globalThis.fixtureSetNativeReplyMessages({newestKind:${JSON.stringify(newestKind)}})`
+          : media
+            ? `globalThis.fixtureSetMediaMessages({groupStyle:${groupStyle},uncertain:${uncertain}})`
+            : 'globalThis.fixtureSetMessages()', true);
         await waitForPageValue(webContents, `(() => {
           const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
           return !shadow.querySelector('[data-role="unsend-primary"]').disabled;
@@ -1080,6 +1084,7 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
         return [...shadow.querySelectorAll('[${role}="confirm-facts"] dt')].map(term => [term.textContent, term.nextElementSibling?.textContent]);
       })()`, `${surface} ${speed} primary review`);
       assert.ok(review.some(([label, value]) => label === 'Speed' && value === (speed === 'fast' ? 'Fast' : 'Standard')));
+      if (nativeLayout) assert.ok(review.some(([label, value]) => label === 'Messages' && value === 'newest 1'));
       assert.equal(await webContents.executeJavaScript('globalThis.fixtureUnsentCount'), 0);
       await trustedClick(webContents, `document.querySelector(${JSON.stringify(host)}).shadowRoot.querySelector('[${action}="confirm-accept"]')`, `${surface} ${speed} reviewed fixture start`);
       const outcome = await waitForPageValue(webContents, `(() => {
@@ -1087,7 +1092,8 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
         if (['idle','preparing','running','waiting','stopping'].includes(result.status)) return null;
         const shadow = document.querySelector(${JSON.stringify(host)}).shadowRoot;
         return { ...result, actualRemovals: globalThis.fixtureUnsentCount,
-          receivedRetained: Boolean(document.querySelector('${media ? '[data-fixture-received]' : '[data-message-id="received-1"]'}')),
+          receivedRetained: Boolean(document.querySelector('${media || nativeLayout ? '[data-fixture-received]' : '[data-message-id="received-1"]'}')),
+          nativeEvidence: ${nativeLayout} ? globalThis.fixtureNativeEvidence() : null,
           remainingSent: document.querySelectorAll('[data-fixture-sent]').length,
           remainingSentRows: [...document.querySelectorAll('[data-fixture-sent]')].map(row => row.outerHTML),
           messageContainerChildren: [...document.querySelector('[data-pagelet="IGDMessagesList"]')?.children || []]
@@ -1119,6 +1125,23 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
       if (media) {
         assert.equal(outcome.remainingSent, uncertain ? 2 : 0);
         assert.equal(outcome.fixtureClicks, uncertain ? 3 : expectedRemovals * 3, 'each exact native control is activated once');
+      }
+      if (nativeLayout) {
+        assert.deepEqual(outcome.nativeEvidence.openedIds, ['newest-sent'], 'reply/story headers must not hide the newest sent target');
+        assert.deepEqual(outcome.nativeEvidence.removedIds, ['newest-sent']);
+        assert.equal(outcome.nativeEvidence.timestampRemoved, true, 'native timestamp and message disappear together');
+        assert.equal(outcome.nativeEvidence.backfillCount, 1, 'older history backfills outside the retained neighborhood');
+        assert.equal(outcome.nativeEvidence.receivedRetained, true);
+        assert.equal(outcome.nativeEvidence.retainedNeighborGroups, true);
+        assert.equal(outcome.nativeEvidence.olderSentRetained, true, 'an older simple message is not a fallback for Newest 1');
+        assert.equal(outcome.nativeEvidence.newestSentRetained, false);
+        assert.equal(outcome.remainingSent, 2);
+        assert.equal(outcome.fixtureClicks, 3, 'one menu, one Unsend choice, and one native confirmation');
+        assert.equal(outcome.summaryVisible, true);
+        assert.match(outcome.summaryText, /1 unsent/);
+        assert.doesNotMatch(outcome.summaryText, /uncertain/i);
+        await writeFile(path.join(resultsRoot, `${surface}-${speed}-${fixtureLabel}.png`),
+          (await webContents.capturePage()).toPNG());
       }
       if (uncertain) {
         assert.equal(outcome.summaryVisible, true, 'uncertain primary run is visible without a preliminary scan');
@@ -2873,6 +2896,14 @@ async function run() {
       assert.deepEqual(overlay.problems, [], 'userscript media fixture browser problems');
       return;
     }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_NATIVE_DM_ONLY === '1') {
+      for (const newestKind of ['reply', 'story']) {
+        await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+          { surfaces: ['userscript'], nativeLayout: true, newestKind });
+      }
+      assert.deepEqual(overlay.problems, [], 'userscript native message fixture browser problems');
+      return;
+    }
     if (process.env.INSTA_TOOLBOX_QA_SPEED_ONLY === '1') {
       await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl);
       assert.deepEqual(overlay.problems, [], 'primary-speed fixture browser problems');
@@ -2896,6 +2927,10 @@ async function run() {
     }
     await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
       { surfaces: ['userscript'], media: true, uncertain: true });
+    for (const newestKind of ['reply', 'story']) {
+      await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+        { surfaces: ['userscript'], nativeLayout: true, newestKind });
+    }
     await acceptThreadUnsendStop(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsend(overlay.window.webContents, overlayBaseUrl);
     await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);

@@ -4,6 +4,8 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ## 4.0.0 - 2026-09-16 (Unreleased)
 
+- Recognize sent story and quoted replies when selecting the newest message.
+- Verify native removals across timestamp changes and history backfill without mistaking recycled rows for success.
 - Group settings into Appearance, Cleanup defaults, Execution, and Data and troubleshooting; preserve existing preferences and separate appearance and layout resets.
 - Add Standard and Fast single-conversation cleanup choices with the same ownership, confirmation, pacing, and removal checks.
 - Clean up cancelled waits and strengthen removal verification for recycled rows, temporary loading states, and reverted changes.

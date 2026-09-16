@@ -73,6 +73,21 @@
     return safeText(element.textContent || element.getAttribute?.('aria-label'));
   }
 
+  function normalizeObservedInstagramId(value) {
+    if (typeof value === 'number' && (!Number.isSafeInteger(value) || value <= 0)) return '';
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    const id = String(value).trim();
+    return /^[1-9]\d{0,29}$/.test(id) ? id : '';
+  }
+
+  function captureIdentityMetadata(candidate, previous) {
+    const observed = normalizeObservedInstagramId(candidate?.instagramId);
+    const prior = normalizeObservedInstagramId(previous?.instagramId);
+    if (candidate?.instagramIdAmbiguous === true || previous?.instagramIdAmbiguous === true
+      || (observed && prior && observed !== prior)) return { instagramIdAmbiguous: true };
+    return observed || prior ? { instagramId: observed || prior } : {};
+  }
+
   function normalizeAccounts(value) {
     const accounts = new Map();
     for (const candidate of (Array.isArray(value) ? value : []).slice(0, 25_000)) {
@@ -80,6 +95,7 @@
       if (!username) continue;
       accounts.set(username, {
         username,
+        ...captureIdentityMetadata(candidate, accounts.get(username)),
         profileUrl: `https://www.instagram.com/${username}/`,
         displayName: safeText(candidate?.displayName),
         source: CAPTURE_ACCOUNT_SOURCES.has(candidate?.source)
@@ -245,6 +261,8 @@
       schemaVersion: 6,
       capture: {
         subjectUsername: normalizeUsername(value.capture?.subjectUsername),
+        ...(normalizeObservedInstagramId(value.capture?.subjectInstagramId)
+          ? { subjectInstagramId: normalizeObservedInstagramId(value.capture.subjectInstagramId) } : {}),
         followers: normalizeAccounts(value.capture?.followers),
         following: normalizeAccounts(value.capture?.following),
         capturedAt: {
@@ -2139,6 +2157,8 @@
       const nextCapture = {
         ...stateDefaults().capture,
         subjectUsername: result.username,
+        ...(normalizeObservedInstagramId(result.subjectInstagramId)
+          ? { subjectInstagramId: normalizeObservedInstagramId(result.subjectInstagramId) } : {}),
         followers: normalizeAccounts(result.followers),
         following: normalizeAccounts(result.following),
         capturedAt: { followers: result.capturedAt, following: result.capturedAt },

@@ -2,9 +2,23 @@
 
 ## Status
 
-**Disabled on every surface.** The settings preference and separate reaction counter are present, but there is no native reaction-removal adapter. Message Unsend does not remove reactions added to surviving messages.
+**Disabled on every surface.** A native reaction adapter is now implemented and
+under fixture review. It is not yet connected to the follow-up traversal or
+enabled in Settings. Message Unsend does not currently remove reactions added
+to surviving messages.
 
-The missing capability is a verified way to distinguish the signed-in account's reaction from another participant's reaction and resolve Instagram's exact removal control. No authenticated reaction interaction or disposable-message mutation has been performed for this change. Right alignment, the message author, and the presence of an emoji do not establish reaction ownership.
+Native inspection found a reaction-details dialog with an explicit **Select to
+remove** instruction on the signed-in account's reaction row. This was observed
+on a received message; no reaction was removed. The adapter uses that native
+ownership instruction, the exact emoji, and the retained message. Right
+alignment, the message author, and the presence of an emoji do not establish
+reaction ownership.
+
+The instruction must appear in the observed secondary hint beneath a separate
+participant-name span. A display name containing the same words is not
+ownership evidence. Loading dialogs cannot prove removal. Other visible
+reactors must remain unchanged, and an uncertain attempt cannot be retried by
+recreating the adapter or remounting the badge within the same runtime.
 
 | Surface | Current behavior | Fallback |
 | --- | --- | --- |
@@ -19,9 +33,14 @@ The missing capability is a verified way to distinguish the signed-in account's 
 - `extension/action-labels.js`: shared message runner and message-only ownership/removal checks. These checks are not reaction-ownership proof.
 - `extension/content-instagram.js`: exact-message inspection and message actions share the runner's ownership and settled-removal helpers; no own-reaction resolver.
 - `extension/inbox-coordinator.js`: separate message/reaction counters and review binding. This state contract does not provide a native reaction implementation.
+- `extension/own-reactions.js`: bounded native reaction-details adapter, exact
+  context checks, settled-removal verification, and nonpersistent plan helpers.
+- `tests/own-reactions.test.js`: synthetic native reaction-dialog regressions.
 - `tests/dm-foundation-v4.test.js`: received-message protection, recycled-row evidence, settlement, and Stop behavior in fixtures. These are not reaction acceptance tests.
 
-The source audit found no existing reaction adapter to reuse. Native interaction remains unverified; no guessed selector or generic emoji toggle has been added.
+The details interaction is observed, but native removal and the complete
+follow-up pass remain unverified. The adapter does not click a generic emoji
+toggle to guess whether it adds or removes a reaction.
 
 ## Adapter contract
 
@@ -35,7 +54,10 @@ Run a bounded second traversal only after the approved message pass settles. Kee
 
 ## Next step and release criterion
 
-**Responsible owner: runner/reactions.** First inspect the current native interaction read-only. Then obtain fresh approval naming a disposable conversation and exact reaction-removal targets. Approval for message Unsend does not implicitly cover this test.
+**Responsible owner: runner/reactions.** Finish the adapter regressions, connect
+a bounded second traversal through the existing runner, and test a specifically
+approved disposable reaction. Approval for message Unsend does not implicitly
+cover reaction removal.
 
 Use disposable examples covering an own reaction on a received message and a shared emoji with another participant. Record sanitized control names and ownership evidence; do not retain private bodies or account identifiers. If removal cannot be distinguished from adding/changing a reaction, retain the disabled setting and record the unsupported state.
 

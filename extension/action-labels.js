@@ -542,6 +542,24 @@
           && style.flexDirection === 'row' && style.justifyContent === 'flex-start') return false;
         if (ancestor === row) break;
       }
+      const group = outerGroups[0];
+      const actions = group.querySelectorAll('[aria-label="Message actions"]')[0];
+      let nativeAligned = false;
+      // Replies and story shares add siblings above the message body. Follow
+      // the one native action group's ancestry instead of treating those
+      // siblings as the end of the message's ownership evidence.
+      for (let lane = actions.parentElement; lane; lane = lane.parentElement) {
+        const style = view.getComputedStyle?.(lane);
+        const payload = [...lane.querySelectorAll?.('[dir="auto"], img, video, audio') || []]
+          .some((element) => !actions.contains?.(element));
+        if (payload && ['flex', 'inline-flex'].includes(style?.display)
+          && style.flexDirection === 'row' && style.direction !== 'rtl') {
+          if (style.justifyContent === 'flex-start') return false;
+          if (style.justifyContent === 'flex-end') nativeAligned = true;
+        }
+        if (lane === group) break;
+      }
+      if (nativeAligned) return true;
     }
     let element = outerGroups.length === 1 ? outerGroups[0] : row;
     let aligned = false;
@@ -1477,13 +1495,79 @@
     return JSON.stringify([stableMessageKey(row), preview(row), content]);
   }
 
+  function nativeMessageGroups(root) {
+    const groups = [...root?.querySelectorAll?.('[role="group"]') || []]
+      .filter((group) => group.getAttribute?.('aria-label') !== 'Message actions'
+        && group.querySelectorAll?.('[aria-label="Message actions"]').length === 1);
+    return groups.filter((group) => !groups.some((other) => (
+      other !== group && other.contains?.(group)
+    )));
+  }
+
+  function nativeRemovalNeighborhood(row, root) {
+    const groups = nativeMessageGroups(root);
+    const targets = groups.filter((group) => group === row || row?.contains?.(group));
+    if (targets.length !== 1) return null;
+    return {
+      target: targets[0],
+      row,
+      entries: groups.map((element) => ({ element, signature: retainedMessageSignature(element) })),
+    };
+  }
+
+  function removalScrollStayed(before) {
+    return before.scrollers.every(({ element, top, height, client }) => {
+      if (!element.isConnected) return false;
+      const afterTop = Number(element.scrollTop) || 0;
+      if (Math.abs(afterTop - top) <= 2) return true;
+      // At the bottom of a normal list, native scroll anchoring follows a
+      // shrinking range. This is not navigation to a different virtual window.
+      const afterEnd = Math.max(0, Number(element.scrollHeight) - Number(element.clientHeight));
+      const beforeEnd = Math.max(0, height - client);
+      return beforeEnd > 0 && Math.abs(top - beforeEnd) <= 2
+        && Math.abs(afterTop - afterEnd) <= 2 && afterEnd < beforeEnd;
+    });
+  }
+
+  function nativeRemovalProven(before) {
+    const native = before.native;
+    if (!native || native.row.isConnected || native.target.isConnected
+      || !before.parent?.isConnected || !removalScrollStayed(before)) return false;
+    const targetIndex = native.entries.findIndex(({ element }) => element === native.target);
+    const left = native.entries.slice(Math.max(0, targetIndex - 2), targetIndex);
+    const right = native.entries.slice(targetIndex + 1, targetIndex + 3);
+    const retained = [...left, ...right];
+    if (retained.length < 2) return false;
+    const after = nativeMessageGroups(before.root);
+    let previous = -1;
+    for (const { element, signature } of retained) {
+      const index = after.indexOf(element);
+      if (index <= previous || !element.isConnected
+        || retainedMessageSignature(element) !== signature) return false;
+      // Backfill may append older history outside this anchored neighborhood,
+      // but an inserted/recycled message inside it is not removal evidence.
+      if (previous >= 0 && index !== previous + 1) return false;
+      previous = index;
+    }
+    const signature = native.entries[targetIndex].signature;
+    // A remount of the same payload inside the anchors is not a removal.
+    const first = after.indexOf(retained[0].element);
+    const last = after.indexOf(retained[retained.length - 1].element);
+    const bounded = after.slice(first, last + 1);
+    const countBefore = retained.filter((entry) => entry.signature === signature).length;
+    return bounded.filter((element) => retainedMessageSignature(element) === signature).length === countBefore
+      && !after.some((element) => !native.entries.some((entry) => entry.element === element)
+        && retainedMessageSignature(element) === signature);
+  }
+
   function removalEvidence(row) {
     const parent = row?.parentElement || null;
     const root = row?.closest?.("[data-pagelet='IGDMessagesList']") || parent;
     const scrollers = [];
     for (let element = parent; element; element = element.parentElement) {
       if (Number(element.scrollHeight) > Number(element.clientHeight)) {
-        scrollers.push({ element, top: Number(element.scrollTop) || 0 });
+        scrollers.push({ element, top: Number(element.scrollTop) || 0,
+          height: Number(element.scrollHeight), client: Number(element.clientHeight) });
       }
       if (element === root) break;
     }
@@ -1497,6 +1581,7 @@
       scrollers,
       siblings,
       siblingSignatures: siblings.map(retainedMessageSignature),
+      native: nativeRemovalNeighborhood(row, root),
     };
   }
 
@@ -1504,6 +1589,9 @@
     if (!before?.connected) return false;
     const root = before.root;
     if (root && (!root.isConnected || visibleLoader(root) || root.getAttribute?.('aria-busy') === 'true')) return false;
+    // Instagram may remove the message and its timestamp together, backfill
+    // older rows, and unmount far-off content. Use the exact detached message
+    // row and its retained native neighbors, not every layout child.
     const isPlaceholder = (candidate) => {
       const text = normalizePlaceholder(preview(candidate));
       if (normalizePlaceholder(before.text) === text) return false;
@@ -1515,6 +1603,7 @@
       if (stableMessageKey(row) !== before.key) return false;
       return isPlaceholder(row);
     }
+    if (!before.key && before.native) return nativeRemovalProven(before);
     if (before.key) {
       const matches = [...root?.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
         .filter((candidate) => stableMessageKey(candidate) === before.key);

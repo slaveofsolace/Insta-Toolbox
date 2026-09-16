@@ -321,7 +321,7 @@ test('two visible message-options controls remain ambiguous after selector dedup
   assert.equal(runner.__test.actionButton(row), controls[0]);
 });
 
-function interactionFixture(onDispatch, { speed = 'standard', runtime = {}, beforeDispatch = null } = {}) {
+function interactionFixture(onDispatch, { speed = 'standard', runtime = {}, beforeDispatch = null, nativeLayout = false } = {}) {
   const observers = new Set();
   const documentEvents = new EventTarget();
   const windowEvents = new EventTarget();
@@ -395,13 +395,28 @@ function interactionFixture(onDispatch, { speed = 'standard', runtime = {}, befo
   Object.assign(root, { scrollHeight: 100, clientHeight: 100, scrollTop: 0 });
   const received = () => {
     const row = new Element('div', { 'data-sent-by-me': 'false' });
-    row.append(new Element('div', { dir: 'auto' }, 'Received message'));
+    const content = new Element('div', { dir: 'auto' }, 'Received message');
+    if (nativeLayout) {
+      const group = new Element('div', { role: 'group' });
+      group.append(content, new Element('div', { role: 'group', 'aria-label': 'Message actions' }));
+      row.append(group);
+    } else row.append(content);
     return row;
   };
   const target = new Element('div', { 'data-sent-by-me': 'true', 'data-message-id': 'target' });
   target.append(new Element('div', { dir: 'auto' }, 'Disposable message'));
   const options = new Element('button', { 'aria-haspopup': 'menu', 'aria-label': 'More options' }, 'More options');
   target.append(options);
+  if (nativeLayout) {
+    target.removeAttribute('data-message-id');
+    const content = target.children[0];
+    target.children = [];
+    const group = new Element('div', { role: 'group' });
+    const actions = new Element('div', { role: 'group', 'aria-label': 'Message actions' });
+    actions.append(options);
+    group.append(content, actions);
+    target.append(group);
+  }
   root.append(received(), target, received());
   body.append(root);
   let dispatches = 0;
@@ -416,7 +431,7 @@ function interactionFixture(onDispatch, { speed = 'standard', runtime = {}, befo
       confirm.onClick = () => {
         dispatches += 1;
         dialog.remove();
-        onDispatch({ target, runner, emitLifecycle });
+        onDispatch({ target, runner, emitLifecycle, root, Element });
       };
       dialog.append(confirm);
       body.append(dialog);
@@ -470,6 +485,21 @@ test('Stop after dispatch settles a proven removal once without dispatching anot
   assert.equal(fixture.ledgerWrites(), 1);
   assert.equal(result.processed, 1);
   assert.equal(result.status, 'stopped');
+});
+
+test('Standard and Fast count one native id-less removal despite layout reconciliation', async () => {
+  for (const speed of ['standard', 'fast']) {
+    const fixture = interactionFixture(({ target, root, Element }) => {
+      target.remove();
+      root.append(new Element('span', {}, 'Seen'));
+    }, { speed, nativeLayout: true });
+    const result = await fixture.run();
+    assert.equal(result.status, 'completed', JSON.stringify(result));
+    assert.equal(result.processed, 1);
+    assert.equal(result.uncertain, 0);
+    assert.equal(fixture.dispatches(), 1);
+    assert.equal(fixture.ledgerWrites(), 1);
+  }
 });
 
 test('freeze before dispatch interrupts readiness with a clear needs-attention result', async () => {

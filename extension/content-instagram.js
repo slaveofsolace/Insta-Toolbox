@@ -377,6 +377,13 @@
     throw relationshipError('request-timeout', 'Instagram follower data did not finish.');
   }
 
+  function normalizeObservedInstagramId(value) {
+    if (typeof value === 'number' && (!Number.isSafeInteger(value) || value <= 0)) return '';
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    const id = String(value).trim();
+    return /^[1-9]\d{0,29}$/.test(id) ? id : '';
+  }
+
   async function resolveRelationshipUserId(username, options) {
     const url = new URL('/api/v1/web/search/topsearch/', INSTAGRAM_WEB_ORIGIN);
     url.searchParams.set('context', 'blended');
@@ -392,6 +399,8 @@
     }
     return {
       userId,
+      ...(normalizeObservedInstagramId(exact?.pk)
+        ? { subjectInstagramId: normalizeObservedInstagramId(exact.pk) } : {}),
     };
   }
 
@@ -562,6 +571,8 @@
         }
         accounts.set(accountKey, {
           username: accountUsername,
+          ...(normalizeObservedInstagramId(rawAccountId)
+            ? { instagramId: normalizeObservedInstagramId(rawAccountId) } : {}),
           profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
           displayName: String(user?.full_name || '').trim().slice(0, 160),
           source: 'authenticated-instagram-web',
@@ -774,6 +785,7 @@
         reasons: Object.freeze({ followers: followers.reason, following: following.reason }),
         source: 'authenticated-instagram-web',
         userId,
+        ...(resolution.subjectInstagramId ? { subjectInstagramId: resolution.subjectInstagramId } : {}),
         username,
       });
       onProgress?.(Object.freeze({

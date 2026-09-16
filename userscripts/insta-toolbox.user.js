@@ -474,6 +474,286 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 (() => {
   'use strict';
 
+  if (globalThis.InstaToolboxOwnReactions) return;
+
+  const emojiOnly = /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\uFE0F|\u200D)+$/u;
+  const text = (node) => String(node?.textContent || '').trim().replace(/\s+/g, ' ');
+  const visible = (node) => Boolean(node && node.isConnected !== false
+    && !node.closest?.('[hidden], [aria-hidden="true"]')
+    && (!node.getClientRects || node.getClientRects().length));
+  const uncertain = (message) => Object.assign(new Error(message), { code: 'REACTION_OUTCOME_UNCERTAIN' });
+  const badgeEmoji = (node) => {
+    const value = text(node).replace(/\s*[0-9]{1,6}$/, '').trim();
+    return emojiOnly.test(value) ? value : null;
+  };
+  const badgeCount = (node) => Number(text(node).match(/([0-9]{1,6})$/)?.[1] || 1);
+  const plans = new WeakSet();
+  const consumed = new WeakSet();
+  const unresolvedAttempts = new Set();
+  function fingerprint(value) {
+    let first = 0x811c9dc5, second = 0x9e3779b9;
+    for (const character of value) {
+      const code = character.codePointAt(0);
+      first = Math.imul(first ^ code, 0x01000193);
+      second = Math.imul(second ^ code, 0x85ebca6b);
+    }
+    return `${value.length}:${first >>> 0}:${second >>> 0}`;
+  }
+  function createPlan({ threadId, accountUsername, expiresAt, limit = null } = {}) {
+    if (!/^[0-9]{1,128}$/.test(threadId || '') || !/^[a-z0-9._]{1,30}$/.test(accountUsername || '')
+      || !Number.isFinite(expiresAt) || expiresAt <= Date.now() || expiresAt > Date.now() + 20 * 60_000
+      || (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > 5_000))) return null;
+    // A plan is an isolated-runtime object, not restorable/importable authority.
+    const plan = Object.freeze({ version: 1, threadId, accountUsername, expiresAt, limit });
+    plans.add(plan); return plan;
+  }
+  function validatePlan(plan, threadId, accountUsername) {
+    return plans.has(plan) && !consumed.has(plan) && plan.threadId === threadId
+      && plan.accountUsername === accountUsername && plan.expiresAt > Date.now();
+  }
+  function consumePlan(plan, threadId, accountUsername) {
+    if (!validatePlan(plan, threadId, accountUsername)) throw new Error('reaction-review-required');
+    consumed.add(plan);
+  }
+
+  function badges(row) {
+    return [...row?.querySelectorAll?.('[role="button"]') || []].filter((node) => (
+      visible(node) && node.getAttribute('tabindex') === '0'
+      && !node.getAttribute('aria-label') && !node.getAttribute('aria-haspopup')
+      && !node.closest?.('[aria-label="Message actions"]')
+      && node.querySelector?.('[role="none"]') && badgeEmoji(node)
+    ));
+  }
+
+  function messageSignature(row) {
+    const reactions = badges(row);
+    const relevant = (node) => !node.closest?.('[aria-label="Message actions"]')
+      && !reactions.some((badge) => badge === node || badge.contains(node));
+    const ids = ['data-message-id', 'data-item-id'].map((name) => row.getAttribute?.(name) || '');
+    const content = [...row.querySelectorAll('[dir="auto"], img, video, audio, a[href]')]
+      .filter(relevant).filter((node) => !node.querySelector?.('[dir="auto"]'))
+      .map((node) => [node.tagName, node.getAttribute?.('src') || '',
+        node.getAttribute?.('href') || '', text(node)]);
+    return JSON.stringify([ids, content]);
+  }
+
+  function messageIdentity(row) {
+    for (const attribute of ['data-message-id', 'data-item-id']) {
+      const value = row.getAttribute?.(attribute);
+      if (value) return `${attribute}:${value}`;
+    }
+    return null;
+  }
+
+  function create({ document = globalThis.document, inspectContext, assertAuthorized,
+    now = Date.now, timeoutMs = 3_000, stableMs = 200 } = {}) {
+    if (!document || typeof inspectContext !== 'function' || typeof assertAuthorized !== 'function'
+      || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 10_000
+      || !Number.isFinite(stableMs) || stableMs < 0 || stableMs > timeoutMs) {
+      throw new Error('reaction-adapter-invalid');
+    }
+    const openDialogs = () => [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')]
+      .filter((dialog) => visible(dialog) && [...dialog.querySelectorAll('h1, h2, h3, [role="heading"]')]
+        .some((heading) => text(heading) === 'Reactions'));
+    const emoji = (row) => [...row.querySelectorAll('span')].map(text).filter((value) => emojiOnly.test(value));
+    const busy = (node) => node?.getAttribute?.('aria-busy') === 'true'
+      || [...node?.querySelectorAll?.('[aria-busy="true"], [role="progressbar"], [aria-label="Loading"]') || []]
+        .some(visible);
+    function reactionRows(dialog, expectedEmoji = null) {
+      return [...dialog.querySelectorAll('[role="button"]')].filter((row) => visible(row)
+        && row.getAttribute('tabindex') === '0'
+        && (expectedEmoji ? emoji(row).includes(expectedEmoji) : emoji(row).length));
+    }
+    function ownRows(dialog, expectedEmoji) {
+      const isColumn = (node) => {
+        const style = document.defaultView?.getComputedStyle?.(node);
+        return node?.tagName === 'DIV' && ['flex', 'inline-flex'].includes(style?.display)
+          && style.flexDirection === 'column';
+      };
+      return reactionRows(dialog, expectedEmoji).filter((row) => (
+        [...row.querySelectorAll('span')].some((hint) => {
+          if (text(hint) !== 'Select to remove' || hint.children?.length) return false;
+          const secondary = hint.parentElement, column = secondary?.parentElement;
+          const [name, detail] = [...column?.children || []];
+          // Native ownership is the dedicated subtitle under a separate name,
+          // not a participant's display name containing the same words.
+          return isColumn(secondary) && secondary.children.length === 1
+            && secondary.children[0] === hint && isColumn(column)
+            && column.children.length === 2 && detail === secondary
+            && name?.tagName === 'SPAN' && Boolean(text(name));
+        })
+      ));
+    }
+    function otherRows(dialog, expectedEmoji) {
+      const mine = new Set(ownRows(dialog, expectedEmoji));
+      return reactionRows(dialog).filter((row) => !mine.has(row)).map(text).sort();
+    }
+    function close(dialog, threadId, accountId, signal, dispatched = false) {
+      guard(threadId, accountId, signal, dispatched);
+      const controls = [...dialog.querySelectorAll('button, [role="button"]')]
+        .filter((node) => visible(node) && (node.getAttribute('aria-label') || text(node)) === 'Close');
+      if (controls.length !== 1) throw new Error('reaction-close-unavailable');
+      controls[0].click();
+    }
+    function guard(threadId, accountId, signal, dispatched = false) {
+      const context = inspectContext();
+      if (context?.threadId !== threadId || context?.accountId !== accountId
+        || context?.accountVerified !== true || context?.usable !== true
+        || context?.restriction) throw new Error('reaction-context-changed');
+      if (!dispatched) {
+        if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
+        const authorized = assertAuthorized({ threadId, accountId, kind: 'reaction' });
+        if (authorized !== true) {
+          // Async grants cannot authorize a click that is about to happen.
+          // Drain rejected promises without treating them as approval.
+          if (authorized && typeof authorized.then === 'function') Promise.resolve(authorized).catch(() => {});
+          throw new Error('reaction-authorization-required');
+        }
+      }
+    }
+    function wait(check, signal) {
+      return new Promise((resolve, reject) => {
+        const deadline = now() + timeoutMs;
+        let timer, observer, settled = false;
+        const finish = (error, value) => {
+          if (settled) return; settled = true;
+          clearTimeout(timer); observer?.disconnect();
+          signal?.removeEventListener('abort', onAbort);
+          error ? reject(error) : resolve(value);
+        };
+        const onAbort = () => finish(new DOMException('Stopped', 'AbortError'));
+        const inspect = () => {
+          if (settled) return;
+          try {
+            if (signal?.aborted) return onAbort();
+            if (now() >= deadline) return finish(new Error('reaction-readiness-timeout'));
+            const value = check();
+            if (value) return finish(null, value);
+            clearTimeout(timer); timer = setTimeout(inspect, Math.min(50, deadline - now()));
+          } catch (error) { finish(error); }
+        };
+        try {
+          inspect();
+          if (settled) return;
+          const Observer = document.defaultView?.MutationObserver;
+          if (Observer) {
+            observer = new Observer(inspect);
+            observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+          }
+          signal?.addEventListener('abort', onAbort, { once: true }); inspect();
+        } catch (error) {
+          finish(error);
+        }
+      });
+    }
+    return Object.freeze({
+      badges,
+      async remove({ row, badge, threadId, accountId, signal }) {
+        guard(threadId, accountId, signal);
+        if (!row?.isConnected || row.querySelectorAll('[aria-label="Message actions"]').length !== 1
+          || !badges(row).includes(badge)) throw new Error('reaction-target-unavailable');
+        const selectedEmoji = badgeEmoji(badge), signature = messageSignature(row);
+        const attemptKey = JSON.stringify([accountId, threadId,
+          messageIdentity(row) || fingerprint(signature), selectedEmoji]);
+        if (unresolvedAttempts.has(attemptKey)) throw new Error('reaction-already-attempted');
+        if (openDialogs().length) throw new Error('reaction-dialog-already-open');
+        const unchanged = () => row.isConnected && messageSignature(row) === signature;
+        let dialog, dispatched = false;
+        try {
+          guard(threadId, accountId, signal);
+          badge.click();
+          dialog = await wait(() => {
+            guard(threadId, accountId, signal);
+            if (!unchanged()) throw new Error('reaction-message-changed');
+            const dialogs = openDialogs();
+            if (dialogs.length > 1) throw new Error('reaction-dialog-ambiguous');
+            return dialogs[0] || null;
+          }, signal);
+          let readySince = null, readySignature = null;
+          await wait(() => {
+            guard(threadId, accountId, signal);
+            if (!unchanged() || !visible(dialog) || openDialogs().length !== 1) {
+              throw new Error('reaction-message-changed');
+            }
+            const rows = reactionRows(dialog);
+            if (busy(dialog) || !rows.length
+              || reactionRows(dialog, selectedEmoji).length < badgeCount(badge)) {
+              readySince = null; return false;
+            }
+            const current = JSON.stringify(rows.map(text).sort());
+            if (current !== readySignature || readySince === null) {
+              readySignature = current; readySince = now();
+            }
+            return now() - readySince >= stableMs;
+          }, signal);
+          const own = ownRows(dialog, selectedEmoji);
+          if (own.length !== 1) {
+            close(dialog, threadId, accountId, signal);
+            return { verified: false, skipped: true, reason: own.length ? 'ownership-ambiguous' : 'not-my-reaction' };
+          }
+          const others = JSON.stringify(otherRows(dialog, selectedEmoji));
+          guard(threadId, accountId, signal);
+          if (!unchanged() || !visible(own[0])) throw new Error('reaction-message-changed');
+          // Shared by every adapter in this isolated runtime. An uncertain
+          // result cannot become a fresh attempt after native row remounting.
+          if (unresolvedAttempts.has(attemptKey)) throw new Error('reaction-already-attempted');
+          unresolvedAttempts.add(attemptKey);
+          dispatched = true;
+          own[0].click();
+          let stableSince = null;
+          let reopened = false;
+          await wait(() => {
+            // A dispatched removal must settle even after Stop. Stop cannot
+            // turn an uncertain click into zero removals or a safe retry.
+            guard(threadId, accountId, null, true);
+            if (!unchanged()) throw uncertain('The message changed while checking its reaction.');
+            const dialogs = openDialogs();
+            if (dialogs.length > 1) throw uncertain('Reaction details became ambiguous.');
+            const current = dialogs[0];
+            const remainingBadges = badges(row);
+            const matchingBadges = remainingBadges.filter((item) => badgeEmoji(item) === selectedEmoji);
+            let removed = false;
+            if (current) {
+              if (busy(current)) { stableSince = null; return false; }
+              removed = ownRows(current, selectedEmoji).length === 0
+                && JSON.stringify(otherRows(current, selectedEmoji)) === others
+                && (others !== '[]' || !matchingBadges.length);
+            } else if (!remainingBadges.length && others === '[]') removed = true;
+            else if (remainingBadges.length && !reopened) {
+              // Grouped reactions keep the badge. Reopen details, not the
+              // reaction toggle, to prove the other reactors are unchanged.
+              reopened = true;
+              remainingBadges[0].click();
+              return false;
+            }
+            if (!removed) { stableSince = null; return false; }
+            stableSince ??= now();
+            return now() - stableSince >= stableMs;
+          });
+          const remainingDialog = openDialogs()[0];
+          if (remainingDialog) close(remainingDialog, threadId, accountId, null, true);
+          unresolvedAttempts.delete(attemptKey);
+          return { verified: true, skipped: false, removed: 1 };
+        } catch (error) {
+          if (dispatched) throw uncertain('Reaction removal could not be verified. Check this message before retrying.');
+          if (dialog && visible(dialog)) {
+            try { close(dialog, threadId, accountId, signal); } catch { /* Leave the native dialog for review. */ }
+          }
+          throw error;
+        }
+      },
+    });
+  }
+
+  Object.defineProperty(globalThis, 'InstaToolboxOwnReactions', {
+    configurable: false, writable: false,
+    value: Object.freeze({ create, badges, createPlan, validatePlan, consumePlan }),
+  });
+})();
+
+(() => {
+  'use strict';
+
   const namespace = '__instaToolboxActionLabels';
   if (globalThis[namespace]) return;
 
@@ -1015,6 +1295,24 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           && style.flexDirection === 'row' && style.justifyContent === 'flex-start') return false;
         if (ancestor === row) break;
       }
+      const group = outerGroups[0];
+      const actions = group.querySelectorAll('[aria-label="Message actions"]')[0];
+      let nativeAligned = false;
+      // Replies and story shares add siblings above the message body. Follow
+      // the one native action group's ancestry instead of treating those
+      // siblings as the end of the message's ownership evidence.
+      for (let lane = actions.parentElement; lane; lane = lane.parentElement) {
+        const style = view.getComputedStyle?.(lane);
+        const payload = [...lane.querySelectorAll?.('[dir="auto"], img, video, audio') || []]
+          .some((element) => !actions.contains?.(element));
+        if (payload && ['flex', 'inline-flex'].includes(style?.display)
+          && style.flexDirection === 'row' && style.direction !== 'rtl') {
+          if (style.justifyContent === 'flex-start') return false;
+          if (style.justifyContent === 'flex-end') nativeAligned = true;
+        }
+        if (lane === group) break;
+      }
+      if (nativeAligned) return true;
     }
     let element = outerGroups.length === 1 ? outerGroups[0] : row;
     let aligned = false;
@@ -1950,13 +2248,79 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     return JSON.stringify([stableMessageKey(row), preview(row), content]);
   }
 
+  function nativeMessageGroups(root) {
+    const groups = [...root?.querySelectorAll?.('[role="group"]') || []]
+      .filter((group) => group.getAttribute?.('aria-label') !== 'Message actions'
+        && group.querySelectorAll?.('[aria-label="Message actions"]').length === 1);
+    return groups.filter((group) => !groups.some((other) => (
+      other !== group && other.contains?.(group)
+    )));
+  }
+
+  function nativeRemovalNeighborhood(row, root) {
+    const groups = nativeMessageGroups(root);
+    const targets = groups.filter((group) => group === row || row?.contains?.(group));
+    if (targets.length !== 1) return null;
+    return {
+      target: targets[0],
+      row,
+      entries: groups.map((element) => ({ element, signature: retainedMessageSignature(element) })),
+    };
+  }
+
+  function removalScrollStayed(before) {
+    return before.scrollers.every(({ element, top, height, client }) => {
+      if (!element.isConnected) return false;
+      const afterTop = Number(element.scrollTop) || 0;
+      if (Math.abs(afterTop - top) <= 2) return true;
+      // At the bottom of a normal list, native scroll anchoring follows a
+      // shrinking range. This is not navigation to a different virtual window.
+      const afterEnd = Math.max(0, Number(element.scrollHeight) - Number(element.clientHeight));
+      const beforeEnd = Math.max(0, height - client);
+      return beforeEnd > 0 && Math.abs(top - beforeEnd) <= 2
+        && Math.abs(afterTop - afterEnd) <= 2 && afterEnd < beforeEnd;
+    });
+  }
+
+  function nativeRemovalProven(before) {
+    const native = before.native;
+    if (!native || native.row.isConnected || native.target.isConnected
+      || !before.parent?.isConnected || !removalScrollStayed(before)) return false;
+    const targetIndex = native.entries.findIndex(({ element }) => element === native.target);
+    const left = native.entries.slice(Math.max(0, targetIndex - 2), targetIndex);
+    const right = native.entries.slice(targetIndex + 1, targetIndex + 3);
+    const retained = [...left, ...right];
+    if (retained.length < 2) return false;
+    const after = nativeMessageGroups(before.root);
+    let previous = -1;
+    for (const { element, signature } of retained) {
+      const index = after.indexOf(element);
+      if (index <= previous || !element.isConnected
+        || retainedMessageSignature(element) !== signature) return false;
+      // Backfill may append older history outside this anchored neighborhood,
+      // but an inserted/recycled message inside it is not removal evidence.
+      if (previous >= 0 && index !== previous + 1) return false;
+      previous = index;
+    }
+    const signature = native.entries[targetIndex].signature;
+    // A remount of the same payload inside the anchors is not a removal.
+    const first = after.indexOf(retained[0].element);
+    const last = after.indexOf(retained[retained.length - 1].element);
+    const bounded = after.slice(first, last + 1);
+    const countBefore = retained.filter((entry) => entry.signature === signature).length;
+    return bounded.filter((element) => retainedMessageSignature(element) === signature).length === countBefore
+      && !after.some((element) => !native.entries.some((entry) => entry.element === element)
+        && retainedMessageSignature(element) === signature);
+  }
+
   function removalEvidence(row) {
     const parent = row?.parentElement || null;
     const root = row?.closest?.("[data-pagelet='IGDMessagesList']") || parent;
     const scrollers = [];
     for (let element = parent; element; element = element.parentElement) {
       if (Number(element.scrollHeight) > Number(element.clientHeight)) {
-        scrollers.push({ element, top: Number(element.scrollTop) || 0 });
+        scrollers.push({ element, top: Number(element.scrollTop) || 0,
+          height: Number(element.scrollHeight), client: Number(element.clientHeight) });
       }
       if (element === root) break;
     }
@@ -1970,6 +2334,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       scrollers,
       siblings,
       siblingSignatures: siblings.map(retainedMessageSignature),
+      native: nativeRemovalNeighborhood(row, root),
     };
   }
 
@@ -1977,6 +2342,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (!before?.connected) return false;
     const root = before.root;
     if (root && (!root.isConnected || visibleLoader(root) || root.getAttribute?.('aria-busy') === 'true')) return false;
+    // Instagram may remove the message and its timestamp together, backfill
+    // older rows, and unmount far-off content. Use the exact detached message
+    // row and its retained native neighbors, not every layout child.
     const isPlaceholder = (candidate) => {
       const text = normalizePlaceholder(preview(candidate));
       if (normalizePlaceholder(before.text) === text) return false;
@@ -1988,6 +2356,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       if (stableMessageKey(row) !== before.key) return false;
       return isPlaceholder(row);
     }
+    if (!before.key && before.native) return nativeRemovalProven(before);
     if (before.key) {
       const matches = [...root?.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
         .filter((candidate) => stableMessageKey(candidate) === before.key);
@@ -2892,6 +3261,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     throw relationshipError('request-timeout', 'Instagram follower data did not finish.');
   }
 
+  function normalizeObservedInstagramId(value) {
+    if (typeof value === 'number' && (!Number.isSafeInteger(value) || value <= 0)) return '';
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    const id = String(value).trim();
+    return /^[1-9]\d{0,29}$/.test(id) ? id : '';
+  }
+
   async function resolveRelationshipUserId(username, options) {
     const url = new URL('/api/v1/web/search/topsearch/', INSTAGRAM_WEB_ORIGIN);
     url.searchParams.set('context', 'blended');
@@ -2907,6 +3283,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     }
     return {
       userId,
+      ...(normalizeObservedInstagramId(exact?.pk)
+        ? { subjectInstagramId: normalizeObservedInstagramId(exact.pk) } : {}),
     };
   }
 
@@ -3077,6 +3455,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         }
         accounts.set(accountKey, {
           username: accountUsername,
+          ...(normalizeObservedInstagramId(rawAccountId)
+            ? { instagramId: normalizeObservedInstagramId(rawAccountId) } : {}),
           profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
           displayName: String(user?.full_name || '').trim().slice(0, 160),
           source: 'authenticated-instagram-web',
@@ -3289,6 +3669,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         reasons: Object.freeze({ followers: followers.reason, following: following.reason }),
         source: 'authenticated-instagram-web',
         userId,
+        ...(resolution.subjectInstagramId ? { subjectInstagramId: resolution.subjectInstagramId } : {}),
         username,
       });
       onProgress?.(Object.freeze({
@@ -5028,6 +5409,21 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     return safeText(element.textContent || element.getAttribute?.('aria-label'));
   }
 
+  function normalizeObservedInstagramId(value) {
+    if (typeof value === 'number' && (!Number.isSafeInteger(value) || value <= 0)) return '';
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    const id = String(value).trim();
+    return /^[1-9]\d{0,29}$/.test(id) ? id : '';
+  }
+
+  function captureIdentityMetadata(candidate, previous) {
+    const observed = normalizeObservedInstagramId(candidate?.instagramId);
+    const prior = normalizeObservedInstagramId(previous?.instagramId);
+    if (candidate?.instagramIdAmbiguous === true || previous?.instagramIdAmbiguous === true
+      || (observed && prior && observed !== prior)) return { instagramIdAmbiguous: true };
+    return observed || prior ? { instagramId: observed || prior } : {};
+  }
+
   function normalizeAccounts(value) {
     const accounts = new Map();
     for (const candidate of (Array.isArray(value) ? value : []).slice(0, 25_000)) {
@@ -5035,6 +5431,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       if (!username) continue;
       accounts.set(username, {
         username,
+        ...captureIdentityMetadata(candidate, accounts.get(username)),
         profileUrl: `https://www.instagram.com/${username}/`,
         displayName: safeText(candidate?.displayName),
         source: CAPTURE_ACCOUNT_SOURCES.has(candidate?.source)
@@ -5200,6 +5597,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       schemaVersion: 6,
       capture: {
         subjectUsername: normalizeUsername(value.capture?.subjectUsername),
+        ...(normalizeObservedInstagramId(value.capture?.subjectInstagramId)
+          ? { subjectInstagramId: normalizeObservedInstagramId(value.capture.subjectInstagramId) } : {}),
         followers: normalizeAccounts(value.capture?.followers),
         following: normalizeAccounts(value.capture?.following),
         capturedAt: {
@@ -7094,6 +7493,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       const nextCapture = {
         ...stateDefaults().capture,
         subjectUsername: result.username,
+        ...(normalizeObservedInstagramId(result.subjectInstagramId)
+          ? { subjectInstagramId: normalizeObservedInstagramId(result.subjectInstagramId) } : {}),
         followers: normalizeAccounts(result.followers),
         following: normalizeAccounts(result.following),
         capturedAt: { followers: result.capturedAt, following: result.capturedAt },
