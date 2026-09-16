@@ -28,6 +28,29 @@ test('per-run userscript speed changes do not fall through to file-input clearin
   assert.match(userscript, /event\.target\.matches\('\[data-role="unsend-scope"\], \[data-role="unsend-count"\], \[data-role="unsend-speed"\]'\)[\s\S]*?renderDmSummary\(\);\s*return;/);
 });
 
+test('userscript fields group labels tightly without shrinking controls or crowding disclosures', () => {
+  assert.match(userscript, /\.field \{[^}]+gap: 8px;[^}]+margin: 16px 0/);
+  assert.match(userscript, /\.field label \{ display: block; line-height: 20px; \}/);
+  assert.match(userscript, /input:not\(\[type="range"\]\):not\(\[type="checkbox"\]\), select, textarea \{ min-height: 44px/);
+  assert.match(userscript, /\.view > \.settings-inline \{ margin-bottom: 16px; \}/);
+  assert.match(userscript, /\.settings-section \.settings-inline > :not\(summary\) \{ margin-top:16px; \}/);
+  assert.match(userscript, /\.setting-option \{ display:grid; gap:4px; \}/);
+});
+
+test('userscript cleanup copy stays concise and unavailable reactions remain disabled', () => {
+  assert.match(userscript, /for="insta-toolbox-unsend-scope">Messages<\/label>/);
+  assert.match(userscript, /for="insta-toolbox-default-limit">Message count<\/label>/);
+  assert.match(userscript, /data-cleanup-preference="removeOwnReactions"[^>]+disabled> Remove my reactions<\/label><p[^>]+>Not available yet<\/p>/);
+  assert.match(userscript, /label: 'Messages', value: scope/);
+  assert.match(userscript, /conversation or message selection changed after review/);
+  assert.doesNotMatch(userscript, /Remove my reactions afterward|Own-reaction removal has not been verified|<strong>DM Unsend\.<\/strong>|>Scope<\/label>|>Default N<\/label>/);
+});
+
+test('userscript disclosure text paints with its selected theme and system contrast colors', () => {
+  assert.match(userscript, /\.settings-inline > summary \{[^}]+color: var\(--insta-toolbox-text, #1b211c\); -webkit-text-fill-color: currentColor;/);
+  assert.match(userscript, /@media \(forced-colors: active\) \{ \.settings-inline > summary \{ color: CanvasText; \} \}/);
+});
+
 test('tool views leave configurable panel blur to the shell', () => {
   assert.match(shell, /backdrop-filter: blur\(var\(--insta-toolbox-backdrop-blur\)\)/);
   assert.match(shell, /data-blur="none"[^}]+--insta-toolbox-backdrop-blur: 0px/);

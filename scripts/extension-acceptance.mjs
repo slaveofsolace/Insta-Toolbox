@@ -1295,7 +1295,7 @@ function assertUserscriptConfirmationLayout(review, label) {
     facts: [
       ['Action', 'Permanently unsend messages'],
       ['Conversation', 'Thread 123'],
-      ['Scope', 'All messages you sent'],
+      ['Messages', 'All messages you sent'],
       ['Speed', 'Standard'],
     ],
     focusedRole: 'confirm-cancel',
@@ -1459,6 +1459,135 @@ async function acceptUserscriptSettings(webContents) {
     shadow.querySelector('[data-action="close-settings"]').click();
   })()`, true);
   console.log('Accepted userscript computed theme/density, additive defaults, and separate layout/appearance resets.');
+}
+
+async function acceptUserscriptFieldSpacing(webContents, baseUrl) {
+  await withTimeout(webContents.loadURL(`${baseUrl}/userscript-fixture.html`), 'field-spacing fixture');
+  await waitForPageValue(webContents,
+    `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'field-spacing shell');
+  await webContents.executeJavaScript('globalThis.fixtureSetMessages()', true);
+  await waitForPageValue(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="unsend-primary"]')?.disabled === false`,
+    'field-spacing conversation ready');
+  const screenshotRoot = path.join(resultsRoot, 'userscript-spacing');
+  await mkdir(screenshotRoot, { recursive: true });
+  const evidence = [];
+  const viewports = [
+    { label: 'desktop-dark', width: 1200, height: 800, zoom: 1, theme: 'dark' },
+    { label: 'desktop-light', width: 1200, height: 800, zoom: 1, theme: 'light' },
+    { label: 'narrow', width: 320, height: 720, zoom: 1, theme: 'dark' },
+    { label: 'short', width: 900, height: 500, zoom: 1, theme: 'dark' },
+    { label: 'zoom-200', width: 1280, height: 900, zoom: 2, theme: 'dark' },
+    { label: 'forced-colors', width: 900, height: 700, zoom: 1, theme: 'dark', forcedColors: true },
+  ];
+  webContents.debugger.attach('1.3');
+  try {
+    for (const viewport of viewports) {
+      webContents.setZoomFactor(1);
+      await resizeViewport(webContents, viewport);
+      webContents.setZoomFactor(viewport.zoom);
+      await webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+        features: [
+          { name: 'forced-colors', value: viewport.forcedColors ? 'active' : 'none' },
+          { name: 'prefers-reduced-motion', value: 'reduce' },
+        ],
+      });
+      for (const state of ['messages', 'account', 'settings']) {
+        await webContents.executeJavaScript(`(() => {
+          const s = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+          s.querySelector('[data-action="close-settings"]').click();
+          const theme = s.querySelector('[data-preference="theme"]');
+          theme.value = ${JSON.stringify(viewport.theme)};
+          theme.dispatchEvent(new Event('change', { bubbles: true }));
+          if (${JSON.stringify(state)} === 'settings') {
+            s.querySelector('[data-action="open-settings"]').click();
+            s.querySelector('[data-cleanup-preference="messageScope"]').closest('details').open = true;
+            const limit = s.querySelector('[data-cleanup-preference="messageScope"]');
+            limit.value = 'newest'; limit.dispatchEvent(new Event('change', { bubbles: true }));
+            s.querySelector('.settings-dialog').scrollTop = s.querySelector('[data-cleanup-preference="speed"]').offsetTop - 80;
+          } else {
+            s.querySelector('[data-view="' + ${JSON.stringify(state)} + '"]').click();
+            if (${JSON.stringify(state)} === 'messages') {
+              s.querySelector('[data-role="unsend-plan"]').closest('details').open = true;
+              const selection = s.querySelector('[data-role="unsend-scope"]');
+              selection.value = 'newest'; selection.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            s.querySelector('.scroll').scrollTop = 0;
+          }
+          return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        })()`, true);
+        await waitForPageValue(webContents, `(() => {
+          const host = document.querySelector('#insta-toolbox-userscript-root');
+          const expected = ${JSON.stringify(viewport.theme === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)')};
+          return host.dataset.themePreference === ${JSON.stringify(viewport.theme)}
+            && (${Boolean(viewport.forcedColors)} || getComputedStyle(host.shadowRoot.querySelector('.panel')).color === expected);
+        })()`, `${viewport.label}/${state}: saved theme rendered`);
+        const metrics = await webContents.executeJavaScript(`(() => {
+          const s = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+          const area = ${JSON.stringify(state)} === 'settings' ? s.querySelector('.settings-dialog')
+            : s.querySelector('[data-panel="' + ${JSON.stringify(state)} + '"]');
+          const fields = [...area.querySelectorAll('.field')].flatMap(field => {
+            const label = field.querySelector('label[for]');
+            const control = label && s.getElementById(label.htmlFor);
+            if (!control || !control.getClientRects().length || !label.getClientRects().length) return [];
+            const lr = label.getBoundingClientRect(), cr = control.getBoundingClientRect();
+            if (control.type === 'range') return [];
+            return [{ name: label.textContent.trim(), gap: cr.top - lr.bottom, height: cr.height }];
+          });
+          const scopedFields = ${JSON.stringify(state)} === 'settings'
+            ? [...s.querySelector('[data-cleanup-preference="messageScope"]').closest('details').querySelectorAll('.field')]
+            : ${JSON.stringify(state)} === 'messages' ? [...s.querySelector('[data-role="unsend-plan"]').querySelectorAll('.field')] : [];
+          const fieldGaps = scopedFields.slice(1).map((field, index) => field.getBoundingClientRect().top - scopedFields[index].getBoundingClientRect().bottom);
+          const reaction = s.querySelector('[data-cleanup-preference="removeOwnReactions"]');
+          const rect = area.getBoundingClientRect();
+          const systemColor = document.createElement('span');
+          systemColor.style.color = 'LinkText';
+          document.body.append(systemColor);
+          const linkText = getComputedStyle(systemColor).color;
+          systemColor.remove();
+          return { fields, fieldGaps, overflow: area.scrollWidth - area.clientWidth,
+            width: innerWidth, right: rect.right, left: rect.left,
+            reactionDisabled: reaction.disabled, reactionLabel: reaction.closest('label').textContent.trim(),
+            textColor: getComputedStyle(area).color, linkText,
+            summaries: [...area.querySelectorAll('summary')].filter(e => e.getClientRects().length)
+              .map(e => ({ text: e.textContent.trim(), color: getComputedStyle(e).color,
+                textFill: getComputedStyle(e).webkitTextFillColor })),
+            reducedMotion: getComputedStyle(s.querySelector('.panel')).animationName,
+            liveRegions: s.querySelectorAll('[aria-live]').length };
+        })()`, true);
+        assert.ok(metrics.fields.length > 0, `${state}: no visible fields`);
+        assert.ok(metrics.fields.every(field => field.gap >= 4 && field.gap <= 8.1), `${state}: label gap ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.fields.every(field => field.height >= 44), `${state}: undersized control ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.fieldGaps.every(gap => gap >= 12 && gap <= 24), `${state}: stacked field gaps ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.overflow <= 1 && metrics.left >= -1 && metrics.right <= metrics.width + 1,
+          `${viewport.label}/${state}: horizontal overflow ${JSON.stringify(metrics)}`);
+        assert.equal(metrics.reactionDisabled, true);
+        assert.equal(metrics.reactionLabel, 'Remove my reactions');
+        const expectedSummaryColor = viewport.theme === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)';
+        assert.ok(metrics.summaries.every(summary => viewport.forcedColors
+          ? summary.color === metrics.textColor || summary.color === metrics.linkText
+          : summary.color === expectedSummaryColor),
+          `${viewport.label}/${state}: disclosure text color ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.summaries.every(summary => summary.textFill === summary.color),
+          `${viewport.label}/${state}: disclosure text fill ${JSON.stringify(metrics)}`);
+        assert.equal(metrics.liveRegions, 1);
+        assert.equal(metrics.reducedMotion, 'none');
+        assert.ok(metrics.fields.every(field => !/scope|default n/i.test(field.name)), 'technical field labels remain');
+        const filename = `${viewport.label}-${state}.png`;
+        await withTimeout(new Promise(resolve => {
+          webContents.once('paint', resolve);
+          webContents.invalidate();
+        }), `${viewport.label}/${state}: fresh paint`);
+        await writeFile(path.join(screenshotRoot, filename), (await webContents.capturePage()).toPNG());
+        evidence.push({ viewport, state, filename, metrics });
+      }
+    }
+  } finally {
+    webContents.setZoomFactor(1);
+    if (webContents.debugger.isAttached()) webContents.debugger.detach();
+  }
+  await writeFile(path.join(screenshotRoot, 'metrics.json'), `${JSON.stringify(evidence, null, 2)}\n`);
+  console.log(`Accepted userscript field spacing and plain labels in ${evidence.length} rendered states.`);
 }
 
 async function acceptToolboxLayout(webContents, baseUrl) {
@@ -2335,7 +2464,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     facts: [
       ['Action', 'Permanently unsend messages'],
       ['Conversation', 'Thread 123'],
-      ['Scope', 'All messages you sent'],
+      ['Messages', 'All messages you sent'],
       ['Speed', 'Standard'],
     ],
     focusedRole: 'confirm-cancel',
@@ -2708,6 +2837,17 @@ async function run() {
     const pwaAddress = await listen(pwaServer);
     const overlayBaseUrl = `http://127.0.0.1:${overlayAddress.port}`;
     const pwaBaseUrl = `http://127.0.0.1:${pwaAddress.port}/`;
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_SPACING_ONLY === '1') {
+      await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
+      assert.deepEqual(overlay.problems, [], 'userscript field-spacing browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_LAYOUT_ONLY === '1') {
+      await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);
+      await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
+      assert.deepEqual(overlay.problems, [], 'userscript layout fixture browser problems');
+      return;
+    }
     if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_MEDIA_ONLY === '1') {
       for (const groupStyle of [false, true]) {
         await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
@@ -2744,6 +2884,7 @@ async function run() {
     await acceptThreadUnsendStop(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsend(overlay.window.webContents, overlayBaseUrl);
     await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);
+    await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptPartialAccountReview(overlay.window.webContents, overlayBaseUrl);
     await acceptBackgroundComparison(background);
