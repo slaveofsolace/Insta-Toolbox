@@ -103,6 +103,16 @@
     globalThis.GM_setValue = (key, value) => {
       globalThis.fixtureGmStore[key] = structuredClone(value);
     };
+    globalThis.fixtureManagerTab = partialRunFixture ? {
+      instaToolboxCheckerDraftV1: {
+        schemaVersion: 6,
+        capture: structuredClone(globalThis.fixtureGmStore.instaToolboxUserscriptStateV2.capture),
+      },
+    } : {};
+    globalThis.GM_getTab = (callback) => callback(structuredClone(globalThis.fixtureManagerTab));
+    globalThis.GM_saveTab = (value) => {
+      globalThis.fixtureManagerTab = structuredClone(value);
+    };
     globalThis.fixtureDownloads = [];
     const fixtureBlobs = new Map();
     let fixtureBlobId = 0;
@@ -146,6 +156,68 @@
         anchor.textContent = typeof value === 'string' ? username : value.displayName || username;
         dialog.append(anchor);
       }
+    };
+    globalThis.fixtureSetMediaMessages = ({ groupStyle = false, uncertain = false } = {}) => {
+      history.replaceState({}, '', '/direct/t/123/');
+      globalThis.fixtureUnsentCount = 0;
+      globalThis.fixtureDmClickCount = 0;
+      const main = document.querySelector('main');
+      main.innerHTML = `<section data-pagelet="IGDMessagesList"><header><h1>${groupStyle ? 'Fixture group' : 'studio_friend'}</h1></header><div data-fixture-rows></div></section>`;
+      const rows = main.querySelector('[data-fixture-rows]');
+      function addMessage(sent) {
+        const row = document.createElement('div');
+        row.setAttribute('role', 'row');
+        row.dataset[sent ? 'fixtureSent' : 'fixtureReceived'] = 'true';
+        row.style.cssText = 'display:flex;max-width:100%;padding:4px;margin:8px 0;background:transparent;';
+        row.style.flexDirection = groupStyle && sent ? 'column' : 'row';
+        row.style.justifyContent = groupStyle && sent ? 'flex-start' : sent ? 'flex-end' : 'flex-start';
+        if (groupStyle && sent) {
+          const spacer = document.createElement('div');
+          spacer.setAttribute('aria-hidden', 'true');
+          row.append(spacer);
+        }
+        const alignment = document.createElement('div');
+        alignment.style.cssText = 'display:flex;flex-direction:row;justify-content:flex-end;width:100%;';
+        const card = document.createElement('div');
+        card.style.cssText = 'padding:8px;background:#eee;border-radius:8px;min-width:180px;';
+        const media = document.createElement('div');
+        media.setAttribute('role', 'presentation');
+        const thumbnail = document.createElement('img');
+        thumbnail.alt = 'Shared reel';
+        thumbnail.width = 40; thumbnail.height = 40;
+        thumbnail.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="#888"/></svg>');
+        media.append(thumbnail);
+        const menuButton = document.createElement('button');
+        menuButton.type = 'button';
+        menuButton.setAttribute('aria-label', 'More options');
+        menuButton.textContent = 'More';
+        card.append(media, menuButton); alignment.append(card); row.append(alignment); rows.append(row);
+        menuButton.addEventListener('click', () => {
+          globalThis.fixtureDmClickCount += 1;
+          if (!sent) throw new Error('Received reel was targeted');
+          const menu = document.createElement('div');
+          menu.setAttribute('role', 'menu');
+          menu.style.cssText = 'position:fixed;top:160px;left:24px;z-index:20;background:white;padding:16px;';
+          const choice = document.createElement('button'); choice.textContent = 'Unsend';
+          menu.append(choice); document.body.append(menu);
+          choice.addEventListener('click', () => {
+            globalThis.fixtureDmClickCount += 1;
+            menu.remove();
+            const dialog = document.createElement('div'); dialog.setAttribute('role', 'dialog');
+            dialog.style.cssText = 'position:fixed;top:160px;left:24px;z-index:20;background:white;padding:16px;';
+            const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+            const confirm = document.createElement('button'); confirm.textContent = 'Unsend';
+            cancel.addEventListener('click', () => dialog.remove());
+            confirm.addEventListener('click', () => {
+              globalThis.fixtureDmClickCount += 1;
+              dialog.remove();
+              if (!uncertain) { row.remove(); globalThis.fixtureUnsentCount += 1; }
+            });
+            dialog.append(cancel, confirm); document.body.append(dialog);
+          });
+        });
+      }
+      addMessage(false); addMessage(true); addMessage(true);
     };
     globalThis.fixtureSetMessages = () => {
       history.replaceState({}, '', '/direct/t/123/');

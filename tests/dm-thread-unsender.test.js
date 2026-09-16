@@ -1118,6 +1118,37 @@ test('a clipped sent-message row is centered once before hover', async () => {
   assert.equal(scrollCalls, 1);
 });
 
+test('newest scope reveals its clipped target instead of choosing an older visible message', async () => {
+  const runner = loadRunner();
+  const documentElement = { parentElement: null };
+  const ownerDocument = { documentElement, defaultView: {
+    getComputedStyle: (element) => element.style || {}, innerHeight: 800, innerWidth: 1280,
+  } };
+  const scroller = Object.assign(new EventTarget(), {
+    clientHeight: 200, scrollHeight: 200, scrollTop: 0, children: [],
+    ownerDocument, parentElement: documentElement,
+    style: { overflowX: 'hidden', overflowY: 'auto' },
+    getBoundingClientRect: () => ({ top: 100, bottom: 300, left: 0, right: 600, height: 200, width: 600 }),
+  });
+  let exposed = false;
+  const makeRow = (newest) => ({
+    children: [], ownerDocument, parentElement: scroller, isConnected: true,
+    getAttribute: (name) => name === 'data-sent-by-me' ? 'true' : '',
+    hasAttribute: () => false, querySelector: () => ({}),
+    getBoundingClientRect: () => {
+      const top = newest && !exposed ? 340 : newest ? 220 : 150;
+      return { top, bottom: top + 40, height: 40, left: 20, right: 300, width: 280 };
+    },
+    scrollIntoView: () => { assert.equal(newest, true); exposed = true; },
+  });
+  const older = makeRow(false);
+  const newest = makeRow(true);
+  scroller.children.push(older, newest);
+  const selected = await runner.__test.nextSentRow({ scroller }, new AbortController().signal, 'newest');
+  assert.equal(selected, newest);
+  assert.equal(exposed, true);
+});
+
 test('whole-scroll streaming finds sent rows beyond replaced virtual windows', async () => {
   const runner = loadRunner();
 

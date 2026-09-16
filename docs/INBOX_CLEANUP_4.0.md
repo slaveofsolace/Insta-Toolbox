@@ -6,6 +6,14 @@ The browser-neutral coordinator in `extension/inbox-coordinator.js`, read-only l
 
 The existing single-conversation runner remains the only live DM execution path. This change does not request new permissions, open tabs, collect sessions, or perform account actions.
 
+`extension/inbox-worker.js` now connects coordinator admission to the existing
+runner through an optional per-message adapter. It verifies the reviewed cutoff
+and current identity before dispatch, checks authority at native action
+boundaries, and records only verified outcomes. This connection passes unit tests
+and a real hidden Chromium fixture. Production context inspection, runtime
+registration, native discovery, and managed-tab orchestration are still missing;
+the adapter is not an enabled Ghost mode.
+
 ## Source audit
 
 | Surface | Existing runtime | Missing integration |
@@ -23,9 +31,9 @@ Tampermonkey documents tab-opening and storage-listener APIs, but their existenc
 ## Implemented coordinator contract
 
 - A review freezes the account ID, deduplicated ordered thread IDs, message scope/limit, speed, own-reaction choice, worker count, reviewed time, expiry, discovery sections, and discovery completeness. Unknown settings are not copied into state. Prototype-backed records are rejected.
-- One or two workers receive contiguous groups of stable thread IDs. Worker count is a tab-pool planning limit, not mutation concurrency. The default is one.
+- One to five workers receive stable thread assignments. Contiguous groups remain the default; optional fixed batches wait for the current wave to settle. The native tab-pool adapter still supports only one or two tabs. Additional workers are not enabled in the product.
 - Claims are serialized within one coordinator instance. A worker holds one thread lease. Lease identity and generation are memory-only; copied or stale leases fail.
-- All mutation callbacks share one serial queue. An account-level next-action deadline applies across workers. The runtime supplies the already-validated Standard/Fast pacing contract; this core does not define a second pacing policy.
+- Mutation admission shares one serial queue and account-level next-action deadline. Execution remains serial by default. Optional overlapping execution requires a separately reviewed concurrency setting and a trusted, expiring runtime capability; no production runtime provides that capability yet. See [Batching](INBOX_BATCHING_4.0.md).
 - The adapter must prove the current account, exact thread, exact target, ownership, and reviewed message boundary before dispatch. Received-message ownership cannot be inferred from a reaction. Reactions require their own proof and approved scope.
 - A pending marker is durably saved before dispatch. Storage failure stops execution. Only verified outcomes increment separate message/reaction counters.
 - Stop/Pause revoke authority immediately, including while the queue is awaiting inspection. An already dispatched operation settles as verified or uncertain; Stop never invents a zero-removal outcome.
@@ -94,7 +102,13 @@ Current blocker: `content-instagram.js` exposes session restrictions but does no
 
 An inactive but loaded Instagram tab is different from a frozen, discarded, closed, or expired-session tab. The planned runtime must allow ordinary tab switching without focus stealing, while loss of usable page evidence produces a paused or needs-attention state. Browser restart and computer sleep do not preserve action authority. No visibility spoofing, fake audio, forced focus, global browser-policy changes, or offscreen-document substitution is used.
 
-The core tests elapsed expiry after a simulated background delay, not actual browser scheduling. Actual Chrome/Firefox/Tampermonkey inactive-tab execution remains unverified. No new background guarantee is enabled by this module.
+`pnpm run qa:background` exercises the actual runner in a hidden Chromium page
+with background throttling enabled. Its eight cases cover Standard/Fast, Stop,
+expiry, native page freeze, verified and uncertain actions settling after freeze,
+and the coordinator/worker/runner connection. They preserve received messages,
+never steal focus, and never restore consumed authority after resume. Account
+identity and tab admission are controlled fixture inputs, not authenticated
+Instagram evidence. Chrome/Firefox/Tampermonkey acceptance remains separate.
 
 ## Tests
 

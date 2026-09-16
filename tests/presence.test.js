@@ -16,7 +16,7 @@ test('normalizes handles without accepting URLs or routes', () => {
   for (const x of ['direct', 'https://example.com', '', '<script>', 'a/b']) assert.throws(() => normalizeHandle(x));
 });
 test('imports cannot enable live actions or bypass review', () => {
-  const p = normalizeProfile(profile({ liveEnabled: true, reviewRequired: false, keepMutuals: false, password: 'not-allowed' }));
+  const p = normalizeProfile(profile({ liveEnabled: true, reviewRequired: false, keepMutuals: false, password: true }));
   assert.equal(p.liveEnabled, false); assert.equal(p.reviewRequired, true); assert.equal(p.keepMutuals, true);
   assert.equal('password' in p, false); assert.ok(Object.isFrozen(p.topics));
 });
