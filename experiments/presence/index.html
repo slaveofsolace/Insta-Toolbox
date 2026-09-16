@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Presence · Insta Toolbox concept</title>
+  <link rel="stylesheet" href="./presence.css">
+  <script type="module" src="./presence.js"></script>
+</head>
+<body>
+  <header class="masthead"><a class="brand" href="./index.html">IT <span>Insta Toolbox</span></a><button id="theme" aria-label="Switch color theme">Dark theme</button></header>
+  <main>
+    <section class="intro" aria-labelledby="intro-title">
+      <div class="spirit-mark" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M14 48V29a18 18 0 0 1 36 0v19l-9-5-9 6-9-6z"/><path d="M25 27v4m14-4v4M27 37q5 4 10 0"/></svg></div>
+      <h1 id="intro-title">Presence.<br><span>Live Like Me.</span></h1>
+      <p class="lead">Your interests. Your boundaries.<br>A little more presence, on your terms.</p>
+      <p class="concept-note">Interactive concept · synthetic accounts only.<br>No Instagram connection or live actions.</p>
+      <div class="siblings"><div><strong>Presence</strong><span>Build a routine that feels like you.</span></div><button id="ghost-info">Ghost <span>Keep cleanup separate</span></button></div>
+      <details class="roadmap"><summary>What “Be Me” will mean</summary><p>A reviewed routine, a visible activity history, and a Stop control. Discovery, live sessions, likes, and background scheduling still need browser integration. Nothing here claims to be running your account.</p></details>
+    </section>
+    <section class="toolbox" aria-labelledby="panel-title">
+      <header class="panel-header"><div><h2 id="panel-title">Your next session</h2><p id="account-label">Demo account · not connected</p></div><span class="status-dot" aria-hidden="true"></span></header>
+      <form id="routine-form">
+        <fieldset><legend>Choose your routine</legend><div class="routine-grid">
+          <label><input type="radio" name="goal" value="discover" checked><span><strong>Find my people</strong><small>Discover through your interests</small></span></label>
+          <label><input type="radio" name="goal" value="maintain"><span><strong>Stay connected</strong><small>Review people who follow you</small></span></label>
+          <label><input type="radio" name="goal" value="curate"><span><strong>Make room</strong><small>Revisit managed follows</small></span></label>
+        </div></fieldset>
+        <label class="field">Your interests<input id="topics" name="topics" value="photography, travel" maxlength="300" autocomplete="off"><small>Comma-separated. Matches are explained in the plan.</small></label>
+        <div class="field-pair"><label class="field">Session allowance<input id="limit" name="limit" type="number" min="0" max="50" value="12" required><small>Your planning ceiling, not a platform limit.</small></label><label class="field">Revisit after<input id="wait-days" name="waitDays" type="number" min="1" max="365" value="7" required><small>Elapsed days after a verified follow.</small></label></div>
+        <details class="advanced"><summary>Boundaries and schedule</summary><div class="details-body">
+          <label class="field">Avoid these interests<input id="excluded" name="excluded" maxlength="300" placeholder="e.g. promotions" autocomplete="off"></label>
+          <div class="field-pair"><label class="field">From<input id="window-start" type="time" value="00:00" required></label><label class="field">Until<input id="window-end" type="time" value="23:59" required></label></div>
+          <p class="hint" id="timezone"></p>
+          <label class="check"><input id="skip-private" type="checkbox" checked>Skip private accounts</label>
+          <label class="check"><input id="protect-demo" type="checkbox" checked>Keep demo_friend on my keep list</label>
+          <p class="hint">Mutuals and pre-existing follows stay protected. Repeated follow/unfollow cycles are not planned.</p>
+        </div></details>
+        <div class="compose-actions"><button class="primary" type="submit">Build my plan</button><button id="save-profile" type="button">Save preferences</button></div>
+      </form>
+      <section class="review" aria-labelledby="review-title" hidden>
+        <div class="section-heading"><h3 id="review-title">Review your plan</h3><button id="export-plan" class="text-button">Export</button></div>
+        <p id="plan-summary" class="hint"></p><div id="decisions"></div>
+        <div class="preview-controls"><button id="start-preview" class="primary">Preview session</button><button id="pause-preview" hidden>Pause</button><button id="stop-preview" class="danger" hidden>Stop</button></div>
+        <progress id="progress" value="0" max="1" aria-label="Simulated session progress" hidden></progress>
+      </section>
+      <footer class="panel-footer"><p id="status" role="status" aria-live="polite">Choose a routine to see what it would do.</p><button id="reset" class="text-button">Reset concept</button></footer>
+    </section>
+  </main>
+  <dialog id="ghost-dialog" aria-labelledby="ghost-title"><h2 id="ghost-title">A presence. A clean slate.</h2><p>Presence plans your account activity. Ghost handles reviewed inbox cleanup. They must share one account coordinator, never overlapping live actions.</p><p>This concept can pause a session preview, but it cannot start Ghost or remove any messages.</p><button id="close-ghost" class="primary">Back to Presence</button></dialog>
+</body>
+</html>
