@@ -48,6 +48,7 @@ const popupCss = await readFile(
 
 test('Instagram loads the inspector before the visible sidecar', () => {
   assert.deepEqual(instagramEntry.js, [
+    'cleanup-settings.js',
     'action-confirmation.js',
     'action-labels.js',
     'content-instagram.js',
@@ -71,7 +72,7 @@ test('Instagram loads the inspector before the visible sidecar', () => {
     'overlay/views/workspace.js',
     'instagram-overlay.js',
   ]);
-  assert.equal(manifest.version, '3.1.12');
+  assert.equal(manifest.version, '4.0.0');
 });
 
 test('sidecar migrates the visible capture and manual queue workflow', () => {
@@ -120,7 +121,7 @@ test('sidecar exposes every tool family and accessibility controls', () => {
   assert.match(overlay, /data-insta-toolbox-preference="blur"/);
   assert.match(overlay, /data-insta-toolbox-preference="launcherSize"/);
   assert.match(overlay, /data-insta-toolbox-role="settings-dialog"/);
-  assert.match(overlay, /Customize Insta Toolbox/);
+  assert.match(overlay, /id="insta-toolbox-settings-title">Settings/);
   assert.match(overlay, /insta-toolbox-settings-dialog::backdrop/);
   assert.match(overlay, /event\.target === event\.currentTarget\) setSettingsOpen\(false\)/);
   assert.match(overlay, /\.insta-toolbox-range \{[^}]*accent-color: var\(--insta-toolbox-signal\)/);

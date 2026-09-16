@@ -1,6 +1,6 @@
 # Security review
 
-Last reviewed: 2026-09-07
+Last reviewed: 2026-09-16
 
 ## Boundaries
 
@@ -37,7 +37,7 @@ The userscript may retain the original run expiry across navigation through tab-
 
 ## DM Unsend
 
-Thread-wide Unsend binds a versioned plan to the exact open thread, scope (`all`, `newest`, or `oldest`), optional finite limit, digest, and expiry. After one confirmation it performs one streaming traversal; a read-only mounted-row count is not authorization.
+Thread-wide Unsend binds a versioned plan to the exact open thread, scope (`all`, `newest`, or `oldest`), speed, optional finite limit, digest, and expiry. After one confirmation it performs one streaming traversal; a read-only mounted-row count is not authorization. Version 3 plans bind Standard/Fast into the digest; compatible version 2 plans remain Standard only.
 
 Before each removal the runner rechecks:
 
@@ -49,6 +49,12 @@ Before each removal the runner rechecks:
 - verified message removal in the same thread.
 
 The traversal handles virtualized rows, normal and reversed layouts, scroller replacement, DOM shrinkage, bounded retries, and stable-empty exhaustion. Successful actions use adaptive one-to-two-second pacing. The runner records only verified removals and never reports the mounted DOM window as the conversation total.
+
+Fast removes an avoidable menu-readiness delay without relaxing pacing, ownership, or postcondition checks. Nested right-aligned controls cannot establish message ownership; contradictory ownership evidence stops preflight. Changed preview text, temporary loading states, recycled row identities, and optimistic removals that revert are not success evidence. Removal must remain proven through the bounded settlement window.
+
+Page freeze and page exit revoke current action authority. Already-dispatched removals settle as verified or uncertain; the next mutation is not dispatched. Resuming the page does not restore authority. Ordinary focus changes do not themselves revoke a run, but reliable inactive-tab execution still needs separate acceptance. Waits release listeners, observers, and timers on settlement.
+
+Inbox coordination modules are not registered for live execution. Their fixtures cover frozen inventories, serial scheduling, worker fencing, persistence failures, and uncertain acknowledgments. Those results do not establish a native discovery adapter, historical message cutoff, or crash-safe external execution. Own-reaction cleanup also remains disabled until the native ownership and removal interaction is verified.
 
 Visible DM evidence is scoped to the exact open thread. Navigating to the inbox, feed, a profile, or a different thread hides and clears previously exposed candidates.
 
@@ -65,11 +71,11 @@ The client uses browser-managed credentials without reading them, a fixed applic
 
 Results replace Followers and Following atomically and are not sent through the extension bridge. Instagram can change these unsupported web routes without notice.
 
-Comparisons, comparison downloads, and non-mutual action sources require both lists to be verified and complete. Partial rows remain available as separate raw captures, not inferred non-mutuals. The dialog fallback accumulates overlapping windows rather than jumping past recycled rows. It requires an exact profile count; a quiet or motionless list is not enough. Schema 6 retains earlier rows but clears unproven completion from older dialog captures. Existing count-verified authenticated captures remain usable.
+Provenance-verified partial comparisons remain visible and downloadable with uncertainty and “Not found” wording. They may supply reviewed Follow / Unfollow targets under the existing 3.1.12 contract, with uncertainty bound into review and confirmation; missing records are not presented as confirmed relationship facts. A quiet or motionless list does not establish completion. Schema 6 retains earlier rows but clears unproven completion from older dialog captures. Existing count-verified authenticated captures remain usable.
 
 ## Local app and web delivery
 
-The PWA service worker uses network-first same-origin GET handling, caches only successful same-origin responses, bypasses the HTTP cache for service-worker update checks, and removes earlier cache generations. Version 3.1 uses `insta-toolbox-v3112`.
+The PWA service worker uses network-first same-origin GET handling, caches only successful same-origin responses, bypasses the HTTP cache for service-worker update checks, and removes earlier cache generations. Version 4.0 uses `insta-toolbox-v400`; persisted workspace and settings keys are unchanged.
 
 The loopback development server accepts only loopback Host headers and serves an explicit asset allowlist. Repository metadata, tests, documentation, and Git internals are not served. Framing protection is sent as HTTP headers because `frame-ancestors` is ineffective in a meta policy.
 

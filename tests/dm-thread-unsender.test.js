@@ -412,7 +412,7 @@ test('thread runner resolves one compact-drawer thread and gives the exact route
   assert.equal(ambiguousRunner.__test.currentThreadId(), '');
 });
 
-test('sent-message ownership requires the message row or its descendants to align right', () => {
+test('sent-message ownership excludes branched descendant alignment', () => {
   const runner = loadRunner();
   const right = { children: [], style: { justifyContent: 'flex-end' } };
   const left = { children: [], style: { justifyContent: 'flex-start' } };
@@ -422,7 +422,8 @@ test('sent-message ownership requires the message row or its descendants to alig
     style: { justifyContent: 'normal' },
   };
   const view = { getComputedStyle: (element) => element.style };
-  assert.equal(runner.__test.sentByCurrentUser(row, view), true);
+  assert.equal(runner.__test.sentByCurrentUser(row, view), false);
+  assert.equal(runner.__test.sentByCurrentUser({ ...row, children: [right] }, view), true);
   assert.equal(runner.__test.sentByCurrentUser({ ...row, children: [left] }, view), false);
   assert.equal(runner.__test.sentByCurrentUser({ ...row, getAttribute: () => 'false' }, view), false);
   assert.equal(runner.__test.sentByCurrentUser({ ...row, getAttribute: () => 'true' }, view), true);
@@ -1227,7 +1228,7 @@ test('whole-scroll streaming finds sent rows beyond replaced virtual windows', a
   await exercise(true);
 });
 
-test('Unsend requires message-row change instead of treating a hidden hover control as success', () => {
+test('Unsend requires a recognized placeholder or removal, not merely changed text', () => {
   const runner = loadRunner();
   const view = { getComputedStyle: () => ({}) };
   const leaf = (text) => ({
@@ -1238,20 +1239,26 @@ test('Unsend requires message-row change instead of treating a hidden hover cont
     textContent: text,
   });
   let text = 'Disposable message';
+  const parent = { isConnected: true, children: [], querySelectorAll: () => [] };
   const row = {
     isConnected: true,
-    querySelector: () => ({}),
-    querySelectorAll: () => [leaf(text)],
+    parentElement: parent,
+    querySelector: (selector) => selector.includes('[role="none"]') ? ({}) : null,
+    querySelectorAll: (selector) => selector === '[dir="auto"]' ? [leaf(text)] : [],
   };
+  parent.children = [row];
   const before = runner.__test.removalEvidence(row);
+  assert.equal(runner.__test.removalProven(row, before), false);
+  text = 'Edited disposable message';
   assert.equal(runner.__test.removalProven(row, before), false);
   text = 'You unsent a message';
   assert.equal(runner.__test.removalProven(row, before), true);
   row.isConnected = false;
+  parent.children = [];
   assert.equal(runner.__test.removalProven(row, before), true);
 });
 
-test('thread-wide Unsend requires an untampered v2 thread-specific reviewed plan', async () => {
+test('thread-wide Unsend requires an untampered v3 thread-specific reviewed plan', async () => {
   const runner = loadRunner();
   const result = await runner.start();
   assert.equal(result.status, 'error');
@@ -1263,7 +1270,8 @@ test('thread-wide Unsend requires an untampered v2 thread-specific reviewed plan
     detectedCount: 7,
     expiresAt: Date.now() + 60_000,
   });
-  assert.equal(all.version, 2);
+  assert.equal(all.version, 3);
+  assert.equal(all.speed, 'standard');
   assert.equal(all.limit, null);
   assert.equal(all.scope, 'all');
   assert.equal(all.detectedCount, 7);
@@ -1315,7 +1323,7 @@ test('thread-wide Unsend requires an untampered v2 thread-specific reviewed plan
   const tampered = await runner.start({ plan: { ...all, detectedCount: 6 } });
   assert.equal(tampered.status, 'error');
   assert.match(tampered.message, /thread-specific reviewed plan is required/);
-  const wrongVersion = await runner.start({ plan: { ...all, version: 3 } });
+  const wrongVersion = await runner.start({ plan: { ...all, version: 4 } });
   assert.equal(wrongVersion.status, 'error');
 });
 
@@ -1351,7 +1359,7 @@ test('extension message view uses the shared runner and Instagram design tokens'
   assert.match(labelsSource, /authorizationExpiresAt <= Date\.now\(\)/);
   assert.match(labelsSource, /context\.threadId !== expectedThreadId/);
   assert.doesNotMatch(labelsSource, /currentEligibleCount|plan\.eligibleCount/);
-  assert.match(labelsSource, /PLAN_VERSION = 2/);
+  assert.match(labelsSource, /PLAN_VERSION = 3/);
   assert.match(labelsSource, /const currentContext = threadContext\(\)/);
   assert.match(labelsSource, /STABLE_EMPTY_PASSES = 3/);
   assert.match(labelsSource, /complete: quietRounds >= 10/);
@@ -1419,7 +1427,7 @@ test('finite oldest scope proves a stable boundary before the first destructive 
   assert.match(boundaryBody, /after\.loaderVisible/);
   assert.match(boundaryBody, /OLDEST_BOUNDARY_STABLE_MS/);
   assert.ok(
-    startBody.indexOf('await proveStableOldestBoundary(') < startBody.indexOf('await nextSentRow('),
+    startBody.indexOf('await proveStableOldestBoundary(') < startBody.indexOf('() => nextSentRow('),
     'oldest-boundary proof must complete before any row can expose a message menu',
   );
 });

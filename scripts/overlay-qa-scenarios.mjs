@@ -53,13 +53,16 @@ const requiredStates = [
     semantics: [
       semantic('[data-insta-toolbox-role="settings-dialog"]', {
         hidden: false,
-        includes: ['Customize Insta Toolbox', 'Accent', 'Background blur', 'Collapsed button'],
+        includes: ['Settings', 'Appearance', 'Opacity', 'Blur', 'Launcher size', 'Cleanup defaults', 'Execution', 'Data and troubleshooting'],
       }),
       semantic('[data-insta-toolbox-preference="accent"]', {
         attributes: { id: 'insta-toolbox-pref-accent' },
       }),
       semantic('[data-insta-toolbox-action="close-settings"]', {
-        attributes: { 'aria-label': 'Close customization', type: 'button' },
+        attributes: { 'aria-label': 'Close settings', type: 'button' },
+      }),
+      semantic('[data-insta-toolbox-preference="opacity"]', {
+        attributes: { max: '100', min: '55', type: 'range' },
       }),
     ],
     targetSelector: null,
@@ -82,9 +85,6 @@ const requiredStates = [
       }),
       semantic('[data-insta-toolbox-role="resize-handle-end"]', {
         attributes: { 'aria-label': 'Resize Insta Toolbox from the lower-right corner; use arrow keys for precise sizing', type: 'button' },
-      }),
-      semantic('[data-insta-toolbox-preference="opacity"]', {
-        attributes: { max: '100', min: '55', type: 'range' },
       }),
     ],
     targetSelector: null,

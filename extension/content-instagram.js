@@ -993,24 +993,10 @@
 
   function dmOwnership(row, identityNode) {
     const explicit = String(row?.getAttribute?.('data-sent-by-me') || '').toLowerCase();
-    if (explicit === 'true') return { sentByMe: true, basis: 'data-sent-by-me' };
     if (explicit === 'false') return { sentByMe: false, basis: 'data-sent-by-me' };
-
-    // The source script used flex-end as sent-message evidence. Keep that evidence
-    // only on the exact identity-to-row ancestor chain; unrelated descendant
-    // toolbars must never confer ownership on a received message.
-    const ownershipChain = [];
-    let element = identityNode;
-    while (element && row?.contains?.(element)) {
-      ownershipChain.push(element);
-      if (element === row) break;
-      element = element.parentElement || element.parentNode || element.parent || null;
-    }
-    if (ownershipChain.at(-1) !== row) return { sentByMe: null, basis: null };
-    for (const element of ownershipChain) {
-      if (getComputedStyle(element).justifyContent === 'flex-end') {
-        return { sentByMe: true, basis: 'identity-ancestor-flex-end-layout' };
-      }
+    const proof = globalThis.InstaToolboxDmThreadUnsender?.messageProof;
+    if (row?.contains?.(identityNode) && proof?.sentByCurrentUser(row, globalThis)) {
+      return { sentByMe: true, basis: explicit === 'true' ? 'data-sent-by-me' : 'identity-ancestor-flex-end-layout' };
     }
     return { sentByMe: null, basis: null };
   }
@@ -1398,17 +1384,31 @@
     };
   }
 
-  function waitFor(check, timeoutMs) {
-    const startedAt = Date.now();
-    return new Promise((resolve) => {
-      const inspect = () => {
-        const value = check();
-        if (value || Date.now() - startedAt >= timeoutMs) {
-          resolve(value || null);
-          return;
-        }
-        setTimeout(inspect, 100);
+  function waitFor(check, timeoutMs, signal = null) {
+    const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+    return new Promise((resolve, reject) => {
+      let timer;
+      let settled = false;
+      const finish = (value, error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener?.('abort', onAbort);
+        if (error) reject(error);
+        else resolve(value);
       };
+      const onAbort = () => finish(null);
+      const inspect = () => {
+        if (settled) return;
+        if (signal?.aborted || Date.now() >= deadline) { finish(null); return; }
+        try {
+          const value = check();
+          if (signal?.aborted || Date.now() >= deadline) finish(null);
+          else if (value) finish(value);
+          else timer = setTimeout(inspect, Math.min(100, deadline - Date.now()));
+        } catch (error) { finish(null, error); }
+      };
+      signal?.addEventListener?.('abort', onAbort, { once: true });
       inspect();
     });
   }
@@ -1566,6 +1566,35 @@
     if (!dmResolutionMatches(resolution, item)) {
       return { ambiguous: true, reason: 'dm-resolution-expired-or-changed' };
     }
+    const controller = new AbortController();
+    let interrupted = null;
+    const interrupt = (reason) => {
+      if (interrupted) return;
+      interrupted = reason;
+      dmResolutions.clear();
+      controller.abort(reason);
+    };
+    const onFreeze = () => interrupt('page-frozen');
+    const onPageHide = (event) => interrupt(event?.persisted ? 'page-cached' : 'page-left');
+    document.addEventListener?.('freeze', onFreeze);
+    globalThis.addEventListener?.('pagehide', onPageHide);
+    const lifecycle = {
+      signal: controller.signal,
+      interrupted: () => interrupted,
+      outcome: (uncertain = false) => ({
+        unexpectedUi: true, reason: 'dm-page-interrupted', needsAttention: true,
+        interruptionReason: interrupted, uncertain,
+      }),
+    };
+    try {
+      return await performResolvedDmUnsend(item, resolution, lifecycle);
+    } finally {
+      document.removeEventListener?.('freeze', onFreeze);
+      globalThis.removeEventListener?.('pagehide', onPageHide);
+    }
+  }
+
+  async function performResolvedDmUnsend(item, resolution, lifecycle) {
     if (visibleDialogs().length || visibleMenus().length) {
       return { unexpectedUi: true, reason: 'preexisting-surface-before-live-unsend' };
     }
@@ -1574,7 +1603,8 @@
     const actionControl = await waitFor(() => {
       const controls = exactDmActionControls(resolution.row);
       return controls.length === 1 ? controls[0] : null;
-    }, 1_500);
+    }, 1_500, lifecycle.signal);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     if (!actionControl) {
       return { ambiguous: true, reason: 'dm-action-control-not-exact' };
     }
@@ -1587,6 +1617,7 @@
     }
 
     const menusBeforeAction = new Set(visibleMenus());
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     activateLiveControl(actionControl);
     const menuResult = await waitFor(() => {
       const newMenus = visibleMenus().filter((menu) => !menusBeforeAction.has(menu));
@@ -1597,7 +1628,8 @@
       return controls.length === 1
         ? { menu, control: controls[0] }
         : { invalid: true };
-    }, 3_000);
+    }, 3_000, lifecycle.signal);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     if (!menuResult?.menu) {
       return { unexpectedUi: true, reason: 'dm-unsend-menu-not-exact' };
     }
@@ -1606,6 +1638,7 @@
     }
 
     const dialogsBeforeChoice = new Set(visibleDialogs());
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     activateLiveControl(menuResult.control);
     const confirmation = await waitFor(() => {
       const newDialogs = visibleDialogs().filter((dialog) => !dialogsBeforeChoice.has(dialog));
@@ -1617,7 +1650,8 @@
       if (!dialog) return { invalid: true };
       const controls = exactDmUnsendControls(dialog);
       return controls.length === 1 ? { control: controls[0] } : { invalid: true };
-    }, 3_000);
+    }, 3_000, lifecycle.signal);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     if (!confirmation?.control) {
       return { unexpectedUi: true, reason: 'dm-unsend-confirmation-not-exact' };
     }
@@ -1625,7 +1659,23 @@
       return { ambiguous: true, reason: 'dm-message-changed-before-final-confirmation' };
     }
 
+    const proof = globalThis.InstaToolboxDmThreadUnsender?.messageProof;
+    if (!proof) return { unexpectedUi: true, reason: 'dm-removal-verifier-unavailable' };
+    const beforeRemoval = proof.removalEvidence(resolution.row);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     activateLiveControl(confirmation.control);
+    const settled = await proof.waitForRemoval(resolution.row, beforeRemoval, {
+      contextValid: () => {
+        const currentSession = inspectSession();
+        return !currentSession.sessionExpired && !currentSession.challenge
+          && !currentSession.actionBlocked && !currentSession.rateLimited
+          && directThreadId(item.conversationId) === directThreadId(location.pathname);
+      },
+    });
+    if (!settled) {
+      if (lifecycle.interrupted()) return lifecycle.outcome(true);
+      return { unexpectedUi: true, reason: 'dm-unsend-not-confirmed', uncertain: true };
+    }
     const completion = await waitFor(() => {
       const currentSession = inspectSession();
       if (
@@ -1679,6 +1729,7 @@
     }, 5_000);
     if (completion?.sessionStop) return completion.sessionStop;
     if (!completion?.confirmed) {
+      if (lifecycle.interrupted()) return lifecycle.outcome(true);
       return {
         unexpectedUi: true,
         reason: 'dm-unsend-not-confirmed',
@@ -1690,6 +1741,10 @@
       conversationId: String(item.conversationId),
       messageId: String(item.messageId),
       postcondition: completion.postcondition,
+      ...(lifecycle.interrupted() ? {
+        needsAttention: true, interruptionReason: lifecycle.interrupted(),
+        reason: 'dm-page-interrupted', uncertain: false,
+      } : {}),
     };
   }
 

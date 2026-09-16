@@ -41,6 +41,8 @@ class FakeElement {
     return `${this.ownText}${this.children.map((child) => child.textContent).join('')}`;
   }
 
+  get parentElement() { return this.parent; }
+
   getAttribute(name) {
     return Object.hasOwn(this.attributes, name) ? this.attributes[name] : null;
   }
@@ -75,6 +77,9 @@ class FakeElement {
 
   querySelectorAll(selector) {
     const descendants = this.descendants();
+    if (selector === '[data-sent-by-me]') {
+      return descendants.filter((element) => element.getAttribute('data-sent-by-me') !== null);
+    }
     if (selector === '[data-message-id], [data-item-id]') {
       return descendants.filter((element) => (
         element.getAttribute('data-message-id') != null
@@ -146,6 +151,7 @@ class FakeElement {
   }
 
   dispatchEvent() {
+    this.onDispatch?.();
     return true;
   }
 
@@ -162,6 +168,9 @@ class FakeElement {
 function createHarness({
   bindSurfaces = true,
   nestedFlexEnd = false,
+  contradictoryOwnership = false,
+  lifecycleAt = null,
+  lifecycleEvent = 'freeze',
   plainTextUnsendControls = false,
   postConfirmation = 'remove',
   preexistingDialog = false,
@@ -172,6 +181,24 @@ function createHarness({
 } = {}) {
   let runtimeListener = null;
   const activations = [];
+  const documentEvents = new EventTarget();
+  const windowEvents = new EventTarget();
+  const activeListeners = new Set();
+  const addLifecycle = (target, type, callback) => {
+    activeListeners.add(callback);
+    target.addEventListener(type, callback);
+  };
+  const removeLifecycle = (target, type, callback) => {
+    activeListeners.delete(callback);
+    target.removeEventListener(type, callback);
+  };
+  const emitLifecycle = (type, properties = {}) => {
+    const event = Object.assign(new Event(type), properties);
+    (['freeze', 'resume', 'visibilitychange'].includes(type) ? documentEvents : windowEvents).dispatchEvent(event);
+  };
+  const lifecycleStep = (step) => {
+    if (lifecycleAt === step) emitLifecycle(lifecycleEvent, { persisted: lifecycleEvent === 'pagehide' });
+  };
   const surfaces = { dialogs: [], menus: [] };
   const locationState = {
     href: 'https://www.instagram.com/direct/t/123/',
@@ -193,6 +220,7 @@ function createHarness({
     text: unsendLabel,
     onClick() {
       activations.push('confirmation');
+      lifecycleStep('confirmation');
       const row = scope.children[0];
       if (postConfirmation === 'remove') {
         row?.disconnect();
@@ -202,6 +230,14 @@ function createHarness({
         locationState.pathname = '/direct/t/999/';
       } else if (postConfirmation === 'identity-loss') {
         row?.removeAttribute('data-message-id');
+      } else if (postConfirmation === 'optimistic-reversion') {
+        row?.disconnect();
+        scope.children = scope.children.filter((child) => child !== row);
+        setTimeout(() => {
+          row.isConnected = true;
+          for (const child of row.children) child.isConnected = true;
+          scope.children.unshift(row);
+        }, 100);
       }
       surfaces.dialogs.forEach((dialog) => dialog.disconnect());
       surfaces.dialogs = [];
@@ -218,6 +254,7 @@ function createHarness({
     text: plainTextUnsendControls ? unsendLabel : '',
     onClick() {
       activations.push('menu-choice');
+      lifecycleStep('menu-choice');
       surfaces.menus.forEach((menu) => menu.disconnect());
       surfaces.menus = [];
       surfaces.dialogs = [new FakeElement({
@@ -241,6 +278,7 @@ function createHarness({
     text: textOnlyActionControl ? 'See more options for message from demo.creator' : '',
     onClick() {
       activations.push('action-menu');
+      lifecycleStep('action-menu');
       surfaces.menus = [new FakeElement({
         attributes: {
           role: 'menu',
@@ -287,6 +325,9 @@ function createHarness({
   row.parent = scope;
   retainedIdentityRow.parent = scope;
   if (nestedFlexEnd) actionControl.justifyContent = 'flex-end';
+  row.onDispatch = () => lifecycleStep('hover');
+  if (contradictoryOwnership === 'alignment') row.justifyContent = 'flex-start';
+  if (contradictoryOwnership === 'received-marker') contentElement.setAttribute('data-sent-by-me', 'false');
 
   if (preexistingDialog) {
     surfaces.dialogs = [new FakeElement({
@@ -297,6 +338,8 @@ function createHarness({
 
   const document = {
     body: { innerText: '' },
+    addEventListener: (type, callback) => addLifecycle(documentEvents, type, callback),
+    removeEventListener: (type, callback) => removeLifecycle(documentEvents, type, callback),
     querySelector(selector) {
       if (selector === '[data-pagelet="IGDMessagesList"]' || selector === 'main') return scope;
       return null;
@@ -308,6 +351,9 @@ function createHarness({
     },
   };
   const context = vm.createContext({
+    AbortController,
+    addEventListener: (type, callback) => addLifecycle(windowEvents, type, callback),
+    removeEventListener: (type, callback) => removeLifecycle(windowEvents, type, callback),
     chrome: {
       runtime: {
         onMessage: {
@@ -329,12 +375,14 @@ function createHarness({
     MouseEvent: FakeEvent,
     PointerEvent: FakeEvent,
     setTimeout,
+    clearTimeout,
   });
   vm.runInContext(actionLabelsSource, context);
   vm.runInContext(source, context);
 
   return {
-    activations,
+    activations, emitLifecycle,
+    activeListenerCount: () => activeListeners.size,
     item,
     send(request) {
       return new Promise((resolve) => {
@@ -477,6 +525,86 @@ test('a nested flex-end toolbar cannot prove that the reviewed message was sent 
   assert.equal(resolution.resolutionToken, undefined);
   assert.equal(resolution.sentByMe, null);
   assert.equal(resolution.reason, 'message-ownership-unavailable');
+});
+
+test('exact-item ownership rejects contradictory alignment and received markers before any click', async () => {
+  for (const contradictoryOwnership of ['alignment', 'received-marker']) {
+    const harness = createHarness({ contradictoryOwnership });
+    const resolution = await harness.send({ kind: 'insta-toolbox-inspect-reviewed-dm-item', item: harness.item });
+    assert.equal(resolution.resolutionToken, undefined);
+    assert.equal(resolution.sentByMe, null);
+    assert.deepEqual(harness.activations, []);
+  }
+});
+
+test('an exact-item optimistic removal that reverts cannot report success or dispatch twice', async () => {
+  const harness = createHarness({ postConfirmation: 'optimistic-reversion' });
+  const resolution = await harness.send({ kind: 'insta-toolbox-inspect-reviewed-dm-item', item: harness.item });
+  const request = {
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
+    item: { ...harness.item, resolutionToken: resolution.resolutionToken },
+  };
+  const result = await harness.send(request);
+  assert.equal(result.uncertain, true);
+  assert.notEqual(result.result, 'unsent');
+  assert.equal(result.reason, 'dm-unsend-not-confirmed');
+  assert.deepEqual(harness.activations, ['action-menu', 'menu-choice', 'confirmation']);
+  assert.equal((await harness.send(request)).reason, 'dm-resolution-expired-or-changed');
+  assert.deepEqual(harness.activations, ['action-menu', 'menu-choice', 'confirmation']);
+});
+
+test('exact-item lifecycle interruption before each native click consumes authority and cleans listeners', async () => {
+  for (const [lifecycleAt, expected] of [
+    ['hover', []],
+    ['action-menu', ['action-menu']],
+    ['menu-choice', ['action-menu', 'menu-choice']],
+  ]) {
+    const harness = createHarness({ lifecycleAt });
+    const resolution = await harness.send({ kind: 'insta-toolbox-inspect-reviewed-dm-item', item: harness.item });
+    const request = {
+      kind: 'insta-toolbox-perform-reviewed-dm-unsend',
+      item: { ...harness.item, resolutionToken: resolution.resolutionToken },
+    };
+    const result = await harness.send(request);
+    assert.equal(result.needsAttention, true);
+    assert.equal(result.interruptionReason, 'page-frozen');
+    assert.equal(result.uncertain, false);
+    assert.deepEqual(harness.activations, expected);
+    assert.equal(harness.activeListenerCount(), 0);
+    harness.emitLifecycle('resume');
+    harness.emitLifecycle('pageshow', { persisted: true });
+    assert.equal((await harness.send(request)).reason, 'dm-resolution-expired-or-changed');
+    assert.deepEqual(harness.activations, expected);
+  }
+});
+
+test('exact-item BFCache entry after dispatch retains proven removal with needs-attention', async () => {
+  const harness = createHarness({ lifecycleAt: 'confirmation', lifecycleEvent: 'pagehide' });
+  const resolution = await harness.send({ kind: 'insta-toolbox-inspect-reviewed-dm-item', item: harness.item });
+  const result = await harness.send({
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
+    item: { ...harness.item, resolutionToken: resolution.resolutionToken },
+  });
+  assert.equal(result.result, 'unsent');
+  assert.equal(result.needsAttention, true);
+  assert.equal(result.interruptionReason, 'page-cached');
+  assert.equal(result.uncertain, false);
+  assert.deepEqual(harness.activations, ['action-menu', 'menu-choice', 'confirmation']);
+  assert.equal(harness.activeListenerCount(), 0);
+});
+
+test('exact-item frozen unproven dispatch reports uncertainty without a repeat', async () => {
+  const harness = createHarness({ lifecycleAt: 'confirmation', postConfirmation: 'identity-loss' });
+  const resolution = await harness.send({ kind: 'insta-toolbox-inspect-reviewed-dm-item', item: harness.item });
+  const result = await harness.send({
+    kind: 'insta-toolbox-perform-reviewed-dm-unsend',
+    item: { ...harness.item, resolutionToken: resolution.resolutionToken },
+  });
+  assert.equal(result.needsAttention, true);
+  assert.equal(result.uncertain, true);
+  assert.notEqual(result.result, 'unsent');
+  assert.deepEqual(harness.activations, ['action-menu', 'menu-choice', 'confirmation']);
+  assert.equal(harness.activeListenerCount(), 0);
 });
 
 test('DM inspection issues no capability when secure randomness is unavailable', async () => {

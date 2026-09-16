@@ -84,6 +84,7 @@
       opacity: Math.round(
         boundedNumber(source.opacity, MIN_OPACITY, MAX_OPACITY, fallback.opacity) * 100,
       ) / 100,
+      ...(globalThis.InstaToolboxCleanupSettings?.normalizeAppearance(source, fallback) || {}),
     };
   }
 

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Insta Toolbox",
-  "version": "3.1.12",
+  "version": "4.0.0",
   "description": "Mutual Checker, Follow / Unfollow, and DM Unsend directly on Instagram.",
   "permissions": [
     "storage",
@@ -41,6 +41,7 @@
         "https://www.instagram.com/*"
       ],
       "js": [
+        "cleanup-settings.js",
         "action-confirmation.js",
         "action-labels.js",
         "content-instagram.js",

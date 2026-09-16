@@ -181,6 +181,7 @@
         globalThis.fixtureDmClickCount += 1;
         const menu = document.createElement('section');
         menu.id = 'fixture-dm-menu';
+        menu.className = 'fixture-native-surface';
         menu.setAttribute('role', 'menu');
         menu.setAttribute('aria-labelledby', actionControl.id);
         menu.innerHTML = '<button type="button" role="menuitem" id="fixture-dm-unsend-choice" aria-controls="fixture-dm-confirmation">Unsend</button>';
@@ -189,6 +190,7 @@
           globalThis.fixtureDmClickCount += 1;
           const dialog = document.createElement('section');
           dialog.id = 'fixture-dm-confirmation';
+          dialog.className = 'fixture-native-surface';
           dialog.setAttribute('role', 'dialog');
           dialog.setAttribute('aria-labelledby', choice.id);
           dialog.innerHTML = '<p>Unsend this message?</p><button type="button">Unsend</button>';
@@ -397,6 +399,7 @@
         threadId: plan.threadId,
         reviewedDigest: plan.reviewedDigest,
         scope: plan.scope,
+        speed: plan.speed || 'standard',
         count: plan.scope === 'all' ? null : plan.limit,
         status: 'reserved',
         processed: 0,
@@ -612,6 +615,7 @@
       if (!waiting) queueMicrotask(() => resolve(undefined));
     });
   </script>
+  <script src="/extension/cleanup-settings.js"></script>
   <script src="/extension/action-confirmation.js"></script>
   <script src="/extension/action-labels.js"></script>
   <script src="/extension/content-instagram.js"></script>

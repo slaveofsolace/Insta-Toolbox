@@ -1,32 +1,36 @@
 # Release status
 
-Current candidate: **3.1.12**
+Current candidate: **4.0.0**
+
+Development candidate only. The published release remains **3.1.12**; the stable update URL is unchanged. Reaction cleanup and managed inbox/background execution are not enabled in this candidate.
 
 ## Release files
 
 | Surface | File |
 | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` |
-| Chrome extension | `Insta-Toolbox-Extension-3.1.12.zip` |
-| Web/PWA | `insta-toolbox-web-3.1.12.zip` |
-| Windows | `Insta-Toolbox-Setup-3.1.12.exe` |
-| macOS | `Insta-Toolbox-3.1.12-universal.dmg` and `.zip` |
+| Chrome extension | `Insta-Toolbox-Extension-4.0.0.zip` |
+| Web/PWA | `insta-toolbox-web-4.0.0.zip` |
+| Windows | `Insta-Toolbox-Setup-4.0.0.exe` |
+| macOS | `Insta-Toolbox-4.0.0-universal.dmg` and `.zip` |
 | Integrity | `SHA256SUMS.txt`, SBOM, and GitHub provenance attestation |
 
 The stable userscript channel is:
 
 `https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js`
 
-Version 3 keeps the userscript identity introduced in 3.0. Tampermonkey updates 3.0 in place. Remove a 2.x script before installing 3.1.
+Version 4 keeps the userscript identity and local data introduced in 3.0. Tampermonkey updates an existing 3.x installation in place. Remove a 2.x script before installing the current release.
 
 ## Candidate gates
 
-The 3.1 account-free matrix contains:
+The development matrix contains:
 
-- 415 automated tests;
+- 503 automated tests at the last completed source checkpoint;
 - 45 overlay screenshot states;
 - 11 PWA screenshot states;
-- service-worker cache generation `insta-toolbox-v3112`.
+- service-worker cache generation `insta-toolbox-v400`.
+
+Version-refreshed local visual checks passed. Packaging, remote CI, and authenticated acceptance remain separate gates. See the acceptance record for the exact scope of each completed check.
 
 Before a release is promoted, the exact `main` commit must pass assembly, tests, repository hygiene, dependency audit, generated-userscript parity, extension and userscript acceptance, Chrome pairing, browser QA, overlay/PWA visual checks, Windows packaging, macOS packaging, archive inspection, checksum generation, and `git diff --check`.
 
@@ -50,11 +54,11 @@ The macOS application is ad-hoc signed for bundle integrity but is not Developer
 
 ## Evidence and nonclaims
 
-The candidate record is [acceptance/3.1.12.md](./acceptance/3.1.12.md). Compatibility is tracked in [compatibility/3.1.12.md](./compatibility/3.1.12.md).
+The candidate record is [acceptance/4.0.0.md](./acceptance/4.0.0.md). Compatibility is tracked in [compatibility/4.0.0.md](./compatibility/4.0.0.md).
 
 Automated fixtures do not prove current authenticated Instagram selectors, human screen-reader use, persistent-profile behavior, SmartScreen trust, Gatekeeper trust, or notarization. Record those checks separately without committing usernames, messages, thread IDs, cookies, tokens, or private screenshots.
 
-Historical evidence directories keep the version and filenames they were produced with. They are not renamed or presented as 3.1 evidence.
+Historical evidence directories keep the version and filenames they were produced with. They are not renamed or presented as current evidence.
 
 ## Related documents
 

@@ -95,12 +95,17 @@
   const OLDEST_BOUNDARY_POLL_MS = 120;
   const OLDEST_BOUNDARY_STABLE_MS = 2_000;
   const STABLE_EMPTY_PASSES = 3;
-  const PLAN_VERSION = 2;
+  const PLAN_VERSION = 3;
+  const SPEED_PROFILES = Object.freeze({
+    standard: Object.freeze({ minDelayMs: 1_000, maxDelayMs: 2_000 }),
+    fast: Object.freeze({ minDelayMs: 1_000, maxDelayMs: 2_000 }),
+  });
   const PLAN_SCOPES = new Set(['all', 'newest', 'oldest']);
   const listeners = new Set();
   const consumedPlanDigests = new Map();
 
   let activeController = null;
+  let activeExecution = null;
   let currentState = Object.freeze({
     status: 'idle',
     operation: null,
@@ -113,14 +118,21 @@
     startedAt: null,
     finishedAt: null,
     canStop: false,
+    needsAttention: false,
+    interruptionReason: null,
+    uncertain: 0,
   });
 
   function snapshot() {
-    return { ...currentState };
+    return { ...currentState, phaseTimings: { ...(activeExecution?.phaseTimings || currentState.phaseTimings || {}) } };
   }
 
   function publish(patch) {
-    currentState = Object.freeze({ ...currentState, ...patch });
+    currentState = Object.freeze({
+      ...currentState,
+      ...patch,
+      phaseTimings: Object.freeze({ ...(activeExecution?.phaseTimings || currentState.phaseTimings || {}) }),
+    });
     for (const listener of listeners) {
       try {
         listener(snapshot());
@@ -138,17 +150,47 @@
     return () => listeners.delete(listener);
   }
 
+  function phaseClock() {
+    return typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
+  }
+
+  function recordPhase(phase, startedAt, excludedMs = 0) {
+    if (!activeExecution) return;
+    const durationMs = Math.max(0, phaseClock() - startedAt - excludedMs);
+    activeExecution.phaseTimings[phase] = (activeExecution.phaseTimings[phase] || 0) + durationMs;
+    try { activeExecution.onPhaseTiming?.(Object.freeze({ phase, durationMs })); } catch {}
+  }
+
+  async function measurePhase(phase, operation) {
+    const startedAt = phaseClock();
+    const resolutionBefore = activeExecution?.phaseTimings.messageResolution || 0;
+    try { return await operation(); } finally {
+      const excludedMs = phase === 'historyLoading'
+        ? (activeExecution?.phaseTimings.messageResolution || 0) - resolutionBefore : 0;
+      recordPhase(phase, startedAt, excludedMs);
+    }
+  }
+
   function delay(ms, signal) {
     return new Promise((resolve, reject) => {
+      let timer;
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener?.('abort', onAbort);
+        if (error) reject(error);
+        else resolve();
+      };
+      const onAbort = () => finish(new DOMException('The operation was stopped.', 'AbortError'));
       if (signal?.aborted) {
-        reject(new DOMException('The operation was stopped.', 'AbortError'));
+        onAbort();
         return;
       }
-      const timer = setTimeout(resolve, Math.max(0, ms));
-      signal?.addEventListener('abort', () => {
-        clearTimeout(timer);
-        reject(new DOMException('The operation was stopped.', 'AbortError'));
-      }, { once: true });
+      timer = setTimeout(() => finish(), Math.max(0, ms));
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) onAbort();
     });
   }
 
@@ -168,7 +210,7 @@
     return (hash >>> 0).toString(16).padStart(8, '0');
   }
 
-  function planDigest({ version, threadId, scope, limit, detectedCount, expiresAt }) {
+  function planDigest({ version, threadId, scope, limit, detectedCount, expiresAt, speed }) {
     return digestText(JSON.stringify({
       version: Number(version),
       threadId: String(threadId || ''),
@@ -176,6 +218,7 @@
       limit: limit === null ? null : Number(limit),
       detectedCount: detectedCount === null ? null : Number(detectedCount),
       expiresAt: Number(expiresAt),
+      ...(Number(version) >= 3 ? { speed: String(speed || 'standard') } : {}),
     }));
   }
 
@@ -186,6 +229,8 @@
       : String(value.scope);
     if (!PLAN_SCOPES.has(requestedScope)) return null;
     const scope = requestedScope;
+    const speed = value.speed === undefined ? 'standard' : String(value.speed);
+    if (!Object.hasOwn(SPEED_PROFILES, speed)) return null;
     const requestedLimit = Math.floor(Number(value.limit));
     const limit = scope === 'all'
       ? null
@@ -208,16 +253,21 @@
       limit,
       detectedCount,
       expiresAt,
+      speed,
     };
     return Object.freeze({ ...plan, reviewedDigest: planDigest(plan) });
   }
 
   function validatePlan(value) {
-    if (Number(value?.version) !== PLAN_VERSION) return null;
+    const version = Number(value?.version);
+    if (![2, PLAN_VERSION].includes(version)) return null;
+    if (version === 2 && value.speed !== undefined && value.speed !== 'standard') return null;
     const normalized = createPlan(value);
-    return normalized && normalized.reviewedDigest === String(value?.reviewedDigest || '')
-      ? normalized
-      : null;
+    if (!normalized) return null;
+    const compatible = version === 2 ? { ...normalized, version: 2 } : normalized;
+    const reviewedDigest = planDigest(compatible);
+    return reviewedDigest === String(value?.reviewedDigest || '')
+      ? Object.freeze({ ...compatible, reviewedDigest }) : null;
   }
 
   function visibleText(element) {
@@ -326,6 +376,28 @@
     return null;
   }
 
+  function lifecycleReason(signal) {
+    return signal?.reason?.code === 'DM_LIFECYCLE_INTERRUPTED' ? signal.reason.reason : null;
+  }
+
+  function interruptionState(signal, processed, failed, uncertain = false) {
+    const reason = lifecycleReason(signal);
+    return {
+      status: reason ? 'needs-attention' : 'stopped',
+      needsAttention: Boolean(reason),
+      interruptionReason: reason,
+      uncertain: uncertain ? 1 : 0,
+      message: reason
+        ? `${reason === 'page-frozen' ? 'Tab suspended' : 'Page interrupted'}. ${uncertain ? 'The last Unsend outcome is uncertain. ' : ''}Review the conversation before starting again. ${processed} message${processed === 1 ? '' : 's'} unsent.`
+        : `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
+      processed,
+      failed,
+      current: null,
+      canStop: false,
+      finishedAt: new Date().toISOString(),
+    };
+  }
+
   function watchThread(controller, expectedThreadId) {
     let timer;
     let observer;
@@ -338,11 +410,24 @@
       check();
       if (!controller.signal.aborted) timer = setTimeout(poll, 200);
     };
+    const interrupt = (reason) => {
+      if (controller.signal.aborted) return;
+      if (activeController === controller) publish({
+        status: 'stopping', canStop: false, needsAttention: true,
+        interruptionReason: reason,
+        message: 'Page interrupted. Settling the current action…',
+      });
+      controller.abort(Object.freeze({ code: 'DM_LIFECYCLE_INTERRUPTED', reason }));
+    };
+    const onFreeze = () => interrupt('page-frozen');
+    const onPageHide = (event) => interrupt(event?.persisted ? 'page-cached' : 'page-left');
     const cleanup = () => {
       clearTimeout(timer);
       observer?.disconnect();
       globalThis.removeEventListener?.('popstate', check);
       globalThis.navigation?.removeEventListener?.('currententrychange', check);
+      document.removeEventListener?.('freeze', onFreeze);
+      globalThis.removeEventListener?.('pagehide', onPageHide);
       controller.signal.removeEventListener('abort', cleanup);
     };
     if (globalThis.MutationObserver && document.documentElement) {
@@ -351,7 +436,10 @@
     }
     globalThis.addEventListener?.('popstate', check);
     globalThis.navigation?.addEventListener?.('currententrychange', check);
+    document.addEventListener?.('freeze', onFreeze);
+    globalThis.addEventListener?.('pagehide', onPageHide);
     controller.signal.addEventListener('abort', cleanup, { once: true });
+    if (controller.signal.aborted) { cleanup(); return cleanup; }
     poll();
     return cleanup;
   }
@@ -416,17 +504,24 @@
 
   function sentByCurrentUser(row, view = globalThis) {
     const explicit = String(row?.getAttribute?.('data-sent-by-me') || '').toLowerCase();
-    if (explicit === 'true') return true;
     if (explicit === 'false') return false;
-    const queue = [{ element: row, depth: 0 }];
-    while (queue.length) {
-      const { element, depth } = queue.shift();
-      if (view.getComputedStyle?.(element)?.justifyContent === 'flex-end') return true;
-      if (depth < MAX_HOVER_DEPTH) {
-        for (const child of element.children || []) queue.push({ element: child, depth: depth + 1 });
-      }
+    if ([...row?.querySelectorAll?.('[data-sent-by-me]') || []].some((element) => (
+      String(element.getAttribute?.('data-sent-by-me')).toLowerCase() === 'false'
+    ))) return false;
+    // Alignment belongs to the message wrapper, never a nested reaction or
+    // menu. Follow only an unbranched wrapper chain and stop at content.
+    let element = row;
+    let aligned = false;
+    for (let depth = 0; element && depth <= MAX_HOVER_DEPTH; depth += 1) {
+      if (depth > 0 && element.matches?.('[dir="auto"], img, video, audio, button, [role="button"]')) break;
+      const style = view.getComputedStyle?.(element);
+      if (style?.justifyContent === 'flex-start') return false;
+      if (style?.justifyContent === 'flex-end') aligned = true;
+      const children = [...element.children || []];
+      if (children.length !== 1) break;
+      element = children[0];
     }
-    return false;
+    return explicit === 'true' || aligned;
   }
 
   function stableMessageKey(row) {
@@ -497,16 +592,19 @@
   }
 
   function candidateRows(scroller, traversal = null) {
+    const startedAt = phaseClock();
     const container = deepestMessageContainer(scroller);
     let rows = [...(container?.children || [])];
     if (!rows.length) {
       rows = [...(scroller?.querySelectorAll?.('[role="row"], [role="listitem"]') || [])];
     }
-    return rows
+    const candidates = rows
       .filter((row) => !processedMarkerMatches(row, traversal))
       .filter((row) => !row.hasAttribute?.(ACTIVE_ATTRIBUTE))
       .filter(hasMessageContent)
       .filter((row) => sentByCurrentUser(row, row.ownerDocument.defaultView));
+    recordPhase('messageResolution', startedAt);
+    return candidates;
   }
 
   function orderedCandidates(scroller, order = 'oldest', traversal = null) {
@@ -548,32 +646,51 @@
   }
 
   async function waitForElement(target, getter, signal, timeoutMs = 3_000) {
-    if (signal?.aborted) throw new DOMException('The operation was stopped.', 'AbortError');
-    const immediate = getter();
-    if (immediate) return immediate;
     return new Promise((resolve, reject) => {
+      const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
       let timer;
-      const observer = new MutationObserver(() => {
-        const value = getter();
-        if (!value) return;
-        cleanup();
-        resolve(value);
-      });
-      const onAbort = () => {
-        cleanup();
-        reject(new DOMException('The operation was stopped.', 'AbortError'));
-      };
+      let observer;
+      let settled = false;
       const cleanup = () => {
-        observer.disconnect();
+        observer?.disconnect();
         clearTimeout(timer);
-        signal?.removeEventListener('abort', onAbort);
+        signal?.removeEventListener?.('abort', onAbort);
       };
-      observer.observe(target, { childList: true, subtree: true, attributes: true });
-      timer = setTimeout(() => {
+      const finish = (value, error) => {
+        if (settled) return;
+        settled = true;
         cleanup();
-        resolve(null);
-      }, timeoutMs);
-      signal?.addEventListener('abort', onAbort, { once: true });
+        if (error) reject(error);
+        else resolve(value);
+      };
+      const onAbort = () => finish(null, new DOMException('The operation was stopped.', 'AbortError'));
+      const check = () => {
+        if (settled) return;
+        if (signal?.aborted) { onAbort(); return; }
+        if (Date.now() >= deadline) { finish(null); return; }
+        try {
+          const value = getter();
+          if (signal?.aborted) onAbort();
+          else if (Date.now() >= deadline) finish(null);
+          else if (value) finish(value);
+        } catch (error) { finish(null, error); }
+      };
+      const expire = () => {
+        if (settled) return;
+        const remaining = deadline - Date.now();
+        if (remaining > 0) timer = setTimeout(expire, remaining);
+        else finish(null);
+      };
+      signal?.addEventListener?.('abort', onAbort, { once: true });
+      check();
+      if (settled) return;
+      try {
+        observer = new MutationObserver(check);
+        observer.observe(target, { childList: true, subtree: true, attributes: true, characterData: true });
+        if (settled) return;
+        timer = setTimeout(expire, Math.max(0, deadline - Date.now()));
+        check();
+      } catch (error) { finish(null, error); }
     });
   }
 
@@ -634,9 +751,17 @@
   }
 
   function isDmMessageOptionsControl(control) {
-    if (actionLabels.isDmMessageOptionsLabel(visibleText(control))) return true;
-    return [...control?.querySelectorAll?.('[aria-label]') || []]
-      .some((element) => actionLabels.isDmMessageOptionsLabel(visibleText(element)));
+    const ownLabel = actionLabels.normalizeActionLabel(control?.getAttribute?.('aria-label'));
+    const text = actionLabels.normalizeActionLabel(visibleText(control));
+    const iconLabels = [...control?.querySelectorAll?.('[aria-label]') || []]
+      .map((element) => actionLabels.normalizeActionLabel(element.getAttribute?.('aria-label')))
+      .filter(Boolean);
+    // An explicit accessible name is authoritative. A generic "More" caption
+    // or decorative ellipsis cannot override Reply, Share, or another action.
+    if (ownLabel && !actionLabels.isDmMessageOptionsLabel(ownLabel)) return false;
+    if (text && !actionLabels.isDmMessageOptionsLabel(text) && !/^[.\u2026\u22ef\u22ee]+$/u.test(text)) return false;
+    if (iconLabels.some((label) => !actionLabels.isDmMessageOptionsLabel(label))) return false;
+    return Boolean(ownLabel || actionLabels.isDmMessageOptionsLabel(text) || iconLabels.length);
   }
 
   function actionButton(row) {
@@ -647,9 +772,10 @@
         if (control) matches.push(control);
       }
     }
-    return [...new Set(matches)]
+    const controls = [...new Set(matches)]
       .filter(isDmMessageOptionsControl)
-      .find(isVisible) || null;
+      .filter(isVisible);
+    return controls.length === 1 ? controls[0] : null;
   }
 
   function activateControl(control) {
@@ -692,11 +818,13 @@
     const targets = hoverTargets(row);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       for (const target of targets) hoverIn(target);
-      await delay(110, signal);
-      const control = actionButton(row);
+      const fast = activeExecution?.speed === 'fast';
+      const control = fast
+        ? await waitForElement(row, () => actionButton(row), signal, 110)
+        : (await delay(110, signal), actionButton(row));
       if (control) return control;
       for (const target of targets) hoverOut(target);
-      await delay(60, signal);
+      if (!fast) await delay(60, signal);
     }
     for (const target of targets) hoverIn(target);
     return waitForElement(row, () => actionButton(row), signal, 3_000);
@@ -725,7 +853,7 @@
     pending.catch(() => {});
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
     activateControl(control);
-    const result = await pending;
+    const result = await measurePhase('menuReadiness', () => pending);
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend option.');
     return result;
@@ -770,45 +898,36 @@
     pending.catch(() => {});
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
     activateControl(menuControl);
-    const result = await pending;
+    const result = await measurePhase('confirmationReadiness', () => pending);
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend confirmation.');
     const dialogButton = result?.control;
     if (!dialogButton) return false;
 
     const before = removalEvidence(row);
-    const closed = waitForElement(
-      document.body,
-      () => (!dialogButton.isConnected || !isVisible(dialogButton) ? true : null),
-      signal,
-      5_000,
-    );
-    const removed = waitForElement(
-      document.body,
-      () => (removalProven(row, before) ? true : null),
-      signal,
-      5_000,
-    );
-    closed.catch(() => {});
-    removed.catch(() => {});
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
-    activateControl(dialogButton);
-    // Parenthesised deliberately: `await closed !== true` binds as
-    // `await (closed !== true)`, which is always true for a promise and made
-    // every successful removal report as a failure.
-    if ((await closed) !== true) return false;
-
-    // Instagram may remove the row or replace it with an "unsent" placeholder.
-    // A hidden hover control is not proof: require the reviewed row or its
-    // message content to disappear or change.
-    return (await removed) === true;
+    try {
+      activateControl(dialogButton);
+      // Stop prevents the next click, but a dispatched mutation still needs
+      // bounded settlement. Never retry an outcome that could have succeeded.
+      const verified = await measurePhase('verification', () => waitForRemoval(row, before, {
+        dialogButton,
+        contextValid: () => currentThreadId() === expectedThreadId,
+      }));
+      if (!verified) throw new Error('Removal could not be verified.');
+      return true;
+    } catch {
+      const error = new Error('The last Unsend outcome is uncertain. Check the conversation before starting again.');
+      error.code = 'DM_OUTCOME_UNCERTAIN';
+      throw error;
+    }
   }
 
   async function unsendRow(row, signal, expectedThreadId, authorizationExpiresAt) {
     row.setAttribute(ACTIVE_ATTRIBUTE, '');
     let success = false;
     try {
-      const control = await revealActionButton(row, signal);
+      const control = await measurePhase('menuReadiness', () => revealActionButton(row, signal));
       if (!control) throw new Error('The message menu did not appear.');
       const menu = await openUnsendMenu(
         control,
@@ -1278,16 +1397,80 @@
   }
 
   function removalEvidence(row) {
-    if (!row?.isConnected) return 'row-removed';
-    if (!hasMessageContent(row)) return 'content-removed';
-    return preview(row);
+    const parent = row?.parentElement || null;
+    const root = row?.closest?.("[data-pagelet='IGDMessagesList']") || parent;
+    const scrollers = [];
+    for (let element = parent; element; element = element.parentElement) {
+      if (Number(element.scrollHeight) > Number(element.clientHeight)) {
+        scrollers.push({ element, top: Number(element.scrollTop) || 0 });
+      }
+      if (element === root) break;
+    }
+    return {
+      key: stableMessageKey(row),
+      text: preview(row),
+      connected: Boolean(row?.isConnected),
+      parent,
+      root,
+      scrollers,
+      siblings: [...parent?.children || []].filter((element) => element !== row),
+    };
   }
 
   function removalProven(row, before) {
-    const after = removalEvidence(row);
-    return after === 'row-removed'
-      || after === 'content-removed'
-      || (before && after && after !== before);
+    if (!before?.connected) return false;
+    const root = before.root;
+    if (root && (!root.isConnected || visibleLoader(root) || root.getAttribute?.('aria-busy') === 'true')) return false;
+    const isPlaceholder = (candidate) => {
+      const text = normalizePlaceholder(preview(candidate));
+      if (normalizePlaceholder(before.text) === text) return false;
+      return ['you unsent a message', 'you unsent this message', 'message unsent'].includes(text)
+        && !candidate.querySelector?.('img, video, audio, [aria-haspopup="menu"]')
+        && !actionButton(candidate);
+    };
+    if (row?.isConnected) {
+      if (stableMessageKey(row) !== before.key) return false;
+      return isPlaceholder(row);
+    }
+    if (before.key) {
+      const matches = [...root?.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
+        .filter((candidate) => stableMessageKey(candidate) === before.key);
+      if (matches.length) return matches.length === 1 && isPlaceholder(matches[0]);
+    }
+    if (!before.parent?.isConnected) return false;
+    if (before.scrollers.some(({ element, top }) => (
+      !element.isConnected || Math.abs((Number(element.scrollTop) || 0) - top) > 2
+    ))) return false;
+    if (before.key) return true;
+    // Without a logical ID, require the same local neighborhood and no copy
+    // of the original content. Scrolling/replaced containers are not removal.
+    return before.parent.children.length === before.siblings.length
+      && before.siblings.every((element) => element.isConnected && element.parentElement === before.parent)
+      && ![...before.parent.children || []].some((candidate) => preview(candidate) === before.text);
+  }
+
+  function normalizePlaceholder(text) {
+    return actionLabels.normalizeActionLabel(text).replace(/[.!]$/u, '');
+  }
+
+  async function waitForRemoval(row, before, {
+    dialogButton = null,
+    contextValid = () => true,
+    timeoutMs = 5_000,
+    stableMs = 350,
+  } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    let stableSince = null;
+    while (Date.now() < deadline) {
+      if (!contextValid()) return false;
+      const dialogClosed = !dialogButton || !dialogButton.isConnected || !isVisible(dialogButton);
+      if (dialogClosed && removalProven(row, before)) {
+        if (stableSince === null) stableSince = Date.now();
+        if (Date.now() - stableSince >= stableMs) return true;
+      } else stableSince = null;
+      await delay(Math.min(75, Math.max(0, deadline - Date.now())));
+    }
+    return false;
   }
 
   async function inspectAll() {
@@ -1302,6 +1485,9 @@
     publish({
       status: 'preparing',
       operation: 'check',
+      needsAttention: false,
+      interruptionReason: null,
+      uncertain: 0,
       processed: 0,
       failed: 0,
       message: 'Checking the full conversation without opening a message menu…',
@@ -1333,11 +1519,16 @@
       });
       return result;
     } catch (error) {
-      const reason = error?.name === 'AbortError' || controller.signal.aborted
+      const interrupted = lifecycleReason(controller.signal);
+      const reason = interrupted
+        ? 'Page interrupted. Run Check conversation again when the tab is ready.'
+        : error?.name === 'AbortError' || controller.signal.aborted
         ? 'Conversation check stopped.'
         : error.message || 'The conversation could not be checked.';
       publish({
-        status: error?.name === 'AbortError' || controller.signal.aborted ? 'stopped' : 'error',
+        status: interrupted ? 'needs-attention' : error?.name === 'AbortError' || controller.signal.aborted ? 'stopped' : 'error',
+        needsAttention: Boolean(interrupted),
+        interruptionReason: interrupted,
         message: reason,
         current: null,
         canStop: false,
@@ -1360,6 +1551,10 @@
         canStop: false,
         finishedAt: new Date().toISOString(),
       });
+      return snapshot();
+    }
+    if (options.speed !== undefined && options.speed !== plan.speed) {
+      publish({ status: 'error', message: 'Refresh the review before changing speed.', canStop: false });
       return snapshot();
     }
     const context = threadContext();
@@ -1398,6 +1593,14 @@
 
     const controller = new AbortController();
     activeController = controller;
+    activeExecution = {
+      speed: plan.speed,
+      onPhaseTiming: typeof options.onPhaseTiming === 'function' ? options.onPhaseTiming : null,
+      phaseTimings: {
+        historyLoading: 0, messageResolution: 0, menuReadiness: 0,
+        confirmationReadiness: 0, verification: 0, pacing: 0, checkpoint: 0,
+      },
+    };
     const signal = controller.signal;
     const unwatch = watchThread(controller, expectedThreadId);
     const maxFailures = Math.max(1, Math.min(10, Number(options.maxConsecutiveFailures) || DEFAULT_MAX_FAILURES));
@@ -1419,6 +1622,9 @@
     publish({
       status: 'preparing',
       operation: 'unsend',
+      needsAttention: false,
+      interruptionReason: null,
+      uncertain: 0,
       processed: 0,
       failed: 0,
       retryAttempts: 0,
@@ -1464,13 +1670,13 @@
         if (!currentContext.ok || currentContext.threadId !== expectedThreadId) {
           throw new Error(currentContext.reason || 'The reviewed conversation changed.');
         }
-        const row = await nextSentRow(
+        const row = await measurePhase('historyLoading', () => nextSentRow(
           currentContext,
           signal,
           order,
           traversal,
           authorizationExpiresAt,
-        );
+        ));
         if (!row) {
           if (traversal.lastSearchGrew || traversal.lastSearchIncomplete) {
             emptyGrowthRounds += 1;
@@ -1517,7 +1723,7 @@
             current: label,
             message: `Waiting ${(wait / 1_000).toFixed(1)}s before the next message…`,
           });
-          await delay(wait, signal);
+          await measurePhase('pacing', () => delay(wait, signal));
         }
         if (authorizationExpiresAt <= Date.now()) {
           throw new Error('Live authorization expired before the next message.');
@@ -1533,6 +1739,7 @@
           await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
           removalVerified = true;
         } catch (error) {
+          if (error?.code === 'DM_OUTCOME_UNCERTAIN') throw error;
           if (signal.aborted) throw error;
           retryAttempts += 1;
           consecutiveFailures += 1;
@@ -1563,16 +1770,16 @@
           }
           resetTraversalAfterRemoval(traversal, afterRemovalContext.scroller, traversalBeforeRemoval);
           if (typeof options.onVerifiedRemoval === 'function') {
-            await options.onVerifiedRemoval(Object.freeze({
+            await measurePhase('checkpoint', () => options.onVerifiedRemoval(Object.freeze({
               processed,
               failed,
               retryAttempts,
               threadId: expectedThreadId,
               reviewedDigest: plan.reviewedDigest,
-            }));
+            })));
           }
           publish({
-            status: 'running',
+            status: signal.aborted ? 'stopping' : 'running',
             processed,
             failed,
             retryAttempts,
@@ -1584,15 +1791,7 @@
       }
 
       if (signal.aborted) {
-        publish({
-          status: 'stopped',
-          message: `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
-          processed,
-          failed,
-          current: null,
-          canStop: false,
-          finishedAt: new Date().toISOString(),
-        });
+        publish(interruptionState(signal, processed, failed));
       } else if (consecutiveFailures >= maxFailures) {
         publish({
           status: 'error',
@@ -1628,19 +1827,14 @@
         });
       }
     } catch (error) {
-      if (error?.name === 'AbortError' || signal.aborted) {
-        publish({
-          status: 'stopped',
-          message: `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
-          processed,
-          failed,
-          current: null,
-          canStop: false,
-          finishedAt: new Date().toISOString(),
-        });
+      if (lifecycleReason(signal)) {
+        publish(interruptionState(signal, processed, failed, error?.code === 'DM_OUTCOME_UNCERTAIN'));
+      } else if (error?.code !== 'DM_OUTCOME_UNCERTAIN' && (error?.name === 'AbortError' || signal.aborted)) {
+        publish(interruptionState(signal, processed, failed));
       } else {
         publish({
           status: 'error',
+          uncertain: error?.code === 'DM_OUTCOME_UNCERTAIN' ? 1 : 0,
           message: `${error.message || 'The conversation changed unexpectedly.'} ${processed} message${processed === 1 ? '' : 's'} unsent.`,
           processed,
           failed,
@@ -1652,6 +1846,7 @@
     } finally {
       unwatch();
       if (activeController === controller) activeController = null;
+      activeExecution = null;
       for (const row of document.querySelectorAll(`[${ACTIVE_ATTRIBUTE}]`)) row.removeAttribute(ACTIVE_ATTRIBUTE);
     }
     return snapshot();
@@ -1676,7 +1871,8 @@
     };
   }
 
-  const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe };
+  const messageProof = Object.freeze({ sentByCurrentUser, removalEvidence, removalProven, waitForRemoval });
+  const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe, SPEED_PROFILES, messageProof };
   if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
       candidateRows,
@@ -1684,6 +1880,7 @@
       deepestMessageContainer,
       advanceHistoryProgress,
       actionButton,
+      isDmMessageOptionsControl,
       currentThreadId,
       hasMessageContent,
       isVisible,
@@ -1695,6 +1892,9 @@
       proveStableOldestBoundary,
       removalEvidence,
       removalProven,
+      waitForRemoval,
+      waitForElement,
+      delay,
       reversedLayout,
       rowNeedsReposition,
       resetTraversalAfterRemoval,

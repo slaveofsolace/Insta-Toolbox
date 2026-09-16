@@ -33,7 +33,7 @@ const evidenceRoot = path.join(
   repositoryRoot,
   'docs',
   'evidence',
-  'overlay-ui-3.1.12-2026-09-12',
+  'overlay-ui-4.0.0-2026-09-16',
   'after',
   process.platform,
 );
@@ -683,6 +683,7 @@ function assertScenario(metrics, scenario) {
         ['Action', 'Permanently unsend messages'],
         ['Conversation', 'Thread 123'],
         ['Scope', 'All messages you sent'],
+        ['Speed', 'Standard'],
       ],
       message: 'Permanently unsend every message you sent in this conversation?',
       title: 'Unsend DMs?',
@@ -980,7 +981,7 @@ function fidelityLedger(results, performance) {
     capturedAt: new Date().toISOString(),
     platform: process.platform,
     source: {
-      current: `docs/evidence/overlay-ui-3.1.12-2026-09-12/after/${process.platform}`,
+      current: `docs/evidence/overlay-ui-4.0.0-2026-09-16/after/${process.platform}`,
     },
     comparison: [
     { area: 'shell', before: 'Default-open, visually dominant overlay panel', after: `Fresh collapsed launcher; standard open share ${(standard.metrics.panelAreaShare * 100).toFixed(2)}%`, status: 'MEASURED' },

@@ -80,8 +80,6 @@
       }
       .insta-toolbox-panel {
         border-radius: 16px !important;
-        backdrop-filter: blur(14px) saturate(1.02) !important;
-        -webkit-backdrop-filter: blur(14px) saturate(1.02) !important;
         animation: insta-toolbox-instagram-open 160ms cubic-bezier(.2,.8,.2,1) !important;
       }
       .insta-toolbox-brand-mark {
@@ -108,7 +106,7 @@
         background: var(--insta-toolbox-signal);
         content: "";
       }
-      .insta-toolbox-card, .insta-toolbox-tool-card, .insta-toolbox-next, .insta-toolbox-checker-metric, .insta-toolbox-disclosure {
+      .insta-toolbox-card, .insta-toolbox-tool-card, .insta-toolbox-next, .insta-toolbox-checker-metric, .insta-toolbox-panel .insta-toolbox-disclosure {
         border-radius: 12px !important;
       }
       .insta-toolbox-tool-card, .insta-toolbox-button, .insta-toolbox-link-button, .insta-toolbox-file-label, .insta-toolbox-disclosure summary {
@@ -222,6 +220,7 @@
       && reservation?.threadId === plan.threadId
       && reservation?.reviewedDigest === plan.reviewedDigest
       && reservation?.scope === plan.scope
+      && (reservation?.speed || 'standard') === (plan.speed || 'standard')
       && reservation?.count === expectedCount
       && reservation?.status === 'reserved'
       && reservation?.processed === 0
@@ -270,18 +269,18 @@
         : active
         ? readOnlyCheck ? 'checking' : `${state.processed} unsent`
         : state.status === 'completed'
-          ? 'complete'
-          : preview
+          ? readOnlyCheck ? 'complete' : `${state.processed} unsent`
+          : state.status === 'needs-attention' ? 'needs attention' : preview
             ? 'checked'
             : 'ready';
-      badge.dataset.tone = state.status === 'error'
+      badge.dataset.tone = state.status === 'needs-attention' ? 'warning' : state.status === 'error'
         ? 'danger'
         : active ? 'warning' : state.status === 'completed' ? 'good' : 'neutral';
     }
     if (detail) {
       detail.textContent = pendingReservation
         ? 'Preparing this conversation…'
-        : active || ['completed', 'stopped', 'error'].includes(state.status)
+        : active || ['completed', 'stopped', 'error', 'needs-attention'].includes(state.status)
         ? state.message
         : preview
           ? `Read-only estimate for this conversation. Instagram may load more while Unsend runs.`
@@ -299,7 +298,8 @@
       if (pendingReservation) button.disabled = false;
     }
     if (progress) {
-      progress.hidden = !active && !['completed', 'stopped', 'error'].includes(state.status);
+      progress.hidden = (!active && !['completed', 'stopped', 'error', 'needs-attention'].includes(state.status))
+        || (state.status === 'completed' && runtime.model.cleanupPreferences?.showSummary === false);
       const title = progress.querySelector('[data-insta-toolbox-role="thread-unsend-progress-title"]');
       const copy = progress.querySelector('[data-insta-toolbox-role="thread-unsend-progress-detail"]');
       if (title) title.textContent = pendingReservation
@@ -309,7 +309,7 @@
         : readOnlyCheck ? 'Conversation check' : 'Last run';
       if (copy) copy.textContent = readOnlyCheck
         ? 'Read-only check · nothing changed'
-        : `${state.processed} unsent${state.retryAttempts ? ` · ${state.retryAttempts} retr${state.retryAttempts === 1 ? 'y' : 'ies'}` : ''}`;
+        : `${state.processed} unsent${state.uncertain ? ` · ${state.uncertain} uncertain` : ''}${state.retryAttempts ? ` · ${state.retryAttempts} retr${state.retryAttempts === 1 ? 'y' : 'ies'}` : ''}`;
     }
     runtime.setText('message-identity-detail', 'Bulk runs touch only rows Instagram marks as yours. Imported jobs also require an exact thread and message match.');
   }
@@ -319,8 +319,8 @@
     const unsubscribe = runner.subscribe((state) => {
       runtime.model.threadUnsend = state;
       renderDirect(runtime);
-      if (['preparing', 'running', 'waiting', 'stopping', 'completed', 'stopped', 'error'].includes(state.status)) {
-        runtime.status(state.message, state.status === 'error' ? 'error' : state.status === 'completed' ? 'good' : 'neutral');
+      if (['preparing', 'running', 'waiting', 'stopping', 'completed', 'stopped', 'error', 'needs-attention'].includes(state.status)) {
+        runtime.status(state.message, state.status === 'error' ? 'error' : state.status === 'needs-attention' ? 'warning' : state.status === 'completed' ? 'good' : 'neutral');
       }
     });
     subscriptions.set(runtime.model, unsubscribe);
@@ -439,6 +439,7 @@
       throw new Error(inspection.reason);
     }
     const scope = runtime.query('[data-insta-toolbox-role="unsend-scope"]')?.value || 'all';
+    const speed = runtime.query('[data-insta-toolbox-role="unsend-speed"]')?.value || 'standard';
     const requested = Math.floor(Number(runtime.query('[data-insta-toolbox-role="unsend-count"]')?.value) || 1);
     const limit = scope === 'all' ? null : Math.max(1, requested);
     let plan;
@@ -446,6 +447,7 @@
       plan = runner.createPlan({
         threadId: inspection.threadId,
         scope,
+        speed,
         limit,
         detectedCount: Number(currentPreview(runtime)?.detectedCount ?? currentPreview(runtime)?.eligibleCount) || null,
         expiresAt: Date.now() + DM_PLAN_TTL_MS,
@@ -472,6 +474,7 @@
           { label: 'Action', value: 'Permanently unsend messages' },
           { label: 'Conversation', value: `Thread ${plan.threadId}` },
           { label: 'Scope', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
+          { label: 'Speed', value: speed === 'fast' ? 'Fast' : 'Standard' },
         ],
         binding: {
           action: 'unsend',
@@ -479,6 +482,7 @@
           limit: plan.limit,
           reviewedDigest: plan.reviewedDigest,
           scope: plan.scope,
+          speed: plan.speed,
           threadId: plan.threadId,
         },
       });
@@ -499,6 +503,7 @@
       throw error;
     }
     const confirmedScope = runtime.query('[data-insta-toolbox-role="unsend-scope"]')?.value || 'all';
+    const confirmedSpeed = runtime.query('[data-insta-toolbox-role="unsend-speed"]')?.value || 'standard';
     const confirmedRequested = Math.floor(Number(runtime.query('[data-insta-toolbox-role="unsend-count"]')?.value) || 1);
     const confirmedLimit = confirmedScope === 'all' ? null : Math.max(1, confirmedRequested);
     if (
@@ -507,15 +512,17 @@
       || confirmation.action !== 'unsend'
       || confirmation.threadId !== plan.threadId
       || confirmation.scope !== plan.scope
+      || (confirmation.speed || 'standard') !== (plan.speed || 'standard')
       || confirmation.limit !== plan.limit
       || confirmation.reviewedDigest !== plan.reviewedDigest
       || Number(confirmation.expiresAt) !== plan.expiresAt
       || plan.expiresAt <= Date.now()
       || confirmedScope !== plan.scope
+      || confirmedSpeed !== (plan.speed || 'standard')
       || confirmedLimit !== plan.limit
     ) {
       pendingReviews.delete(runtime.model);
-      runtime.status('The conversation or Unsend scope changed after review. Nothing was removed.', 'error');
+      runtime.status('The conversation or Unsend settings changed after review. Nothing was removed.', 'error');
       return;
     }
     pendingReviews.delete(runtime.model);

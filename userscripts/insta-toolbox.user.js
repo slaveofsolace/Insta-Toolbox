@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      3.1.12
+// @version      4.0.0
 // @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -193,11 +193,19 @@
     }`;
   }
 
+  function themeOverrides(scope) {
+    const selector = (theme) => scope === ':host'
+      ? `:host([data-theme-preference="${theme}"])`
+      : `${scope}[data-theme-preference="${theme}"]`;
+    return `${selector('light')} { --insta-toolbox-bg:#fff; --insta-toolbox-bg-raised:#fff; --insta-toolbox-bg-sunken:#fafafa; --insta-toolbox-text:#171717; --insta-toolbox-text-muted:#666; --insta-toolbox-line:#dbdbdb; color-scheme:light; }
+${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2023; --insta-toolbox-bg-sunken:#17181a; --insta-toolbox-text:#f3f3f3; --insta-toolbox-text-muted:#b3b3b3; --insta-toolbox-line:#36383c; color-scheme:dark; }`;
+  }
+
   const api = Object.freeze({
     css(options = {}) {
       const density = options.density === 'compact' ? 'compact' : 'comfortable';
       const scope = options.scope || ':host';
-      return `${scope} { ${declarations(density)} }\n${primitives()}`;
+      return `${scope} { ${declarations(density)} }\n${themeOverrides(scope)}\n${primitives()}`;
     },
     declarations,
     palette,
@@ -212,6 +220,93 @@
     enumerable: false,
     value: api,
     writable: false,
+  });
+})();
+
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'instaToolboxCleanupPreferencesV1';
+  const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+  const record = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const choice = (value, values, fallback) => values.includes(value) ? value : fallback;
+  const boolean = (source, key, fallback) => own(source, key) && typeof source[key] === 'boolean' ? source[key] : fallback;
+
+  function defaults() {
+    return {
+      schemaVersion: 1, speed: 'standard', messageScope: 'all', messageLimit: 1,
+      removeOwnReactions: false, showSummary: true, execution: 'foreground',
+      workerCount: 1, scheduling: 'serial', notifications: false,
+    };
+  }
+
+  function normalize(value) {
+    const source = record(value);
+    const limit = Number(source.messageLimit);
+    return {
+      schemaVersion: 1,
+      speed: choice(source.speed, ['standard', 'fast'], 'standard'),
+      messageScope: choice(source.messageScope, ['all', 'newest', 'oldest'], 'all'),
+      messageLimit: Number.isSafeInteger(limit) && limit >= 1 && limit <= 250 ? limit : 1,
+      removeOwnReactions: boolean(source, 'removeOwnReactions', false),
+      showSummary: boolean(source, 'showSummary', true),
+      execution: choice(source.execution, ['foreground', 'background'], 'foreground'),
+      workerCount: Number(source.workerCount) === 2 ? 2 : 1,
+      scheduling: 'serial',
+      notifications: boolean(source, 'notifications', false),
+    };
+  }
+
+  function normalizeAppearance(value, fallback = {}) {
+    const source = record(value);
+    const opacity = Number(source.opacity);
+    return {
+      theme: choice(source.theme, ['auto', 'light', 'dark'], fallback.theme || 'auto'),
+      density: choice(source.density, ['comfortable', 'compact'], fallback.density || 'comfortable'),
+      accent: choice(source.accent, ['rose', 'violet', 'blue'], fallback.accent || 'rose'),
+      blur: choice(source.blur, ['none', 'soft', 'strong'], fallback.blur || 'soft'),
+      launcherSize: choice(source.launcherSize, ['standard', 'large'], fallback.launcherSize || 'standard'),
+      opacity: source.opacity != null && source.opacity !== '' && Number.isFinite(opacity)
+        ? Math.round(Math.min(1, Math.max(.55, opacity)) * 100) / 100
+        : fallback.opacity ?? .88,
+    };
+  }
+
+  function capabilities(surface) {
+    const inPage = ['extension', 'userscript'].includes(surface);
+    return Object.freeze({
+      singleConversation: inPage,
+      fast: inPage,
+      reactions: false,
+      background: false,
+      managedWorkers: false,
+      notifications: false,
+      reasons: Object.freeze({
+        fast: inPage ? '' : 'This app does not control an authenticated Instagram tab.',
+        reactions: 'Own-reaction removal has not been verified on Instagram.',
+        background: inPage ? 'Background execution is awaiting suspension and resume checks.' : 'This app does not control an authenticated Instagram tab.',
+        managedWorkers: 'Managed tabs are awaiting browser integration and collision checks.',
+        notifications: 'Completion notifications are not connected on this surface.',
+      }),
+    });
+  }
+
+  // Saved defaults are preferences, never permission to dispatch an action.
+  function effective(value, surface) {
+    const saved = normalize(value);
+    const support = capabilities(surface);
+    return {
+      ...saved,
+      speed: support.fast ? saved.speed : 'standard',
+      removeOwnReactions: support.reactions && saved.removeOwnReactions,
+      execution: support.background ? saved.execution : 'foreground',
+      workerCount: support.managedWorkers ? saved.workerCount : 1,
+      notifications: support.notifications && saved.notifications,
+    };
+  }
+
+  globalThis.InstaToolboxCleanupSettings = Object.freeze({
+    STORAGE_KEY, defaults, normalize, normalizeAppearance, capabilities, effective,
   });
 })();
 
@@ -473,12 +568,17 @@
   const OLDEST_BOUNDARY_POLL_MS = 120;
   const OLDEST_BOUNDARY_STABLE_MS = 2_000;
   const STABLE_EMPTY_PASSES = 3;
-  const PLAN_VERSION = 2;
+  const PLAN_VERSION = 3;
+  const SPEED_PROFILES = Object.freeze({
+    standard: Object.freeze({ minDelayMs: 1_000, maxDelayMs: 2_000 }),
+    fast: Object.freeze({ minDelayMs: 1_000, maxDelayMs: 2_000 }),
+  });
   const PLAN_SCOPES = new Set(['all', 'newest', 'oldest']);
   const listeners = new Set();
   const consumedPlanDigests = new Map();
 
   let activeController = null;
+  let activeExecution = null;
   let currentState = Object.freeze({
     status: 'idle',
     operation: null,
@@ -491,14 +591,21 @@
     startedAt: null,
     finishedAt: null,
     canStop: false,
+    needsAttention: false,
+    interruptionReason: null,
+    uncertain: 0,
   });
 
   function snapshot() {
-    return { ...currentState };
+    return { ...currentState, phaseTimings: { ...(activeExecution?.phaseTimings || currentState.phaseTimings || {}) } };
   }
 
   function publish(patch) {
-    currentState = Object.freeze({ ...currentState, ...patch });
+    currentState = Object.freeze({
+      ...currentState,
+      ...patch,
+      phaseTimings: Object.freeze({ ...(activeExecution?.phaseTimings || currentState.phaseTimings || {}) }),
+    });
     for (const listener of listeners) {
       try {
         listener(snapshot());
@@ -516,17 +623,47 @@
     return () => listeners.delete(listener);
   }
 
+  function phaseClock() {
+    return typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
+  }
+
+  function recordPhase(phase, startedAt, excludedMs = 0) {
+    if (!activeExecution) return;
+    const durationMs = Math.max(0, phaseClock() - startedAt - excludedMs);
+    activeExecution.phaseTimings[phase] = (activeExecution.phaseTimings[phase] || 0) + durationMs;
+    try { activeExecution.onPhaseTiming?.(Object.freeze({ phase, durationMs })); } catch {}
+  }
+
+  async function measurePhase(phase, operation) {
+    const startedAt = phaseClock();
+    const resolutionBefore = activeExecution?.phaseTimings.messageResolution || 0;
+    try { return await operation(); } finally {
+      const excludedMs = phase === 'historyLoading'
+        ? (activeExecution?.phaseTimings.messageResolution || 0) - resolutionBefore : 0;
+      recordPhase(phase, startedAt, excludedMs);
+    }
+  }
+
   function delay(ms, signal) {
     return new Promise((resolve, reject) => {
+      let timer;
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener?.('abort', onAbort);
+        if (error) reject(error);
+        else resolve();
+      };
+      const onAbort = () => finish(new DOMException('The operation was stopped.', 'AbortError'));
       if (signal?.aborted) {
-        reject(new DOMException('The operation was stopped.', 'AbortError'));
+        onAbort();
         return;
       }
-      const timer = setTimeout(resolve, Math.max(0, ms));
-      signal?.addEventListener('abort', () => {
-        clearTimeout(timer);
-        reject(new DOMException('The operation was stopped.', 'AbortError'));
-      }, { once: true });
+      timer = setTimeout(() => finish(), Math.max(0, ms));
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) onAbort();
     });
   }
 
@@ -546,7 +683,7 @@
     return (hash >>> 0).toString(16).padStart(8, '0');
   }
 
-  function planDigest({ version, threadId, scope, limit, detectedCount, expiresAt }) {
+  function planDigest({ version, threadId, scope, limit, detectedCount, expiresAt, speed }) {
     return digestText(JSON.stringify({
       version: Number(version),
       threadId: String(threadId || ''),
@@ -554,6 +691,7 @@
       limit: limit === null ? null : Number(limit),
       detectedCount: detectedCount === null ? null : Number(detectedCount),
       expiresAt: Number(expiresAt),
+      ...(Number(version) >= 3 ? { speed: String(speed || 'standard') } : {}),
     }));
   }
 
@@ -564,6 +702,8 @@
       : String(value.scope);
     if (!PLAN_SCOPES.has(requestedScope)) return null;
     const scope = requestedScope;
+    const speed = value.speed === undefined ? 'standard' : String(value.speed);
+    if (!Object.hasOwn(SPEED_PROFILES, speed)) return null;
     const requestedLimit = Math.floor(Number(value.limit));
     const limit = scope === 'all'
       ? null
@@ -586,16 +726,21 @@
       limit,
       detectedCount,
       expiresAt,
+      speed,
     };
     return Object.freeze({ ...plan, reviewedDigest: planDigest(plan) });
   }
 
   function validatePlan(value) {
-    if (Number(value?.version) !== PLAN_VERSION) return null;
+    const version = Number(value?.version);
+    if (![2, PLAN_VERSION].includes(version)) return null;
+    if (version === 2 && value.speed !== undefined && value.speed !== 'standard') return null;
     const normalized = createPlan(value);
-    return normalized && normalized.reviewedDigest === String(value?.reviewedDigest || '')
-      ? normalized
-      : null;
+    if (!normalized) return null;
+    const compatible = version === 2 ? { ...normalized, version: 2 } : normalized;
+    const reviewedDigest = planDigest(compatible);
+    return reviewedDigest === String(value?.reviewedDigest || '')
+      ? Object.freeze({ ...compatible, reviewedDigest }) : null;
   }
 
   function visibleText(element) {
@@ -704,6 +849,28 @@
     return null;
   }
 
+  function lifecycleReason(signal) {
+    return signal?.reason?.code === 'DM_LIFECYCLE_INTERRUPTED' ? signal.reason.reason : null;
+  }
+
+  function interruptionState(signal, processed, failed, uncertain = false) {
+    const reason = lifecycleReason(signal);
+    return {
+      status: reason ? 'needs-attention' : 'stopped',
+      needsAttention: Boolean(reason),
+      interruptionReason: reason,
+      uncertain: uncertain ? 1 : 0,
+      message: reason
+        ? `${reason === 'page-frozen' ? 'Tab suspended' : 'Page interrupted'}. ${uncertain ? 'The last Unsend outcome is uncertain. ' : ''}Review the conversation before starting again. ${processed} message${processed === 1 ? '' : 's'} unsent.`
+        : `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
+      processed,
+      failed,
+      current: null,
+      canStop: false,
+      finishedAt: new Date().toISOString(),
+    };
+  }
+
   function watchThread(controller, expectedThreadId) {
     let timer;
     let observer;
@@ -716,11 +883,24 @@
       check();
       if (!controller.signal.aborted) timer = setTimeout(poll, 200);
     };
+    const interrupt = (reason) => {
+      if (controller.signal.aborted) return;
+      if (activeController === controller) publish({
+        status: 'stopping', canStop: false, needsAttention: true,
+        interruptionReason: reason,
+        message: 'Page interrupted. Settling the current action…',
+      });
+      controller.abort(Object.freeze({ code: 'DM_LIFECYCLE_INTERRUPTED', reason }));
+    };
+    const onFreeze = () => interrupt('page-frozen');
+    const onPageHide = (event) => interrupt(event?.persisted ? 'page-cached' : 'page-left');
     const cleanup = () => {
       clearTimeout(timer);
       observer?.disconnect();
       globalThis.removeEventListener?.('popstate', check);
       globalThis.navigation?.removeEventListener?.('currententrychange', check);
+      document.removeEventListener?.('freeze', onFreeze);
+      globalThis.removeEventListener?.('pagehide', onPageHide);
       controller.signal.removeEventListener('abort', cleanup);
     };
     if (globalThis.MutationObserver && document.documentElement) {
@@ -729,7 +909,10 @@
     }
     globalThis.addEventListener?.('popstate', check);
     globalThis.navigation?.addEventListener?.('currententrychange', check);
+    document.addEventListener?.('freeze', onFreeze);
+    globalThis.addEventListener?.('pagehide', onPageHide);
     controller.signal.addEventListener('abort', cleanup, { once: true });
+    if (controller.signal.aborted) { cleanup(); return cleanup; }
     poll();
     return cleanup;
   }
@@ -794,17 +977,24 @@
 
   function sentByCurrentUser(row, view = globalThis) {
     const explicit = String(row?.getAttribute?.('data-sent-by-me') || '').toLowerCase();
-    if (explicit === 'true') return true;
     if (explicit === 'false') return false;
-    const queue = [{ element: row, depth: 0 }];
-    while (queue.length) {
-      const { element, depth } = queue.shift();
-      if (view.getComputedStyle?.(element)?.justifyContent === 'flex-end') return true;
-      if (depth < MAX_HOVER_DEPTH) {
-        for (const child of element.children || []) queue.push({ element: child, depth: depth + 1 });
-      }
+    if ([...row?.querySelectorAll?.('[data-sent-by-me]') || []].some((element) => (
+      String(element.getAttribute?.('data-sent-by-me')).toLowerCase() === 'false'
+    ))) return false;
+    // Alignment belongs to the message wrapper, never a nested reaction or
+    // menu. Follow only an unbranched wrapper chain and stop at content.
+    let element = row;
+    let aligned = false;
+    for (let depth = 0; element && depth <= MAX_HOVER_DEPTH; depth += 1) {
+      if (depth > 0 && element.matches?.('[dir="auto"], img, video, audio, button, [role="button"]')) break;
+      const style = view.getComputedStyle?.(element);
+      if (style?.justifyContent === 'flex-start') return false;
+      if (style?.justifyContent === 'flex-end') aligned = true;
+      const children = [...element.children || []];
+      if (children.length !== 1) break;
+      element = children[0];
     }
-    return false;
+    return explicit === 'true' || aligned;
   }
 
   function stableMessageKey(row) {
@@ -875,16 +1065,19 @@
   }
 
   function candidateRows(scroller, traversal = null) {
+    const startedAt = phaseClock();
     const container = deepestMessageContainer(scroller);
     let rows = [...(container?.children || [])];
     if (!rows.length) {
       rows = [...(scroller?.querySelectorAll?.('[role="row"], [role="listitem"]') || [])];
     }
-    return rows
+    const candidates = rows
       .filter((row) => !processedMarkerMatches(row, traversal))
       .filter((row) => !row.hasAttribute?.(ACTIVE_ATTRIBUTE))
       .filter(hasMessageContent)
       .filter((row) => sentByCurrentUser(row, row.ownerDocument.defaultView));
+    recordPhase('messageResolution', startedAt);
+    return candidates;
   }
 
   function orderedCandidates(scroller, order = 'oldest', traversal = null) {
@@ -926,32 +1119,51 @@
   }
 
   async function waitForElement(target, getter, signal, timeoutMs = 3_000) {
-    if (signal?.aborted) throw new DOMException('The operation was stopped.', 'AbortError');
-    const immediate = getter();
-    if (immediate) return immediate;
     return new Promise((resolve, reject) => {
+      const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
       let timer;
-      const observer = new MutationObserver(() => {
-        const value = getter();
-        if (!value) return;
-        cleanup();
-        resolve(value);
-      });
-      const onAbort = () => {
-        cleanup();
-        reject(new DOMException('The operation was stopped.', 'AbortError'));
-      };
+      let observer;
+      let settled = false;
       const cleanup = () => {
-        observer.disconnect();
+        observer?.disconnect();
         clearTimeout(timer);
-        signal?.removeEventListener('abort', onAbort);
+        signal?.removeEventListener?.('abort', onAbort);
       };
-      observer.observe(target, { childList: true, subtree: true, attributes: true });
-      timer = setTimeout(() => {
+      const finish = (value, error) => {
+        if (settled) return;
+        settled = true;
         cleanup();
-        resolve(null);
-      }, timeoutMs);
-      signal?.addEventListener('abort', onAbort, { once: true });
+        if (error) reject(error);
+        else resolve(value);
+      };
+      const onAbort = () => finish(null, new DOMException('The operation was stopped.', 'AbortError'));
+      const check = () => {
+        if (settled) return;
+        if (signal?.aborted) { onAbort(); return; }
+        if (Date.now() >= deadline) { finish(null); return; }
+        try {
+          const value = getter();
+          if (signal?.aborted) onAbort();
+          else if (Date.now() >= deadline) finish(null);
+          else if (value) finish(value);
+        } catch (error) { finish(null, error); }
+      };
+      const expire = () => {
+        if (settled) return;
+        const remaining = deadline - Date.now();
+        if (remaining > 0) timer = setTimeout(expire, remaining);
+        else finish(null);
+      };
+      signal?.addEventListener?.('abort', onAbort, { once: true });
+      check();
+      if (settled) return;
+      try {
+        observer = new MutationObserver(check);
+        observer.observe(target, { childList: true, subtree: true, attributes: true, characterData: true });
+        if (settled) return;
+        timer = setTimeout(expire, Math.max(0, deadline - Date.now()));
+        check();
+      } catch (error) { finish(null, error); }
     });
   }
 
@@ -1012,9 +1224,17 @@
   }
 
   function isDmMessageOptionsControl(control) {
-    if (actionLabels.isDmMessageOptionsLabel(visibleText(control))) return true;
-    return [...control?.querySelectorAll?.('[aria-label]') || []]
-      .some((element) => actionLabels.isDmMessageOptionsLabel(visibleText(element)));
+    const ownLabel = actionLabels.normalizeActionLabel(control?.getAttribute?.('aria-label'));
+    const text = actionLabels.normalizeActionLabel(visibleText(control));
+    const iconLabels = [...control?.querySelectorAll?.('[aria-label]') || []]
+      .map((element) => actionLabels.normalizeActionLabel(element.getAttribute?.('aria-label')))
+      .filter(Boolean);
+    // An explicit accessible name is authoritative. A generic "More" caption
+    // or decorative ellipsis cannot override Reply, Share, or another action.
+    if (ownLabel && !actionLabels.isDmMessageOptionsLabel(ownLabel)) return false;
+    if (text && !actionLabels.isDmMessageOptionsLabel(text) && !/^[.\u2026\u22ef\u22ee]+$/u.test(text)) return false;
+    if (iconLabels.some((label) => !actionLabels.isDmMessageOptionsLabel(label))) return false;
+    return Boolean(ownLabel || actionLabels.isDmMessageOptionsLabel(text) || iconLabels.length);
   }
 
   function actionButton(row) {
@@ -1025,9 +1245,10 @@
         if (control) matches.push(control);
       }
     }
-    return [...new Set(matches)]
+    const controls = [...new Set(matches)]
       .filter(isDmMessageOptionsControl)
-      .find(isVisible) || null;
+      .filter(isVisible);
+    return controls.length === 1 ? controls[0] : null;
   }
 
   function activateControl(control) {
@@ -1070,11 +1291,13 @@
     const targets = hoverTargets(row);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       for (const target of targets) hoverIn(target);
-      await delay(110, signal);
-      const control = actionButton(row);
+      const fast = activeExecution?.speed === 'fast';
+      const control = fast
+        ? await waitForElement(row, () => actionButton(row), signal, 110)
+        : (await delay(110, signal), actionButton(row));
       if (control) return control;
       for (const target of targets) hoverOut(target);
-      await delay(60, signal);
+      if (!fast) await delay(60, signal);
     }
     for (const target of targets) hoverIn(target);
     return waitForElement(row, () => actionButton(row), signal, 3_000);
@@ -1103,7 +1326,7 @@
     pending.catch(() => {});
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
     activateControl(control);
-    const result = await pending;
+    const result = await measurePhase('menuReadiness', () => pending);
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend option.');
     return result;
@@ -1148,45 +1371,36 @@
     pending.catch(() => {});
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
     activateControl(menuControl);
-    const result = await pending;
+    const result = await measurePhase('confirmationReadiness', () => pending);
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend confirmation.');
     const dialogButton = result?.control;
     if (!dialogButton) return false;
 
     const before = removalEvidence(row);
-    const closed = waitForElement(
-      document.body,
-      () => (!dialogButton.isConnected || !isVisible(dialogButton) ? true : null),
-      signal,
-      5_000,
-    );
-    const removed = waitForElement(
-      document.body,
-      () => (removalProven(row, before) ? true : null),
-      signal,
-      5_000,
-    );
-    closed.catch(() => {});
-    removed.catch(() => {});
     requireAuthorization(expectedThreadId, authorizationExpiresAt);
-    activateControl(dialogButton);
-    // Parenthesised deliberately: `await closed !== true` binds as
-    // `await (closed !== true)`, which is always true for a promise and made
-    // every successful removal report as a failure.
-    if ((await closed) !== true) return false;
-
-    // Instagram may remove the row or replace it with an "unsent" placeholder.
-    // A hidden hover control is not proof: require the reviewed row or its
-    // message content to disappear or change.
-    return (await removed) === true;
+    try {
+      activateControl(dialogButton);
+      // Stop prevents the next click, but a dispatched mutation still needs
+      // bounded settlement. Never retry an outcome that could have succeeded.
+      const verified = await measurePhase('verification', () => waitForRemoval(row, before, {
+        dialogButton,
+        contextValid: () => currentThreadId() === expectedThreadId,
+      }));
+      if (!verified) throw new Error('Removal could not be verified.');
+      return true;
+    } catch {
+      const error = new Error('The last Unsend outcome is uncertain. Check the conversation before starting again.');
+      error.code = 'DM_OUTCOME_UNCERTAIN';
+      throw error;
+    }
   }
 
   async function unsendRow(row, signal, expectedThreadId, authorizationExpiresAt) {
     row.setAttribute(ACTIVE_ATTRIBUTE, '');
     let success = false;
     try {
-      const control = await revealActionButton(row, signal);
+      const control = await measurePhase('menuReadiness', () => revealActionButton(row, signal));
       if (!control) throw new Error('The message menu did not appear.');
       const menu = await openUnsendMenu(
         control,
@@ -1656,16 +1870,80 @@
   }
 
   function removalEvidence(row) {
-    if (!row?.isConnected) return 'row-removed';
-    if (!hasMessageContent(row)) return 'content-removed';
-    return preview(row);
+    const parent = row?.parentElement || null;
+    const root = row?.closest?.("[data-pagelet='IGDMessagesList']") || parent;
+    const scrollers = [];
+    for (let element = parent; element; element = element.parentElement) {
+      if (Number(element.scrollHeight) > Number(element.clientHeight)) {
+        scrollers.push({ element, top: Number(element.scrollTop) || 0 });
+      }
+      if (element === root) break;
+    }
+    return {
+      key: stableMessageKey(row),
+      text: preview(row),
+      connected: Boolean(row?.isConnected),
+      parent,
+      root,
+      scrollers,
+      siblings: [...parent?.children || []].filter((element) => element !== row),
+    };
   }
 
   function removalProven(row, before) {
-    const after = removalEvidence(row);
-    return after === 'row-removed'
-      || after === 'content-removed'
-      || (before && after && after !== before);
+    if (!before?.connected) return false;
+    const root = before.root;
+    if (root && (!root.isConnected || visibleLoader(root) || root.getAttribute?.('aria-busy') === 'true')) return false;
+    const isPlaceholder = (candidate) => {
+      const text = normalizePlaceholder(preview(candidate));
+      if (normalizePlaceholder(before.text) === text) return false;
+      return ['you unsent a message', 'you unsent this message', 'message unsent'].includes(text)
+        && !candidate.querySelector?.('img, video, audio, [aria-haspopup="menu"]')
+        && !actionButton(candidate);
+    };
+    if (row?.isConnected) {
+      if (stableMessageKey(row) !== before.key) return false;
+      return isPlaceholder(row);
+    }
+    if (before.key) {
+      const matches = [...root?.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
+        .filter((candidate) => stableMessageKey(candidate) === before.key);
+      if (matches.length) return matches.length === 1 && isPlaceholder(matches[0]);
+    }
+    if (!before.parent?.isConnected) return false;
+    if (before.scrollers.some(({ element, top }) => (
+      !element.isConnected || Math.abs((Number(element.scrollTop) || 0) - top) > 2
+    ))) return false;
+    if (before.key) return true;
+    // Without a logical ID, require the same local neighborhood and no copy
+    // of the original content. Scrolling/replaced containers are not removal.
+    return before.parent.children.length === before.siblings.length
+      && before.siblings.every((element) => element.isConnected && element.parentElement === before.parent)
+      && ![...before.parent.children || []].some((candidate) => preview(candidate) === before.text);
+  }
+
+  function normalizePlaceholder(text) {
+    return actionLabels.normalizeActionLabel(text).replace(/[.!]$/u, '');
+  }
+
+  async function waitForRemoval(row, before, {
+    dialogButton = null,
+    contextValid = () => true,
+    timeoutMs = 5_000,
+    stableMs = 350,
+  } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    let stableSince = null;
+    while (Date.now() < deadline) {
+      if (!contextValid()) return false;
+      const dialogClosed = !dialogButton || !dialogButton.isConnected || !isVisible(dialogButton);
+      if (dialogClosed && removalProven(row, before)) {
+        if (stableSince === null) stableSince = Date.now();
+        if (Date.now() - stableSince >= stableMs) return true;
+      } else stableSince = null;
+      await delay(Math.min(75, Math.max(0, deadline - Date.now())));
+    }
+    return false;
   }
 
   async function inspectAll() {
@@ -1680,6 +1958,9 @@
     publish({
       status: 'preparing',
       operation: 'check',
+      needsAttention: false,
+      interruptionReason: null,
+      uncertain: 0,
       processed: 0,
       failed: 0,
       message: 'Checking the full conversation without opening a message menu…',
@@ -1711,11 +1992,16 @@
       });
       return result;
     } catch (error) {
-      const reason = error?.name === 'AbortError' || controller.signal.aborted
+      const interrupted = lifecycleReason(controller.signal);
+      const reason = interrupted
+        ? 'Page interrupted. Run Check conversation again when the tab is ready.'
+        : error?.name === 'AbortError' || controller.signal.aborted
         ? 'Conversation check stopped.'
         : error.message || 'The conversation could not be checked.';
       publish({
-        status: error?.name === 'AbortError' || controller.signal.aborted ? 'stopped' : 'error',
+        status: interrupted ? 'needs-attention' : error?.name === 'AbortError' || controller.signal.aborted ? 'stopped' : 'error',
+        needsAttention: Boolean(interrupted),
+        interruptionReason: interrupted,
         message: reason,
         current: null,
         canStop: false,
@@ -1738,6 +2024,10 @@
         canStop: false,
         finishedAt: new Date().toISOString(),
       });
+      return snapshot();
+    }
+    if (options.speed !== undefined && options.speed !== plan.speed) {
+      publish({ status: 'error', message: 'Refresh the review before changing speed.', canStop: false });
       return snapshot();
     }
     const context = threadContext();
@@ -1776,6 +2066,14 @@
 
     const controller = new AbortController();
     activeController = controller;
+    activeExecution = {
+      speed: plan.speed,
+      onPhaseTiming: typeof options.onPhaseTiming === 'function' ? options.onPhaseTiming : null,
+      phaseTimings: {
+        historyLoading: 0, messageResolution: 0, menuReadiness: 0,
+        confirmationReadiness: 0, verification: 0, pacing: 0, checkpoint: 0,
+      },
+    };
     const signal = controller.signal;
     const unwatch = watchThread(controller, expectedThreadId);
     const maxFailures = Math.max(1, Math.min(10, Number(options.maxConsecutiveFailures) || DEFAULT_MAX_FAILURES));
@@ -1797,6 +2095,9 @@
     publish({
       status: 'preparing',
       operation: 'unsend',
+      needsAttention: false,
+      interruptionReason: null,
+      uncertain: 0,
       processed: 0,
       failed: 0,
       retryAttempts: 0,
@@ -1842,13 +2143,13 @@
         if (!currentContext.ok || currentContext.threadId !== expectedThreadId) {
           throw new Error(currentContext.reason || 'The reviewed conversation changed.');
         }
-        const row = await nextSentRow(
+        const row = await measurePhase('historyLoading', () => nextSentRow(
           currentContext,
           signal,
           order,
           traversal,
           authorizationExpiresAt,
-        );
+        ));
         if (!row) {
           if (traversal.lastSearchGrew || traversal.lastSearchIncomplete) {
             emptyGrowthRounds += 1;
@@ -1895,7 +2196,7 @@
             current: label,
             message: `Waiting ${(wait / 1_000).toFixed(1)}s before the next message…`,
           });
-          await delay(wait, signal);
+          await measurePhase('pacing', () => delay(wait, signal));
         }
         if (authorizationExpiresAt <= Date.now()) {
           throw new Error('Live authorization expired before the next message.');
@@ -1911,6 +2212,7 @@
           await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
           removalVerified = true;
         } catch (error) {
+          if (error?.code === 'DM_OUTCOME_UNCERTAIN') throw error;
           if (signal.aborted) throw error;
           retryAttempts += 1;
           consecutiveFailures += 1;
@@ -1941,16 +2243,16 @@
           }
           resetTraversalAfterRemoval(traversal, afterRemovalContext.scroller, traversalBeforeRemoval);
           if (typeof options.onVerifiedRemoval === 'function') {
-            await options.onVerifiedRemoval(Object.freeze({
+            await measurePhase('checkpoint', () => options.onVerifiedRemoval(Object.freeze({
               processed,
               failed,
               retryAttempts,
               threadId: expectedThreadId,
               reviewedDigest: plan.reviewedDigest,
-            }));
+            })));
           }
           publish({
-            status: 'running',
+            status: signal.aborted ? 'stopping' : 'running',
             processed,
             failed,
             retryAttempts,
@@ -1962,15 +2264,7 @@
       }
 
       if (signal.aborted) {
-        publish({
-          status: 'stopped',
-          message: `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
-          processed,
-          failed,
-          current: null,
-          canStop: false,
-          finishedAt: new Date().toISOString(),
-        });
+        publish(interruptionState(signal, processed, failed));
       } else if (consecutiveFailures >= maxFailures) {
         publish({
           status: 'error',
@@ -2006,19 +2300,14 @@
         });
       }
     } catch (error) {
-      if (error?.name === 'AbortError' || signal.aborted) {
-        publish({
-          status: 'stopped',
-          message: `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
-          processed,
-          failed,
-          current: null,
-          canStop: false,
-          finishedAt: new Date().toISOString(),
-        });
+      if (lifecycleReason(signal)) {
+        publish(interruptionState(signal, processed, failed, error?.code === 'DM_OUTCOME_UNCERTAIN'));
+      } else if (error?.code !== 'DM_OUTCOME_UNCERTAIN' && (error?.name === 'AbortError' || signal.aborted)) {
+        publish(interruptionState(signal, processed, failed));
       } else {
         publish({
           status: 'error',
+          uncertain: error?.code === 'DM_OUTCOME_UNCERTAIN' ? 1 : 0,
           message: `${error.message || 'The conversation changed unexpectedly.'} ${processed} message${processed === 1 ? '' : 's'} unsent.`,
           processed,
           failed,
@@ -2030,6 +2319,7 @@
     } finally {
       unwatch();
       if (activeController === controller) activeController = null;
+      activeExecution = null;
       for (const row of document.querySelectorAll(`[${ACTIVE_ATTRIBUTE}]`)) row.removeAttribute(ACTIVE_ATTRIBUTE);
     }
     return snapshot();
@@ -2054,7 +2344,8 @@
     };
   }
 
-  const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe };
+  const messageProof = Object.freeze({ sentByCurrentUser, removalEvidence, removalProven, waitForRemoval });
+  const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe, SPEED_PROFILES, messageProof };
   if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
       candidateRows,
@@ -2062,6 +2353,7 @@
       deepestMessageContainer,
       advanceHistoryProgress,
       actionButton,
+      isDmMessageOptionsControl,
       currentThreadId,
       hasMessageContent,
       isVisible,
@@ -2073,6 +2365,9 @@
       proveStableOldestBoundary,
       removalEvidence,
       removalProven,
+      waitForRemoval,
+      waitForElement,
+      delay,
       reversedLayout,
       rowNeedsReposition,
       resetTraversalAfterRemoval,
@@ -3088,24 +3383,10 @@
 
   function dmOwnership(row, identityNode) {
     const explicit = String(row?.getAttribute?.('data-sent-by-me') || '').toLowerCase();
-    if (explicit === 'true') return { sentByMe: true, basis: 'data-sent-by-me' };
     if (explicit === 'false') return { sentByMe: false, basis: 'data-sent-by-me' };
-
-    // The source script used flex-end as sent-message evidence. Keep that evidence
-    // only on the exact identity-to-row ancestor chain; unrelated descendant
-    // toolbars must never confer ownership on a received message.
-    const ownershipChain = [];
-    let element = identityNode;
-    while (element && row?.contains?.(element)) {
-      ownershipChain.push(element);
-      if (element === row) break;
-      element = element.parentElement || element.parentNode || element.parent || null;
-    }
-    if (ownershipChain.at(-1) !== row) return { sentByMe: null, basis: null };
-    for (const element of ownershipChain) {
-      if (getComputedStyle(element).justifyContent === 'flex-end') {
-        return { sentByMe: true, basis: 'identity-ancestor-flex-end-layout' };
-      }
+    const proof = globalThis.InstaToolboxDmThreadUnsender?.messageProof;
+    if (row?.contains?.(identityNode) && proof?.sentByCurrentUser(row, globalThis)) {
+      return { sentByMe: true, basis: explicit === 'true' ? 'data-sent-by-me' : 'identity-ancestor-flex-end-layout' };
     }
     return { sentByMe: null, basis: null };
   }
@@ -3493,17 +3774,31 @@
     };
   }
 
-  function waitFor(check, timeoutMs) {
-    const startedAt = Date.now();
-    return new Promise((resolve) => {
-      const inspect = () => {
-        const value = check();
-        if (value || Date.now() - startedAt >= timeoutMs) {
-          resolve(value || null);
-          return;
-        }
-        setTimeout(inspect, 100);
+  function waitFor(check, timeoutMs, signal = null) {
+    const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+    return new Promise((resolve, reject) => {
+      let timer;
+      let settled = false;
+      const finish = (value, error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener?.('abort', onAbort);
+        if (error) reject(error);
+        else resolve(value);
       };
+      const onAbort = () => finish(null);
+      const inspect = () => {
+        if (settled) return;
+        if (signal?.aborted || Date.now() >= deadline) { finish(null); return; }
+        try {
+          const value = check();
+          if (signal?.aborted || Date.now() >= deadline) finish(null);
+          else if (value) finish(value);
+          else timer = setTimeout(inspect, Math.min(100, deadline - Date.now()));
+        } catch (error) { finish(null, error); }
+      };
+      signal?.addEventListener?.('abort', onAbort, { once: true });
       inspect();
     });
   }
@@ -3661,6 +3956,35 @@
     if (!dmResolutionMatches(resolution, item)) {
       return { ambiguous: true, reason: 'dm-resolution-expired-or-changed' };
     }
+    const controller = new AbortController();
+    let interrupted = null;
+    const interrupt = (reason) => {
+      if (interrupted) return;
+      interrupted = reason;
+      dmResolutions.clear();
+      controller.abort(reason);
+    };
+    const onFreeze = () => interrupt('page-frozen');
+    const onPageHide = (event) => interrupt(event?.persisted ? 'page-cached' : 'page-left');
+    document.addEventListener?.('freeze', onFreeze);
+    globalThis.addEventListener?.('pagehide', onPageHide);
+    const lifecycle = {
+      signal: controller.signal,
+      interrupted: () => interrupted,
+      outcome: (uncertain = false) => ({
+        unexpectedUi: true, reason: 'dm-page-interrupted', needsAttention: true,
+        interruptionReason: interrupted, uncertain,
+      }),
+    };
+    try {
+      return await performResolvedDmUnsend(item, resolution, lifecycle);
+    } finally {
+      document.removeEventListener?.('freeze', onFreeze);
+      globalThis.removeEventListener?.('pagehide', onPageHide);
+    }
+  }
+
+  async function performResolvedDmUnsend(item, resolution, lifecycle) {
     if (visibleDialogs().length || visibleMenus().length) {
       return { unexpectedUi: true, reason: 'preexisting-surface-before-live-unsend' };
     }
@@ -3669,7 +3993,8 @@
     const actionControl = await waitFor(() => {
       const controls = exactDmActionControls(resolution.row);
       return controls.length === 1 ? controls[0] : null;
-    }, 1_500);
+    }, 1_500, lifecycle.signal);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     if (!actionControl) {
       return { ambiguous: true, reason: 'dm-action-control-not-exact' };
     }
@@ -3682,6 +4007,7 @@
     }
 
     const menusBeforeAction = new Set(visibleMenus());
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     activateLiveControl(actionControl);
     const menuResult = await waitFor(() => {
       const newMenus = visibleMenus().filter((menu) => !menusBeforeAction.has(menu));
@@ -3692,7 +4018,8 @@
       return controls.length === 1
         ? { menu, control: controls[0] }
         : { invalid: true };
-    }, 3_000);
+    }, 3_000, lifecycle.signal);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     if (!menuResult?.menu) {
       return { unexpectedUi: true, reason: 'dm-unsend-menu-not-exact' };
     }
@@ -3701,6 +4028,7 @@
     }
 
     const dialogsBeforeChoice = new Set(visibleDialogs());
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     activateLiveControl(menuResult.control);
     const confirmation = await waitFor(() => {
       const newDialogs = visibleDialogs().filter((dialog) => !dialogsBeforeChoice.has(dialog));
@@ -3712,7 +4040,8 @@
       if (!dialog) return { invalid: true };
       const controls = exactDmUnsendControls(dialog);
       return controls.length === 1 ? { control: controls[0] } : { invalid: true };
-    }, 3_000);
+    }, 3_000, lifecycle.signal);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     if (!confirmation?.control) {
       return { unexpectedUi: true, reason: 'dm-unsend-confirmation-not-exact' };
     }
@@ -3720,7 +4049,23 @@
       return { ambiguous: true, reason: 'dm-message-changed-before-final-confirmation' };
     }
 
+    const proof = globalThis.InstaToolboxDmThreadUnsender?.messageProof;
+    if (!proof) return { unexpectedUi: true, reason: 'dm-removal-verifier-unavailable' };
+    const beforeRemoval = proof.removalEvidence(resolution.row);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     activateLiveControl(confirmation.control);
+    const settled = await proof.waitForRemoval(resolution.row, beforeRemoval, {
+      contextValid: () => {
+        const currentSession = inspectSession();
+        return !currentSession.sessionExpired && !currentSession.challenge
+          && !currentSession.actionBlocked && !currentSession.rateLimited
+          && directThreadId(item.conversationId) === directThreadId(location.pathname);
+      },
+    });
+    if (!settled) {
+      if (lifecycle.interrupted()) return lifecycle.outcome(true);
+      return { unexpectedUi: true, reason: 'dm-unsend-not-confirmed', uncertain: true };
+    }
     const completion = await waitFor(() => {
       const currentSession = inspectSession();
       if (
@@ -3774,6 +4119,7 @@
     }, 5_000);
     if (completion?.sessionStop) return completion.sessionStop;
     if (!completion?.confirmed) {
+      if (lifecycle.interrupted()) return lifecycle.outcome(true);
       return {
         unexpectedUi: true,
         reason: 'dm-unsend-not-confirmed',
@@ -3785,6 +4131,10 @@
       conversationId: String(item.conversationId),
       messageId: String(item.messageId),
       postcondition: completion.postcondition,
+      ...(lifecycle.interrupted() ? {
+        needsAttention: true, interruptionReason: lifecycle.interrupted(),
+        reason: 'dm-page-interrupted', uncertain: false,
+      } : {}),
     };
   }
 
@@ -4441,6 +4791,7 @@
   const ROOT_ID = 'insta-toolbox-userscript-root';
   const STATE_KEY = 'instaToolboxUserscriptStateV2';
   const PREFERENCES_KEY = 'instaToolboxUserscriptPreferencesV1';
+  const cleanupSettings = globalThis.InstaToolboxCleanupSettings;
   const LEGACY_QUEUE_KEY = 'instaToolboxManualQueueV1';
   const TAB_RUN_FIELD = 'instaToolboxAccountRunV1';
   const ACTIONABLE_STATUSES = new Set(['pending', 'ready', 'failed', 'paused']);
@@ -4585,6 +4936,8 @@
       accent: 'rose',
       blur: 'soft',
       launcherSize: 'standard',
+      theme: 'auto',
+      density: 'comfortable',
     };
   }
 
@@ -4749,6 +5102,7 @@
       launcherSize: LAUNCHER_SIZES.has(source.launcherSize)
         ? source.launcherSize
         : 'standard',
+      ...cleanupSettings.normalizeAppearance({ ...source, opacity }),
     };
   }
 
@@ -4760,6 +5114,7 @@
   const managerTabStorageAvailable = managerTab !== null;
   let state = loadState(managerTab);
   let preferences = normalizePreferences(GM_getValue(PREFERENCES_KEY, preferencesDefaults()));
+  let cleanupPreferences = cleanupSettings.normalize(GM_getValue(cleanupSettings.STORAGE_KEY, null));
   let lastFocusedElement = null;
   const CHECKER_RESULTS_PAGE_SIZE = 25;
   const CHECKER_CATEGORY_KEYS = Object.freeze({
@@ -5102,6 +5457,10 @@
       :host([data-blur="none"]) { --insta-toolbox-backdrop-blur: 0px; }
       :host([data-blur="strong"]) { --insta-toolbox-backdrop-blur: 18px; }
       :host([data-launcher-size="large"]) { --insta-toolbox-launcher-size: 54px; }
+      :host([data-density="comfortable"]) { --insta-toolbox-pad-y:12px; --insta-toolbox-pad-x:16px; --insta-toolbox-gap:12px; }
+      :host([data-density="compact"]) { --insta-toolbox-pad-y:8px; --insta-toolbox-pad-x:12px; --insta-toolbox-gap:8px; }
+      :host([data-density="comfortable"]) .card { padding:16px; }
+      :host([data-density="compact"]) .card { padding:12px; }
       *, *::before, *::after { box-sizing: border-box; }
       button, input, select { font: inherit; }
       button, label, summary { cursor: pointer; }
@@ -5236,13 +5595,27 @@
       .confirm-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
       .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
       .confirm-dialog .toolbar { justify-content: flex-end; }
-      .settings-dialog { width: min(360px, calc(100vw - 28px)); max-height: min(680px, calc(100dvh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); }
+      .settings-dialog { width: min(440px, calc(100vw - 28px)); max-height: min(720px, calc(100dvh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); font-family: var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
       .settings-dialog::backdrop { background: rgba(12,14,12,.44); backdrop-filter: grayscale(.65) blur(1px); }
-      .settings-dialog form { display: grid; gap: 12px; margin: 0; padding: 18px; }
-      .settings-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-      .settings-heading h2 { margin:0; font-size:18px; line-height:24px; }
-      .settings-dialog .lead { margin:-4px 0 2px; }
+      .settings-dialog form { display: grid; gap: 16px; margin: 0; padding: 16px; }
+      .settings-heading { position:sticky; top:0; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--insta-toolbox-bg-raised, #fff); }
+      .settings-heading h2 { margin:0; font:600 18px/24px var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      .settings-dialog .lead { margin:0; }
       .settings-dialog .toolbar { margin:0; }
+      .settings-section { display:grid; gap:12px; padding:12px 0 0; border-top:1px solid var(--insta-toolbox-line); }
+      .settings-section h3 { margin:0; font:600 14px/20px var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      .settings-section .field { min-width:0; margin:0; gap:4px; }
+      .settings-section .field label { min-height:0; line-height:20px; }
+      .settings-section select, .settings-section input:not([type="checkbox"]), .settings-section button { min-height:44px; box-sizing:border-box; }
+      .settings-section select, .settings-section input { max-width:100%; }
+      .settings-section > label { display:flex; align-items:center; gap:8px; min-height:44px; font-size:13px; }
+      .settings-section .settings-inline { margin:0; padding:0; }
+      .settings-section.settings-inline { margin:0; padding:0; }
+      .settings-section.settings-inline[open] { padding-bottom:12px; }
+      .settings-section.settings-inline > :not(summary) { margin-top:12px; }
+      .settings-appearance-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr)); gap:12px; }
+      .settings-appearance-wide { grid-column:1 / -1; }
+      .setting-note { margin:0; font-size:12px; line-height:18px; color:var(--insta-toolbox-text-muted); }
       @keyframes insta-toolbox-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
       @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog,.settings-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog,.settings-dialog { border:2px solid CanvasText; } .tab:focus-visible { outline:2px solid Highlight; outline-offset:-3px; box-shadow:none; } }
@@ -5282,6 +5655,7 @@
           <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend.</strong> Remove messages you sent from this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
+          <div class="field"><label for="insta-toolbox-unsend-speed">Speed</label><select id="insta-toolbox-unsend-speed" data-role="unsend-speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
           <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><label for="insta-toolbox-unsend-scope">Scope</label><select id="insta-toolbox-unsend-scope" data-role="unsend-scope"><option value="all">All messages you sent</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><p class="notice">Only your messages are touched. The run stops on the wrong thread, an unclear menu, or any Instagram warning.</p></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
@@ -5291,16 +5665,34 @@
     </aside>
     <dialog class="settings-dialog" data-role="settings-dialog" aria-labelledby="insta-toolbox-settings-title" aria-describedby="insta-toolbox-settings-note">
       <form>
-        <div class="settings-heading"><h2 id="insta-toolbox-settings-title">Customize Insta Toolbox</h2><button class="icon" type="button" data-action="close-settings" aria-label="Close customization">×</button></div>
+        <div class="settings-heading"><h2 id="insta-toolbox-settings-title">Settings</h2><button class="icon" type="button" data-action="close-settings" aria-label="Close settings">×</button></div>
         <p class="lead" id="insta-toolbox-settings-note">Saved in this browser.</p>
+        <section class="settings-section" aria-labelledby="insta-toolbox-appearance-title"><h3 id="insta-toolbox-appearance-title">Appearance</h3>
+        <div class="settings-appearance-grid">
+        <div class="field"><label for="insta-toolbox-theme">Theme</label><select id="insta-toolbox-theme" data-preference="theme"><option value="auto">Match Instagram</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+        <div class="field"><label for="insta-toolbox-density">Density</label><select id="insta-toolbox-density" data-preference="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
+        <div class="field settings-appearance-wide"><label for="insta-toolbox-opacity">Opacity</label><div class="range-row"><input id="insta-toolbox-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
+        <div class="field"><label for="insta-toolbox-blur">Blur</label><select id="insta-toolbox-blur" data-preference="blur"><option value="none">Off</option><option value="soft">Soft</option><option value="strong">Strong</option></select></div>
+        <div class="field"><label for="insta-toolbox-launcher-size">Launcher size</label><select id="insta-toolbox-launcher-size" data-preference="launcherSize"><option value="standard">Standard</option><option value="large">Large</option></select></div>
+        </div><button class="button quiet" type="button" data-action="reset-layout">Reset layout</button>
+        <details class="settings-inline"><summary>More appearance options</summary>
         <div class="field"><label for="insta-toolbox-accent">Accent</label><select id="insta-toolbox-accent" data-preference="accent"><option value="rose">Rose</option><option value="violet">Violet</option><option value="blue">Blue</option></select></div>
-        <div class="field"><label for="insta-toolbox-blur">Background blur</label><select id="insta-toolbox-blur" data-preference="blur"><option value="none">Off</option><option value="soft">Soft</option><option value="strong">Strong</option></select></div>
-        <div class="field"><label for="insta-toolbox-launcher-size">Collapsed button</label><select id="insta-toolbox-launcher-size" data-preference="launcherSize"><option value="standard">Standard</option><option value="large">Large</option></select></div>
-        <div class="field"><label for="insta-toolbox-opacity">Surface transparency</label><div class="range-row"><input id="insta-toolbox-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
         <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
-        <button class="button quiet" type="button" data-action="reset-layout">Reset panel and collapsed button</button>
-        <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="insta-toolbox-limit-min">Min delay (seconds)</label><input id="insta-toolbox-limit-min" type="number" min="1" max="600" data-role="limit-min"></div><div class="field"><label for="insta-toolbox-limit-max">Max delay (seconds)</label><input id="insta-toolbox-limit-max" type="number" min="1" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
-        <p class="lead">Drag the collapsed IT button anywhere. Resize the open panel from either lower corner. Arrow keys work on the focused control. Shortcut: Alt + Shift + I.</p>
+        <button class="button quiet" type="button" data-action="reset-appearance">Reset appearance</button></details></section>
+        <details class="settings-inline settings-section"><summary>Cleanup defaults</summary>
+        <div class="field"><label for="insta-toolbox-default-speed">Speed</label><select id="insta-toolbox-default-speed" data-cleanup-preference="speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
+        <div class="field"><label for="insta-toolbox-default-scope">Message scope</label><select id="insta-toolbox-default-scope" data-cleanup-preference="messageScope"><option value="all">All my messages</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div>
+        <div class="field"><label for="insta-toolbox-default-limit">Default N</label><input id="insta-toolbox-default-limit" type="number" min="1" max="250" data-cleanup-preference="messageLimit"></div>
+        <label><input type="checkbox" data-cleanup-preference="removeOwnReactions" disabled> Remove my reactions afterward</label><p class="setting-note">Own-reaction removal has not been verified on Instagram.</p>
+        <label><input type="checkbox" data-cleanup-preference="showSummary"> Show completed run details</label></details>
+        <details class="settings-inline settings-section"><summary>Execution</summary>
+        <div class="field"><label for="insta-toolbox-execution-mode">Run in</label><select id="insta-toolbox-execution-mode" data-cleanup-preference="execution"><option value="foreground">Foreground</option><option value="background" disabled>Background — not available yet</option></select></div><p class="setting-note">Background execution is awaiting suspension and resume checks.</p>
+        <div class="field"><label for="insta-toolbox-workers">Managed tabs</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount" disabled><option value="1">1</option><option value="2">2</option></select></div><p class="setting-note">Managed tabs are awaiting browser integration. Actions remain serial.</p>
+        <label><input type="checkbox" data-cleanup-preference="notifications" disabled> Completion notifications</label><p class="setting-note">Notifications are not connected on this surface.</p></details>
+        <details class="settings-inline settings-section"><summary>Data and troubleshooting</summary><p class="setting-note" data-role="settings-version"></p><p class="setting-note" data-role="storage-usage"></p>
+        <div class="toolbar"><button class="button quiet" type="button" data-action="backup-local">Export local data</button><button class="button quiet" type="button" data-action="export-diagnostics">Export diagnostics</button></div>
+        <p class="setting-note">Local exports may contain your saved lists. Diagnostics omit accounts, threads and messages.</p>
+        <details class="settings-inline"><summary>Follow / Unfollow pacing</summary><div class="field"><label for="insta-toolbox-limit-min">Min delay (seconds)</label><input id="insta-toolbox-limit-min" type="number" min="1" max="600" data-role="limit-min"></div><div class="field"><label for="insta-toolbox-limit-max">Max delay (seconds)</label><input id="insta-toolbox-limit-max" type="number" min="1" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details></details>
       </form>
     </dialog>
     <dialog class="confirm-dialog" data-role="action-confirmation" aria-labelledby="insta-toolbox-confirm-title" aria-describedby="insta-toolbox-confirm-message insta-toolbox-confirm-detail">
@@ -5392,6 +5784,9 @@
     host.dataset.accent = preferences.accent;
     host.dataset.blur = preferences.blur;
     host.dataset.launcherSize = preferences.launcherSize;
+    host.dataset.theme = preferences.theme;
+    host.dataset.themePreference = preferences.theme;
+    host.dataset.density = preferences.density;
     if (preferences.launcherPosition) {
       const launcherPosition = constrainedPosition(
         preferences.launcherPosition,
@@ -5416,10 +5811,10 @@
       host.style.removeProperty('--insta-toolbox-top');
     }
     const opacity = query('[data-preference="opacity"]');
-    if (opacity) opacity.value = String(percent);
+    if (opacity && shadow.activeElement !== opacity) opacity.value = String(percent);
     for (const control of queryAll('[data-preference]')) {
       const preference = control.dataset.preference;
-      if (preference !== 'opacity' && preferences[preference] !== undefined) {
+      if (preference !== 'opacity' && preferences[preference] !== undefined && shadow.activeElement !== control) {
         control.value = preferences[preference];
       }
     }
@@ -5470,10 +5865,28 @@
     const shouldOpen = Boolean(open);
     button.setAttribute('aria-expanded', String(shouldOpen));
     if (shouldOpen && !dialog.open) {
+      renderCleanupSettings();
+      const bytes = new Blob([JSON.stringify({ state, preferences, cleanupPreferences })]).size;
+      setText('storage-usage', `${bytes.toLocaleString()} bytes in current local data`);
+      setText('settings-version', `Version ${typeof GM_info !== 'undefined' ? GM_info.script.version : 'development'}`);
       dialog.showModal();
-      requestAnimationFrame(() => query('#insta-toolbox-accent')?.focus({ preventScroll: true }));
+      requestAnimationFrame(() => query('#insta-toolbox-theme')?.focus({ preventScroll: true }));
     } else if (!shouldOpen && dialog.open) {
       dialog.close();
+    }
+  }
+
+  function renderCleanupSettings({ initializeDraft = false } = {}) {
+    const effective = cleanupSettings.effective(cleanupPreferences, 'userscript');
+    for (const control of queryAll('[data-cleanup-preference]')) {
+      const value = effective[control.dataset.cleanupPreference];
+      if (control.type === 'checkbox') control.checked = Boolean(value);
+      else control.value = String(value);
+    }
+    if (initializeDraft) {
+      query('[data-role="unsend-scope"]').value = effective.messageScope;
+      query('[data-role="unsend-count"]').value = String(effective.messageLimit);
+      query('[data-role="unsend-speed"]').value = effective.speed;
     }
   }
 
@@ -5718,7 +6131,7 @@
     const bounds = limits();
     const set = (role, value) => {
       const field = query(`[data-role="${role}"]`);
-      if (field && document.activeElement !== field) field.value = String(value);
+      if (field && shadow.activeElement !== field) field.value = String(value);
     };
     set('limit-min', Math.round(bounds.minDelayMs / 1000));
     set('limit-max', Math.round(bounds.maxDelayMs / 1000));
@@ -5914,7 +6327,9 @@
     const count = Number(plan?.limit);
     const reviewedDigest = String(plan?.reviewedDigest || '');
     if (
-      plan?.version !== 2
+      ![2, 3].includes(plan?.version)
+      || (plan?.version === 3 && !['standard', 'fast'].includes(plan.speed))
+      || (plan?.version === 2 && plan?.speed != null && plan.speed !== 'standard')
       || (finite && (!Number.isInteger(count) || count < 1))
       || !/^[0-9a-f]{8}$/.test(reviewedDigest)
       || Number(plan?.expiresAt) <= Date.now()
@@ -6779,13 +7194,23 @@
       && dmThreadPreview.threadId === currentDirectThreadId();
     const active = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
     if (summary) {
-      summary.hidden = !checked;
+      const finished = dmRunnerSnapshot?.status === 'completed';
+      const needsAttention = dmRunnerSnapshot?.status === 'needs-attention';
+      summary.hidden = !checked && !finished && !needsAttention;
       setText('dm-summary-title', found
         ? `At least ${found} sent message${found === 1 ? '' : 's'} detected`
         : 'No sent messages found');
       setText('dm-summary-detail', !found
         ? 'No messages in this thread were identified as yours.'
         : 'Read-only estimate. Instagram may load more while Unsend runs.');
+      if (finished) {
+        setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent`);
+        setText('dm-summary-detail', cleanupPreferences.showSummary ? dmRunnerSnapshot.message : '');
+      } else if (needsAttention) {
+        const uncertain = Math.max(0, Number(dmRunnerSnapshot.uncertain) || 0);
+        setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent · Needs attention`);
+        setText('dm-summary-detail', [dmRunnerSnapshot.message, uncertain ? `${uncertain} outcome uncertain.` : ''].filter(Boolean).join(' '));
+      }
     }
     // Never hidden. Progressive disclosure applies to secondary controls, not
     // to the action the tool exists for.
@@ -6828,9 +7253,11 @@
     if (!inspection?.ready) throw new Error(inspection?.reason || 'Open a conversation first.');
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
     const requested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
+    const speed = query('[data-role="unsend-speed"]')?.value || 'standard';
     const limit = scope === 'all' ? null : Math.max(1, requested);
     const plan = dmRunner.createPlan({
       threadId: inspection.threadId,
+      speed,
       scope,
       limit,
       detectedCount: Number(dmThreadPreview?.detectedCount ?? dmThreadPreview?.eligibleCount) || null,
@@ -6849,9 +7276,11 @@
         { label: 'Action', value: 'Permanently unsend messages' },
         { label: 'Conversation', value: `Thread ${plan.threadId}` },
         { label: 'Scope', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
+        { label: 'Speed', value: speed === 'fast' ? 'Fast' : 'Standard' },
       ],
       binding: {
         action: 'unsend',
+        speed: plan.speed,
         expiresAt: plan.expiresAt,
         limit: plan.limit,
         reviewedDigest: plan.reviewedDigest,
@@ -6873,6 +7302,8 @@
       || confirmation.action !== 'unsend'
       || confirmation.threadId !== plan.threadId
       || confirmation.scope !== plan.scope
+      || confirmation.speed !== plan.speed
+      || (query('[data-role="unsend-speed"]')?.value || 'standard') !== plan.speed
       || confirmation.limit !== plan.limit
       || confirmation.reviewedDigest !== plan.reviewedDigest
       || Number(confirmation.expiresAt) !== plan.expiresAt
@@ -7108,20 +7539,30 @@
       saveState();
       status('Pacing saved.');
     },
-    'layout-compact': () => savePreferences({ width: 360, height: 520, open: true }),
+    'layout-compact': () => savePreferences({ width: 380, height: 520, open: true }),
     'layout-tall': () => savePreferences({
-      width: 430,
+      width: 460,
       height: Math.min(820, Math.max(HEIGHT_MIN, innerHeight - (INSET * 2))),
       open: true,
     }),
     'layout-wide': () => savePreferences({ width: 560, height: 680, open: true }),
     'reset-layout': () => savePreferences({
-      ...preferencesDefaults(),
-      accent: preferences.accent,
-      blur: preferences.blur,
-      launcherSize: preferences.launcherSize,
+      width: preferencesDefaults().width,
+      height: preferencesDefaults().height,
+      position: null,
+      launcherPosition: null,
       open: true,
-      view: preferences.view,
+    }),
+    'reset-appearance': () => savePreferences(cleanupSettings.normalizeAppearance({})),
+    'backup-local': () => downloadJson('insta-toolbox-local-data.json', {
+      kind: 'insta-toolbox-local-data', schemaVersion: 1, surface: 'userscript', exportedAt: nowIso(),
+      preferences, cleanupPreferences, capture: state.capture, queue: state.queue,
+    }),
+    'export-diagnostics': () => downloadJson('insta-toolbox-diagnostics.json', {
+      kind: 'insta-toolbox-diagnostics', schemaVersion: 1, surface: 'userscript',
+      version: typeof GM_info !== 'undefined' ? GM_info.script.version : 'development',
+      preferences: cleanupSettings.effective(cleanupPreferences, 'userscript'),
+      capabilities: cleanupSettings.capabilities('userscript'),
     }),
     capture: () => {
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
@@ -7275,8 +7716,16 @@
         announceComparisonCount();
         return;
       }
-      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"]')) {
+      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"], [data-role="unsend-speed"]')) {
         renderDmSummary();
+        return;
+      }
+      if (event.target.matches('[data-cleanup-preference]') && !event.target.disabled) {
+        const raw = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+        const next = cleanupSettings.normalize({ ...cleanupPreferences, [event.target.dataset.cleanupPreference]: raw });
+        await GM_setValue(cleanupSettings.STORAGE_KEY, next);
+        cleanupPreferences = next;
+        status('Cleanup defaults saved. Current review unchanged.');
         return;
       }
       if (event.target.matches('[data-preference]')) {
@@ -7534,6 +7983,7 @@
   bootstrapClaim.remove();
   saveState();
   savePreferences(preferences);
+  renderCleanupSettings({ initializeDraft: true });
   renderAll();
 
   // Pick a paused account run back up after the navigation that advanced it.

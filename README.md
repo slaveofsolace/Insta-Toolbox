@@ -50,14 +50,16 @@ Mutual Checker waits before retrying rate-limited reads: Instagram's reset time 
 
 Download files from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 
+The 4.0 files below are planned release names. Until 4.0 is published, the latest release and stable installer serve 3.1.12.
+
 | Surface | Release file | Use it when |
 | --- | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` | You want the simplest Instagram overlay install. |
-| Chrome extension | `Insta-Toolbox-Extension-3.1.12.zip` | You prefer an unpacked browser extension. |
-| Windows desktop | `Insta-Toolbox-Setup-3.1.12.exe` | You want one downloadable Windows installer. |
-| macOS desktop | `Insta-Toolbox-3.1.12-universal.dmg` | You want the recommended drag-to-Applications package for Intel or Apple Silicon. |
-| macOS portable | `Insta-Toolbox-3.1.12-universal.zip` | You prefer to extract the universal app directly. |
-| Web/PWA | `insta-toolbox-web-3.1.12.zip` | You want to self-host the local-first workspace. |
+| Chrome extension | `Insta-Toolbox-Extension-4.0.0.zip` | You prefer an unpacked browser extension. |
+| Windows desktop | `Insta-Toolbox-Setup-4.0.0.exe` | You want one downloadable Windows installer. |
+| macOS desktop | `Insta-Toolbox-4.0.0-universal.dmg` | You want the recommended drag-to-Applications package for Intel or Apple Silicon. |
+| macOS portable | `Insta-Toolbox-4.0.0-universal.zip` | You prefer to extract the universal app directly. |
+| Web/PWA | `insta-toolbox-web-4.0.0.zip` | You want to self-host the local-first workspace. |
 
 Windows packages are unsigned. macOS packages are ad-hoc signed, but not Developer ID signed or notarized. Confirm the checksum before opening a download.
 
@@ -68,13 +70,13 @@ Download `SHA256SUMS.txt` from the same release.
 Windows PowerShell:
 
 ```powershell
-Get-FileHash .\Insta-Toolbox-Setup-3.1.12.exe -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Setup-4.0.0.exe -Algorithm SHA256
 ```
 
 macOS:
 
 ```sh
-shasum -a 256 Insta-Toolbox-3.1.12-universal.dmg
+shasum -a 256 Insta-Toolbox-4.0.0-universal.dmg
 ```
 
 Match the printed hash to the file's entry in `SHA256SUMS.txt`.
@@ -116,9 +118,9 @@ pnpm run qa:overlay:check
 pnpm run verify:repo-hygiene
 ```
 
-The 3.1 account-free regression matrix covers the PWA, extension, userscript, layout controls, and packaged apps. The service worker uses cache generation `insta-toolbox-v3112`. Authenticated Instagram behavior still depends on the current site and must be accepted separately with disposable content.
+The 4.0 development matrix covers the PWA, extension, userscript, layout controls, and packaged apps. The service worker uses cache generation `insta-toolbox-v400`. The published release remains 3.1.12 while 4.0 acceptance is in progress. Authenticated Instagram behavior depends on the current site and must be accepted separately with disposable content.
 
-See [Contributing](CONTRIBUTING.md), [Maintainer Guide](docs/MAINTAINER_GUIDE.md), [3.1.12 compatibility](docs/compatibility/3.1.12.md), and [3.1.12 acceptance](docs/acceptance/3.1.12.md).
+See [Contributing](CONTRIBUTING.md), [Maintainer Guide](docs/MAINTAINER_GUIDE.md), [4.0.0 compatibility](docs/compatibility/4.0.0.md), and [4.0.0 acceptance](docs/acceptance/4.0.0.md).
 
 ## License and credit
 

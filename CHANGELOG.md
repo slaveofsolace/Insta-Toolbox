@@ -2,6 +2,15 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.0.0 - 2026-09-16 (Unreleased)
+
+- Group settings into Appearance, Cleanup defaults, Execution, and Data and troubleshooting; preserve existing preferences and separate appearance and layout resets.
+- Add Standard and Fast single-conversation cleanup choices with the same ownership, confirmation, pacing, and removal checks.
+- Clean up cancelled waits and strengthen removal verification for recycled rows, temporary loading states, and reverted changes.
+- Stop safely on page suspension or lost evidence while preserving verified and uncertain outcomes separately.
+- Make blur and completion-summary preferences consistent across the extension and userscript.
+- Add tested inbox coordination modules. Inbox execution, managed background workers, and own-reaction cleanup remain disabled pending native adapters and acceptance.
+
 ## 3.1.12 - 2026-09-12
 
 - Allow partial Mutual Checker results to supply Follow / Unfollow targets, with uncertainty shown in the existing review and confirmation.

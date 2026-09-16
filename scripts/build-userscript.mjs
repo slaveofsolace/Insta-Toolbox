@@ -18,6 +18,7 @@ const licenseFile = path.join(repositoryRoot, 'LICENSE');
 const parts = [
   path.join(repositoryRoot, 'userscripts', 'src', 'metadata.txt'),
   path.join(repositoryRoot, 'extension', 'overlay', 'tokens.js'),
+  path.join(repositoryRoot, 'extension', 'cleanup-settings.js'),
   path.join(repositoryRoot, 'extension', 'action-confirmation.js'),
   path.join(repositoryRoot, 'extension', 'action-labels.js'),
   path.join(repositoryRoot, 'extension', 'content-instagram.js'),

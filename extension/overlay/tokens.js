@@ -124,11 +124,19 @@
     }`;
   }
 
+  function themeOverrides(scope) {
+    const selector = (theme) => scope === ':host'
+      ? `:host([data-theme-preference="${theme}"])`
+      : `${scope}[data-theme-preference="${theme}"]`;
+    return `${selector('light')} { --insta-toolbox-bg:#fff; --insta-toolbox-bg-raised:#fff; --insta-toolbox-bg-sunken:#fafafa; --insta-toolbox-text:#171717; --insta-toolbox-text-muted:#666; --insta-toolbox-line:#dbdbdb; color-scheme:light; }
+${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2023; --insta-toolbox-bg-sunken:#17181a; --insta-toolbox-text:#f3f3f3; --insta-toolbox-text-muted:#b3b3b3; --insta-toolbox-line:#36383c; color-scheme:dark; }`;
+  }
+
   const api = Object.freeze({
     css(options = {}) {
       const density = options.density === 'compact' ? 'compact' : 'comfortable';
       const scope = options.scope || ':host';
-      return `${scope} { ${declarations(density)} }\n${primitives()}`;
+      return `${scope} { ${declarations(density)} }\n${themeOverrides(scope)}\n${primitives()}`;
     },
     declarations,
     palette,

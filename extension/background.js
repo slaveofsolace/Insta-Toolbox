@@ -218,8 +218,11 @@ function validateThreadUnsendReservation(request, sender, now = Date.now()) {
   const count = scope === 'all' ? null : Number(plan?.limit);
   const expiresAt = Number(plan?.expiresAt);
   const reviewedDigest = String(plan?.reviewedDigest || '');
+  const speed = plan?.version === 2 ? 'standard' : plan?.speed;
   if (
-    plan?.version !== 2
+    ![2, 3].includes(plan?.version)
+    || !['standard', 'fast'].includes(speed)
+    || (plan?.version === 2 && plan?.speed != null && plan.speed !== 'standard')
     || !/^[^/?#\\]{1,256}$/.test(threadId)
     || threadId !== observedThreadId
     || !scope
@@ -229,7 +232,7 @@ function validateThreadUnsendReservation(request, sender, now = Date.now()) {
     || expiresAt <= now
     || expiresAt > now + THREAD_UNSEND_PLAN_TTL_MS
   ) return { error: 'thread-unsend-plan-invalid' };
-  return { count, expiresAt, reviewedDigest, scope, threadId, version: 2 };
+  return { count, expiresAt, reviewedDigest, scope, threadId, speed, version: plan.version };
 }
 
 async function reserveThreadUnsendPlan(request, sender, now = Date.now()) {
@@ -251,6 +254,7 @@ async function reserveThreadUnsendPlan(request, sender, now = Date.now()) {
     reviewedDigest: plan.reviewedDigest,
     count: plan.count,
     scope: plan.scope,
+    speed: plan.speed,
     status: 'reserved',
     reservedAt: new Date(now).toISOString(),
     expiresAt: plan.expiresAt,
@@ -1168,6 +1172,15 @@ async function runBatchDmItem(state, pairingId, tabId, jobId, item, limits) {
   finalizeExtensionDmAction(state, reservation.record.id, result, succeeded);
   await saveBridgeState(state);
 
+  if (result?.needsAttention || result?.uncertain) {
+    return {
+      status: succeeded ? 'completed' : 'failed',
+      result: succeeded ? 'unsent' : undefined,
+      stopReason: result.interruptionReason || result.reason || 'dm-outcome-uncertain',
+      uncertain: !succeeded && Boolean(result.uncertain),
+      fatal: true,
+    };
+  }
   const resultStop = sessionStopReason(result);
   if (resultStop) return { status: 'stopped', stopReason: resultStop, fatal: true };
   return succeeded
@@ -1279,6 +1292,7 @@ async function executeBatch(runId, arm, items, limits, pairingId) {
     if (outcome.status === 'completed') after.batchRun.completed += 1;
     else if (outcome.status === 'skipped') after.batchRun.skipped += 1;
     else after.batchRun.failed += 1;
+    if (outcome.uncertain) after.batchRun.uncertain = Number(after.batchRun.uncertain || 0) + 1;
 
     if (outcome.fatal) {
       after.batchRun.status = 'stopped';

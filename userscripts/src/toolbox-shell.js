@@ -5,6 +5,7 @@
   const ROOT_ID = 'insta-toolbox-userscript-root';
   const STATE_KEY = 'instaToolboxUserscriptStateV2';
   const PREFERENCES_KEY = 'instaToolboxUserscriptPreferencesV1';
+  const cleanupSettings = globalThis.InstaToolboxCleanupSettings;
   const LEGACY_QUEUE_KEY = 'instaToolboxManualQueueV1';
   const TAB_RUN_FIELD = 'instaToolboxAccountRunV1';
   const ACTIONABLE_STATUSES = new Set(['pending', 'ready', 'failed', 'paused']);
@@ -149,6 +150,8 @@
       accent: 'rose',
       blur: 'soft',
       launcherSize: 'standard',
+      theme: 'auto',
+      density: 'comfortable',
     };
   }
 
@@ -313,6 +316,7 @@
       launcherSize: LAUNCHER_SIZES.has(source.launcherSize)
         ? source.launcherSize
         : 'standard',
+      ...cleanupSettings.normalizeAppearance({ ...source, opacity }),
     };
   }
 
@@ -324,6 +328,7 @@
   const managerTabStorageAvailable = managerTab !== null;
   let state = loadState(managerTab);
   let preferences = normalizePreferences(GM_getValue(PREFERENCES_KEY, preferencesDefaults()));
+  let cleanupPreferences = cleanupSettings.normalize(GM_getValue(cleanupSettings.STORAGE_KEY, null));
   let lastFocusedElement = null;
   const CHECKER_RESULTS_PAGE_SIZE = 25;
   const CHECKER_CATEGORY_KEYS = Object.freeze({
@@ -666,6 +671,10 @@
       :host([data-blur="none"]) { --insta-toolbox-backdrop-blur: 0px; }
       :host([data-blur="strong"]) { --insta-toolbox-backdrop-blur: 18px; }
       :host([data-launcher-size="large"]) { --insta-toolbox-launcher-size: 54px; }
+      :host([data-density="comfortable"]) { --insta-toolbox-pad-y:12px; --insta-toolbox-pad-x:16px; --insta-toolbox-gap:12px; }
+      :host([data-density="compact"]) { --insta-toolbox-pad-y:8px; --insta-toolbox-pad-x:12px; --insta-toolbox-gap:8px; }
+      :host([data-density="comfortable"]) .card { padding:16px; }
+      :host([data-density="compact"]) .card { padding:12px; }
       *, *::before, *::after { box-sizing: border-box; }
       button, input, select { font: inherit; }
       button, label, summary { cursor: pointer; }
@@ -800,13 +809,27 @@
       .confirm-dialog dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
       .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
       .confirm-dialog .toolbar { justify-content: flex-end; }
-      .settings-dialog { width: min(360px, calc(100vw - 28px)); max-height: min(680px, calc(100dvh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); }
+      .settings-dialog { width: min(440px, calc(100vw - 28px)); max-height: min(720px, calc(100dvh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); font-family: var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
       .settings-dialog::backdrop { background: rgba(12,14,12,.44); backdrop-filter: grayscale(.65) blur(1px); }
-      .settings-dialog form { display: grid; gap: 12px; margin: 0; padding: 18px; }
-      .settings-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-      .settings-heading h2 { margin:0; font-size:18px; line-height:24px; }
-      .settings-dialog .lead { margin:-4px 0 2px; }
+      .settings-dialog form { display: grid; gap: 16px; margin: 0; padding: 16px; }
+      .settings-heading { position:sticky; top:0; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--insta-toolbox-bg-raised, #fff); }
+      .settings-heading h2 { margin:0; font:600 18px/24px var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      .settings-dialog .lead { margin:0; }
       .settings-dialog .toolbar { margin:0; }
+      .settings-section { display:grid; gap:12px; padding:12px 0 0; border-top:1px solid var(--insta-toolbox-line); }
+      .settings-section h3 { margin:0; font:600 14px/20px var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }
+      .settings-section .field { min-width:0; margin:0; gap:4px; }
+      .settings-section .field label { min-height:0; line-height:20px; }
+      .settings-section select, .settings-section input:not([type="checkbox"]), .settings-section button { min-height:44px; box-sizing:border-box; }
+      .settings-section select, .settings-section input { max-width:100%; }
+      .settings-section > label { display:flex; align-items:center; gap:8px; min-height:44px; font-size:13px; }
+      .settings-section .settings-inline { margin:0; padding:0; }
+      .settings-section.settings-inline { margin:0; padding:0; }
+      .settings-section.settings-inline[open] { padding-bottom:12px; }
+      .settings-section.settings-inline > :not(summary) { margin-top:12px; }
+      .settings-appearance-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr)); gap:12px; }
+      .settings-appearance-wide { grid-column:1 / -1; }
+      .setting-note { margin:0; font-size:12px; line-height:18px; color:var(--insta-toolbox-text-muted); }
       @keyframes insta-toolbox-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
       @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog,.settings-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog,.settings-dialog { border:2px solid CanvasText; } .tab:focus-visible { outline:2px solid Highlight; outline-offset:-3px; box-shadow:none; } }
@@ -846,6 +869,7 @@
           <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead"><strong>DM Unsend.</strong> Remove messages you sent from this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
+          <div class="field"><label for="insta-toolbox-unsend-speed">Speed</label><select id="insta-toolbox-unsend-speed" data-role="unsend-speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
           <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><label for="insta-toolbox-unsend-scope">Scope</label><select id="insta-toolbox-unsend-scope" data-role="unsend-scope"><option value="all">All messages you sent</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><p class="notice">Only your messages are touched. The run stops on the wrong thread, an unclear menu, or any Instagram warning.</p></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
@@ -855,16 +879,34 @@
     </aside>
     <dialog class="settings-dialog" data-role="settings-dialog" aria-labelledby="insta-toolbox-settings-title" aria-describedby="insta-toolbox-settings-note">
       <form>
-        <div class="settings-heading"><h2 id="insta-toolbox-settings-title">Customize Insta Toolbox</h2><button class="icon" type="button" data-action="close-settings" aria-label="Close customization">×</button></div>
+        <div class="settings-heading"><h2 id="insta-toolbox-settings-title">Settings</h2><button class="icon" type="button" data-action="close-settings" aria-label="Close settings">×</button></div>
         <p class="lead" id="insta-toolbox-settings-note">Saved in this browser.</p>
+        <section class="settings-section" aria-labelledby="insta-toolbox-appearance-title"><h3 id="insta-toolbox-appearance-title">Appearance</h3>
+        <div class="settings-appearance-grid">
+        <div class="field"><label for="insta-toolbox-theme">Theme</label><select id="insta-toolbox-theme" data-preference="theme"><option value="auto">Match Instagram</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+        <div class="field"><label for="insta-toolbox-density">Density</label><select id="insta-toolbox-density" data-preference="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
+        <div class="field settings-appearance-wide"><label for="insta-toolbox-opacity">Opacity</label><div class="range-row"><input id="insta-toolbox-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
+        <div class="field"><label for="insta-toolbox-blur">Blur</label><select id="insta-toolbox-blur" data-preference="blur"><option value="none">Off</option><option value="soft">Soft</option><option value="strong">Strong</option></select></div>
+        <div class="field"><label for="insta-toolbox-launcher-size">Launcher size</label><select id="insta-toolbox-launcher-size" data-preference="launcherSize"><option value="standard">Standard</option><option value="large">Large</option></select></div>
+        </div><button class="button quiet" type="button" data-action="reset-layout">Reset layout</button>
+        <details class="settings-inline"><summary>More appearance options</summary>
         <div class="field"><label for="insta-toolbox-accent">Accent</label><select id="insta-toolbox-accent" data-preference="accent"><option value="rose">Rose</option><option value="violet">Violet</option><option value="blue">Blue</option></select></div>
-        <div class="field"><label for="insta-toolbox-blur">Background blur</label><select id="insta-toolbox-blur" data-preference="blur"><option value="none">Off</option><option value="soft">Soft</option><option value="strong">Strong</option></select></div>
-        <div class="field"><label for="insta-toolbox-launcher-size">Collapsed button</label><select id="insta-toolbox-launcher-size" data-preference="launcherSize"><option value="standard">Standard</option><option value="large">Large</option></select></div>
-        <div class="field"><label for="insta-toolbox-opacity">Surface transparency</label><div class="range-row"><input id="insta-toolbox-opacity" type="range" min="55" max="100" value="88" data-preference="opacity"><output data-role="opacity-output">88%</output></div></div>
         <div class="field"><label>Size presets</label><div class="toolbar"><button class="button quiet" type="button" data-action="layout-compact">Compact</button><button class="button quiet" type="button" data-action="layout-tall">Tall</button><button class="button quiet" type="button" data-action="layout-wide">Wide</button></div></div>
-        <button class="button quiet" type="button" data-action="reset-layout">Reset panel and collapsed button</button>
-        <details class="settings-inline"><summary>Advanced controls</summary><strong>Pacing</strong><div class="field"><label for="insta-toolbox-limit-min">Min delay (seconds)</label><input id="insta-toolbox-limit-min" type="number" min="1" max="600" data-role="limit-min"></div><div class="field"><label for="insta-toolbox-limit-max">Max delay (seconds)</label><input id="insta-toolbox-limit-max" type="number" min="1" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details>
-        <p class="lead">Drag the collapsed IT button anywhere. Resize the open panel from either lower corner. Arrow keys work on the focused control. Shortcut: Alt + Shift + I.</p>
+        <button class="button quiet" type="button" data-action="reset-appearance">Reset appearance</button></details></section>
+        <details class="settings-inline settings-section"><summary>Cleanup defaults</summary>
+        <div class="field"><label for="insta-toolbox-default-speed">Speed</label><select id="insta-toolbox-default-speed" data-cleanup-preference="speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
+        <div class="field"><label for="insta-toolbox-default-scope">Message scope</label><select id="insta-toolbox-default-scope" data-cleanup-preference="messageScope"><option value="all">All my messages</option><option value="newest">Newest N</option><option value="oldest">Oldest N</option></select></div>
+        <div class="field"><label for="insta-toolbox-default-limit">Default N</label><input id="insta-toolbox-default-limit" type="number" min="1" max="250" data-cleanup-preference="messageLimit"></div>
+        <label><input type="checkbox" data-cleanup-preference="removeOwnReactions" disabled> Remove my reactions afterward</label><p class="setting-note">Own-reaction removal has not been verified on Instagram.</p>
+        <label><input type="checkbox" data-cleanup-preference="showSummary"> Show completed run details</label></details>
+        <details class="settings-inline settings-section"><summary>Execution</summary>
+        <div class="field"><label for="insta-toolbox-execution-mode">Run in</label><select id="insta-toolbox-execution-mode" data-cleanup-preference="execution"><option value="foreground">Foreground</option><option value="background" disabled>Background — not available yet</option></select></div><p class="setting-note">Background execution is awaiting suspension and resume checks.</p>
+        <div class="field"><label for="insta-toolbox-workers">Managed tabs</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount" disabled><option value="1">1</option><option value="2">2</option></select></div><p class="setting-note">Managed tabs are awaiting browser integration. Actions remain serial.</p>
+        <label><input type="checkbox" data-cleanup-preference="notifications" disabled> Completion notifications</label><p class="setting-note">Notifications are not connected on this surface.</p></details>
+        <details class="settings-inline settings-section"><summary>Data and troubleshooting</summary><p class="setting-note" data-role="settings-version"></p><p class="setting-note" data-role="storage-usage"></p>
+        <div class="toolbar"><button class="button quiet" type="button" data-action="backup-local">Export local data</button><button class="button quiet" type="button" data-action="export-diagnostics">Export diagnostics</button></div>
+        <p class="setting-note">Local exports may contain your saved lists. Diagnostics omit accounts, threads and messages.</p>
+        <details class="settings-inline"><summary>Follow / Unfollow pacing</summary><div class="field"><label for="insta-toolbox-limit-min">Min delay (seconds)</label><input id="insta-toolbox-limit-min" type="number" min="1" max="600" data-role="limit-min"></div><div class="field"><label for="insta-toolbox-limit-max">Max delay (seconds)</label><input id="insta-toolbox-limit-max" type="number" min="1" max="900" data-role="limit-max"></div><button class="button quiet" type="button" data-action="save-limits">Save pacing</button></details></details>
       </form>
     </dialog>
     <dialog class="confirm-dialog" data-role="action-confirmation" aria-labelledby="insta-toolbox-confirm-title" aria-describedby="insta-toolbox-confirm-message insta-toolbox-confirm-detail">
@@ -956,6 +998,9 @@
     host.dataset.accent = preferences.accent;
     host.dataset.blur = preferences.blur;
     host.dataset.launcherSize = preferences.launcherSize;
+    host.dataset.theme = preferences.theme;
+    host.dataset.themePreference = preferences.theme;
+    host.dataset.density = preferences.density;
     if (preferences.launcherPosition) {
       const launcherPosition = constrainedPosition(
         preferences.launcherPosition,
@@ -980,10 +1025,10 @@
       host.style.removeProperty('--insta-toolbox-top');
     }
     const opacity = query('[data-preference="opacity"]');
-    if (opacity) opacity.value = String(percent);
+    if (opacity && shadow.activeElement !== opacity) opacity.value = String(percent);
     for (const control of queryAll('[data-preference]')) {
       const preference = control.dataset.preference;
-      if (preference !== 'opacity' && preferences[preference] !== undefined) {
+      if (preference !== 'opacity' && preferences[preference] !== undefined && shadow.activeElement !== control) {
         control.value = preferences[preference];
       }
     }
@@ -1034,10 +1079,28 @@
     const shouldOpen = Boolean(open);
     button.setAttribute('aria-expanded', String(shouldOpen));
     if (shouldOpen && !dialog.open) {
+      renderCleanupSettings();
+      const bytes = new Blob([JSON.stringify({ state, preferences, cleanupPreferences })]).size;
+      setText('storage-usage', `${bytes.toLocaleString()} bytes in current local data`);
+      setText('settings-version', `Version ${typeof GM_info !== 'undefined' ? GM_info.script.version : 'development'}`);
       dialog.showModal();
-      requestAnimationFrame(() => query('#insta-toolbox-accent')?.focus({ preventScroll: true }));
+      requestAnimationFrame(() => query('#insta-toolbox-theme')?.focus({ preventScroll: true }));
     } else if (!shouldOpen && dialog.open) {
       dialog.close();
+    }
+  }
+
+  function renderCleanupSettings({ initializeDraft = false } = {}) {
+    const effective = cleanupSettings.effective(cleanupPreferences, 'userscript');
+    for (const control of queryAll('[data-cleanup-preference]')) {
+      const value = effective[control.dataset.cleanupPreference];
+      if (control.type === 'checkbox') control.checked = Boolean(value);
+      else control.value = String(value);
+    }
+    if (initializeDraft) {
+      query('[data-role="unsend-scope"]').value = effective.messageScope;
+      query('[data-role="unsend-count"]').value = String(effective.messageLimit);
+      query('[data-role="unsend-speed"]').value = effective.speed;
     }
   }
 
@@ -1282,7 +1345,7 @@
     const bounds = limits();
     const set = (role, value) => {
       const field = query(`[data-role="${role}"]`);
-      if (field && document.activeElement !== field) field.value = String(value);
+      if (field && shadow.activeElement !== field) field.value = String(value);
     };
     set('limit-min', Math.round(bounds.minDelayMs / 1000));
     set('limit-max', Math.round(bounds.maxDelayMs / 1000));
@@ -1478,7 +1541,9 @@
     const count = Number(plan?.limit);
     const reviewedDigest = String(plan?.reviewedDigest || '');
     if (
-      plan?.version !== 2
+      ![2, 3].includes(plan?.version)
+      || (plan?.version === 3 && !['standard', 'fast'].includes(plan.speed))
+      || (plan?.version === 2 && plan?.speed != null && plan.speed !== 'standard')
       || (finite && (!Number.isInteger(count) || count < 1))
       || !/^[0-9a-f]{8}$/.test(reviewedDigest)
       || Number(plan?.expiresAt) <= Date.now()
@@ -2343,13 +2408,23 @@
       && dmThreadPreview.threadId === currentDirectThreadId();
     const active = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
     if (summary) {
-      summary.hidden = !checked;
+      const finished = dmRunnerSnapshot?.status === 'completed';
+      const needsAttention = dmRunnerSnapshot?.status === 'needs-attention';
+      summary.hidden = !checked && !finished && !needsAttention;
       setText('dm-summary-title', found
         ? `At least ${found} sent message${found === 1 ? '' : 's'} detected`
         : 'No sent messages found');
       setText('dm-summary-detail', !found
         ? 'No messages in this thread were identified as yours.'
         : 'Read-only estimate. Instagram may load more while Unsend runs.');
+      if (finished) {
+        setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent`);
+        setText('dm-summary-detail', cleanupPreferences.showSummary ? dmRunnerSnapshot.message : '');
+      } else if (needsAttention) {
+        const uncertain = Math.max(0, Number(dmRunnerSnapshot.uncertain) || 0);
+        setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent · Needs attention`);
+        setText('dm-summary-detail', [dmRunnerSnapshot.message, uncertain ? `${uncertain} outcome uncertain.` : ''].filter(Boolean).join(' '));
+      }
     }
     // Never hidden. Progressive disclosure applies to secondary controls, not
     // to the action the tool exists for.
@@ -2392,9 +2467,11 @@
     if (!inspection?.ready) throw new Error(inspection?.reason || 'Open a conversation first.');
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
     const requested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
+    const speed = query('[data-role="unsend-speed"]')?.value || 'standard';
     const limit = scope === 'all' ? null : Math.max(1, requested);
     const plan = dmRunner.createPlan({
       threadId: inspection.threadId,
+      speed,
       scope,
       limit,
       detectedCount: Number(dmThreadPreview?.detectedCount ?? dmThreadPreview?.eligibleCount) || null,
@@ -2413,9 +2490,11 @@
         { label: 'Action', value: 'Permanently unsend messages' },
         { label: 'Conversation', value: `Thread ${plan.threadId}` },
         { label: 'Scope', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
+        { label: 'Speed', value: speed === 'fast' ? 'Fast' : 'Standard' },
       ],
       binding: {
         action: 'unsend',
+        speed: plan.speed,
         expiresAt: plan.expiresAt,
         limit: plan.limit,
         reviewedDigest: plan.reviewedDigest,
@@ -2437,6 +2516,8 @@
       || confirmation.action !== 'unsend'
       || confirmation.threadId !== plan.threadId
       || confirmation.scope !== plan.scope
+      || confirmation.speed !== plan.speed
+      || (query('[data-role="unsend-speed"]')?.value || 'standard') !== plan.speed
       || confirmation.limit !== plan.limit
       || confirmation.reviewedDigest !== plan.reviewedDigest
       || Number(confirmation.expiresAt) !== plan.expiresAt
@@ -2672,20 +2753,30 @@
       saveState();
       status('Pacing saved.');
     },
-    'layout-compact': () => savePreferences({ width: 360, height: 520, open: true }),
+    'layout-compact': () => savePreferences({ width: 380, height: 520, open: true }),
     'layout-tall': () => savePreferences({
-      width: 430,
+      width: 460,
       height: Math.min(820, Math.max(HEIGHT_MIN, innerHeight - (INSET * 2))),
       open: true,
     }),
     'layout-wide': () => savePreferences({ width: 560, height: 680, open: true }),
     'reset-layout': () => savePreferences({
-      ...preferencesDefaults(),
-      accent: preferences.accent,
-      blur: preferences.blur,
-      launcherSize: preferences.launcherSize,
+      width: preferencesDefaults().width,
+      height: preferencesDefaults().height,
+      position: null,
+      launcherPosition: null,
       open: true,
-      view: preferences.view,
+    }),
+    'reset-appearance': () => savePreferences(cleanupSettings.normalizeAppearance({})),
+    'backup-local': () => downloadJson('insta-toolbox-local-data.json', {
+      kind: 'insta-toolbox-local-data', schemaVersion: 1, surface: 'userscript', exportedAt: nowIso(),
+      preferences, cleanupPreferences, capture: state.capture, queue: state.queue,
+    }),
+    'export-diagnostics': () => downloadJson('insta-toolbox-diagnostics.json', {
+      kind: 'insta-toolbox-diagnostics', schemaVersion: 1, surface: 'userscript',
+      version: typeof GM_info !== 'undefined' ? GM_info.script.version : 'development',
+      preferences: cleanupSettings.effective(cleanupPreferences, 'userscript'),
+      capabilities: cleanupSettings.capabilities('userscript'),
     }),
     capture: () => {
       const listType = query('[data-role="list-type"]').value === 'followers' ? 'followers' : 'following';
@@ -2839,8 +2930,16 @@
         announceComparisonCount();
         return;
       }
-      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"]')) {
+      if (event.target.matches('[data-role="unsend-scope"], [data-role="unsend-count"], [data-role="unsend-speed"]')) {
         renderDmSummary();
+        return;
+      }
+      if (event.target.matches('[data-cleanup-preference]') && !event.target.disabled) {
+        const raw = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+        const next = cleanupSettings.normalize({ ...cleanupPreferences, [event.target.dataset.cleanupPreference]: raw });
+        await GM_setValue(cleanupSettings.STORAGE_KEY, next);
+        cleanupPreferences = next;
+        status('Cleanup defaults saved. Current review unchanged.');
         return;
       }
       if (event.target.matches('[data-preference]')) {
@@ -3098,6 +3197,7 @@
   bootstrapClaim.remove();
   saveState();
   savePreferences(preferences);
+  renderCleanupSettings({ initializeDraft: true });
   renderAll();
 
   // Pick a paused account run back up after the navigation that advanced it.

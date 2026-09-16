@@ -289,7 +289,7 @@ test('the userscript migrates the old opaque default while preserving explicit c
 
 test('customization is a named modal that dims the toolbox and dismisses outside', () => {
   assert.match(generated, /data-role="settings-dialog"[^>]*aria-labelledby="insta-toolbox-settings-title"/);
-  assert.match(generated, /<h2 id="insta-toolbox-settings-title">Customize Insta Toolbox<\/h2>/);
+  assert.match(generated, /<h2 id="insta-toolbox-settings-title">Settings<\/h2>/);
   assert.match(shell, /\.settings-dialog::backdrop \{[^}]*grayscale\(\.65\) blur\(1px\)/);
   assert.match(shell, /dialog\.showModal\(\)/);
   assert.match(shell, /event\.target === event\.currentTarget\) setSettingsOpen\(false\)/);
@@ -469,7 +469,7 @@ test('finite run confirmation replaces global unlock controls and phrases', () =
   assert.match(shell, /approvedTargets: \[\.\.\.queue\]/);
   assert.match(shell, /capabilityExpiresAt: Date\.now\(\) \+ RUN_CAPABILITY_MS/);
   assert.doesNotMatch(labels, /currentEligibleCount !== plan\.eligibleCount/);
-  assert.match(labels, /Number\(value\?\.version\) !== PLAN_VERSION/);
+  assert.match(labels, /\[2, PLAN_VERSION\]\.includes\(version\)/);
   assert.doesNotMatch(labels, /liveAuthority\?\.enable|ARM UNSEND/);
 });
 
