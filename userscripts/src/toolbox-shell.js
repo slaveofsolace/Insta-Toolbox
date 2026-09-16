@@ -908,6 +908,7 @@
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="field"><label for="insta-toolbox-unsend-speed">Speed</label><select id="insta-toolbox-unsend-speed" data-role="unsend-speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
+          <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
           <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
@@ -1130,6 +1131,11 @@
 
   function renderCleanupSettings({ initializeDraft = false } = {}) {
     const effective = cleanupSettings.effective(cleanupPreferences, 'userscript');
+    const reactionsSupported = cleanupSettings.capabilities('userscript').reactions;
+    query('[data-role="unsend-reactions-option"]').hidden = !reactionsSupported;
+    query('[data-role="unsend-reactions"]').disabled = !reactionsSupported;
+    query('[data-cleanup-preference="removeOwnReactions"]').disabled = !reactionsSupported;
+    query('#insta-toolbox-reactions-note').hidden = reactionsSupported;
     for (const control of queryAll('[data-cleanup-preference]')) {
       const value = effective[control.dataset.cleanupPreference];
       if (control.type === 'checkbox') control.checked = Boolean(value);
@@ -1139,6 +1145,7 @@
       query('[data-role="unsend-scope"]').value = effective.messageScope;
       query('[data-role="unsend-count"]').value = String(effective.messageLimit);
       query('[data-role="unsend-speed"]').value = effective.speed;
+      query('[data-role="unsend-reactions"]').checked = effective.removeOwnReactions;
     }
   }
 
@@ -1505,6 +1512,9 @@
   let relationshipProgress = null;
   let dmThreadPreview = null;
   let dmRunnerSnapshot = null;
+  let dmCleanupController = null;
+  let reactionCleanup = null;
+  let reactionSnapshot = null;
 
   const engine = globalThis.InstaToolboxInstagramInspector;
   const dmRunner = globalThis.InstaToolboxDmThreadUnsender;
@@ -1517,6 +1527,17 @@
       if (['preparing', 'running', 'waiting', 'stopping', 'completed', 'stopped', 'error'].includes(next.status)) {
         status(next.message);
       }
+    });
+  }
+  if (dmRunner?.createMessageWalker && globalThis.InstaToolboxReactionCleanup
+    && globalThis.InstaToolboxInstagramViewer) {
+    reactionCleanup = globalThis.InstaToolboxReactionCleanup.create({
+      inspectContext: () => globalThis.InstaToolboxInstagramViewer.inspect(),
+    });
+    reactionCleanup.subscribe((next) => {
+      reactionSnapshot = next;
+      renderDmSummary();
+      if (next.status !== 'idle') status(next.message);
     });
   }
 
@@ -2452,7 +2473,8 @@
     const found = Number(dmThreadPreview?.detectedCount ?? dmThreadPreview?.eligibleCount) || 0;
     const checked = dmThreadPreview?.ready === true
       && dmThreadPreview.threadId === currentDirectThreadId();
-    const active = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
+    const active = Boolean(dmCleanupController)
+      || ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
     if (summary) {
       const finished = dmRunnerSnapshot?.status === 'completed';
       const needsAttention = dmRunnerSnapshot?.status === 'needs-attention';
@@ -2474,14 +2496,20 @@
         setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent · ${outcome}`);
         setText('dm-summary-detail', [dmRunnerSnapshot.message, uncertain ? `${uncertain} outcome uncertain.` : ''].filter(Boolean).join(' '));
       }
+      if (reactionSnapshot && reactionSnapshot.status !== 'idle') {
+        summary.hidden = false;
+        const count = Number(reactionSnapshot.removed) || 0;
+        setText('dm-summary-title', `${Number(dmRunnerSnapshot?.processed) || 0} unsent · ${count} reaction${count === 1 ? '' : 's'} removed`);
+        setText('dm-summary-detail', reactionSnapshot.message);
+      }
     }
     // Never hidden. Progressive disclosure applies to secondary controls, not
     // to the action the tool exists for.
     if (primary) {
       primary.hidden = false;
-      primary.textContent = active ? 'Stop DM Unsend' : 'Unsend DMs';
+      primary.textContent = active ? (reactionSnapshot?.canStop ? 'Stop reaction cleanup' : 'Stop DM Unsend') : 'Unsend DMs';
       primary.disabled = active
-        ? dmRunnerSnapshot?.canStop !== true
+        ? (dmCleanupController ? dmCleanupController.signal.aborted : dmRunnerSnapshot?.canStop !== true)
         : !currentDirectThreadId();
     }
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
@@ -2490,6 +2518,7 @@
   }
 
   async function scanSentConversation() {
+    if (dmCleanupController) throw new Error('Stop cleanup before checking the conversation.');
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
     status('Checking this conversation for messages you sent. Nothing will be removed.');
     const outcome = await dmRunner.inspectAll();
@@ -2506,6 +2535,7 @@
 
   async function runDmUnsend() {
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
+    if (stopDmCleanup()) return;
     if (confirmationController?.isPending()) return;
     const snapshot = dmRunner.snapshot();
     if (snapshot.canStop || ['preparing', 'running', 'waiting', 'stopping'].includes(snapshot.status)) {
@@ -2517,6 +2547,13 @@
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
     const requested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
     const speed = query('[data-role="unsend-speed"]')?.value || 'standard';
+    const removeReactions = cleanupSettings.capabilities('userscript').reactions
+      && query('[data-role="unsend-reactions"]')?.checked === true;
+    const viewer = removeReactions ? globalThis.InstaToolboxInstagramViewer?.inspect() : null;
+    if (removeReactions && (!reactionCleanup || viewer?.accountVerified !== true
+      || viewer.usable !== true || viewer.threadId !== inspection.threadId)) {
+      throw new Error('Your account could not be verified for reaction cleanup.');
+    }
     const limit = scope === 'all' ? null : Math.max(1, requested);
     const plan = dmRunner.createPlan({
       threadId: inspection.threadId,
@@ -2527,19 +2564,26 @@
       expiresAt: Date.now() + DM_PLAN_CAPABILITY_MS,
     });
     if (!plan) throw new Error('The Unsend plan could not be created. Keep this conversation open and try again.');
+    const reactionPlan = removeReactions ? globalThis.InstaToolboxOwnReactions.createPlan({
+      threadId: plan.threadId, accountUsername: viewer.accountId, expiresAt: plan.expiresAt,
+    }) : null;
+    if (removeReactions && !reactionPlan) throw new Error('Reaction cleanup could not be prepared.');
     const scopeLabel = scope === 'all'
       ? 'every message you sent'
       : `the ${scope} ${limit} message${limit === 1 ? '' : 's'} you sent`;
     const confirmation = await confirmRun({
       title: 'Unsend DMs?',
       message: `Permanently unsend ${scopeLabel} in this conversation?`,
-      detail: 'This cannot be undone. Stop stays available while it runs.',
+      detail: removeReactions
+        ? 'Then remove your reactions from messages left in this conversation. This cannot be undone. Stop stays available.'
+        : 'This cannot be undone. Stop stays available while it runs.',
       confirmLabel: scope === 'all' ? 'Unsend all my messages' : `Unsend ${limit} message${limit === 1 ? '' : 's'}`,
       facts: [
         { label: 'Action', value: 'Permanently unsend messages' },
         { label: 'Conversation', value: `Thread ${plan.threadId}` },
         { label: 'Messages', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
         { label: 'Speed', value: speed === 'fast' ? 'Fast' : 'Standard' },
+        ...(removeReactions ? [{ label: 'Reactions', value: `Remove reactions added by @${viewer.accountId}` }] : []),
       ],
       binding: {
         action: 'unsend',
@@ -2549,6 +2593,8 @@
         reviewedDigest: plan.reviewedDigest,
         scope: plan.scope,
         threadId: plan.threadId,
+        removeReactions,
+        reactionAccount: viewer?.accountId || null,
       },
     });
     if (!confirmation) {
@@ -2559,6 +2605,7 @@
     const confirmedScope = query('[data-role="unsend-scope"]')?.value || 'all';
     const confirmedRequested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
     const confirmedLimit = confirmedScope === 'all' ? null : Math.max(1, confirmedRequested);
+    const confirmedViewer = removeReactions ? globalThis.InstaToolboxInstagramViewer.inspect() : null;
     if (
       !confirmedInspection?.ready
       || confirmedInspection.threadId !== plan.threadId
@@ -2573,6 +2620,13 @@
       || plan.expiresAt <= Date.now()
       || confirmedScope !== plan.scope
       || confirmedLimit !== plan.limit
+      || confirmation.removeReactions !== removeReactions
+      || (cleanupSettings.capabilities('userscript').reactions
+        && query('[data-role="unsend-reactions"]')?.checked === true) !== removeReactions
+      || (removeReactions && (confirmation.reactionAccount !== viewer.accountId
+        || confirmedViewer.accountId !== viewer.accountId
+        || confirmedViewer.accountVerified !== true || confirmedViewer.usable !== true
+        || confirmedViewer.threadId !== plan.threadId || confirmedViewer.restriction))
     ) {
       status('The conversation or message selection changed after review. Nothing was removed.', 'blocked');
       return;
@@ -2583,6 +2637,10 @@
       return;
     }
     dmThreadPreview = null;
+    reactionSnapshot = null;
+    const controller = new AbortController();
+    dmCleanupController = controller;
+    renderDmSummary();
     try {
       const outcome = await dmRunner.start({
         plan,
@@ -2594,9 +2652,35 @@
         }),
       });
       finalizeUnsendOutcome(plan, outcome);
+      if (reactionPlan && outcome.status === 'completed' && !controller.signal.aborted) {
+        let recordedReactions = 0;
+        await reactionCleanup.start({ plan: reactionPlan, signal: controller.signal,
+          onVerifiedRemoval: async ({ removed }) => {
+            const increment = Math.max(0, removed - recordedReactions);
+            if (!increment) return;
+            const ledger = state.ledger?.day === today()
+              ? state.ledger : { day: today(), actions: 0, unsends: 0 };
+            ledger.reactions = Number(ledger.reactions || 0) + increment;
+            state.ledger = ledger;
+            recordedReactions = removed;
+            await saveState();
+          },
+        });
+      }
     } finally {
       activeUnsendCapability = null;
+      if (dmCleanupController === controller) dmCleanupController = null;
+      renderDmSummary();
     }
+  }
+
+  function stopDmCleanup() {
+    if (!dmCleanupController) return false;
+    dmCleanupController.abort('Stopped');
+    dmRunner?.stop?.();
+    reactionCleanup?.stop?.();
+    renderDmSummary();
+    return true;
   }
 
 
@@ -2675,6 +2759,7 @@
       savePreferences({ open: false });
     },
     'stop-run': () => {
+      if (stopDmCleanup()) return;
       if (dmRunner?.stop?.()) {
         status('Stopping DM Unsend after the current step.');
         return;

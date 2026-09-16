@@ -731,8 +731,19 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
             return now() - stableSince >= stableMs;
           });
           const remainingDialog = openDialogs()[0];
-          if (remainingDialog) close(remainingDialog, threadId, accountId, null, true);
           unresolvedAttempts.delete(attemptKey);
+          if (remainingDialog) {
+            try {
+              close(remainingDialog, threadId, accountId, null, true);
+              await wait(() => !visible(remainingDialog));
+            }
+            catch {
+              // The removal is already proven. A stranded details dialog
+              // needs attention, but must not erase that verified result.
+              return { verified: true, skipped: false, removed: 1,
+                needsAttention: true, reason: 'reaction-dialog-close-unavailable' };
+            }
+          }
           return { verified: true, skipped: false, removed: 1 };
         } catch (error) {
           if (dispatched) throw uncertain('Reaction removal could not be verified. Check this message before retrying.');
@@ -858,6 +869,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   const consumedPlanDigests = new Map();
 
   let activeController = null;
+  let activeMessageWalker = null;
+  const readOnlyTraversals = new WeakMap();
   let activeExecution = null;
   let currentState = Object.freeze({
     status: 'idle',
@@ -1409,11 +1422,17 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (!rows.length) {
       rows = [...(scroller?.querySelectorAll?.('[role="row"], [role="listitem"]') || [])];
     }
+    const reader = traversal && readOnlyTraversals.get(traversal);
     const candidates = rows
-      .filter((row) => !processedMarkerMatches(row, traversal))
+      .filter((row) => reader ? !reader.visited(row, scroller) : !processedMarkerMatches(row, traversal))
       .filter((row) => !row.hasAttribute?.(ACTIVE_ATTRIBUTE))
       .filter(hasMessageContent)
-      .filter((row) => sentByCurrentUser(row, row.ownerDocument.defaultView));
+      .filter((row) => reader
+        ? Boolean(stableMessageKey(row)
+          || ['row', 'listitem'].includes(row.getAttribute?.('role'))
+          || ['true', 'false'].includes(row.getAttribute?.('data-sent-by-me'))
+          || row.querySelectorAll?.('[aria-label="Message actions"]').length === 1)
+        : sentByCurrentUser(row, row.ownerDocument.defaultView));
     recordPhase('messageResolution', startedAt);
     return candidates;
   }
@@ -1920,11 +1939,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       || rowRect.bottom > scrollerRect.bottom - inset;
   }
 
-  async function exposeRow(row, scroller, signal) {
+  async function exposeRow(row, scroller, signal, traversal = null) {
     if (!rowNeedsReposition(row, scroller)) return isVisible(row);
+    traversal && readOnlyTraversals.get(traversal)?.check(true);
     row.scrollIntoView({ block: 'center', inline: 'nearest' });
     dispatch(scroller, new Event('scroll', { bubbles: true }));
     await delay(60, signal);
+    traversal && readOnlyTraversals.get(traversal)?.check();
     return isVisible(row);
   }
 
@@ -1943,6 +1964,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   function traversalContext(context, traversal) {
+    readOnlyTraversals.get(traversal)?.check();
     let current = context;
     if (context?.threadId) {
       current = threadContext();
@@ -2005,14 +2027,17 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     let stableSince = 0;
 
     while (Date.now() - startedAt < MAX_HISTORY_CHECK_MS) {
-      requireAuthorization(context.threadId, authorizationExpiresAt);
+      const reader = readOnlyTraversals.get(traversal);
+      if (reader) reader.check(true);
+      else requireAuthorization(context.threadId, authorizationExpiresAt);
       const current = traversalContext(context, traversal);
       const before = oldestBoundarySnapshot(current);
       current.scroller.scrollTop = before.oldest;
       dispatch(current.scroller, new Event('scroll', { bubbles: true }));
       await delay(OLDEST_BOUNDARY_POLL_MS, signal);
 
-      requireAuthorization(context.threadId, authorizationExpiresAt);
+      if (reader) reader.check();
+      else requireAuthorization(context.threadId, authorizationExpiresAt);
       const refreshed = traversalContext(context, traversal);
       const after = oldestBoundarySnapshot(refreshed);
       const atOldest = Math.abs(Number(after.scroller?.scrollTop) - after.oldest) <= 1;
@@ -2088,6 +2113,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       const scroller = current.scroller;
       const previousHeight = Number(traversal.lastScrollHeight) || 0;
       const { start } = traversalBounds(scroller, traversal.order);
+      readOnlyTraversals.get(traversal)?.check(true);
       scroller.scrollTop = start;
       dispatch(scroller, new Event('scroll', { bubbles: true }));
       await delay(5, signal);
@@ -2165,7 +2191,12 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     // Scope order outranks viewport convenience. An older visible message must
     // never replace a newer mounted message just because the latter is clipped.
     const [mounted] = orderedCandidates(scroller, traversal.order, traversal);
-    if (mounted && await exposeRow(mounted, scroller, signal)) return mounted;
+    if (mounted && await exposeRow(mounted, scroller, signal, traversal)) return mounted;
+    if (mounted && readOnlyTraversals.has(traversal)
+      && (!mounted.isConnected || traversalContext(context, traversal).scroller !== scroller)) {
+      traversal.lastSearchIncomplete = true;
+      return null;
+    }
     if (mounted) throw new Error('The next message could not be brought into view. Nothing else was selected.');
 
     for (let pass = 0; pass < MAX_SCAN_PASSES; pass += 1) {
@@ -2188,6 +2219,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
       while (traversal.lastSearchSteps < MAX_SCROLL_STEPS_PER_SEARCH) {
         if (signal.aborted) return null;
+        readOnlyTraversals.get(traversal)?.check(true);
         const stepStop = context.threadId ? sessionStop(context.threadId) : null;
         if (stepStop) throw new Error(stepStop);
         traversal.lastScrollTop = position;
@@ -2196,10 +2228,23 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         traversal.lastSearchSteps += 1;
         await delay(5, signal);
 
+        if (readOnlyTraversals.has(traversal)) {
+          const refreshed = traversalContext(context, traversal);
+          if (refreshed.scroller !== scroller) {
+            traversal.lastSearchIncomplete = true;
+            return null;
+          }
+        }
+
         const [row] = orderedCandidates(scroller, traversal.order, traversal);
-        if (row && await exposeRow(row, scroller, signal)) {
+        if (row && await exposeRow(row, scroller, signal, traversal)) {
           traversal.lastScrollHeight = Number(scroller?.scrollHeight) || heightBeforePass;
           return row;
+        }
+        if (row && readOnlyTraversals.has(traversal)
+          && (!row.isConnected || traversalContext(context, traversal).scroller !== scroller)) {
+          traversal.lastSearchIncomplete = true;
+          return null;
         }
         if (row) throw new Error('The next message could not be brought into view. Nothing else was selected.');
         if (position === end) break;
@@ -2401,8 +2446,175 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     return false;
   }
 
+  function createMessageWalker({
+    threadId,
+    expiresAt,
+    signal = null,
+    order = 'newest',
+    maxSteps = 18_000,
+    timeoutMs = 20 * 60_000,
+    holdUntilClosed = false,
+  } = {}) {
+    const error = (code, message) => Object.assign(new Error(message), { code });
+    if (activeController || activeMessageWalker) {
+      throw error('DM_WALKER_BUSY', 'Another conversation operation is already active.');
+    }
+    const startedAt = Date.now();
+    if (typeof threadId !== 'string' || !threadId || !['newest', 'oldest'].includes(order)
+      || !Number.isFinite(expiresAt) || expiresAt <= startedAt
+      || !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 250_000
+      || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 20 * 60_000
+      || typeof holdUntilClosed !== 'boolean'
+      || (signal && (typeof signal.aborted !== 'boolean'
+        || typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function'))) {
+      throw error('DM_WALKER_INVALID', 'A bounded, exact-conversation message pass is required.');
+    }
+    if (signal?.aborted) throw error('DM_WALKER_ABORTED', 'The message pass was stopped.');
+    const initial = threadContext();
+    if (!initial.ok || initial.threadId !== threadId) {
+      throw error('DM_WALKER_CONTEXT', initial.reason || 'The conversation changed.');
+    }
+    const deadline = Math.min(expiresAt, startedAt + timeoutMs);
+    const controller = new AbortController();
+    const traversal = createTraversal(order);
+    const seenKeys = new Set();
+    const seenPositions = new Map();
+    const seenNodes = new WeakMap();
+    let steps = 0, visited = 0, emptyPasses = 0, changingPasses = 0;
+    let status = 'ready', reason = null, closed = false, pending = false;
+    let deadlineTimer = null, unwatch = () => {};
+    const state = () => ({ status, reason, visited, steps,
+      coverage: status === 'completed' ? 'exhausted' : visited ? 'partial' : 'unknown' });
+    const done = () => ({ done: true, value: undefined, ...state() });
+    const finish = (nextStatus, nextReason) => {
+      if (closed) return false;
+      closed = true; status = nextStatus; reason = nextReason;
+      clearTimeout(deadlineTimer);
+      signal?.removeEventListener('abort', abortExternal);
+      controller.signal.removeEventListener('abort', abortInternal);
+      unwatch();
+      if (!controller.signal.aborted) controller.abort(nextReason);
+      if (activeMessageWalker === api && (!holdUntilClosed || nextStatus === 'completed')) activeMessageWalker = null;
+      return true;
+    };
+    const abortExternal = () => controller.abort('DM_WALKER_ABORTED');
+    const abortInternal = () => finish('stopped', Date.now() >= deadline
+      ? (expiresAt <= Date.now() ? 'DM_WALKER_EXPIRED' : 'DM_WALKER_TIMEOUT')
+      : currentThreadId() !== threadId ? 'DM_WALKER_CONTEXT'
+        : lifecycleReason(controller.signal) || 'DM_WALKER_ABORTED');
+    const check = (step = false) => {
+      if (Date.now() >= deadline) {
+        throw error(expiresAt <= Date.now() ? 'DM_WALKER_EXPIRED' : 'DM_WALKER_TIMEOUT', 'The message pass expired.');
+      }
+      const restriction = sessionStop(threadId);
+      if (restriction) throw error('DM_WALKER_CONTEXT', restriction);
+      if (closed || controller.signal.aborted || signal?.aborted) {
+        throw error(reason || 'DM_WALKER_ABORTED', 'The message pass was stopped.');
+      }
+      if (step && ++steps > maxSteps) throw error('DM_WALKER_LIMIT', 'The bounded message pass reached its traversal limit.');
+    };
+    const position = (row, scroller) => {
+      const top = Number(row.getBoundingClientRect?.()?.top);
+      const origin = Number(scroller.getBoundingClientRect?.()?.top);
+      const scroll = Number(scroller.scrollTop);
+      return Number.isFinite(top) && Number.isFinite(origin) && Number.isFinite(scroll)
+        ? Math.round(top - origin + scroll) : null;
+    };
+    const wasVisited = (row, scroller) => {
+      const key = stableMessageKey(row);
+      if (key) return seenKeys.has(key);
+      const signature = retainedMessageSignature(row);
+      const offset = position(row, scroller);
+      return offset === null ? seenNodes.get(row) === signature
+        : [...seenPositions.get(signature) || []].some((known) => Math.abs(known - offset) <= 2);
+    };
+    const remember = (row, scroller) => {
+      const key = stableMessageKey(row);
+      if (key) seenKeys.add(key);
+      else {
+        const signature = retainedMessageSignature(row), offset = position(row, scroller);
+        seenNodes.set(row, signature);
+        if (offset !== null) {
+          if (!seenPositions.has(signature)) seenPositions.set(signature, new Set());
+          seenPositions.get(signature).add(offset);
+        }
+      }
+      visited += 1;
+      return key;
+    };
+    readOnlyTraversals.set(traversal, { check, visited: wasVisited });
+    const api = Object.freeze({
+      snapshot: state,
+      signal: controller.signal,
+      assertCurrent: () => { check(); return true; },
+      stop: () => {
+        if (closed) return false;
+        controller.abort('DM_WALKER_ABORTED');
+        return true;
+      },
+      close: () => {
+        const held = activeMessageWalker === api;
+        const changed = finish('stopped', 'closed');
+        if (held) activeMessageWalker = null;
+        return held || changed;
+      },
+      async next() {
+        if (pending) throw error('DM_WALKER_BUSY', 'The preceding message read has not settled.');
+        if (closed) return done();
+        pending = true; status = 'walking';
+        try {
+          for (;;) {
+            check(true);
+            const context = threadContext();
+            if (!context.ok || context.threadId !== threadId) {
+              throw error('DM_WALKER_CONTEXT', context.reason || 'The conversation changed.');
+            }
+            const row = await nextSentRow(context, controller.signal, order, traversal, deadline);
+            check();
+            const current = traversalContext(context, traversal);
+            if (row && row.isConnected && current.scroller.contains?.(row)) {
+              emptyPasses = 0; changingPasses = 0;
+              if (wasVisited(row, current.scroller)) continue;
+              const key = remember(row, current.scroller);
+              status = 'ready';
+              return { done: false, value: Object.freeze({ row, key, threadId }) };
+            }
+            if (row || traversal.lastSearchGrew || traversal.lastSearchIncomplete || visibleLoader(current.root)) {
+              emptyPasses = 0;
+              if (++changingPasses > MAX_EMPTY_GROWTH_ROUNDS) {
+                throw error('DM_WALKER_UNSTABLE', 'The conversation did not reach a stable end.');
+              }
+            } else if (++emptyPasses >= STABLE_EMPTY_PASSES) {
+              finish('completed', 'stable-exhaustion');
+              return done();
+            }
+            await delay(160, controller.signal);
+          }
+        } catch (failure) {
+          finish('error', failure.code || 'DM_WALKER_INTERRUPTED');
+          throw failure;
+        } finally {
+          pending = false;
+        }
+      },
+    });
+    activeMessageWalker = api;
+    controller.signal.addEventListener('abort', abortInternal, { once: true });
+    signal?.addEventListener('abort', abortExternal, { once: true });
+    try {
+      unwatch = watchThread(controller, threadId);
+      deadlineTimer = setTimeout(() => controller.abort('DM_WALKER_TIMEOUT'), Math.max(0, deadline - Date.now()));
+      check();
+    } catch (failure) {
+      finish('error', failure.code || 'DM_WALKER_INTERRUPTED');
+      api.close();
+      throw failure;
+    }
+    return api;
+  }
+
   async function inspectAll() {
-    if (activeController) {
+    if (activeController || activeMessageWalker) {
       return { ready: false, reason: 'Another message check or run is already active.' };
     }
     const context = threadContext();
@@ -2470,6 +2682,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   async function start(options = {}) {
+    if (activeMessageWalker) throw Object.assign(new Error('A read-only message pass is already active.'), { code: 'DM_WALKER_BUSY' });
     if (activeController) return snapshot();
     const workerAdapter = options.workerAdapter;
     if (workerAdapter !== undefined && (!workerAdapter
@@ -2819,6 +3032,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   function stop() {
+    if (activeMessageWalker) return activeMessageWalker.stop();
     if (!activeController || activeController.signal.aborted) return false;
     publish({ status: 'stopping', message: 'Stopping after the current step…', canStop: false });
     activeController.abort('Stopped by user');
@@ -2838,7 +3052,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   const messageProof = Object.freeze({ sentByCurrentUser, removalEvidence, removalProven, waitForRemoval });
-  const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe, SPEED_PROFILES, messageProof };
+  const publicApi = { createPlan, createMessageWalker, inspect, inspectAll, snapshot, start, stop, subscribe, SPEED_PROFILES, messageProof };
   if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
       candidateRows,
@@ -5334,6 +5548,228 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   });
 })();
 
+(() => {
+  'use strict';
+  if (globalThis.InstaToolboxInstagramViewer) return;
+  const origin = 'https://www.instagram.com';
+  const username = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return /^[a-z0-9._]{1,30}$/.test(normalized) ? normalized : null;
+  };
+  const visible = (node) => Boolean(node?.isConnected
+    && !node.closest?.('[hidden], [aria-hidden="true"]')
+    && node.getClientRects?.().length);
+  function pathOf(link) {
+    try {
+      const url = new URL(link.getAttribute('href'), origin);
+      return url.origin === origin && !url.username && !url.password
+        && !url.search && !url.hash ? url.pathname : '';
+    } catch { return ''; }
+  }
+  function inspect({ document = globalThis.document, location = globalThis.location,
+    session = globalThis.InstaToolboxInstagramInspector?.inspectSession?.() || {} } = {}) {
+    const unavailable = { accountVerified: false, usable: false, accountId: null, threadId: null };
+    if (location?.origin !== origin) return { ...unavailable, reason: 'instagram-origin-required' };
+    const threadId = String(location.pathname).match(/^\/direct\/t\/([0-9]+)\/?$/)?.[1] || null;
+    const restriction = session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited;
+    if (restriction) return { ...unavailable, threadId, restriction: true, reason: 'instagram-restricted' };
+    const lists = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
+    if (lists.length !== 1) return { ...unavailable, threadId, reason: 'account-picker-unavailable' };
+    const list = lists[0];
+    const headings = [...list.querySelectorAll('h2')].filter((heading) => {
+      const picker = heading.closest('[role="button"][tabindex="0"]');
+      return visible(heading) && picker && list.contains(picker) && visible(picker);
+    });
+    if (headings.length !== 1) return { ...unavailable, threadId, reason: 'account-picker-ambiguous' };
+    const accountId = username(headings[0].textContent);
+    if (!accountId) return { ...unavailable, threadId, reason: 'account-name-unavailable' };
+    const profiles = [...document.querySelectorAll('a[role="link"][href]')].filter((link) => {
+      if (!visible(link) || list.contains(link)
+        || link.getAttribute('aria-label')?.startsWith('Open the profile page of')) return false;
+      const match = pathOf(link).match(/^\/([a-z0-9._]+)\/?$/i);
+      if (!match || username(match[1]) !== accountId) return false;
+      const pictures = [...link.querySelectorAll('img')].filter(visible);
+      if (pictures.length !== 1
+        || String(pictures[0].getAttribute('alt')).toLowerCase() !== `${accountId}'s profile picture`) return false;
+      for (let rail = link.parentElement; rail && rail !== document.body; rail = rail.parentElement) {
+        if (rail.contains(list)) return false;
+        const paths = new Set([...rail.querySelectorAll('a[href]')].filter(visible).map(pathOf));
+        if (paths.has('/') && (paths.has('/reels/') || paths.has('/reels'))
+          && (paths.has('/direct/inbox/') || paths.has('/direct/inbox'))) return true;
+      }
+      return false;
+    });
+    if (profiles.length !== 1) return { ...unavailable, threadId, reason: 'account-navigation-unavailable' };
+    return { accountVerified: true, accountId, threadId, usable: Boolean(threadId),
+      restriction: false, evidence: 'visible-account-picker-and-navigation' };
+  }
+  Object.defineProperty(globalThis, 'InstaToolboxInstagramViewer', {
+    configurable: false, writable: false, value: Object.freeze({ inspect }),
+  });
+})();
+
+(() => {
+  'use strict';
+  if (globalThis.InstaToolboxReactionCleanup) return;
+
+  // A separate pass over surviving messages; it never invokes message Unsend.
+  function create({ reactions = globalThis.InstaToolboxOwnReactions,
+    createWalker = globalThis.InstaToolboxDmThreadUnsender?.createMessageWalker,
+    inspectContext, now = Date.now } = {}) {
+    if (typeof createWalker !== 'function' || typeof inspectContext !== 'function'
+      || typeof reactions?.create !== 'function' || typeof reactions?.consumePlan !== 'function') {
+      throw new Error('reaction-cleanup-unavailable');
+    }
+    let current = null;
+    const wait = (ms, signal) => new Promise((resolve, reject) => {
+      let timer, settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer); signal.removeEventListener('abort', abort);
+        error ? reject(error) : resolve();
+      };
+      const abort = () => finish(new DOMException('Stopped', 'AbortError'));
+      if (signal.aborted) return abort();
+      signal.addEventListener('abort', abort, { once: true });
+      timer = setTimeout(() => finish(), ms);
+      if (signal.aborted) abort();
+    });
+    let state = Object.freeze({ status: 'idle', removed: 0, skipped: 0,
+      uncertain: 0, checked: 0, canStop: false, message: 'Ready' });
+    const listeners = new Set();
+    function publish(patch) {
+      state = Object.freeze({ ...state, ...patch });
+      for (const listener of listeners) { try { listener({ ...state }); } catch {} }
+      return { ...state };
+    }
+    function contextFor(plan) {
+      const context = inspectContext();
+      if (context?.then || context?.threadId !== plan.threadId
+        || context?.accountId !== plan.accountUsername || context.accountVerified !== true
+        || context.usable !== true || context.restriction) throw new Error('reaction-context-changed');
+      return context;
+    }
+    return Object.freeze({
+      snapshot: () => ({ ...state }),
+      subscribe(listener) {
+        if (typeof listener !== 'function') return () => {};
+        listeners.add(listener); listener({ ...state });
+        return () => listeners.delete(listener);
+      },
+      stop() {
+        if (!current || current.controller.signal.aborted) return false;
+        publish({ status: 'stopping', canStop: false, message: 'Stopping after this reaction…' });
+        current.controller.abort('Stopped'); return true;
+      },
+      async start({ plan, signal, onVerifiedRemoval } = {}) {
+        if (current) throw new Error('reaction-cleanup-active');
+        if (!plan || (signal && (typeof signal.aborted !== 'boolean'
+          || typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function'))) {
+          throw new Error('reaction-review-required');
+        }
+        contextFor(plan);
+        reactions.consumePlan(plan, plan.threadId, plan.accountUsername);
+        const controller = new AbortController();
+        const run = { controller };
+        current = run;
+        const abort = () => controller.abort(signal?.reason || 'Stopped');
+        signal?.addEventListener('abort', abort, { once: true });
+        if (signal?.aborted) abort();
+        let walker;
+        const checkRun = () => {
+          if (current !== run || controller.signal.aborted) throw new DOMException('Stopped', 'AbortError');
+          if (plan.expiresAt <= now()) throw new Error('reaction-review-expired');
+          contextFor(plan); return true;
+        };
+        const assertAuthorized = () => {
+          checkRun();
+          if (walker && walker.assertCurrent() !== true) throw new Error('reaction-traversal-interrupted');
+          return true;
+        };
+        publish({ status: 'running', removed: 0, skipped: 0, uncertain: 0, complete: false, reason: null,
+          checked: 0, canStop: true, message: 'Checking your reactions…' });
+        try {
+          assertAuthorized();
+          walker = createWalker({ threadId: plan.threadId, expiresAt: plan.expiresAt,
+            signal: controller.signal, order: 'newest', holdUntilClosed: true });
+          if (typeof walker?.assertCurrent !== 'function' || typeof walker.next !== 'function'
+            || typeof walker.close !== 'function') throw new Error('reaction-traversal-unavailable');
+          const adapter = reactions.create({ inspectContext, assertAuthorized });
+          let completed = false;
+          let nextRemovalAt = 0;
+          while (plan.limit === null || state.removed < plan.limit) {
+            assertAuthorized();
+            const item = await walker.next();
+            checkRun();
+            if (item.done) {
+              if (!['exhausted', 'stable-exhaustion'].includes(item.reason)) {
+                throw new Error(item.reason || 'reaction-traversal-unproven');
+              }
+              completed = true; break;
+            }
+            assertAuthorized();
+            const row = item.value?.row || item.value;
+            if (!row?.isConnected) throw new Error('reaction-message-changed');
+            const badges = adapter.badges(row);
+            for (const badge of badges) {
+              assertAuthorized();
+              if (plan.limit !== null && state.removed >= plan.limit) break;
+              const remaining = nextRemovalAt - now();
+              if (remaining > 0) await wait(remaining, controller.signal);
+              assertAuthorized();
+              const result = await adapter.remove({ row, badge, threadId: plan.threadId,
+                accountId: plan.accountUsername, signal: controller.signal });
+              if (result?.verified === true && result.removed === 1) {
+                nextRemovalAt = now() + 1_000;
+                publish({ removed: state.removed + 1,
+                  message: `${state.removed + 1} reaction${state.removed === 0 ? '' : 's'} removed` });
+                // Count settled removals even if Stop arrived after dispatch.
+                if (typeof onVerifiedRemoval === 'function') {
+                  try { await onVerifiedRemoval(Object.freeze({ removed: state.removed, threadId: plan.threadId })); }
+                  catch { throw new Error('reaction-checkpoint-failed'); }
+                }
+                if (result.needsAttention) throw new Error(result.reason || 'reaction-dialog-close-unavailable');
+              } else if (result?.skipped === true) {
+                publish({ skipped: state.skipped + 1 });
+              } else {
+                throw Object.assign(new Error('reaction-outcome-uncertain'), { code: 'REACTION_OUTCOME_UNCERTAIN' });
+              }
+            }
+            publish({ checked: state.checked + 1 });
+          }
+          if (controller.signal.aborted) throw new DOMException('Stopped', 'AbortError');
+          publish({ status: 'completed', complete: completed, canStop: false,
+            message: `${state.removed} reaction${state.removed === 1 ? '' : 's'} removed${state.skipped ? ` · ${state.skipped} skipped` : ''}` });
+        } catch (error) {
+          const uncertain = error?.code === 'REACTION_OUTCOME_UNCERTAIN';
+          const stopped = !uncertain && controller.signal.aborted;
+          publish({ status: stopped ? 'stopped' : 'needs-attention', complete: false,
+            uncertain: uncertain ? 1 : 0, canStop: false,
+            reason: uncertain ? 'reaction-outcome-uncertain' : error?.message || 'reaction-cleanup-interrupted',
+            message: uncertain
+              ? 'Reaction removal is uncertain. Check the conversation before trying again.'
+              : stopped ? `Stopped · ${state.removed} reaction${state.removed === 1 ? '' : 's'} removed`
+                : error?.message === 'reaction-checkpoint-failed'
+                  ? `${state.removed} reaction${state.removed === 1 ? '' : 's'} removed; the local result could not be saved.`
+                  : error?.message === 'reaction-dialog-close-unavailable'
+                    ? `${state.removed} reaction${state.removed === 1 ? '' : 's'} removed. Close Instagram’s reaction list before continuing.`
+                  : 'Reaction cleanup stopped. The conversation needs attention.' });
+        } finally {
+          try { walker?.close(); } finally {
+            signal?.removeEventListener('abort', abort);
+            if (current === run) current = null;
+          }
+        }
+        return { ...state };
+      },
+    });
+  }
+  Object.defineProperty(globalThis, 'InstaToolboxReactionCleanup', {
+    configurable: false, writable: false, value: Object.freeze({ create }),
+  });
+})();
+
 (async () => {
   'use strict';
 
@@ -6244,6 +6680,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="field"><label for="insta-toolbox-unsend-speed">Speed</label><select id="insta-toolbox-unsend-speed" data-role="unsend-speed"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
+          <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
           <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
@@ -6466,6 +6903,11 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
   function renderCleanupSettings({ initializeDraft = false } = {}) {
     const effective = cleanupSettings.effective(cleanupPreferences, 'userscript');
+    const reactionsSupported = cleanupSettings.capabilities('userscript').reactions;
+    query('[data-role="unsend-reactions-option"]').hidden = !reactionsSupported;
+    query('[data-role="unsend-reactions"]').disabled = !reactionsSupported;
+    query('[data-cleanup-preference="removeOwnReactions"]').disabled = !reactionsSupported;
+    query('#insta-toolbox-reactions-note').hidden = reactionsSupported;
     for (const control of queryAll('[data-cleanup-preference]')) {
       const value = effective[control.dataset.cleanupPreference];
       if (control.type === 'checkbox') control.checked = Boolean(value);
@@ -6475,6 +6917,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       query('[data-role="unsend-scope"]').value = effective.messageScope;
       query('[data-role="unsend-count"]').value = String(effective.messageLimit);
       query('[data-role="unsend-speed"]').value = effective.speed;
+      query('[data-role="unsend-reactions"]').checked = effective.removeOwnReactions;
     }
   }
 
@@ -6841,6 +7284,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   let relationshipProgress = null;
   let dmThreadPreview = null;
   let dmRunnerSnapshot = null;
+  let dmCleanupController = null;
+  let reactionCleanup = null;
+  let reactionSnapshot = null;
 
   const engine = globalThis.InstaToolboxInstagramInspector;
   const dmRunner = globalThis.InstaToolboxDmThreadUnsender;
@@ -6853,6 +7299,17 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       if (['preparing', 'running', 'waiting', 'stopping', 'completed', 'stopped', 'error'].includes(next.status)) {
         status(next.message);
       }
+    });
+  }
+  if (dmRunner?.createMessageWalker && globalThis.InstaToolboxReactionCleanup
+    && globalThis.InstaToolboxInstagramViewer) {
+    reactionCleanup = globalThis.InstaToolboxReactionCleanup.create({
+      inspectContext: () => globalThis.InstaToolboxInstagramViewer.inspect(),
+    });
+    reactionCleanup.subscribe((next) => {
+      reactionSnapshot = next;
+      renderDmSummary();
+      if (next.status !== 'idle') status(next.message);
     });
   }
 
@@ -7788,7 +8245,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const found = Number(dmThreadPreview?.detectedCount ?? dmThreadPreview?.eligibleCount) || 0;
     const checked = dmThreadPreview?.ready === true
       && dmThreadPreview.threadId === currentDirectThreadId();
-    const active = ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
+    const active = Boolean(dmCleanupController)
+      || ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
     if (summary) {
       const finished = dmRunnerSnapshot?.status === 'completed';
       const needsAttention = dmRunnerSnapshot?.status === 'needs-attention';
@@ -7810,14 +8268,20 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         setText('dm-summary-title', `${Number(dmRunnerSnapshot.processed) || 0} unsent · ${outcome}`);
         setText('dm-summary-detail', [dmRunnerSnapshot.message, uncertain ? `${uncertain} outcome uncertain.` : ''].filter(Boolean).join(' '));
       }
+      if (reactionSnapshot && reactionSnapshot.status !== 'idle') {
+        summary.hidden = false;
+        const count = Number(reactionSnapshot.removed) || 0;
+        setText('dm-summary-title', `${Number(dmRunnerSnapshot?.processed) || 0} unsent · ${count} reaction${count === 1 ? '' : 's'} removed`);
+        setText('dm-summary-detail', reactionSnapshot.message);
+      }
     }
     // Never hidden. Progressive disclosure applies to secondary controls, not
     // to the action the tool exists for.
     if (primary) {
       primary.hidden = false;
-      primary.textContent = active ? 'Stop DM Unsend' : 'Unsend DMs';
+      primary.textContent = active ? (reactionSnapshot?.canStop ? 'Stop reaction cleanup' : 'Stop DM Unsend') : 'Unsend DMs';
       primary.disabled = active
-        ? dmRunnerSnapshot?.canStop !== true
+        ? (dmCleanupController ? dmCleanupController.signal.aborted : dmRunnerSnapshot?.canStop !== true)
         : !currentDirectThreadId();
     }
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
@@ -7826,6 +8290,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   async function scanSentConversation() {
+    if (dmCleanupController) throw new Error('Stop cleanup before checking the conversation.');
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
     status('Checking this conversation for messages you sent. Nothing will be removed.');
     const outcome = await dmRunner.inspectAll();
@@ -7842,6 +8307,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
   async function runDmUnsend() {
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
+    if (stopDmCleanup()) return;
     if (confirmationController?.isPending()) return;
     const snapshot = dmRunner.snapshot();
     if (snapshot.canStop || ['preparing', 'running', 'waiting', 'stopping'].includes(snapshot.status)) {
@@ -7853,6 +8319,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const scope = query('[data-role="unsend-scope"]')?.value || 'all';
     const requested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
     const speed = query('[data-role="unsend-speed"]')?.value || 'standard';
+    const removeReactions = cleanupSettings.capabilities('userscript').reactions
+      && query('[data-role="unsend-reactions"]')?.checked === true;
+    const viewer = removeReactions ? globalThis.InstaToolboxInstagramViewer?.inspect() : null;
+    if (removeReactions && (!reactionCleanup || viewer?.accountVerified !== true
+      || viewer.usable !== true || viewer.threadId !== inspection.threadId)) {
+      throw new Error('Your account could not be verified for reaction cleanup.');
+    }
     const limit = scope === 'all' ? null : Math.max(1, requested);
     const plan = dmRunner.createPlan({
       threadId: inspection.threadId,
@@ -7863,19 +8336,26 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       expiresAt: Date.now() + DM_PLAN_CAPABILITY_MS,
     });
     if (!plan) throw new Error('The Unsend plan could not be created. Keep this conversation open and try again.');
+    const reactionPlan = removeReactions ? globalThis.InstaToolboxOwnReactions.createPlan({
+      threadId: plan.threadId, accountUsername: viewer.accountId, expiresAt: plan.expiresAt,
+    }) : null;
+    if (removeReactions && !reactionPlan) throw new Error('Reaction cleanup could not be prepared.');
     const scopeLabel = scope === 'all'
       ? 'every message you sent'
       : `the ${scope} ${limit} message${limit === 1 ? '' : 's'} you sent`;
     const confirmation = await confirmRun({
       title: 'Unsend DMs?',
       message: `Permanently unsend ${scopeLabel} in this conversation?`,
-      detail: 'This cannot be undone. Stop stays available while it runs.',
+      detail: removeReactions
+        ? 'Then remove your reactions from messages left in this conversation. This cannot be undone. Stop stays available.'
+        : 'This cannot be undone. Stop stays available while it runs.',
       confirmLabel: scope === 'all' ? 'Unsend all my messages' : `Unsend ${limit} message${limit === 1 ? '' : 's'}`,
       facts: [
         { label: 'Action', value: 'Permanently unsend messages' },
         { label: 'Conversation', value: `Thread ${plan.threadId}` },
         { label: 'Messages', value: scope === 'all' ? 'All messages you sent' : `${scope} ${limit}` },
         { label: 'Speed', value: speed === 'fast' ? 'Fast' : 'Standard' },
+        ...(removeReactions ? [{ label: 'Reactions', value: `Remove reactions added by @${viewer.accountId}` }] : []),
       ],
       binding: {
         action: 'unsend',
@@ -7885,6 +8365,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         reviewedDigest: plan.reviewedDigest,
         scope: plan.scope,
         threadId: plan.threadId,
+        removeReactions,
+        reactionAccount: viewer?.accountId || null,
       },
     });
     if (!confirmation) {
@@ -7895,6 +8377,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const confirmedScope = query('[data-role="unsend-scope"]')?.value || 'all';
     const confirmedRequested = Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1);
     const confirmedLimit = confirmedScope === 'all' ? null : Math.max(1, confirmedRequested);
+    const confirmedViewer = removeReactions ? globalThis.InstaToolboxInstagramViewer.inspect() : null;
     if (
       !confirmedInspection?.ready
       || confirmedInspection.threadId !== plan.threadId
@@ -7909,6 +8392,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       || plan.expiresAt <= Date.now()
       || confirmedScope !== plan.scope
       || confirmedLimit !== plan.limit
+      || confirmation.removeReactions !== removeReactions
+      || (cleanupSettings.capabilities('userscript').reactions
+        && query('[data-role="unsend-reactions"]')?.checked === true) !== removeReactions
+      || (removeReactions && (confirmation.reactionAccount !== viewer.accountId
+        || confirmedViewer.accountId !== viewer.accountId
+        || confirmedViewer.accountVerified !== true || confirmedViewer.usable !== true
+        || confirmedViewer.threadId !== plan.threadId || confirmedViewer.restriction))
     ) {
       status('The conversation or message selection changed after review. Nothing was removed.', 'blocked');
       return;
@@ -7919,6 +8409,10 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       return;
     }
     dmThreadPreview = null;
+    reactionSnapshot = null;
+    const controller = new AbortController();
+    dmCleanupController = controller;
+    renderDmSummary();
     try {
       const outcome = await dmRunner.start({
         plan,
@@ -7930,9 +8424,35 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         }),
       });
       finalizeUnsendOutcome(plan, outcome);
+      if (reactionPlan && outcome.status === 'completed' && !controller.signal.aborted) {
+        let recordedReactions = 0;
+        await reactionCleanup.start({ plan: reactionPlan, signal: controller.signal,
+          onVerifiedRemoval: async ({ removed }) => {
+            const increment = Math.max(0, removed - recordedReactions);
+            if (!increment) return;
+            const ledger = state.ledger?.day === today()
+              ? state.ledger : { day: today(), actions: 0, unsends: 0 };
+            ledger.reactions = Number(ledger.reactions || 0) + increment;
+            state.ledger = ledger;
+            recordedReactions = removed;
+            await saveState();
+          },
+        });
+      }
     } finally {
       activeUnsendCapability = null;
+      if (dmCleanupController === controller) dmCleanupController = null;
+      renderDmSummary();
     }
+  }
+
+  function stopDmCleanup() {
+    if (!dmCleanupController) return false;
+    dmCleanupController.abort('Stopped');
+    dmRunner?.stop?.();
+    reactionCleanup?.stop?.();
+    renderDmSummary();
+    return true;
   }
 
 
@@ -8011,6 +8531,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       savePreferences({ open: false });
     },
     'stop-run': () => {
+      if (stopDmCleanup()) return;
       if (dmRunner?.stop?.()) {
         status('Stopping DM Unsend after the current step.');
         return;

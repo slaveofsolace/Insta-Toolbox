@@ -110,6 +110,62 @@ function fixture({ mine = true, shared = false, behavior = 'remove', emoji = 'ðŸ
     get dialog() { return dialog; } };
 }
 
+test('post-proof missing or ambiguous Close preserves the removal and requests attention', async () => {
+  for (const closeState of ['missing', 'ambiguous']) {
+    let f;
+    f = fixture({ shared: true, onDispatch() {
+      const close = f.dialog.querySelectorAll('button').find((node) => node.getAttribute('aria-label') === 'Close');
+      if (closeState === 'missing') close.remove();
+      else f.dialog.append(new f.Node('button', { 'aria-label': 'Close' }));
+    } });
+    const result = await f.remove();
+    assert.equal(result.verified, true, closeState);
+    assert.equal(result.removed, 1, closeState);
+    assert.equal(result.needsAttention, true, closeState);
+    assert.equal(result.reason, 'reaction-dialog-close-unavailable', closeState);
+    assert.equal(f.dialog.isConnected, true, closeState);
+    assert.equal(f.row.isConnected, true, closeState);
+    assert.equal(f.counters.mutations, 1, closeState);
+    assert.equal(f.dialog.textContent.includes('Select to remove'), false, closeState);
+    assert.equal(f.dialog.textContent.includes('Another account'), true, closeState);
+    await assert.rejects(f.remove(), /dialog-already-open/);
+    assert.equal(f.counters.mutations, 1, closeState);
+  }
+});
+
+test('pre-proof missing or ambiguous Close never reports a removal', async () => {
+  for (const closeState of ['missing', 'ambiguous']) {
+    const f = fixture({ mine: false, shared: true });
+    const show = f.badge.onclick;
+    f.badge.onclick = () => {
+      show();
+      const close = f.dialog.querySelectorAll('button').find((node) => node.getAttribute('aria-label') === 'Close');
+      if (closeState === 'missing') close.remove();
+      else f.dialog.append(new f.Node('button', { 'aria-label': 'Close' }));
+    };
+    await assert.rejects(f.remove(), /reaction-close-unavailable/);
+    assert.equal(f.counters.mutations, 0, closeState);
+    assert.equal(f.dialog.isConnected, true, closeState);
+    assert.equal(f.badge.isConnected, true, closeState);
+  }
+});
+
+test('a no-op Close stops with a warning after counting the verified removal', async () => {
+  let f, closes = 0;
+  f = fixture({ shared: true, onDispatch() {
+    const close = f.dialog.querySelectorAll('button').find((node) => node.getAttribute('aria-label') === 'Close');
+    close.onclick = () => { closes += 1; };
+  } });
+  const result = await f.remove();
+  assert.equal(result.verified, true);
+  assert.equal(result.removed, 1);
+  assert.equal(result.needsAttention, true);
+  assert.equal(result.reason, 'reaction-dialog-close-unavailable');
+  assert.equal(f.dialog.isConnected, true);
+  assert.equal(closes, 1);
+  assert.equal(f.counters.mutations, 1);
+});
+
 test('own reaction on a received message is removed without removing the message', async () => {
   const f = fixture(); const result = await f.remove();
   assert.equal(result.verified, true); assert.equal(result.removed, 1);

@@ -105,6 +105,8 @@
   const consumedPlanDigests = new Map();
 
   let activeController = null;
+  let activeMessageWalker = null;
+  const readOnlyTraversals = new WeakMap();
   let activeExecution = null;
   let currentState = Object.freeze({
     status: 'idle',
@@ -656,11 +658,17 @@
     if (!rows.length) {
       rows = [...(scroller?.querySelectorAll?.('[role="row"], [role="listitem"]') || [])];
     }
+    const reader = traversal && readOnlyTraversals.get(traversal);
     const candidates = rows
-      .filter((row) => !processedMarkerMatches(row, traversal))
+      .filter((row) => reader ? !reader.visited(row, scroller) : !processedMarkerMatches(row, traversal))
       .filter((row) => !row.hasAttribute?.(ACTIVE_ATTRIBUTE))
       .filter(hasMessageContent)
-      .filter((row) => sentByCurrentUser(row, row.ownerDocument.defaultView));
+      .filter((row) => reader
+        ? Boolean(stableMessageKey(row)
+          || ['row', 'listitem'].includes(row.getAttribute?.('role'))
+          || ['true', 'false'].includes(row.getAttribute?.('data-sent-by-me'))
+          || row.querySelectorAll?.('[aria-label="Message actions"]').length === 1)
+        : sentByCurrentUser(row, row.ownerDocument.defaultView));
     recordPhase('messageResolution', startedAt);
     return candidates;
   }
@@ -1167,11 +1175,13 @@
       || rowRect.bottom > scrollerRect.bottom - inset;
   }
 
-  async function exposeRow(row, scroller, signal) {
+  async function exposeRow(row, scroller, signal, traversal = null) {
     if (!rowNeedsReposition(row, scroller)) return isVisible(row);
+    traversal && readOnlyTraversals.get(traversal)?.check(true);
     row.scrollIntoView({ block: 'center', inline: 'nearest' });
     dispatch(scroller, new Event('scroll', { bubbles: true }));
     await delay(60, signal);
+    traversal && readOnlyTraversals.get(traversal)?.check();
     return isVisible(row);
   }
 
@@ -1190,6 +1200,7 @@
   }
 
   function traversalContext(context, traversal) {
+    readOnlyTraversals.get(traversal)?.check();
     let current = context;
     if (context?.threadId) {
       current = threadContext();
@@ -1252,14 +1263,17 @@
     let stableSince = 0;
 
     while (Date.now() - startedAt < MAX_HISTORY_CHECK_MS) {
-      requireAuthorization(context.threadId, authorizationExpiresAt);
+      const reader = readOnlyTraversals.get(traversal);
+      if (reader) reader.check(true);
+      else requireAuthorization(context.threadId, authorizationExpiresAt);
       const current = traversalContext(context, traversal);
       const before = oldestBoundarySnapshot(current);
       current.scroller.scrollTop = before.oldest;
       dispatch(current.scroller, new Event('scroll', { bubbles: true }));
       await delay(OLDEST_BOUNDARY_POLL_MS, signal);
 
-      requireAuthorization(context.threadId, authorizationExpiresAt);
+      if (reader) reader.check();
+      else requireAuthorization(context.threadId, authorizationExpiresAt);
       const refreshed = traversalContext(context, traversal);
       const after = oldestBoundarySnapshot(refreshed);
       const atOldest = Math.abs(Number(after.scroller?.scrollTop) - after.oldest) <= 1;
@@ -1335,6 +1349,7 @@
       const scroller = current.scroller;
       const previousHeight = Number(traversal.lastScrollHeight) || 0;
       const { start } = traversalBounds(scroller, traversal.order);
+      readOnlyTraversals.get(traversal)?.check(true);
       scroller.scrollTop = start;
       dispatch(scroller, new Event('scroll', { bubbles: true }));
       await delay(5, signal);
@@ -1412,7 +1427,12 @@
     // Scope order outranks viewport convenience. An older visible message must
     // never replace a newer mounted message just because the latter is clipped.
     const [mounted] = orderedCandidates(scroller, traversal.order, traversal);
-    if (mounted && await exposeRow(mounted, scroller, signal)) return mounted;
+    if (mounted && await exposeRow(mounted, scroller, signal, traversal)) return mounted;
+    if (mounted && readOnlyTraversals.has(traversal)
+      && (!mounted.isConnected || traversalContext(context, traversal).scroller !== scroller)) {
+      traversal.lastSearchIncomplete = true;
+      return null;
+    }
     if (mounted) throw new Error('The next message could not be brought into view. Nothing else was selected.');
 
     for (let pass = 0; pass < MAX_SCAN_PASSES; pass += 1) {
@@ -1435,6 +1455,7 @@
 
       while (traversal.lastSearchSteps < MAX_SCROLL_STEPS_PER_SEARCH) {
         if (signal.aborted) return null;
+        readOnlyTraversals.get(traversal)?.check(true);
         const stepStop = context.threadId ? sessionStop(context.threadId) : null;
         if (stepStop) throw new Error(stepStop);
         traversal.lastScrollTop = position;
@@ -1443,10 +1464,23 @@
         traversal.lastSearchSteps += 1;
         await delay(5, signal);
 
+        if (readOnlyTraversals.has(traversal)) {
+          const refreshed = traversalContext(context, traversal);
+          if (refreshed.scroller !== scroller) {
+            traversal.lastSearchIncomplete = true;
+            return null;
+          }
+        }
+
         const [row] = orderedCandidates(scroller, traversal.order, traversal);
-        if (row && await exposeRow(row, scroller, signal)) {
+        if (row && await exposeRow(row, scroller, signal, traversal)) {
           traversal.lastScrollHeight = Number(scroller?.scrollHeight) || heightBeforePass;
           return row;
+        }
+        if (row && readOnlyTraversals.has(traversal)
+          && (!row.isConnected || traversalContext(context, traversal).scroller !== scroller)) {
+          traversal.lastSearchIncomplete = true;
+          return null;
         }
         if (row) throw new Error('The next message could not be brought into view. Nothing else was selected.');
         if (position === end) break;
@@ -1648,8 +1682,175 @@
     return false;
   }
 
+  function createMessageWalker({
+    threadId,
+    expiresAt,
+    signal = null,
+    order = 'newest',
+    maxSteps = 18_000,
+    timeoutMs = 20 * 60_000,
+    holdUntilClosed = false,
+  } = {}) {
+    const error = (code, message) => Object.assign(new Error(message), { code });
+    if (activeController || activeMessageWalker) {
+      throw error('DM_WALKER_BUSY', 'Another conversation operation is already active.');
+    }
+    const startedAt = Date.now();
+    if (typeof threadId !== 'string' || !threadId || !['newest', 'oldest'].includes(order)
+      || !Number.isFinite(expiresAt) || expiresAt <= startedAt
+      || !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 250_000
+      || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 20 * 60_000
+      || typeof holdUntilClosed !== 'boolean'
+      || (signal && (typeof signal.aborted !== 'boolean'
+        || typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function'))) {
+      throw error('DM_WALKER_INVALID', 'A bounded, exact-conversation message pass is required.');
+    }
+    if (signal?.aborted) throw error('DM_WALKER_ABORTED', 'The message pass was stopped.');
+    const initial = threadContext();
+    if (!initial.ok || initial.threadId !== threadId) {
+      throw error('DM_WALKER_CONTEXT', initial.reason || 'The conversation changed.');
+    }
+    const deadline = Math.min(expiresAt, startedAt + timeoutMs);
+    const controller = new AbortController();
+    const traversal = createTraversal(order);
+    const seenKeys = new Set();
+    const seenPositions = new Map();
+    const seenNodes = new WeakMap();
+    let steps = 0, visited = 0, emptyPasses = 0, changingPasses = 0;
+    let status = 'ready', reason = null, closed = false, pending = false;
+    let deadlineTimer = null, unwatch = () => {};
+    const state = () => ({ status, reason, visited, steps,
+      coverage: status === 'completed' ? 'exhausted' : visited ? 'partial' : 'unknown' });
+    const done = () => ({ done: true, value: undefined, ...state() });
+    const finish = (nextStatus, nextReason) => {
+      if (closed) return false;
+      closed = true; status = nextStatus; reason = nextReason;
+      clearTimeout(deadlineTimer);
+      signal?.removeEventListener('abort', abortExternal);
+      controller.signal.removeEventListener('abort', abortInternal);
+      unwatch();
+      if (!controller.signal.aborted) controller.abort(nextReason);
+      if (activeMessageWalker === api && (!holdUntilClosed || nextStatus === 'completed')) activeMessageWalker = null;
+      return true;
+    };
+    const abortExternal = () => controller.abort('DM_WALKER_ABORTED');
+    const abortInternal = () => finish('stopped', Date.now() >= deadline
+      ? (expiresAt <= Date.now() ? 'DM_WALKER_EXPIRED' : 'DM_WALKER_TIMEOUT')
+      : currentThreadId() !== threadId ? 'DM_WALKER_CONTEXT'
+        : lifecycleReason(controller.signal) || 'DM_WALKER_ABORTED');
+    const check = (step = false) => {
+      if (Date.now() >= deadline) {
+        throw error(expiresAt <= Date.now() ? 'DM_WALKER_EXPIRED' : 'DM_WALKER_TIMEOUT', 'The message pass expired.');
+      }
+      const restriction = sessionStop(threadId);
+      if (restriction) throw error('DM_WALKER_CONTEXT', restriction);
+      if (closed || controller.signal.aborted || signal?.aborted) {
+        throw error(reason || 'DM_WALKER_ABORTED', 'The message pass was stopped.');
+      }
+      if (step && ++steps > maxSteps) throw error('DM_WALKER_LIMIT', 'The bounded message pass reached its traversal limit.');
+    };
+    const position = (row, scroller) => {
+      const top = Number(row.getBoundingClientRect?.()?.top);
+      const origin = Number(scroller.getBoundingClientRect?.()?.top);
+      const scroll = Number(scroller.scrollTop);
+      return Number.isFinite(top) && Number.isFinite(origin) && Number.isFinite(scroll)
+        ? Math.round(top - origin + scroll) : null;
+    };
+    const wasVisited = (row, scroller) => {
+      const key = stableMessageKey(row);
+      if (key) return seenKeys.has(key);
+      const signature = retainedMessageSignature(row);
+      const offset = position(row, scroller);
+      return offset === null ? seenNodes.get(row) === signature
+        : [...seenPositions.get(signature) || []].some((known) => Math.abs(known - offset) <= 2);
+    };
+    const remember = (row, scroller) => {
+      const key = stableMessageKey(row);
+      if (key) seenKeys.add(key);
+      else {
+        const signature = retainedMessageSignature(row), offset = position(row, scroller);
+        seenNodes.set(row, signature);
+        if (offset !== null) {
+          if (!seenPositions.has(signature)) seenPositions.set(signature, new Set());
+          seenPositions.get(signature).add(offset);
+        }
+      }
+      visited += 1;
+      return key;
+    };
+    readOnlyTraversals.set(traversal, { check, visited: wasVisited });
+    const api = Object.freeze({
+      snapshot: state,
+      signal: controller.signal,
+      assertCurrent: () => { check(); return true; },
+      stop: () => {
+        if (closed) return false;
+        controller.abort('DM_WALKER_ABORTED');
+        return true;
+      },
+      close: () => {
+        const held = activeMessageWalker === api;
+        const changed = finish('stopped', 'closed');
+        if (held) activeMessageWalker = null;
+        return held || changed;
+      },
+      async next() {
+        if (pending) throw error('DM_WALKER_BUSY', 'The preceding message read has not settled.');
+        if (closed) return done();
+        pending = true; status = 'walking';
+        try {
+          for (;;) {
+            check(true);
+            const context = threadContext();
+            if (!context.ok || context.threadId !== threadId) {
+              throw error('DM_WALKER_CONTEXT', context.reason || 'The conversation changed.');
+            }
+            const row = await nextSentRow(context, controller.signal, order, traversal, deadline);
+            check();
+            const current = traversalContext(context, traversal);
+            if (row && row.isConnected && current.scroller.contains?.(row)) {
+              emptyPasses = 0; changingPasses = 0;
+              if (wasVisited(row, current.scroller)) continue;
+              const key = remember(row, current.scroller);
+              status = 'ready';
+              return { done: false, value: Object.freeze({ row, key, threadId }) };
+            }
+            if (row || traversal.lastSearchGrew || traversal.lastSearchIncomplete || visibleLoader(current.root)) {
+              emptyPasses = 0;
+              if (++changingPasses > MAX_EMPTY_GROWTH_ROUNDS) {
+                throw error('DM_WALKER_UNSTABLE', 'The conversation did not reach a stable end.');
+              }
+            } else if (++emptyPasses >= STABLE_EMPTY_PASSES) {
+              finish('completed', 'stable-exhaustion');
+              return done();
+            }
+            await delay(160, controller.signal);
+          }
+        } catch (failure) {
+          finish('error', failure.code || 'DM_WALKER_INTERRUPTED');
+          throw failure;
+        } finally {
+          pending = false;
+        }
+      },
+    });
+    activeMessageWalker = api;
+    controller.signal.addEventListener('abort', abortInternal, { once: true });
+    signal?.addEventListener('abort', abortExternal, { once: true });
+    try {
+      unwatch = watchThread(controller, threadId);
+      deadlineTimer = setTimeout(() => controller.abort('DM_WALKER_TIMEOUT'), Math.max(0, deadline - Date.now()));
+      check();
+    } catch (failure) {
+      finish('error', failure.code || 'DM_WALKER_INTERRUPTED');
+      api.close();
+      throw failure;
+    }
+    return api;
+  }
+
   async function inspectAll() {
-    if (activeController) {
+    if (activeController || activeMessageWalker) {
       return { ready: false, reason: 'Another message check or run is already active.' };
     }
     const context = threadContext();
@@ -1717,6 +1918,7 @@
   }
 
   async function start(options = {}) {
+    if (activeMessageWalker) throw Object.assign(new Error('A read-only message pass is already active.'), { code: 'DM_WALKER_BUSY' });
     if (activeController) return snapshot();
     const workerAdapter = options.workerAdapter;
     if (workerAdapter !== undefined && (!workerAdapter
@@ -2066,6 +2268,7 @@
   }
 
   function stop() {
+    if (activeMessageWalker) return activeMessageWalker.stop();
     if (!activeController || activeController.signal.aborted) return false;
     publish({ status: 'stopping', message: 'Stopping after the current step…', canStop: false });
     activeController.abort('Stopped by user');
@@ -2085,7 +2288,7 @@
   }
 
   const messageProof = Object.freeze({ sentByCurrentUser, removalEvidence, removalProven, waitForRemoval });
-  const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe, SPEED_PROFILES, messageProof };
+  const publicApi = { createPlan, createMessageWalker, inspect, inspectAll, snapshot, start, stop, subscribe, SPEED_PROFILES, messageProof };
   if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
       candidateRows,

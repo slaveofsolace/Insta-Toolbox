@@ -29,7 +29,7 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 681 automated tests at the latest completed source checkpoint;
+- 726 automated tests at the latest completed source checkpoint;
 - 45 overlay screenshot states;
 - 11 PWA screenshot states;
 - service-worker cache generation `insta-toolbox-v400`.
@@ -38,6 +38,11 @@ The native DM regression matrix also covers Standard/Fast handling of sent
 replies and story replies through the generated userscript's primary action.
 Read-only native selection passed; post-removal authenticated acceptance is
 still pending for the repaired candidate.
+
+The separate reaction pass and userscript handoff have automated coverage for
+confirmation, cancellation, account/thread changes, expiry, and independent
+counts. The reaction capability remains disabled pending native acceptance;
+these tests do not establish live reaction removal.
 
 Earlier version-refreshed visual checks, Chrome pairing, Windows packaging,
 archive inspection, and local checksums do not certify the current source

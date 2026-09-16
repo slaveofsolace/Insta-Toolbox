@@ -23,6 +23,8 @@ const parts = [
   path.join(repositoryRoot, 'extension', 'own-reactions.js'),
   path.join(repositoryRoot, 'extension', 'action-labels.js'),
   path.join(repositoryRoot, 'extension', 'content-instagram.js'),
+  path.join(repositoryRoot, 'extension', 'instagram-viewer.js'),
+  path.join(repositoryRoot, 'extension', 'reaction-cleanup.js'),
   path.join(repositoryRoot, 'userscripts', 'src', 'toolbox-shell.js'),
 ];
 

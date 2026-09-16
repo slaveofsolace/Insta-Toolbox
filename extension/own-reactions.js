@@ -258,8 +258,19 @@
             return now() - stableSince >= stableMs;
           });
           const remainingDialog = openDialogs()[0];
-          if (remainingDialog) close(remainingDialog, threadId, accountId, null, true);
           unresolvedAttempts.delete(attemptKey);
+          if (remainingDialog) {
+            try {
+              close(remainingDialog, threadId, accountId, null, true);
+              await wait(() => !visible(remainingDialog));
+            }
+            catch {
+              // The removal is already proven. A stranded details dialog
+              // needs attention, but must not erase that verified result.
+              return { verified: true, skipped: false, removed: 1,
+                needsAttention: true, reason: 'reaction-dialog-close-unavailable' };
+            }
+          }
           return { verified: true, skipped: false, removed: 1 };
         } catch (error) {
           if (dispatched) throw uncertain('Reaction removal could not be verified. Check this message before retrying.');
