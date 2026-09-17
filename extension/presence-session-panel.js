@@ -5,7 +5,7 @@ const ACTIONS = Object.freeze([
   ['reactStories', 'React to stories'],
   ['likePosts', 'Like posts'],
   ['followPeople', 'Follow people'],
-  ['acceptRequests', 'Accept follow requests'],
+  ['acceptRequests', 'Accept incoming requests'],
 ]);
 
 const clean = (value) => String(value ?? '').trim();

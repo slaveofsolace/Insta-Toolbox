@@ -10,7 +10,7 @@ The 4.0.1 candidate exposes five choices:
 - React to stories
 - Like posts
 - Follow people
-- Accept follow requests
+- Accept incoming requests
 
 Choose the allowed activities, set a finite maximum from 1 to 50, and press
 **Start Presence**. One confirmation names the signed-in account, the selected

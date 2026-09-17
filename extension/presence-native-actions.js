@@ -211,8 +211,11 @@ export function createPresenceNativeActions({
       if (!verified) return { verified: false, uncertain: true, reason: 'Instagram did not confirm the action' };
       const reason = action === 'likePosts' ? 'Post liked'
         : action === 'reactStories' ? 'Story reaction added'
-          : action === 'followPeople' ? 'Follow confirmed'
-            : 'Follow request accepted';
+          : action === 'followPeople'
+            ? (exactButtons(current.root, new Set(['requested'])).length === 1
+              ? 'Follow requested'
+              : 'Follow confirmed')
+            : 'Incoming request accepted';
       return { verified: true, label: current.label, reason };
     },
     inspectAvailable: () => Object.freeze(Object.fromEntries([

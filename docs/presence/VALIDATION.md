@@ -5,7 +5,7 @@ Date: September 16, 2026.
 ## Current production-shaped fixture
 
 The generated userscript mounts the compact Presence session in its primary
-account tab. Seven controller tests and seven browser gates pass across five
+account tab. Seven controller tests and eight browser gates pass across five
 rendered states.
 
 Verified in deterministic Instagram-shaped fixtures:

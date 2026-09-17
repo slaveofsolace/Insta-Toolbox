@@ -34,6 +34,7 @@ function fixturePrelude() {
       const main = document.querySelector('main');
       if (mode === 'post') main.innerHTML = '<article><a href="/p/post-1/">Post</a><button aria-label="Like" type="button">Like</button></article>';
       if (mode === 'follow') main.innerHTML = '<section><a href="/new_friend/">new_friend</a><button aria-label="Follow" type="button">Follow</button></section>';
+      if (mode === 'private-follow') main.innerHTML = '<section data-private-profile><a href="/private_friend/">private_friend</a><button aria-label="Follow" type="button">Follow</button></section>';
       if (mode === 'request') main.innerHTML = '<section><a href="/request_friend/">request_friend</a><button aria-label="Confirm" type="button">Confirm</button></section>';
       if (mode === 'story') main.innerHTML = '<a href="/stories/story_friend/story-1/">story_friend story</a>';
     };
@@ -46,7 +47,8 @@ function fixturePrelude() {
         control.setAttribute('aria-label', 'Unlike'); control.textContent = 'Unlike';
         globalThis.fixturePresenceClicks.push(location.pathname.startsWith('/stories/') ? 'reactStories' : 'likePosts');
       } else if (name === 'Follow') {
-        control.setAttribute('aria-label', 'Following'); control.textContent = 'Following';
+        const result = control.closest('[data-private-profile]') ? 'Requested' : 'Following';
+        control.setAttribute('aria-label', result); control.textContent = result;
         globalThis.fixturePresenceClicks.push('followPeople');
       } else if (name === 'Confirm') {
         control.setAttribute('aria-label', 'Following'); control.textContent = 'Following';
@@ -131,7 +133,7 @@ export async function acceptUserscriptPresence({
         liveRegions:root.querySelectorAll('[aria-live]').length};
     })()`);
     assert.equal(layout.tab, 'Presence');
-    assert.deepEqual(layout.labels, ['View stories','React to stories','Like posts','Follow people','Accept follow requests']);
+    assert.deepEqual(layout.labels, ['View stories','React to stories','Like posts','Follow people','Accept incoming requests']);
     assert.equal(layout.plans, false);
     assert.equal(layout.manual, true);
     assert.equal(layout.liveRegions, 1, 'the toolbox keeps one polite live region');
@@ -146,6 +148,12 @@ export async function acceptUserscriptPresence({
     await select(['followPeople']);
     await startAndConfirm('followPeople');
     checks.push('confirmed Follow is verified as Following');
+
+    await evaluate(`globalThis.fixturePresenceSurface('private-follow')`);
+    await select(['followPeople']);
+    await startAndConfirm('followPeople');
+    assert.equal(await evaluate(`document.querySelector('[data-private-profile] button')?.getAttribute('aria-label')`), 'Requested');
+    checks.push('private-profile Follow is verified as Requested');
 
     await evaluate(`globalThis.fixturePresenceSurface('request')`);
     await select(['acceptRequests']);

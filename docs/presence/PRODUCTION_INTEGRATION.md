@@ -9,7 +9,7 @@ direct choices:
 - React to stories
 - Like posts
 - Follow people
-- Accept follow requests
+- Accept incoming requests
 
 The only numeric choice is a finite maximum from 1 to 50. Start opens one
 review naming the verified signed-in account, selected activities, and maximum.

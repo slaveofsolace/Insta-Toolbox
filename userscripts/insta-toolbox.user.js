@@ -8467,8 +8467,11 @@ function createPresenceNativeActions({
       if (!verified) return { verified: false, uncertain: true, reason: 'Instagram did not confirm the action' };
       const reason = action === 'likePosts' ? 'Post liked'
         : action === 'reactStories' ? 'Story reaction added'
-          : action === 'followPeople' ? 'Follow confirmed'
-            : 'Follow request accepted';
+          : action === 'followPeople'
+            ? (exactButtons(current.root, new Set(['requested'])).length === 1
+              ? 'Follow requested'
+              : 'Follow confirmed')
+            : 'Incoming request accepted';
       return { verified: true, label: current.label, reason };
     },
     inspectAvailable: () => Object.freeze(Object.fromEntries([
@@ -8750,7 +8753,7 @@ const ACTIONS = Object.freeze([
   ['reactStories', 'React to stories'],
   ['likePosts', 'Like posts'],
   ['followPeople', 'Follow people'],
-  ['acceptRequests', 'Accept follow requests'],
+  ['acceptRequests', 'Accept incoming requests'],
 ]);
 
 const clean = (value) => String(value ?? '').trim();
