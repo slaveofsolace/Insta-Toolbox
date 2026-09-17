@@ -1,4 +1,4 @@
-# Codex continuation — Presence / Live Like Me
+# Codex continuation — Presence
 
 Continue the work in `slaveofsolace/Insta-Toolbox` on `feat/live-like-me-scaffold`.
 
@@ -9,7 +9,7 @@ below describes the original branch point; preserve the newer integrated work.
 
 ## 1. Read this before editing
 
-The user wants the old Follow / Unfollow experience to evolve into a personally configured routine that feels like it lives alongside their account: **Live Like Me**, **Be Me**, and a **Grow my account** goal. The companion concept is **Ghost**, which separately handles inbox cleanup. Preserve that product ambition. Do not reduce the final product to another exported list or leave an enabled-looking session control that only simulates work.
+Presence evolves Follow / Unfollow into a personally configured account routine. The companion feature is **Ghost**, which separately handles inbox cleanup. Preserve that product ambition. Do not reduce the final product to another exported list or leave an enabled-looking session control that only simulates work.
 
 This branch is the scaffold, not the completed automation. Its implemented planner and prototype are useful foundations; all live capability flags remain false intentionally. Complete the runtime incrementally and make supported versus unavailable behavior unmistakable.
 
@@ -67,7 +67,7 @@ Protections include self, keep list, mutuals, existing/pending follows, previous
 
 ## 4. Product contract
 
-Use **Presence** as the working feature name and **Live Like Me** as the main subtitle. Keep naming centralized so the team can change it without rewriting behavior. **Be Me** can become the action that begins a reviewed routine; do not use it on a mock that merely advances counters. During development use **Preview session** and clearly identify synthetic data.
+Use **Presence** as the feature name, without an additional slogan or alternate name. Use **Preview session** for the separate synthetic-data concept. A production Start action must execute a reviewed routine, not merely advance counters.
 
 The product should make the following story simple:
 
@@ -80,7 +80,7 @@ The product should make the following story simple:
 
 The user's ambition is ongoing account assistance, not merely one isolated click. Build toward saved routines and bounded delegated sessions. The first production integration should reuse the existing exact finite review. Longer-lived routine execution needs a separately reviewed policy contract covering account, source inventory, allowed actions, maximum scope, active windows, expiration, renewal and cancellation. A schedule becoming due must not revive an expired approval.
 
-Do not promise guaranteed growth, flawless human imitation, undetectability or operation while the browser is closed. “Live Like Me” refers to the user's selected preferences, not fabricated human behavior. Do not infer sensitive traits or mine private DMs to construct a personality.
+Do not promise guaranteed growth, human imitation, undetectability or operation while the browser is closed. Routines follow explicitly selected preferences. Do not infer sensitive traits or mine private DMs to construct a personality.
 
 ## 5. Settings, data model and migrations
 

@@ -1,6 +1,6 @@
 /**
- * Presence: deterministic, account-bound planning for Live Like Me.
- * Original implementation. No network, DOM, credentials, or action authority.
+ * Deterministic, account-bound Presence planning.
+ * No network, DOM, credentials, or action authority.
  * Inputs describe observations; a future trusted adapter must revalidate them.
  */
 export const PRESENCE_VERSION = 1;

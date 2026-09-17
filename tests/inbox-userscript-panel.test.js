@@ -36,6 +36,8 @@ class Element {
   matches(selector) {
     if (selector === '*') return true;
     if (selector === 'a[href]') return this.tagName === 'A' && this.getAttribute('href') !== null;
+    if (selector === 'a[role="link"][href]') return this.tagName === 'A' && this.getAttribute('role') === 'link' && this.getAttribute('href') !== null;
+    if (selector === 'h2') return this.tagName === 'H2';
     if (selector === '[role="button"]') return this.getAttribute('role') === 'button';
     if (selector === '[role="tab"]') return this.getAttribute('role') === 'tab';
     if (selector === '[role="tab"][aria-selected="true"]') return this.getAttribute('role') === 'tab' && this.getAttribute('aria-selected') === 'true';
@@ -76,19 +78,35 @@ function fixture(options = {}) {
   const root = document.createElement('div'); root.setAttribute('aria-label', 'Thread list');
   root.clientHeight = 300; root.scrollHeight = 300;
   const nativeSurface = document.createElement('main'); nativeSurface.append(root);
-  let messagePane = null;
+  let messagePane = null, messageContainer = null;
   const replaceMessagePane = (threadId) => {
     if (messagePane) {
-      for (const node of [messagePane, ...messagePane.all()]) node.isConnected = false;
-      nativeSurface.children = nativeSurface.children.filter(node => node !== messagePane);
-      messagePane.parentElement = null;
-      messagePane = null;
+      const previous = messageContainer || messagePane;
+      for (const node of [previous, ...previous.all()]) node.isConnected = false;
+      nativeSurface.children = nativeSurface.children.filter(node => node !== previous);
+      previous.parentElement = null;
+      messagePane = null; messageContainer = null;
     }
     if (threadId === null) return;
     messagePane = document.createElement('div'); messagePane.setAttribute('data-pagelet', 'IGDMessagesList');
     const group = document.createElement('div'); group.setAttribute('role', 'group');
     const actions = document.createElement('div'); actions.setAttribute('aria-label', 'Message actions');
-    group.append(actions); messagePane.append(group); nativeSurface.append(messagePane);
+    group.append(actions); messagePane.append(group);
+    const label = options.labels?.[threadId];
+    if (label) {
+      messageContainer = document.createElement('div');
+      const header = document.createElement('div'); header.setAttribute('data-pagelet', 'IGDInboxHeaderOffMsys');
+      const title = document.createElement('h2'); title.textContent = label.title;
+      if (label.username) {
+        const profile = document.createElement('a'); profile.setAttribute('role', 'link');
+        profile.setAttribute('href', `/${label.username}/`);
+        profile.setAttribute('aria-label', 'Open the profile page of synthetic participant');
+        profile.append(title); header.append(profile);
+      } else header.append(title);
+      const content = document.createElement('div'), composer = document.createElement('div');
+      composer.setAttribute('data-pagelet', 'IGDComposerForCannes'); content.append(messagePane, composer);
+      messageContainer.append(header, content); nativeSurface.append(messageContainer);
+    } else nativeSurface.append(messagePane);
   };
   const section = document.createElement('div'); section.setAttribute('role', 'tab');
   section.setAttribute('aria-selected', 'true'); section.textContent = 'Primary'; root.append(section);
@@ -475,4 +493,48 @@ test('same-page Pause and reviewed Resume reopen the exact conversation through 
   assert.equal(f.panel.snapshot().status, 'completed');
   assert.equal(f.panel.snapshot().tasks[0].messageRemovals, 1, 'the new run does not count old removals again');
   assert.equal(f.lockNames.size, 0);
+});
+
+test('native chat names and verified handles filter explicit selections without selecting ambiguous titles', { timeout: 15_000 }, async t => {
+  const f = fixture({ labels: { '101': { title: 'Alex Example', username: 'alex.example' },
+    '202': { title: 'Alex Example' } } });
+  t.after(() => f.dispose()); await f.find();
+  const filter = f.container.all().find(node => node.getAttribute('aria-label') === 'Filter conversations');
+  assert.ok(filter); assert.equal(filter.type, 'search');
+  const labels = f.selection().children;
+  assert.ok(labels.every(label => label.textContent.includes('Alex Example')));
+  assert.match(labels[0].textContent, /@alex\.example/);
+  assert.equal(labels[1].textContent.includes('@alex.example'), false, 'a duplicate chat title is not a username');
+  filter.value = '@ALEX'; await filter.fire('input');
+  assert.equal(labels[0].hidden, false); assert.equal(labels[1].hidden, true);
+  assert.equal(f.button('Review 0 conversations').disabled, true, 'matching never selects a conversation');
+  await f.button('Select visible matches').click();
+  assert.equal(f.button('Review 1 conversation').disabled, false);
+  filter.value = 'Alex'; await filter.fire('input');
+  assert.ok(labels.every(label => !label.hidden));
+  assert.equal(f.button('Review 1 conversation').disabled, false, 'filter changes preserve exact selections');
+  await f.select(1);
+  filter.value = '@alex'; await filter.fire('input');
+  assert.match(f.visibleText(), /1 selected outside this filter/);
+  await f.button('Review 2 conversations').click();
+  assert.equal(f.confirmations[0].facts.find(item => item.label === 'Conversations').value, '101, 202');
+  assert.deepEqual(f.starts, []); assert.deepEqual(f.checkpoints, [], 'Cancel stores neither labels nor authority');
+  filter.value = '@not.exposed'; await filter.fire('input');
+  assert.ok(labels.every(label => label.hidden));
+  assert.equal(f.button('Select visible matches').disabled, true);
+  assert.match(f.visibleText(), /2 selected outside this filter/);
+});
+
+test('review labels render as text and are not saved in cleanup checkpoints', { timeout: 15_000 }, async t => {
+  const title = '<img src=invalid> Named chat';
+  const f = fixture({ labels: { '101': { title, username: 'fixture.friend' } },
+    confirm: value => ({ ...value.binding }) });
+  t.after(() => f.dispose()); await f.find();
+  assert.ok(f.selection().textContent.includes(title));
+  assert.equal(f.selection().querySelectorAll('img').length, 0, 'native titles are never interpreted as markup');
+  await f.select(0); await f.button('Review 1 conversation').click();
+  assert.deepEqual(f.dispatches, ['101']);
+  assert.equal(JSON.stringify(f.checkpoints).includes('Named chat'), false);
+  assert.equal(JSON.stringify(f.checkpoints).includes('fixture.friend'), false);
+  assert.deepEqual(f.panel.snapshot().review.threadIds, ['101']);
 });

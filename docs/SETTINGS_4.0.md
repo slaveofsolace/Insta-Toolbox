@@ -112,6 +112,28 @@ open/close/reset, outside-click close, focus restoration, and readable transluce
 text. Fixtures establish controlled-runtime behavior, not authenticated Instagram
 compatibility. Review changed screenshots without widening tolerances.
 
+## Presence choices
+
+The userscript keeps ordinary planning choices in a separate private key,
+`instaToolboxPresencePreferencesV1`. It does not read or rewrite appearance,
+cleanup, comparison or queue keys. Loading a saved record never writes it back.
+
+| Field | Effect | Default / migration |
+| --- | --- | --- |
+| `followLimit` | Number of accounts considered for this plan, 0–50 | 6; preserve valid zero and saved values. This is not a daily quota. |
+| `protectedHandles` | Accounts excluded from suggestions after resolution against fresh checked lists | Empty; normalize valid handles, report malformed entries without silently deleting them during unrelated edits. |
+| `window.start/end` | Local planning hours | 09:00–20:00; retain each independently edited value, including overnight windows. |
+| `skipPrivate` | Hold private or unknown-visibility accounts | True; only an explicit change includes them. |
+
+Versionless and schema-0 records normalize additively when an edit is saved.
+Future schemas stay untouched. Damaged known fields require **Save corrected
+choices** after reviewing their replacement values. Storage failures leave the
+current form usable in that tab and show that saving failed. A read arriving
+late cannot overwrite typed changes; only committed field changes are saved.
+
+No plan, target ID, receipt, run history, selection or approval is persisted.
+Reload restores choices only and still needs a fresh native comparison.
+
 ## Remaining settings adapters
 
 | Item / responsible area | Current fallback and missing capability | Source and release criterion |

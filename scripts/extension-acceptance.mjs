@@ -10,6 +10,7 @@ import { app, BrowserWindow, session } from 'electron';
 import { createAppServer } from './serve.mjs';
 import { instagramScriptOrder } from './instagram-script-order.mjs';
 import { acceptUserscriptPresence } from './lib/userscript-presence-acceptance.mjs';
+import { acceptUserscriptInboxReview } from './lib/userscript-inbox-review-acceptance.mjs';
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(moduleDirectory, '..');
@@ -1032,11 +1033,12 @@ async function acceptThreadUnsendScopes(webContents, baseUrl) {
 
 async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
   surfaces = ['extension', 'userscript'], media = false, groupStyle = false, uncertain = false,
-  nativeLayout = false, newestKind = 'reply',
+  nativeLayout = false, newestKind = 'reply', shortThread = null,
 } = {}) {
   const measurements = [];
-  const expectedRemovals = uncertain ? 0 : media ? 2 : 1;
-  const fixtureLabel = nativeLayout ? `native-${newestKind}-backfill`
+  const expectedRemovals = uncertain ? 0 : shortThread ? shortThread.count : media ? 2 : 1;
+  const fixtureLabel = shortThread ? `native-short-${shortThread.peer}-${shortThread.count}${shortThread.received ? '-received' : ''}${uncertain ? '-uncertain' : ''}`
+    : nativeLayout ? `native-${newestKind}-backfill`
     : media ? `idless-reels-${groupStyle ? 'group' : 'direct'}${uncertain ? '-uncertain' : ''}` : 'primary';
   for (const surface of surfaces) {
     for (const speed of ['standard']) {
@@ -1045,7 +1047,9 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
       else {
         await withTimeout(webContents.loadURL(`${baseUrl}/userscript-fixture.html`), 'speed userscript fixture load');
         await waitForPageValue(webContents, `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'speed userscript ready');
-        await webContents.executeJavaScript(nativeLayout
+        await webContents.executeJavaScript(shortThread
+          ? `globalThis.fixtureSetNativeReplyMessages({shortThread:${JSON.stringify({ ...shortThread, uncertain })}})`
+          : nativeLayout
           ? `globalThis.fixtureSetNativeReplyMessages({newestKind:${JSON.stringify(newestKind)}})`
           : media
             ? `globalThis.fixtureSetMediaMessages({groupStyle:${groupStyle},uncertain:${uncertain}})`
@@ -1069,7 +1073,7 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
           shadow.querySelector(${JSON.stringify(extension ? '.insta-toolbox-launcher' : '.launcher')}).click();
         shadow.querySelector(${JSON.stringify(extension ? '[data-insta-toolbox-section="messages"]' : '[data-view="messages"]')}).click();
         const scope = shadow.querySelector('[${role}="unsend-scope"]');
-        scope.value = '${media ? 'all' : 'newest'}'; scope.dispatchEvent(new Event('change', { bubbles: true }));
+        scope.value = '${media || shortThread ? 'all' : 'newest'}'; scope.dispatchEvent(new Event('change', { bubbles: true }));
         shadow.querySelector('[${role}="unsend-count"]').value = '${expectedRemovals}';
         if (shadow.querySelector('[${role}="unsend-speed"]'))
           throw new Error('Unsend must not expose a removed speed choice.');
@@ -1090,7 +1094,7 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
         if (['idle','preparing','running','waiting','stopping'].includes(result.status)) return null;
         const shadow = document.querySelector(${JSON.stringify(host)}).shadowRoot;
         return { ...result, actualRemovals: globalThis.fixtureUnsentCount,
-          receivedRetained: Boolean(document.querySelector('${media || nativeLayout ? '[data-fixture-received]' : '[data-message-id="received-1"]'}')),
+          receivedRetained: Boolean(document.querySelector('${media || nativeLayout || shortThread ? '[data-fixture-received]' : '[data-message-id="received-1"]'}')),
           nativeEvidence: ${nativeLayout} ? globalThis.fixtureNativeEvidence() : null,
           remainingSent: document.querySelectorAll('[data-fixture-sent]').length,
           remainingSentRows: [...document.querySelectorAll('[data-fixture-sent]')].map(row => row.outerHTML),
@@ -1119,10 +1123,16 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
       assert.equal(outcome.failed, 0, JSON.stringify(outcome));
       assert.equal(outcome.uncertain || 0, uncertain ? 1 : 0, JSON.stringify(outcome));
       assert.equal(outcome.actualRemovals, expectedRemovals, JSON.stringify(outcome));
-      assert.equal(outcome.receivedRetained, true, JSON.stringify(outcome));
-      if (media) {
-        assert.equal(outcome.remainingSent, uncertain ? 2 : 0);
+      assert.equal(outcome.receivedRetained, shortThread ? Boolean(shortThread.received) : true, JSON.stringify(outcome));
+      if (media || shortThread) {
+        assert.equal(outcome.remainingSent, uncertain ? shortThread?.count || 2 : 0);
         assert.equal(outcome.fixtureClicks, uncertain ? 3 : expectedRemovals * 3, 'each exact native control is activated once');
+      }
+      if (shortThread) {
+        assert.equal(outcome.summaryVisible, true);
+        assert.match(outcome.summaryText, new RegExp(`${expectedRemovals} unsent`));
+        await writeFile(path.join(resultsRoot, `${surface}-${speed}-${fixtureLabel}.png`),
+          (await webContents.capturePage()).toPNG());
       }
       if (nativeLayout) {
         assert.deepEqual(outcome.nativeEvidence.openedIds, ['newest-sent'], 'reply/story headers must not hide the newest sent target');
@@ -1152,7 +1162,22 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
     }
   }
   await writeFile(path.join(resultsRoot, `speed-${fixtureLabel}-fixture.json`), `${JSON.stringify({ fixtureOnly: true, measurements }, null, 2)}\n`);
-  console.log(`Accepted restored Unsend ${fixtureLabel} flow: ${expectedRemovals} verified removals, received message retained${uncertain ? ', uncertain outcome visible without retry' : ', no failures or uncertain outcomes'}.`);
+  console.log(`Accepted restored Unsend ${fixtureLabel} flow: ${expectedRemovals} verified removals, received messages unchanged${uncertain ? ', uncertain outcome visible without retry' : ', no failures or uncertain outcomes'}.`);
+}
+
+async function acceptShortNativeConversations(webContents, baseUrl) {
+  for (const shortThread of [
+    { peer: 'direct', count: 1 },
+    { peer: 'group', count: 2, kind: 'reel' },
+    { peer: 'unavailable', count: 2, kind: 'reel' },
+    { peer: 'group', count: 2, received: true },
+    { peer: 'unavailable', count: 1, uncertain: true },
+  ]) {
+    await acceptPrimarySpeedEquivalence(webContents, baseUrl, {
+      surfaces: ['userscript'], shortThread, uncertain: Boolean(shortThread.uncertain),
+    });
+  }
+  console.log('Accepted five short native-shaped thread fixtures; no authenticated account-state claim.');
 }
 
 async function acceptThreadUnsendStop(webContents, baseUrl) {
@@ -3000,6 +3025,16 @@ async function run() {
     const pwaBaseUrl = `http://127.0.0.1:${pwaAddress.port}/`;
     const presenceOptions = { window: overlay.window, isolatedSession: overlay.isolatedSession,
       fixtureAssets, resultsRoot, releaseVersion, withTimeout, waitForPageValue, resizeViewport };
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_SHORT_DM_ONLY === '1') {
+      await acceptShortNativeConversations(overlay.window.webContents, overlayBaseUrl);
+      assert.deepEqual(overlay.problems, [], 'userscript short native conversation browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_INBOX_REVIEW_ONLY === '1') {
+      await acceptUserscriptInboxReview(presenceOptions);
+      assert.deepEqual(overlay.problems, [], 'userscript Ghost review browser problems');
+      return;
+    }
     if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_PRESENCE_ONLY === '1') {
       await acceptUserscriptPresence(presenceOptions);
       assert.deepEqual(overlay.problems, [], 'userscript Presence browser problems');
@@ -3064,6 +3099,7 @@ async function run() {
     }
     await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
       { surfaces: ['userscript'], media: true, uncertain: true });
+    await acceptShortNativeConversations(overlay.window.webContents, overlayBaseUrl);
     for (const newestKind of ['reply', 'story']) {
       await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
         { surfaces: ['userscript'], nativeLayout: true, newestKind });
@@ -3075,6 +3111,7 @@ async function run() {
     await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptPartialAccountReview(overlay.window.webContents, overlayBaseUrl);
+    await acceptUserscriptInboxReview(presenceOptions);
     await acceptUserscriptPresence(presenceOptions);
     await acceptBackgroundComparison(background);
     await acceptPwaInstallability(pwa.window.webContents, pwaBaseUrl);

@@ -10,7 +10,7 @@ const rows = [
 ];
 const rootExpression = `document.querySelector('#insta-toolbox-userscript-root').shadowRoot`;
 
-function fixturePrelude(imported) {
+function fixturePrelude(imported, preferences) {
   return `<script>
     history.replaceState({}, '', '/direct/inbox/');
     document.querySelector('main').innerHTML = '<section aria-label="Thread list"><div role="button" tabindex="0"><h2>${OWNER}</h2></div></section>';
@@ -21,6 +21,7 @@ function fixturePrelude(imported) {
     document.addEventListener('click', event => {
       if (event.target.closest('a,button,[role="button"]')) globalThis.fixturePresenceNativeClicks += 1;
     });
+    if (${Boolean(preferences)}) globalThis.fixtureGmStore.instaToolboxPresencePreferencesV1 = ${JSON.stringify(preferences)};
     if (${imported}) {
       const capture = { subjectUsername: '${OWNER}', subjectInstagramId: '77',
         followers: ${JSON.stringify(rows.map(row => ({ username: row.username, instagramId: row.pk, source: 'authenticated-instagram-web' })))},
@@ -40,6 +41,7 @@ export async function acceptUserscriptPresence({
 }) {
   const webContents = window.webContents;
   const requests = [], checks = [];
+  let savedPreferences = null;
   const screenshotRoot = path.join(resultsRoot, 'userscript-presence');
   await mkdir(screenshotRoot, { recursive: true });
   await isolatedSession.protocol.handle('http', () => new Response('', { status: 403 }));
@@ -66,7 +68,7 @@ export async function acceptUserscriptPresence({
     let body = await readFile(file);
     if (url.pathname === '/userscript-fixture.html') {
       body = body.toString().replace('<script src="/userscripts/insta-toolbox.user.js">',
-        `${fixturePrelude(url.searchParams.has('presence-imported'))}<script src="/userscripts/insta-toolbox.user.js">`);
+        `${fixturePrelude(url.searchParams.has('presence-imported'), savedPreferences)}<script src="/userscripts/insta-toolbox.user.js">`);
     }
     return new Response(body, { headers: {
       'Content-Type': file.endsWith('.html') ? 'text/html' : 'text/javascript',
@@ -83,6 +85,11 @@ export async function acceptUserscriptPresence({
       root.querySelector('[data-role="presence-disclosure"]').open = true;
     })()`);
   };
+  const openChoices = () => evaluate(`(() => {
+    const panel = (${rootExpression}).querySelector('.presence-routine');
+    panel.querySelector('[data-presence="choices"]').open = true;
+    panel.querySelector('[data-presence="start"]').closest('details').open = true;
+  })()`);
   const readState = () => evaluate(`(() => {
     const root = ${rootExpression}, panel = root.querySelector('.presence-routine');
     return { feedback: panel.querySelector('.presence-results').previousElementSibling.textContent,
@@ -90,6 +97,8 @@ export async function acceptUserscriptPresence({
       targets: [...panel.querySelectorAll('[aria-label="Suggested accounts"] strong')].map(node => node.textContent),
       held: panel.querySelector('.presence-results').textContent,
       visibleButtons: [...panel.querySelectorAll('button')].filter(node => node.getClientRects().length).map(node => node.textContent),
+      choicesOpen: panel.querySelector('[data-presence="choices"]').open,
+      planningNote: [...panel.querySelectorAll('.presence-note')].filter(node => node.textContent === 'Planning only. No actions run here.').length,
       nativeClicks: globalThis.fixturePresenceNativeClicks,
       removals: globalThis.fixtureUnsentCount,
       confirmationOpen: root.querySelector('[data-role="action-confirmation"]').open };
@@ -97,6 +106,7 @@ export async function acceptUserscriptPresence({
   const load = async imported => {
     await withTimeout(webContents.loadURL(`https://www.instagram.com/userscript-fixture.html${imported ? '?presence-imported=1' : ''}`), 'Presence generated-userscript fixture');
     await waitForPageValue(webContents, `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot?.querySelector('.presence-routine'))`, 'Presence panel mount');
+    await waitForPageValue(webContents, `!${button('Build my plan')}.disabled`, 'Presence preferences loaded');
     assert.equal(await evaluate(`globalThis.InstaToolboxInstagramViewer.inspect({document,location}).accountVerified`), true,
       'synthetic native account-picker and navigation establish the viewer');
     await openPresence();
@@ -151,6 +161,7 @@ export async function acceptUserscriptPresence({
     checks.push('other-account capture unavailable');
 
     await capture(OWNER);
+    await openChoices();
     await evaluate(`(() => {
       const panel = (${rootExpression}).querySelector('.presence-routine');
       const minute = new Date().getHours() * 60 + new Date().getMinutes();
@@ -163,9 +174,10 @@ export async function acceptUserscriptPresence({
     const privacyHeld = await build();
     assert.equal(privacyHeld.resultsHidden, false); assert.deepEqual(privacyHeld.targets, []);
     assert.match(privacyHeld.held, /Private or unknown account visibility/);
+    assert.equal(privacyHeld.choicesOpen, false); assert.equal(privacyHeld.planningNote, 1);
+    await openChoices();
     await evaluate(`(() => {
       const panel = (${rootExpression}).querySelector('.presence-routine');
-      panel.querySelector('details').open = true;
       for (const [key, value] of [['allowance','2'],['protected','@protected_friend']]) {
         const node = panel.querySelector('[data-presence="' + key + '"]'); node.value = value;
         node.dispatchEvent(new Event('input', {bubbles:true}));
@@ -176,7 +188,95 @@ export async function acceptUserscriptPresence({
     const planned = await build();
     assert.deepEqual(planned.targets, ['@followback_friend']);
     assert.match(planned.held, /1 suggested/);
+    assert.equal(planned.choicesOpen, false);
+    assert.equal(planned.visibleButtons.includes('Build my plan'), false, 'a valid plan has no duplicate Build action');
     checks.push('own-account original capture, options, unknown privacy and protected account respected');
+
+    await openChoices();
+    await evaluate(`(() => {
+      const panel = (${rootExpression}).querySelector('.presence-routine');
+      for (const key of ['allowance','protected','start','end']) {
+        panel.querySelector('[data-presence="' + key + '"]').dispatchEvent(new Event('change', {bubbles:true}));
+      }
+    })()`);
+    await waitForPageValue(webContents, `(() => {
+      const saved = globalThis.fixtureGmStore.instaToolboxPresencePreferencesV1;
+      const panel = (${rootExpression}).querySelector('.presence-routine');
+      const minute = key => { const [h,m] = panel.querySelector('[data-presence="' + key + '"]').value.split(':').map(Number); return h * 60 + m; };
+      return saved?.followLimit === 2 && saved.protectedHandles?.[0] === 'protected_friend'
+        && saved.skipPrivate === false && saved.window?.start === minute('start') && saved.window?.end === minute('end');
+    })()`, 'Presence private preferences saved').catch(async error => {
+      const detail = await evaluate(`({saved:globalThis.fixtureGmStore.instaToolboxPresencePreferencesV1,
+        note:(${rootExpression}).querySelector('[data-presence="storage"]').textContent})`);
+      throw new Error(`${error.message} ${JSON.stringify(detail)}`);
+    });
+    savedPreferences = await evaluate('structuredClone(globalThis.fixtureGmStore.instaToolboxPresencePreferencesV1)');
+    assert.deepEqual(Object.keys(savedPreferences).sort(), ['followLimit','protectedHandles','schemaVersion','skipPrivate','window']);
+    await load(false);
+    assert.deepEqual(await evaluate(`(() => {
+      const panel = (${rootExpression}).querySelector('.presence-routine');
+      return { count:panel.querySelector('[data-presence="allowance"]').value,
+        protected:panel.querySelector('[data-presence="protected"]').value,
+        private:panel.querySelector('[data-presence="private"]').checked };
+    })()`), {count:'2',protected:'@protected_friend',private:true});
+    const reloaded = await build();
+    assert.equal(reloaded.resultsHidden, true);
+    assert.match(reloaded.feedback, /Run Mutual Checker/);
+    await capture(OWNER);
+    await evaluate(`(() => {
+      const node = ${button('Build my plan')};
+      node.scrollIntoView({block:'center',inline:'nearest'});
+      node.focus({preventScroll:true});
+    })()`);
+    assert.equal(await evaluate(`(${rootExpression}).activeElement === ${button('Build my plan')}`), true);
+    // sendInputEvent requires a focused BrowserWindow. This fixture is hidden;
+    // send real Chromium keyboard input without taking desktop focus instead.
+    const keyboardDebuggerAttached = webContents.debugger.isAttached();
+    if (!keyboardDebuggerAttached) webContents.debugger.attach('1.3');
+    try {
+      await webContents.debugger.sendCommand('Input.dispatchKeyEvent', {
+        type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13,text:'\r',unmodifiedText:'\r',
+      });
+      await webContents.debugger.sendCommand('Input.dispatchKeyEvent', {
+        type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13,
+      });
+    } finally {
+      if (!keyboardDebuggerAttached && webContents.debugger.isAttached()) webContents.debugger.detach();
+    }
+    await waitForPageValue(webContents, `(${rootExpression}).activeElement === (${rootExpression}).querySelector('[data-presence="plan-summary"]')`, 'keyboard Build result focus').catch(async error => {
+      const detail = await evaluate(`(() => {
+        const root = ${rootExpression}, panel = root.querySelector('.presence-routine');
+        const active = root.activeElement;
+        return {documentFocused:document.hasFocus(), activeTag:active?.tagName, activeText:active?.textContent,
+          activeRole:active?.getAttribute('data-presence'), buildHidden:${button('Build my plan')}.hidden,
+          buildDisabled:${button('Build my plan')}.disabled, resultsHidden:panel.querySelector('.presence-results').hidden,
+          summary:panel.querySelector('[data-presence="plan-summary"]').textContent,
+          feedback:panel.querySelector('.presence-results').previousElementSibling.textContent};
+      })()`);
+      throw new Error(`${error.message} ${JSON.stringify(detail)}`);
+    });
+    const keyboardPlan = await readState();
+    assert.deepEqual(keyboardPlan.targets, ['@followback_friend']);
+    assert.equal(keyboardPlan.choicesOpen, false); assert.equal(keyboardPlan.nativeClicks, 0);
+    await openChoices();
+    const refreshedFocus = await evaluate(`(() => {
+      const root = ${rootExpression}, panel = root.querySelector('.presence-routine');
+      const field = panel.querySelector('[data-presence="allowance"]');
+      field.focus({preventScroll:true});
+      const scroll = root.querySelector('.scroll'), before = scroll.scrollTop;
+      root.querySelector('[data-role="presence-disclosure"]').dispatchEvent(new Event('toggle'));
+      const sameFocus = root.activeElement === field;
+      const sameScroll = scroll.scrollTop === before;
+      const choicesStayedOpen = panel.querySelector('[data-presence="choices"]').open;
+      field.dispatchEvent(new Event('input', {bubbles:true}));
+      return {sameFocus,sameScroll,choicesStayedOpen,resultsHidden:panel.querySelector('.presence-results').hidden,
+        buildVisible:!${button('Build my plan')}.hidden,fieldRetained:field === panel.querySelector('[data-presence="allowance"]')};
+    })()`);
+    assert.deepEqual(refreshedFocus, {sameFocus:true,sameScroll:true,choicesStayedOpen:true,resultsHidden:true,buildVisible:true,fieldRetained:true});
+    await build();
+    checks.push('keyboard Build focuses its result; refresh preserves focus and scrolling; edits invalidate the plan');
+    await openChoices();
+    checks.push('private preferences survive a reload without a receipt, plan or action authority');
 
     const viewports = [
       {label:'desktop-dark',width:1200,height:800,zoom:1,theme:'dark'},
@@ -187,6 +287,7 @@ export async function acceptUserscriptPresence({
     ];
     const states = [];
     for (const viewport of viewports) {
+      await openChoices();
       webContents.setZoomFactor(1); await resizeViewport(webContents, viewport); webContents.setZoomFactor(viewport.zoom);
       await evaluate(`(() => {
         const root = ${rootExpression}, theme = root.querySelector('[data-preference="theme"]');
@@ -230,7 +331,8 @@ export async function acceptUserscriptPresence({
       for (const position of ['form','plan']) {
         await evaluate(`(() => {
           const routine = (${rootExpression}).querySelector('.presence-routine');
-          routine.querySelector(${JSON.stringify(position === 'form' ? 'h3' : '.presence-actions')}).scrollIntoView({block:'start',inline:'nearest'});
+          routine.querySelector('[data-presence="choices"]').open = ${position === 'form'};
+          routine.querySelector(${JSON.stringify(position === 'form' ? '[data-presence="choices"]' : '[data-presence="plan-summary"]')}).scrollIntoView({block:'start',inline:'nearest'});
           return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         })()`);
         await withTimeout(new Promise(resolve => { webContents.once('paint', resolve); webContents.invalidate(); }), 'Presence fresh screenshot');

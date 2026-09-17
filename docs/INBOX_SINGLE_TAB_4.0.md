@@ -86,19 +86,34 @@ runner. It exposes Pause, reviewed Resume, Skip and Stop all, with current resul
 separate from storage success. A failed save prevents another run in that runtime.
 Reload never resumes execution or restores approval.
 
+The review list can show a chat name from its freshly opened native header.
+An `@username` is shown only when that heading has one exact native profile
+link. **Find a person or chat** filters those labels without selecting anything.
+**Select visible matches** keeps earlier selections and reports how many are
+outside the filter. The final confirmation always identifies the selected
+thread IDs. Missing or ambiguous names fall back to numbered conversations;
+they do not change execution identity. Names and handles stay in memory and are
+not saved in inventory, review or progress checkpoints.
+
 Deterministic tests cover multiple threads, ID-less candidates, account-lock
 collisions, Stop, Pause, Skip, context drift, expiry, replay, storage failure and
 late uncertain settlement. These tests do not establish current authenticated
 Instagram compatibility.
 
+The generated-userscript browser fixture also runs the complete native-shaped
+discovery, selection, confirmation, controller and shared Unsend engine through
+two synthetic chats. It verifies serial removals, preserved received messages,
+an untouched unselected conversation, and authority-free saved checkpoints.
+Populated review controls pass dark/light, narrow, short-window and true 200%
+zoom geometry checks.
+
 Remaining acceptance:
 
-1. Verify the complete generated userscript flow and rendered controls.
-2. Verify same-tab navigation and read-only context checks in the current
+1. Verify same-tab navigation and read-only context checks in the current
    Instagram layout.
-3. With fresh disposable-target authorization, verify one removal in each of
+2. With fresh disposable-target authorization, verify one removal in each of
    two reviewed threads, then Stop and Skip without touching other threads.
-4. Verify a suspended/background tab settles or reports interruption without
+3. Verify a suspended/background tab settles or reports interruption without
    stealing focus. Browser closure and computer sleep are not supported run
    environments.
 

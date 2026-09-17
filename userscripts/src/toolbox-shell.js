@@ -909,7 +909,7 @@
           <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
           <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
           <p class="lead" data-role="account-run-summary">Choose a source, then review the accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p><details class="settings-inline" data-role="presence-disclosure"><summary>Presence · Live Like Me</summary><div data-role="presence-routine"></div></details></section>
+          <details class="settings-inline" data-role="presence-disclosure"><summary>Presence</summary><div data-role="presence-routine"></div></details></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
@@ -3109,6 +3109,7 @@
         });
         return;
       }
+      if (!event.target.matches('input[type="file"][data-file="queue"], input[type="file"][data-file="dm"]')) return;
       const file = event.target.files?.[0];
       if (event.target.dataset.file === 'queue') await importQueue(file);
       if (event.target.dataset.file === 'dm') await importDmJob(file);
@@ -3363,11 +3364,19 @@
   savePreferences(preferences);
   renderCleanupSettings({ initializeDraft: true });
   if (presenceInputs && globalThis.InstaToolboxPresencePanel) {
+    const presencePreferences = globalThis.InstaToolboxPresencePreferences?.create({
+      read: key => GM_getValue(key, null),
+      write: (key, value) => GM_setValue(key, value),
+      withLock: typeof navigator.locks?.request === 'function'
+        ? operation => navigator.locks.request('insta-toolbox-presence-preferences', operation)
+        : undefined,
+    });
     presencePanel = globalThis.InstaToolboxPresencePanel.mount({
       container: query('[data-role="presence-routine"]'), document,
       nativeAdapter: presenceInputs,
       getCapture: () => presenceCapture,
       getProfile: () => ({ goal: 'maintain', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+      preferenceStore: presencePreferences || null,
       onManual: () => {
         query('[data-role="presence-disclosure"]').open = false;
         query('[data-role="bot-action"]').focus();

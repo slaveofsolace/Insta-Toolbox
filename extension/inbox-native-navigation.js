@@ -35,6 +35,7 @@ export function createNativeInboxDiscovery({
   const inventory = new Map();
   // Native row evidence is private to this instance; snapshots never retain it.
   const navigationEvidence = new Map();
+  const displayLabels = new Map();
   const controller = new AbortController();
   const discoveryContext = { expiresAt, signal, controller, expiryReason: 'discovery-expired' };
   let started = false, finished = false, stopped = false, reason = null, visits = 0;
@@ -50,11 +51,13 @@ export function createNativeInboxDiscovery({
   function guard(context = discoveryContext) {
     if (context.controller.signal.aborted || context.signal?.aborted) throw new Error(context.stopReason || 'cancelled');
     if (now() >= context.expiresAt) throw new Error(context.expiryReason);
-    if (new URL(href()).origin !== ORIGIN) throw new Error('origin-changed');
+    if (new URL(href()).origin !== ORIGIN) { displayLabels.clear(); throw new Error('origin-changed'); }
     // A synchronous isolated-world resolver prevents a hung identity lookup
     // from retaining navigation authority. Page storage is not an authority.
     const identity = resolveAccount();
-    if (identity?.then || identity?.verified !== true || identity.accountId !== accountId) throw new Error('account-changed');
+    if (identity?.then || identity?.verified !== true || identity.accountId !== accountId) {
+      displayLabels.clear(); throw new Error('account-changed');
+    }
     if (identity.restriction) throw new Error('account-restricted');
   }
   function waitFor(check, timeout = routeTimeoutMs, context = discoveryContext) {
@@ -111,6 +114,61 @@ export function createNativeInboxDiscovery({
     // No observed native empty-state marker binds an empty pane to a thread.
     // A shell or skeleton alone cannot authorize the message runner.
     return actions.length ? { pane, actions } : null;
+  }
+  async function freshMessagePane(threadId, priorPanes, priorActions, context = discoveryContext, timeout = routeTimeoutMs) {
+    let candidate = null, stableSince = null;
+    return waitFor(() => {
+      const actual = inboxThreadId(href());
+      if (actual && actual !== threadId) throw new Error('conversation-changed');
+      if (!actual && !inboxUrl(href())) throw new Error('unexpected-route');
+      const ready = actual === threadId ? readyMessagePane() : null;
+      if (!ready || priorPanes.includes(ready.pane)
+        || priorPanes.some((pane) => pane.isConnected !== false)
+        || priorActions.some((action) => ready.pane.contains(action))) {
+        candidate = null; stableSince = null; return false;
+      }
+      if (candidate?.pane !== ready.pane || candidate.actions.length !== ready.actions.length
+        || candidate.actions.some((action, index) => action !== ready.actions[index])) {
+        candidate = ready; stableSince = now(); return false;
+      }
+      return now() - stableSince >= settleMs ? ready : false;
+    }, timeout, context);
+  }
+  function nativeDisplayLabel(pane, priorHeaders) {
+    // The observed header and composer are sibling branches of one chat.
+    // A heading elsewhere in main, the inbox rail or a message is not a title.
+    for (let parent = pane.parentElement, depth = 0; parent && depth < 6; parent = parent.parentElement, depth += 1) {
+      const branches = [...(parent.children || [])];
+      if (branches.length !== 2) continue;
+      const header = branches.find((node) => node.getAttribute?.('data-pagelet') === 'IGDInboxHeaderOffMsys');
+      const content = branches.find((node) => node !== header && node.contains?.(pane));
+      if (!header || !content || !visible(header)) continue;
+      if (priorHeaders.includes(header) || header.closest?.('[aria-busy="true"]')
+        || header.getAttribute?.('aria-busy') === 'true'
+        || [...header.querySelectorAll('[aria-busy="true"], [role="progressbar"]')].some(visible)) return null;
+      if (parent.querySelectorAll('[data-pagelet="IGDMessagesList"]').length !== 1
+        || parent.querySelectorAll('[aria-label="Thread list"]').length
+        || [...content.querySelectorAll('[data-pagelet="IGDComposerForCannes"]')].filter(visible).length !== 1) return null;
+      const headings = [...header.querySelectorAll('h2')].filter(visible);
+      if (headings.length !== 1) return null;
+      const title = String(headings[0].textContent || '').replace(/\s+/g, ' ').trim();
+      if (!title || title.length > 160 || /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(title)) return null;
+      const links = [...header.querySelectorAll('a[role="link"][href]')].filter((node) => visible(node)
+        && String(node.getAttribute('aria-label') || '').startsWith('Open the profile page of '));
+      let username = null;
+      if (links.length === 1 && links[0].contains(headings[0])) {
+        try {
+          const url = new URL(links[0].getAttribute('href'), ORIGIN);
+          const match = /^\/([a-zA-Z0-9._]{1,30})\/?$/.exec(url.pathname);
+          if (url.origin === ORIGIN && !url.username && !url.password && !url.search && !url.hash && match
+            && !['accounts', 'direct', 'explore', 'reels', 'stories', 'p', 'reel', 'about', 'legal'].includes(match[1].toLowerCase())) {
+            username = match[1].toLowerCase();
+          }
+        } catch {}
+      }
+      return Object.freeze({ title, username, kind: username ? 'profile' : 'chat-title', source: 'native-conversation-header' });
+    }
+    return null;
   }
   function auxiliaryCollection(node, root) {
     // Notes occupy a separate native role=list inside Thread list. Avatar
@@ -193,6 +251,9 @@ export function createNativeInboxDiscovery({
         // never row positions or preview text, identify conversations.
         const evidence = { row, fingerprint: fingerprint(row), href: row.tagName === 'A' ? row.getAttribute('href') : null,
           section: state.section, position };
+        const priorPanes = messagePanes();
+        const priorActions = priorPanes.flatMap((pane) => [...pane.querySelectorAll('[aria-label="Message actions"]')]);
+        const priorHeaders = [...document.querySelectorAll('[data-pagelet="IGDInboxHeaderOffMsys"]')];
         visits += 1; row.click();
         const threadId = await waitFor(() => {
           const id = inboxThreadId(href());
@@ -207,6 +268,14 @@ export function createNativeInboxDiscovery({
         inventory.get(threadId).add(state.section);
         const captures = navigationEvidence.get(threadId) || new Map();
         captures.set(state.section, evidence); navigationEvidence.set(threadId, captures);
+        try {
+          const ready = await freshMessagePane(threadId, priorPanes, priorActions, discoveryContext, Math.min(routeTimeoutMs, 1_500));
+          const label = nativeDisplayLabel(ready.pane, priorHeaders);
+          if (label) displayLabels.set(threadId, label); else displayLabels.delete(threadId);
+        } catch (error) {
+          displayLabels.delete(threadId);
+          if (error.message !== 'navigation-timeout') throw error;
+        }
         windowIds.push(threadId); publish();
         await returnToInbox(threadId, position, state.section);
       }
@@ -309,27 +378,10 @@ export function createNativeInboxDiscovery({
             // transition can precede React replacing the previous chat.
             const priorPanes = messagePanes();
             const priorActions = priorPanes.flatMap((pane) => [...pane.querySelectorAll('[aria-label="Message actions"]')]);
-            let candidate = null, stableSince = null;
             guard(context); row.click();
             try {
-              await waitFor(() => {
-                const actual = inboxThreadId(href());
-                if (actual && actual !== threadId) throw new Error('conversation-changed');
-                if (!actual && !inboxUrl(href())) throw new Error('unexpected-route');
-                const ready = actual === threadId ? readyMessagePane() : null;
-                if (!ready || priorPanes.includes(ready.pane)
-                  || priorPanes.some((pane) => pane.isConnected !== false)
-                  || priorActions.some((action) => ready.pane.contains(action))) {
-                  candidate = null; stableSince = null; return false;
-                }
-                if (candidate?.pane !== ready.pane || candidate.actions.length !== ready.actions.length
-                  || candidate.actions.some((action, index) => action !== ready.actions[index])) {
-                  candidate = ready; stableSince = now(); return false;
-                }
-                if (now() - stableSince < settleMs) return false;
-                verifiedPane = { pane: ready.pane, threadId };
-                return true;
-              }, routeTimeoutMs, context);
+              const ready = await freshMessagePane(threadId, priorPanes, priorActions, context);
+              verifiedPane = { pane: ready.pane, threadId };
             } catch (error) {
               if (error.message === 'navigation-timeout' && inboxThreadId(href()) === threadId) {
                 throw new Error('conversation-pane-unverified');
@@ -355,7 +407,15 @@ export function createNativeInboxDiscovery({
   }
   return Object.freeze({
     snapshot, createNavigator,
-    stop() { stopped = true; reason = 'cancelled'; controller.abort(); navigator?.stop(); return snapshot(); },
+    reviewLabels() {
+      try {
+        const identity = resolveAccount();
+        if (controller.signal.aborted || new URL(href()).origin !== ORIGIN || identity?.then
+          || identity?.verified !== true || identity.accountId !== accountId) displayLabels.clear();
+      } catch { displayLabels.clear(); }
+      return [...displayLabels].map(([threadId, label]) => ({ threadId, ...label }));
+    },
+    stop() { stopped = true; reason = 'cancelled'; displayLabels.clear(); controller.abort(); navigator?.stop(); return snapshot(); },
     async run() {
       if (started) throw new Error('discovery-already-started');
       started = true;

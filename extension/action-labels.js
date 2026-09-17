@@ -1572,7 +1572,7 @@
     return {
       target: targets[0],
       row,
-      entries: groups.map((element) => ({ element, signature: retainedMessageSignature(element) })),
+      entries: groups.map((element) => ({ element, parent: element.parentElement, signature: retainedMessageSignature(element) })),
     };
   }
 
@@ -1598,7 +1598,7 @@
     const left = native.entries.slice(Math.max(0, targetIndex - 2), targetIndex);
     const right = native.entries.slice(targetIndex + 1, targetIndex + 3);
     const retained = [...left, ...right];
-    if (retained.length < 2) return false;
+    if (retained.length < 2) return shortNativeRemovalProven(before);
     const after = nativeMessageGroups(before.root);
     let previous = -1;
     for (const { element, signature } of retained) {
@@ -1621,11 +1621,52 @@
         && retainedMessageSignature(element) === signature);
   }
 
+  function shortNativeRemovalProven(before) {
+    const native = before.native, layout = before.shortLayout;
+    if (!native || native.entries.length > 2 || !layout || before.scrollers.length
+      || before.root?.getAttribute?.('data-pagelet') !== 'IGDMessagesList'
+      || !isVisible(before.root) || before.root.closest?.('[hidden], [aria-hidden="true"]')
+      || before.root.querySelector?.('[aria-busy="true"]')
+      || layout.frames.at(-1)?.element !== before.root) return false;
+    const panes = [...before.root.ownerDocument?.querySelectorAll?.('[data-pagelet="IGDMessagesList"]') || []].filter(isVisible);
+    if (panes.length && (panes.length !== 1 || panes[0] !== before.root)) return false;
+    // This path is only for a fully mounted short list, not the last visible
+    // window of a scrollable history. At least one measured viewport must stay
+    // fixed while its inner content may shrink after the removal.
+    if (!layout.frames.some(({ element, client }) => client > 0
+      && Math.abs(Number(element.clientHeight) - client) <= 1)) return false;
+    if (layout.frames.some(({ element, parent, top, height, client }) => (
+      !element.isConnected || (element.parentElement || null) !== parent
+      || !Number.isFinite(height) || !Number.isFinite(client) || height < 0 || client < 0 || height > client + 1
+      || !Number.isFinite(Number(element.scrollHeight)) || !Number.isFinite(Number(element.clientHeight))
+      || Number(element.scrollHeight) > Number(element.clientHeight) + 1
+      || Number(element.scrollHeight) > height + 1 || Number(element.clientHeight) > client + 1
+      || Math.abs((Number(element.scrollTop) || 0) - top) > 1
+      || element.getAttribute?.('aria-busy') === 'true'
+    ))) return false;
+    const retained = native.entries.filter(({ element }) => element !== native.target);
+    const after = nativeMessageGroups(before.root);
+    if (after.length !== retained.length || retained.some(({ element, parent, signature }, index) => (
+      after[index] !== element || !element.isConnected || element.parentElement !== parent
+      || retainedMessageSignature(element) !== signature
+    ))) return false;
+    const remaining = [...before.parent.children || []];
+    const siblings = layout.siblings.filter(({ element }) => element.isConnected && element.parentElement === before.parent);
+    // A removed timestamp is harmless. A new/recycled slot, changed metadata
+    // or missing neighboring message is not evidence of a successful Unsend.
+    return remaining.length === siblings.length
+      && siblings.every(({ element, signature, text }, index) => remaining[index] === element
+        && retainedMessageSignature(element) === signature && String(element.textContent || '') === text)
+      && layout.siblings.every((entry) => !entry.hasMessage || siblings.includes(entry));
+  }
+
   function removalEvidence(row) {
     const parent = row?.parentElement || null;
     const root = row?.closest?.("[data-pagelet='IGDMessagesList']") || parent;
-    const scrollers = [];
+    const scrollers = [], frames = [];
     for (let element = parent; element; element = element.parentElement) {
+      frames.push({ element, parent: element.parentElement || null, top: Number(element.scrollTop) || 0,
+        height: Number(element.scrollHeight), client: Number(element.clientHeight) });
       if (Number(element.scrollHeight) > Number(element.clientHeight)) {
         scrollers.push({ element, top: Number(element.scrollTop) || 0,
           height: Number(element.scrollHeight), client: Number(element.clientHeight) });
@@ -1633,6 +1674,7 @@
       if (element === root) break;
     }
     const siblings = [...parent?.children || []].filter((element) => element !== row);
+    const native = nativeRemovalNeighborhood(row, root);
     return {
       key: stableMessageKey(row),
       text: preview(row),
@@ -1642,7 +1684,16 @@
       scrollers,
       siblings,
       siblingSignatures: siblings.map(retainedMessageSignature),
-      native: nativeRemovalNeighborhood(row, root),
+      native,
+      shortLayout: native && native.entries.length <= 2 && !visibleLoader(root)
+        && !root?.querySelector?.('[aria-busy="true"]')
+        && root?.getAttribute?.('aria-busy') !== 'true' ? {
+          frames,
+          siblings: siblings.map((element) => ({ element, signature: retainedMessageSignature(element),
+            text: String(element.textContent || ''),
+            hasMessage: element.matches?.('[aria-label="Message actions"]')
+              || Boolean(element.querySelector?.('[aria-label="Message actions"]')) })),
+        } : null,
     };
   }
 

@@ -17,6 +17,27 @@ function fixture(options = {}) {
       querySelectorAll: (selector) => selector === '[aria-label="Message actions"]' ? pane.actions
         : selector === '[aria-busy="true"], [role="progressbar"]' ? pane.progress : [],
     });
+    if (options.label) {
+      const spec = options.label;
+      const heading = node({ textContent: spec.title || 'Synthetic chat' });
+      const link = node({ contains: target => spec.wrapTitle !== false && target === heading,
+        getAttribute: name => name === 'href' ? spec.href || '/fixture.friend/'
+          : name === 'aria-label' ? 'Open the profile page of synthetic friend' : null });
+      const header = node({ getAttribute: name => name === 'data-pagelet' ? 'IGDInboxHeaderOffMsys'
+        : name === 'aria-busy' && spec.busy ? 'true' : null,
+        querySelectorAll: selector => selector === 'h2' ? spec.ambiguousTitle ? [heading, node({ textContent: 'Other' })] : [heading]
+          : selector === 'a[role="link"][href]' ? spec.noLink ? [] : spec.ambiguousLink ? [link, link] : [link] : [],
+      });
+      const composer = node({});
+      const content = node({ contains: target => target === pane,
+        querySelectorAll: selector => selector === '[data-pagelet="IGDComposerForCannes"]' && !spec.noComposer ? [composer] : [] });
+      const parent = node({ children: spec.messageDecoy ? [content] : [header, content],
+        querySelectorAll: selector => selector === '[data-pagelet="IGDMessagesList"]' ? [pane]
+          : selector === '[aria-label="Thread list"]' && spec.inboxRail ? [root] : [],
+      });
+      pane.parentElement = content; content.parentElement = parent; header.parentElement = parent;
+      pane.nativeHeader = header;
+    }
     return pane;
   };
   const replacePane = (next = createPane()) => {
@@ -42,6 +63,7 @@ function fixture(options = {}) {
     if (selector === '[aria-label="Thread list"]') return [root];
     if (selector === 'a[href]') return options.noReturn ? [] : [back];
     if (selector === '[data-pagelet="IGDMessagesList"]') return panes;
+    if (selector === '[data-pagelet="IGDInboxHeaderOffMsys"]') return panes.map(pane => pane.nativeHeader).filter(Boolean);
     return [];
   } };
   const api = {
@@ -62,6 +84,81 @@ test('button rows resolve exact IDs, deduplicate recycled windows, return and re
   assert.equal(result.complete, false); assert.equal(result.sections[0].reason, 'end-unverified');
   assert.equal(f.rowClicks, 4); assert.equal(f.returnClicks, 4); assert.equal(result.needsInboxReturn, false);
   assert.deepEqual(Object.keys(result.conversations[0]), ['threadId', 'sections']);
+});
+
+test('fresh native chat-header labels are temporary and separate from ID-only snapshots', async () => {
+  const f = fixture({ pages: [['101']], label: { title: 'Synthetic friend', href: '/Fixture.Friend/' } });
+  const progress = [], adapter = f.adapter({ onProgress: value => progress.push(value) });
+  const result = await adapter.run();
+  assert.deepEqual(adapter.reviewLabels(), [{ threadId: '101', title: 'Synthetic friend', username: 'fixture.friend',
+    kind: 'profile', source: 'native-conversation-header' }]);
+  assert.equal(f.rowClicks, 1); assert.equal(f.returnClicks, 1, 'labels never open an additional conversation');
+  assert.equal(JSON.stringify({ result, progress }).includes('Synthetic friend'), false);
+  assert.equal(JSON.stringify({ result, progress }).includes('fixture.friend'), false);
+  const copy = adapter.reviewLabels(); copy[0].title = 'Changed';
+  assert.equal(adapter.reviewLabels()[0].title, 'Synthetic friend');
+});
+
+test('chat titles never imply a username without one unambiguous containing native profile link', async () => {
+  const credentialUrl = new URL('https://www.instagram.com/fixture.friend/');
+  credentialUrl.username = 'fixture';
+  for (const spec of [{ noLink: true }, { wrapTitle: false }, { ambiguousLink: true },
+    { href: 'https://outside.invalid/fixture.friend/' }, { href: '/direct/' },
+    { href: '/fixture.friend/?next=other' }, { href: '/fixture.friend/#section' },
+    { href: credentialUrl.href }]) {
+    const f = fixture({ pages: [['101']], label: { title: '@Named group', ...spec } }), adapter = f.adapter();
+    await adapter.run();
+    assert.equal(adapter.reviewLabels()[0].title, '@Named group');
+    assert.equal(adapter.reviewLabels()[0].username, null);
+    assert.equal(adapter.reviewLabels()[0].kind, 'chat-title');
+  }
+});
+
+test('quoted headers, account rails, loading titles and ambiguous chat headers cannot supply a label', async () => {
+  for (const spec of [{ messageDecoy: true }, { inboxRail: true }, { busy: true },
+    { ambiguousTitle: true }, { noComposer: true }, { title: 'Wrong\u202etitle' }]) {
+    const f = fixture({ pages: [['101']], label: spec }), adapter = f.adapter();
+    const result = await adapter.run();
+    assert.deepEqual(adapter.reviewLabels(), []);
+    assert.deepEqual(result.conversations.map(value => value.threadId), ['101']);
+  }
+});
+
+test('an old header carried across a replaced message pane is not relabeled as the new conversation', async () => {
+  const f = fixture({ pages: [['101']], label: { title: 'Old title' } });
+  const oldPane = f.replacePane(), oldHeader = oldPane.nativeHeader;
+  const query = f.doc.querySelectorAll;
+  f.doc.querySelectorAll = selector => selector === '[data-pagelet="IGDInboxHeaderOffMsys"]' ? [oldHeader] : query(selector);
+  const create = f.root.querySelectorAll;
+  f.root.querySelectorAll = selector => create(selector).map(row => {
+    if (selector === '*') return row;
+    const click = row.click;
+    return { ...row, click() {
+      click();
+      const pane = f.panes[0]; pane.parentElement.parentElement.children[0] = oldHeader;
+    } };
+  });
+  const adapter = f.adapter(); await adapter.run();
+  assert.deepEqual(adapter.reviewLabels(), []);
+});
+
+test('temporary labels are cleared on Stop and account drift without changing stable thread IDs', async () => {
+  for (const mode of ['stop', 'account']) {
+    const f = fixture({ pages: [['101']], label: { title: 'Synthetic friend' } }), adapter = f.adapter();
+    await adapter.run(); assert.equal(adapter.reviewLabels().length, 1);
+    if (mode === 'stop') adapter.stop(); else f.changeAccount();
+    assert.deepEqual(adapter.reviewLabels(), []);
+    assert.deepEqual(adapter.snapshot().conversations.map(value => value.threadId), ['101']);
+  }
+});
+
+test('optional label evidence has a shorter wait than execution when a chat has no ready pane', async () => {
+  const f = fixture({ pages: [['101']], noPane: true }), adapter = f.adapter({ routeTimeoutMs: 5_000 });
+  const started = Date.now(), result = await adapter.run();
+  assert.ok(Date.now() - started < 4_000, 'display labels do not consume the full execution-pane deadline');
+  assert.deepEqual(adapter.reviewLabels(), []);
+  assert.deepEqual(result.conversations.map(value => value.threadId), ['101']);
+  assert.equal(f.rowClicks, 1); assert.equal(f.returnClicks, 1);
 });
 
 test('opening unread conversations requires explicit navigation acknowledgment', async () => {

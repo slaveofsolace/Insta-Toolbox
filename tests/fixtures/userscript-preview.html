@@ -219,7 +219,7 @@
       }
       addMessage(false); addMessage(true); addMessage(true);
     };
-    globalThis.fixtureSetNativeReplyMessages = ({ newestKind = 'reply' } = {}) => {
+    globalThis.fixtureSetNativeReplyMessages = ({ newestKind = 'reply', shortThread = null } = {}) => {
       history.replaceState({}, '', '/direct/t/123/');
       globalThis.fixtureUnsentCount = 0;
       globalThis.fixtureDmClickCount = 0;
@@ -229,6 +229,14 @@
       globalThis.fixtureNativeBackfillCount = 0;
       const main = document.querySelector('main');
       main.innerHTML = '<section data-pagelet="IGDMessagesList"><div data-fixture-native-scroller style="height:360px;overflow-y:scroll;display:flex;flex-direction:column-reverse"><div data-fixture-native-list style="flex:none"></div></div></section>';
+      if (shortThread) {
+        const header = document.createElement('header');
+        const title = document.createElement('h2');
+        title.textContent = shortThread.peer === 'unavailable' ? 'Instagram user'
+          : shortThread.peer === 'group' ? 'Fixture group chat' : 'Fixture direct chat';
+        header.append(title); main.prepend(header);
+        // No peer profile link or composer is needed to remove an own message.
+      }
       const list = main.querySelector('[data-fixture-native-list]');
       const scroller = main.querySelector('[data-fixture-native-scroller]');
       const messageGroups = new Map();
@@ -264,6 +272,13 @@
         const body = document.createElement('div'); body.setAttribute('dir', 'auto');
         body.style.cssText = 'padding:10px;min-height:24px;background:#ddd;color:#111;';
         body.textContent = `${kind} fixture ${id}`;
+        if (kind === 'reel') {
+          body.textContent = '';
+          const thumbnail = document.createElement('img');
+          thumbnail.alt = 'Shared reel'; thumbnail.width = 40; thumbnail.height = 40;
+          thumbnail.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="#888"/></svg>');
+          body.append(thumbnail);
+        }
         const controlsColumn = document.createElement('div');
         controlsColumn.style.cssText = 'display:flex;flex-direction:column;justify-content:flex-start;';
         const actions = document.createElement('div'); actions.setAttribute('role', 'group'); actions.setAttribute('aria-label', 'Message actions');
@@ -293,22 +308,33 @@
             const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.addEventListener('click', () => dialog.remove());
             const confirm = document.createElement('button'); confirm.textContent = 'Unsend';
             confirm.addEventListener('click', () => {
-              globalThis.fixtureDmClickCount += 1; dialog.remove(); slot.remove(); timestamp.remove();
+              globalThis.fixtureDmClickCount += 1; dialog.remove();
+              if (shortThread?.uncertain) return;
+              slot.remove(); timestamp.remove();
               globalThis.fixtureRemovedIds.push(id); globalThis.fixtureUnsentCount += 1;
               globalThis.fixtureNativeTimestampRemoved = !timestamp.isConnected;
-              addNativeMessage('older-backfill', { prepend: true });
-              globalThis.fixtureNativeBackfillCount += 1;
+              if (!shortThread) {
+                addNativeMessage('older-backfill', { prepend: true });
+                globalThis.fixtureNativeBackfillCount += 1;
+              }
             });
             dialog.append(cancel, confirm); document.body.append(dialog);
           });
         });
       }
-      addNativeMessage('older-sent', { sent: true });
-      addNativeMessage('received-before');
-      addNativeMessage('sent-before', { sent: true, kind: newestKind === 'reply' ? 'story' : 'reply' });
-      addNativeMessage('newest-sent', { sent: true, kind: newestKind });
-      addNativeMessage('received-after', { kind: 'reply' });
-      addNativeMessage('received-last', { kind: 'story' });
+      if (shortThread) {
+        if (shortThread.received) addNativeMessage('received-before');
+        for (let index = 0; index < shortThread.count; index += 1) {
+          addNativeMessage(`sent-${index + 1}`, { sent: true, kind: shortThread.kind || 'plain' });
+        }
+      } else {
+        addNativeMessage('older-sent', { sent: true });
+        addNativeMessage('received-before');
+        addNativeMessage('sent-before', { sent: true, kind: newestKind === 'reply' ? 'story' : 'reply' });
+        addNativeMessage('newest-sent', { sent: true, kind: newestKind });
+        addNativeMessage('received-after', { kind: 'reply' });
+        addNativeMessage('received-last', { kind: 'story' });
+      }
       scroller.scrollTop = 0;
       globalThis.fixtureNativeEvidence = () => ({
         openedIds: [...globalThis.fixtureOpenedIds],

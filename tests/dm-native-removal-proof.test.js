@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source = await readFile(new URL('../extension/action-labels.js', import.meta.url), 'utf8');
 
-function fixture({ duplicate = false, normalBottom = false } = {}) {
+function fixture({ duplicate = false, normalBottom = false, shortMessages = null } = {}) {
   const document = { defaultView: { getComputedStyle: (element) => element.style } };
   class Element {
     constructor(tagName = 'div', attributes = {}, children = []) {
@@ -16,7 +16,10 @@ function fixture({ duplicate = false, normalBottom = false } = {}) {
     get isConnected() { return this === document.root || Boolean(this.parentElement?.isConnected); }
     get textContent() { return this.attributes.text || this.children.map((child) => child.textContent).join(''); }
     getAttribute(name) { return this.attributes[name] ?? null; }
-    getBoundingClientRect() { return { top: 10, bottom: 50, left: 10, right: 110, width: 100, height: 40 }; }
+    getBoundingClientRect() {
+      return this.style.display === 'none' ? { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }
+        : { top: 10, bottom: 50, left: 10, right: 110, width: 100, height: 40 };
+    }
     matches(selector) {
       return selector.split(',').some((entry) => {
         const part = entry.trim();
@@ -41,8 +44,11 @@ function fixture({ duplicate = false, normalBottom = false } = {}) {
     }
   }
   const root = document.root = new Element('div', { 'data-pagelet': 'IGDMessagesList' });
+  document.querySelectorAll = selector => [
+    ...(document.root.matches(selector) ? [document.root] : []), ...document.root.querySelectorAll(selector),
+  ];
   const scroller = new Element();
-  Object.assign(scroller, { scrollTop: normalBottom ? 300 : 0, scrollHeight: 500, clientHeight: 200 });
+  Object.assign(scroller, { scrollTop: normalBottom ? 300 : 0, scrollHeight: shortMessages ? 120 : 500, clientHeight: 200 });
   scroller.style.flexDirection = normalBottom ? 'column' : 'column-reverse';
   root.append(scroller);
   const makeRow = (text) => {
@@ -54,15 +60,115 @@ function fixture({ duplicate = false, normalBottom = false } = {}) {
     const row = new Element('div', {}, [new Element('span', { text: 'Timestamp' }), group]);
     return { row, group, content };
   };
-  const neighbors = [makeRow('Earlier message'), makeRow(duplicate ? 'Disposable message' : 'Adjacent message')];
+  const neighbors = [makeRow('Earlier message'), makeRow(duplicate ? 'Disposable message' : 'Adjacent message')]
+    .slice(0, shortMessages ? shortMessages - 1 : 2);
   const target = makeRow('Disposable message');
   scroller.append(...neighbors.map(({ row }) => row), target.row);
   const context = vm.createContext({ Date, setTimeout, clearTimeout, DOMException });
   vm.runInContext(source, context);
   const proof = context.InstaToolboxDmThreadUnsender.messageProof;
   const before = proof.removalEvidence(target.row);
-  return { root, scroller, target, neighbors, before, proof, makeRow, Element };
+  return { document, root, scroller, target, neighbors, before, proof, makeRow, Element };
 }
+
+for (const shortMessages of [1, 2]) {
+  test(`a proven non-scrollable ${shortMessages}-message native list verifies its exact detached message`, async () => {
+    const { target, before, proof } = fixture({ shortMessages });
+    target.row.remove();
+    assert.equal(proof.removalProven(target.row, before), true);
+    assert.equal(await proof.waitForRemoval(target.row, before, { timeoutMs: 220, stableMs: 75 }), true);
+  });
+}
+
+test('short native content can shrink and lose an adjacent timestamp while the viewport stays fixed', () => {
+  const { target, scroller, root, proof, Element } = fixture({ shortMessages: 2 });
+  const list = new Element(), timestamp = new Element('span', { text: 'Today, 12:00' });
+  Object.assign(list, { scrollHeight: 120, clientHeight: 120 });
+  const messages = [...scroller.children];
+  scroller.children = []; list.append(...messages, timestamp); scroller.append(list);
+  Object.assign(scroller, { scrollHeight: 200, clientHeight: 200 });
+  const before = proof.removalEvidence(target.row);
+  target.row.remove(); timestamp.remove();
+  Object.assign(list, { scrollHeight: 60, clientHeight: 60 });
+  assert.equal(root.isConnected, true);
+  assert.equal(proof.removalProven(target.row, before), true);
+});
+
+test('short-list proof rejects recycled slots, remounts, backfill and changed surviving messages', () => {
+  for (const mutate of [
+    ({ target, scroller }) => scroller.append(target.row),
+    ({ target, scroller, makeRow }) => scroller.append(makeRow('Disposable message').row),
+    ({ scroller, makeRow }) => scroller.append(makeRow('Backfilled message').row),
+    ({ neighbors }) => { neighbors[0].content.attributes.text = 'Edited neighbor'; },
+    ({ neighbors }) => neighbors[0].group.remove(),
+    ({ neighbors }) => neighbors[0].row.remove(),
+    ({ scroller, Element }) => scroller.append(new Element('span', { text: 'Unexpected content' })),
+  ]) {
+    const current = fixture({ shortMessages: 2 });
+    current.target.row.remove(); mutate(current);
+    assert.equal(current.proof.removalProven(current.target.row, current.before), false);
+  }
+  const current = fixture({ shortMessages: 1 });
+  current.target.group.remove();
+  assert.equal(current.proof.removalProven(current.target.row, current.before), false, 'an empty retained virtual row is not removal');
+});
+
+test('short-list proof rejects pane/list replacement, scrolling, viewport changes and loading', () => {
+  for (const mutate of [
+    ({ document, Element }) => { document.root = new Element('div', { 'data-pagelet': 'IGDMessagesList' }); },
+    ({ scroller }) => scroller.remove(),
+    ({ scroller }) => { scroller.scrollTop = -40; },
+    ({ scroller }) => { scroller.scrollHeight = 300; },
+    ({ scroller }) => { scroller.scrollHeight = 150; },
+    ({ scroller }) => { scroller.clientHeight = 250; },
+    ({ scroller }) => { scroller.clientHeight = 0; scroller.scrollHeight = 0; },
+    ({ root }) => { root.attributes['aria-busy'] = 'true'; },
+    ({ root }) => { root.attributes['aria-hidden'] = 'true'; },
+    ({ root }) => { root.style.display = 'none'; },
+    ({ root, Element }) => root.append(new Element('div', { 'data-pagelet': 'IGDMessagesList' })),
+    ({ root, Element }) => root.append(new Element('div', { role: 'progressbar' })),
+    ({ root, Element }) => root.append(new Element('div', { 'aria-busy': 'true' })),
+  ]) {
+    const current = fixture({ shortMessages: 2 });
+    current.target.row.remove(); mutate(current);
+    assert.equal(current.proof.removalProven(current.target.row, current.before), false);
+  }
+});
+
+test('a scrollable native list cannot use short-list proof merely because one or two messages are mounted', () => {
+  for (const shortMessages of [1, 2]) {
+    const { target, scroller, proof } = fixture({ shortMessages });
+    scroller.scrollHeight = 500;
+    const before = proof.removalEvidence(target.row);
+    target.row.remove(); scroller.scrollHeight = 120;
+    assert.equal(proof.removalProven(target.row, before), false);
+  }
+});
+
+test('short-list removal waits for stable disappearance and the exact conversation context', async () => {
+  const current = fixture({ shortMessages: 1 });
+  current.target.row.remove();
+  const reverted = setTimeout(() => current.scroller.append(current.target.row), 50);
+  assert.equal(await current.proof.waitForRemoval(current.target.row, current.before,
+    { timeoutMs: 220, stableMs: 150 }), false);
+  clearTimeout(reverted);
+  current.target.row.remove();
+  let exactContext = true;
+  const switched = setTimeout(() => { exactContext = false; }, 50);
+  assert.equal(await current.proof.waitForRemoval(current.target.row, current.before,
+    { contextValid: () => exactContext, timeoutMs: 220, stableMs: 150 }), false);
+  clearTimeout(switched);
+});
+
+test('short-list settlement does not turn preview edits or an open confirmation into success', async () => {
+  const current = fixture({ shortMessages: 1 });
+  current.target.content.attributes.text = 'Edited body';
+  assert.equal(current.proof.removalProven(current.target.row, current.before), false);
+  current.target.row.remove();
+  const dialogButton = new current.Element('button'); current.root.append(dialogButton);
+  assert.equal(await current.proof.waitForRemoval(current.target.row, current.before,
+    { dialogButton, timeoutMs: 100, stableMs: 25 }), false);
+});
 
 test('native removal allows older history backfill without relying on mounted counts', () => {
   const { scroller, target, before, proof, makeRow } = fixture();

@@ -1,4 +1,4 @@
-# Presence — Live Like Me
+# Presence
 
 An account routine that feels personal without hiding what it does.
 
@@ -16,7 +16,7 @@ Read [the continuation brief](CODEX_HANDOFF.md), [source review](SOURCE_REVIEW.m
 
 ## Product idea
 
-Presence is the working feature name. **Live Like Me** describes its purpose; **Be Me** can become a session action after native execution is accepted. **Grow my account** is a user-selected goal, not a promise of follower gains.
+Presence builds a routine around selected accounts, boundaries and active hours. Live sessions remain unavailable until native execution is accepted. An account-growth goal is not a promise of follower gains.
 
 Presence and Ghost are complementary: Presence helps the user build and maintain connections; Ghost handles separately reviewed inbox cleanup. Neither should be described as undetectable, a human impersonator, or complete erasure of retained data.
 

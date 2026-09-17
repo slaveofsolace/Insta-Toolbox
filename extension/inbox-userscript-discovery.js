@@ -53,6 +53,11 @@ export function createUserscriptInboxDiscovery({
   };
   return Object.freeze({
     snapshot, stop,
+    reviewLabels() {
+      const current = context();
+      if (state.inventory && current.accountId !== state.inventory.accountId) return rejectContext('inbox-account-changed');
+      return (active || captured)?.reviewLabels() || [];
+    },
     async discover({ navigationAcknowledged = false, sections = ['primary'], expiresAt = now() + 5 * 60_000 } = {}) {
       if (active) throw new Error('inbox-discovery-active');
       if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');

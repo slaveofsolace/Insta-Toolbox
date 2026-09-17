@@ -18,7 +18,7 @@ const licenseFile = path.join(repositoryRoot, 'LICENSE');
 const moduleFiles = [
   ...['inbox-discovery', 'inbox-native-navigation', 'inbox-coordinator', 'inbox-userscript-discovery',
     'inbox-single-tab', 'inbox-userscript-panel', 'inbox-checkpoint-store',
-    'presence-native-inputs', 'presence-batch-review', 'presence-userscript-panel']
+    'presence-native-inputs', 'presence-batch-review', 'presence-userscript-panel', 'presence-preferences']
     .map(name => `extension/${name}.js`),
   'src/core/presence.js',
 ];
@@ -80,12 +80,13 @@ const singletonGuardEnd = `
 
 const localSources = Object.fromEntries(await Promise.all(moduleFiles.map(async file => [file, await readFile(path.join(repositoryRoot, file), 'utf8')])));
 const inboxModules = bundleLocalModules(localSources, ['extension/inbox-userscript-panel.js', 'extension/inbox-checkpoint-store.js',
-  'extension/presence-native-inputs.js', 'extension/presence-userscript-panel.js']);
+  'extension/presence-native-inputs.js', 'extension/presence-userscript-panel.js', 'extension/presence-preferences.js']);
 const inboxExport = `globalThis.InstaToolboxInboxDiscovery = Object.freeze({ create: localModules['extension/inbox-userscript-discovery.js'].createUserscriptInboxDiscovery });
 globalThis.InstaToolboxInboxPanel = Object.freeze({ mount: localModules['extension/inbox-userscript-panel.js'].mountUserscriptInboxPanel });
 globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['extension/inbox-checkpoint-store.js'].createInboxCheckpointStore });
 globalThis.InstaToolboxPresenceInputs = Object.freeze({ create: localModules['extension/presence-native-inputs.js'].createPresenceNativeInputs });
-globalThis.InstaToolboxPresencePanel = Object.freeze({ mount: localModules['extension/presence-userscript-panel.js'].mountUserscriptPresencePanel });`;
+globalThis.InstaToolboxPresencePanel = Object.freeze({ mount: localModules['extension/presence-userscript-panel.js'].mountUserscriptPresencePanel });
+globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModules['extension/presence-preferences.js'].createPresencePreferenceStore });`;
 const engine = [...sources.slice(0, -1), inboxModules, inboxExport, sources.at(-1)].join('\n');
 if (!engine.includes('performReviewedProfileAction')
   || !engine.includes('performReviewedDmUnsend')

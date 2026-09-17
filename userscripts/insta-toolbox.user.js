@@ -2345,7 +2345,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     return {
       target: targets[0],
       row,
-      entries: groups.map((element) => ({ element, signature: retainedMessageSignature(element) })),
+      entries: groups.map((element) => ({ element, parent: element.parentElement, signature: retainedMessageSignature(element) })),
     };
   }
 
@@ -2371,7 +2371,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const left = native.entries.slice(Math.max(0, targetIndex - 2), targetIndex);
     const right = native.entries.slice(targetIndex + 1, targetIndex + 3);
     const retained = [...left, ...right];
-    if (retained.length < 2) return false;
+    if (retained.length < 2) return shortNativeRemovalProven(before);
     const after = nativeMessageGroups(before.root);
     let previous = -1;
     for (const { element, signature } of retained) {
@@ -2394,11 +2394,52 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         && retainedMessageSignature(element) === signature);
   }
 
+  function shortNativeRemovalProven(before) {
+    const native = before.native, layout = before.shortLayout;
+    if (!native || native.entries.length > 2 || !layout || before.scrollers.length
+      || before.root?.getAttribute?.('data-pagelet') !== 'IGDMessagesList'
+      || !isVisible(before.root) || before.root.closest?.('[hidden], [aria-hidden="true"]')
+      || before.root.querySelector?.('[aria-busy="true"]')
+      || layout.frames.at(-1)?.element !== before.root) return false;
+    const panes = [...before.root.ownerDocument?.querySelectorAll?.('[data-pagelet="IGDMessagesList"]') || []].filter(isVisible);
+    if (panes.length && (panes.length !== 1 || panes[0] !== before.root)) return false;
+    // This path is only for a fully mounted short list, not the last visible
+    // window of a scrollable history. At least one measured viewport must stay
+    // fixed while its inner content may shrink after the removal.
+    if (!layout.frames.some(({ element, client }) => client > 0
+      && Math.abs(Number(element.clientHeight) - client) <= 1)) return false;
+    if (layout.frames.some(({ element, parent, top, height, client }) => (
+      !element.isConnected || (element.parentElement || null) !== parent
+      || !Number.isFinite(height) || !Number.isFinite(client) || height < 0 || client < 0 || height > client + 1
+      || !Number.isFinite(Number(element.scrollHeight)) || !Number.isFinite(Number(element.clientHeight))
+      || Number(element.scrollHeight) > Number(element.clientHeight) + 1
+      || Number(element.scrollHeight) > height + 1 || Number(element.clientHeight) > client + 1
+      || Math.abs((Number(element.scrollTop) || 0) - top) > 1
+      || element.getAttribute?.('aria-busy') === 'true'
+    ))) return false;
+    const retained = native.entries.filter(({ element }) => element !== native.target);
+    const after = nativeMessageGroups(before.root);
+    if (after.length !== retained.length || retained.some(({ element, parent, signature }, index) => (
+      after[index] !== element || !element.isConnected || element.parentElement !== parent
+      || retainedMessageSignature(element) !== signature
+    ))) return false;
+    const remaining = [...before.parent.children || []];
+    const siblings = layout.siblings.filter(({ element }) => element.isConnected && element.parentElement === before.parent);
+    // A removed timestamp is harmless. A new/recycled slot, changed metadata
+    // or missing neighboring message is not evidence of a successful Unsend.
+    return remaining.length === siblings.length
+      && siblings.every(({ element, signature, text }, index) => remaining[index] === element
+        && retainedMessageSignature(element) === signature && String(element.textContent || '') === text)
+      && layout.siblings.every((entry) => !entry.hasMessage || siblings.includes(entry));
+  }
+
   function removalEvidence(row) {
     const parent = row?.parentElement || null;
     const root = row?.closest?.("[data-pagelet='IGDMessagesList']") || parent;
-    const scrollers = [];
+    const scrollers = [], frames = [];
     for (let element = parent; element; element = element.parentElement) {
+      frames.push({ element, parent: element.parentElement || null, top: Number(element.scrollTop) || 0,
+        height: Number(element.scrollHeight), client: Number(element.clientHeight) });
       if (Number(element.scrollHeight) > Number(element.clientHeight)) {
         scrollers.push({ element, top: Number(element.scrollTop) || 0,
           height: Number(element.scrollHeight), client: Number(element.clientHeight) });
@@ -2406,6 +2447,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       if (element === root) break;
     }
     const siblings = [...parent?.children || []].filter((element) => element !== row);
+    const native = nativeRemovalNeighborhood(row, root);
     return {
       key: stableMessageKey(row),
       text: preview(row),
@@ -2415,7 +2457,16 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       scrollers,
       siblings,
       siblingSignatures: siblings.map(retainedMessageSignature),
-      native: nativeRemovalNeighborhood(row, root),
+      native,
+      shortLayout: native && native.entries.length <= 2 && !visibleLoader(root)
+        && !root?.querySelector?.('[aria-busy="true"]')
+        && root?.getAttribute?.('aria-busy') !== 'true' ? {
+          frames,
+          siblings: siblings.map((element) => ({ element, signature: retainedMessageSignature(element),
+            text: String(element.textContent || ''),
+            hasMessage: element.matches?.('[aria-label="Message actions"]')
+              || Boolean(element.querySelector?.('[aria-label="Message actions"]')) })),
+        } : null,
     };
   }
 
@@ -6006,6 +6057,7 @@ function createNativeInboxDiscovery({
   const inventory = new Map();
   // Native row evidence is private to this instance; snapshots never retain it.
   const navigationEvidence = new Map();
+  const displayLabels = new Map();
   const controller = new AbortController();
   const discoveryContext = { expiresAt, signal, controller, expiryReason: 'discovery-expired' };
   let started = false, finished = false, stopped = false, reason = null, visits = 0;
@@ -6021,11 +6073,13 @@ function createNativeInboxDiscovery({
   function guard(context = discoveryContext) {
     if (context.controller.signal.aborted || context.signal?.aborted) throw new Error(context.stopReason || 'cancelled');
     if (now() >= context.expiresAt) throw new Error(context.expiryReason);
-    if (new URL(href()).origin !== ORIGIN) throw new Error('origin-changed');
+    if (new URL(href()).origin !== ORIGIN) { displayLabels.clear(); throw new Error('origin-changed'); }
     // A synchronous isolated-world resolver prevents a hung identity lookup
     // from retaining navigation authority. Page storage is not an authority.
     const identity = resolveAccount();
-    if (identity?.then || identity?.verified !== true || identity.accountId !== accountId) throw new Error('account-changed');
+    if (identity?.then || identity?.verified !== true || identity.accountId !== accountId) {
+      displayLabels.clear(); throw new Error('account-changed');
+    }
     if (identity.restriction) throw new Error('account-restricted');
   }
   function waitFor(check, timeout = routeTimeoutMs, context = discoveryContext) {
@@ -6082,6 +6136,61 @@ function createNativeInboxDiscovery({
     // No observed native empty-state marker binds an empty pane to a thread.
     // A shell or skeleton alone cannot authorize the message runner.
     return actions.length ? { pane, actions } : null;
+  }
+  async function freshMessagePane(threadId, priorPanes, priorActions, context = discoveryContext, timeout = routeTimeoutMs) {
+    let candidate = null, stableSince = null;
+    return waitFor(() => {
+      const actual = inboxThreadId(href());
+      if (actual && actual !== threadId) throw new Error('conversation-changed');
+      if (!actual && !inboxUrl(href())) throw new Error('unexpected-route');
+      const ready = actual === threadId ? readyMessagePane() : null;
+      if (!ready || priorPanes.includes(ready.pane)
+        || priorPanes.some((pane) => pane.isConnected !== false)
+        || priorActions.some((action) => ready.pane.contains(action))) {
+        candidate = null; stableSince = null; return false;
+      }
+      if (candidate?.pane !== ready.pane || candidate.actions.length !== ready.actions.length
+        || candidate.actions.some((action, index) => action !== ready.actions[index])) {
+        candidate = ready; stableSince = now(); return false;
+      }
+      return now() - stableSince >= settleMs ? ready : false;
+    }, timeout, context);
+  }
+  function nativeDisplayLabel(pane, priorHeaders) {
+    // The observed header and composer are sibling branches of one chat.
+    // A heading elsewhere in main, the inbox rail or a message is not a title.
+    for (let parent = pane.parentElement, depth = 0; parent && depth < 6; parent = parent.parentElement, depth += 1) {
+      const branches = [...(parent.children || [])];
+      if (branches.length !== 2) continue;
+      const header = branches.find((node) => node.getAttribute?.('data-pagelet') === 'IGDInboxHeaderOffMsys');
+      const content = branches.find((node) => node !== header && node.contains?.(pane));
+      if (!header || !content || !visible(header)) continue;
+      if (priorHeaders.includes(header) || header.closest?.('[aria-busy="true"]')
+        || header.getAttribute?.('aria-busy') === 'true'
+        || [...header.querySelectorAll('[aria-busy="true"], [role="progressbar"]')].some(visible)) return null;
+      if (parent.querySelectorAll('[data-pagelet="IGDMessagesList"]').length !== 1
+        || parent.querySelectorAll('[aria-label="Thread list"]').length
+        || [...content.querySelectorAll('[data-pagelet="IGDComposerForCannes"]')].filter(visible).length !== 1) return null;
+      const headings = [...header.querySelectorAll('h2')].filter(visible);
+      if (headings.length !== 1) return null;
+      const title = String(headings[0].textContent || '').replace(/\s+/g, ' ').trim();
+      if (!title || title.length > 160 || /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(title)) return null;
+      const links = [...header.querySelectorAll('a[role="link"][href]')].filter((node) => visible(node)
+        && String(node.getAttribute('aria-label') || '').startsWith('Open the profile page of '));
+      let username = null;
+      if (links.length === 1 && links[0].contains(headings[0])) {
+        try {
+          const url = new URL(links[0].getAttribute('href'), ORIGIN);
+          const match = /^\/([a-zA-Z0-9._]{1,30})\/?$/.exec(url.pathname);
+          if (url.origin === ORIGIN && !url.username && !url.password && !url.search && !url.hash && match
+            && !['accounts', 'direct', 'explore', 'reels', 'stories', 'p', 'reel', 'about', 'legal'].includes(match[1].toLowerCase())) {
+            username = match[1].toLowerCase();
+          }
+        } catch {}
+      }
+      return Object.freeze({ title, username, kind: username ? 'profile' : 'chat-title', source: 'native-conversation-header' });
+    }
+    return null;
   }
   function auxiliaryCollection(node, root) {
     // Notes occupy a separate native role=list inside Thread list. Avatar
@@ -6164,6 +6273,9 @@ function createNativeInboxDiscovery({
         // never row positions or preview text, identify conversations.
         const evidence = { row, fingerprint: fingerprint(row), href: row.tagName === 'A' ? row.getAttribute('href') : null,
           section: state.section, position };
+        const priorPanes = messagePanes();
+        const priorActions = priorPanes.flatMap((pane) => [...pane.querySelectorAll('[aria-label="Message actions"]')]);
+        const priorHeaders = [...document.querySelectorAll('[data-pagelet="IGDInboxHeaderOffMsys"]')];
         visits += 1; row.click();
         const threadId = await waitFor(() => {
           const id = inboxThreadId(href());
@@ -6178,6 +6290,14 @@ function createNativeInboxDiscovery({
         inventory.get(threadId).add(state.section);
         const captures = navigationEvidence.get(threadId) || new Map();
         captures.set(state.section, evidence); navigationEvidence.set(threadId, captures);
+        try {
+          const ready = await freshMessagePane(threadId, priorPanes, priorActions, discoveryContext, Math.min(routeTimeoutMs, 1_500));
+          const label = nativeDisplayLabel(ready.pane, priorHeaders);
+          if (label) displayLabels.set(threadId, label); else displayLabels.delete(threadId);
+        } catch (error) {
+          displayLabels.delete(threadId);
+          if (error.message !== 'navigation-timeout') throw error;
+        }
         windowIds.push(threadId); publish();
         await returnToInbox(threadId, position, state.section);
       }
@@ -6280,27 +6400,10 @@ function createNativeInboxDiscovery({
             // transition can precede React replacing the previous chat.
             const priorPanes = messagePanes();
             const priorActions = priorPanes.flatMap((pane) => [...pane.querySelectorAll('[aria-label="Message actions"]')]);
-            let candidate = null, stableSince = null;
             guard(context); row.click();
             try {
-              await waitFor(() => {
-                const actual = inboxThreadId(href());
-                if (actual && actual !== threadId) throw new Error('conversation-changed');
-                if (!actual && !inboxUrl(href())) throw new Error('unexpected-route');
-                const ready = actual === threadId ? readyMessagePane() : null;
-                if (!ready || priorPanes.includes(ready.pane)
-                  || priorPanes.some((pane) => pane.isConnected !== false)
-                  || priorActions.some((action) => ready.pane.contains(action))) {
-                  candidate = null; stableSince = null; return false;
-                }
-                if (candidate?.pane !== ready.pane || candidate.actions.length !== ready.actions.length
-                  || candidate.actions.some((action, index) => action !== ready.actions[index])) {
-                  candidate = ready; stableSince = now(); return false;
-                }
-                if (now() - stableSince < settleMs) return false;
-                verifiedPane = { pane: ready.pane, threadId };
-                return true;
-              }, routeTimeoutMs, context);
+              const ready = await freshMessagePane(threadId, priorPanes, priorActions, context);
+              verifiedPane = { pane: ready.pane, threadId };
             } catch (error) {
               if (error.message === 'navigation-timeout' && inboxThreadId(href()) === threadId) {
                 throw new Error('conversation-pane-unverified');
@@ -6326,7 +6429,15 @@ function createNativeInboxDiscovery({
   }
   return Object.freeze({
     snapshot, createNavigator,
-    stop() { stopped = true; reason = 'cancelled'; controller.abort(); navigator?.stop(); return snapshot(); },
+    reviewLabels() {
+      try {
+        const identity = resolveAccount();
+        if (controller.signal.aborted || new URL(href()).origin !== ORIGIN || identity?.then
+          || identity?.verified !== true || identity.accountId !== accountId) displayLabels.clear();
+      } catch { displayLabels.clear(); }
+      return [...displayLabels].map(([threadId, label]) => ({ threadId, ...label }));
+    },
+    stop() { stopped = true; reason = 'cancelled'; displayLabels.clear(); controller.abort(); navigator?.stop(); return snapshot(); },
     async run() {
       if (started) throw new Error('discovery-already-started');
       started = true;
@@ -6840,6 +6951,11 @@ function createUserscriptInboxDiscovery({
   };
   return Object.freeze({
     snapshot, stop,
+    reviewLabels() {
+      const current = context();
+      if (state.inventory && current.accountId !== state.inventory.accountId) return rejectContext('inbox-account-changed');
+      return (active || captured)?.reviewLabels() || [];
+    },
     async discover({ navigationAcknowledged = false, sections = ['primary'], expiresAt = now() + 5 * 60_000 } = {}) {
       if (active) throw new Error('inbox-discovery-active');
       if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');
@@ -7237,6 +7353,11 @@ function mountUserscriptInboxPanel({
   const inbox = create('a', 'Open inbox', 'button quiet');
   inbox.href = 'https://www.instagram.com/direct/inbox/';
   const inventoryStatus = create('p', '', 'lead');
+  const filterLabel = create('label', 'Find a person or chat', 'field');
+  const filter = create('input'); filter.type = 'search'; filter.maxLength = 160;
+  filter.placeholder = 'Name or @username'; filter.setAttribute('aria-label', 'Filter conversations');
+  filterLabel.append(filter);
+  const filterStatus = create('p', '', 'lead');
   const list = create('div', null, 'inbox-selection');
   list.setAttribute('role', 'group'); list.setAttribute('aria-label', 'Conversations to clean up');
   const selectAll = create('button', 'Select all found', 'button quiet'); selectAll.type = 'button';
@@ -7256,7 +7377,7 @@ function mountUserscriptInboxPanel({
   supportNote.hidden = !supportNote.textContent;
   controls.append(find, inbox);
   const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, resume, pause, skip, stop);
-  container.append(note, section, acknowledgment, controls, inventoryStatus, list, supportNote, recovery, actions, storageNote, results);
+  container.append(note, section, acknowledgment, controls, inventoryStatus, filterLabel, filterStatus, list, supportNote, recovery, actions, storageNote, results);
 
   function context() {
     const value = viewer.inspect({ document, location: window.location });
@@ -7278,11 +7399,25 @@ function mountUserscriptInboxPanel({
   function updateControls() {
     inventoryStatus.hidden = !inventoryStatus.textContent;
     list.hidden = !rows.size;
+    filterLabel.hidden = !rows.size; filter.disabled = active;
+    const query = filter.value.trim().toLowerCase();
+    let shown = 0, hiddenSelected = 0;
+    for (const [id, row] of rows) {
+      const matches = !query || (query.startsWith('@')
+        ? Boolean(row.username) && row.username.includes(query.slice(1))
+        : row.title.toLowerCase().includes(query) || Boolean(row.username?.includes(query)));
+      row.label.hidden = !matches;
+      if (matches) shown += 1; else if (selected.has(id)) hiddenSelected += 1;
+    }
+    filterStatus.textContent = query
+      ? `${shown} shown${hiddenSelected ? ` · ${hiddenSelected} selected outside this filter` : ''}${query.startsWith('@') ? '. Only verified profile links match @usernames.' : ''}` : '';
+    filterStatus.hidden = !filterStatus.textContent;
     results.hidden = !checkpoint?.tasks?.length;
     storageNote.hidden = !storageNote.textContent;
     find.disabled = active || loading || loadFailed;
     section.disabled = active; acknowledged.disabled = active;
-    selectAll.hidden = !inventory?.conversations.length; selectAll.disabled = active;
+    selectAll.hidden = !inventory?.conversations.length; selectAll.disabled = active || !shown;
+    selectAll.textContent = query ? 'Select visible matches' : 'Select all found';
     review.hidden = !inventory?.conversations.length;
     review.disabled = active || loading || loadFailed || !selected.size || !window.navigator?.locks?.request
       || (needsReconciliation && !reconciled.checked);
@@ -7298,18 +7433,31 @@ function mountUserscriptInboxPanel({
   function showInventory(value) {
     inventory = value.inventory;
     const threads = inventory?.conversations || [];
+    let labels;
+    try { labels = new Map((threads.length ? discovery.reviewLabels() : []).map(label => [label.threadId, label])); }
+    catch { inventory = null; selected.clear(); rows.clear(); list.replaceChildren(); updateControls(); return; }
     for (const thread of threads) {
-      if (rows.has(thread.threadId)) continue;
+      const display = labels.get(thread.threadId);
+      const existing = rows.get(thread.threadId);
+      if (existing) {
+        existing.title = display?.title || `Conversation ${existing.index}`;
+        existing.username = display?.username || null;
+        existing.name.textContent = existing.title;
+        existing.identity.textContent = `${existing.username ? `@${existing.username} · ` : ''}Thread ${thread.threadId}`;
+        continue;
+      }
       const label = create('label', null, 'inbox-choice');
       const input = create('input'); input.type = 'checkbox';
-      const name = create('span', `Conversation ${rows.size + 1}`);
-      const identity = create('small', `Thread ${thread.threadId}`);
+      const index = rows.size + 1;
+      const title = display?.title || `Conversation ${index}`, username = display?.username || null;
+      const name = create('span', title);
+      const identity = create('small', `${username ? `@${username} · ` : ''}Thread ${thread.threadId}`);
       const text = create('span'); text.append(name, identity); label.append(input, text);
       input.addEventListener('change', () => {
         if (input.checked) selected.add(thread.threadId); else selected.delete(thread.threadId);
         updateControls();
       });
-      rows.set(thread.threadId, { label, input }); list.append(label);
+      rows.set(thread.threadId, { label, input, name, identity, index, title, username }); list.append(label);
     }
     if (!inventory) { selected.clear(); rows.clear(); list.replaceChildren(); }
     const finding = value.status === 'discovering';
@@ -7350,6 +7498,7 @@ function mountUserscriptInboxPanel({
     }
   }
   reconciled.addEventListener('change', updateControls);
+  filter.addEventListener('input', updateControls);
   async function loadCheckpoint() {
     const value = await load();
     if (!value) {
@@ -7377,7 +7526,7 @@ function mountUserscriptInboxPanel({
     if (active || loading || loadFailed || busy()) return;
     if (!acknowledged.checked) { announce('Confirm that opening conversations may mark them read.'); acknowledged.focus(); return; }
     const epoch = ++operationEpoch;
-    active = true; inventory = null; selected.clear(); rows.clear(); list.replaceChildren(); unsubscribe?.(); controller = null; updateControls();
+    active = true; inventory = null; selected.clear(); rows.clear(); filter.value = ''; list.replaceChildren(); unsubscribe?.(); controller = null; updateControls();
     try {
       await loadCheckpoint();
       if (epoch !== operationEpoch) return;
@@ -7388,7 +7537,10 @@ function mountUserscriptInboxPanel({
   });
   selectAll.addEventListener('click', () => {
     if (active) return;
-    for (const [id, row] of rows) { selected.add(id); row.input.checked = true; }
+    for (const [id, row] of rows) {
+      if (row.label.hidden) continue;
+      selected.add(id); row.input.checked = true;
+    }
     updateControls();
   });
   async function startReview(threadIds) {
@@ -7644,8 +7796,8 @@ return Object.freeze({ createInboxCheckpointStore });
 localModules["src/core/presence.js"] = (() => {
 
 /**
- * Presence: deterministic, account-bound planning for Live Like Me.
- * Original implementation. No network, DOM, credentials, or action authority.
+ * Deterministic, account-bound Presence planning.
+ * No network, DOM, credentials, or action authority.
  * Inputs describe observations; a future trusted adapter must revalidate them.
  */
 const PRESENCE_VERSION = 1;
@@ -8225,7 +8377,7 @@ const MESSAGES = Object.freeze({
   'viewer-changed-or-unavailable': 'Open your inbox so the signed-in account can be checked.',
   'capture-expired': 'These lists are out of date. Run Mutual Checker again.',
   'profile-account-mismatch': 'The saved routine belongs to another account.',
-  'routine-source-unavailable': 'Only Stay connected is available from these lists.',
+  'routine-source-unavailable': 'These lists support follow-back plans only.',
   'review-expired': 'This plan expired. Build it again.',
   'capture-changed': 'The checked lists changed. Build a new plan.',
   'targets-changed': 'The suggested accounts changed. Build a new plan.',
@@ -8233,17 +8385,19 @@ const MESSAGES = Object.freeze({
   'account-changed': 'The signed-in account changed. Build a new plan.',
   'outside-active-window': 'This is outside your routine’s active hours.',
 });
-const LIVE_REASON = 'Plan preview only. Use manual Follow / Unfollow to run actions.';
+const LIVE_REASON = 'Planning only. No actions run here.';
 const PAGE_SIZE = 25;
 
 function mountUserscriptPresencePanel({
   container, document = globalThis.document, nativeAdapter, getCapture, getProfile,
-  onReview = null, onManual, onStatus = () => {}, now = Date.now,
+  onReview = null, onManual, onStatus = () => {}, now = Date.now, preferenceStore = null,
 } = {}) {
   if (!container || !document?.createElement || typeof nativeAdapter?.prepareProductionInputs !== 'function'
     || typeof getCapture !== 'function' || typeof getProfile !== 'function'
     || typeof onManual !== 'function' || (onReview !== null && typeof onReview !== 'function')
-    || typeof onStatus !== 'function' || typeof now !== 'function') throw new Error('presence-panel-adapter-required');
+    || typeof onStatus !== 'function' || typeof now !== 'function'
+    || (preferenceStore !== null && (typeof preferenceStore.load !== 'function'
+      || typeof preferenceStore.update !== 'function'))) throw new Error('presence-panel-adapter-required');
   const create = (tag, text, className) => {
     const node = document.createElement(tag);
     if (text !== undefined && text !== null) node.textContent = text;
@@ -8251,9 +8405,9 @@ function mountUserscriptPresencePanel({
     return node;
   };
   const root = create('section', null, 'presence-routine');
-  root.setAttribute('aria-label', 'Presence — Stay connected');
+  root.setAttribute('aria-label', 'Presence');
   const style = create('style', `
-    .presence-routine{display:grid;gap:16px;min-width:0;color:var(--insta-toolbox-text);font:inherit}
+    .presence-routine{display:grid;gap:12px;min-width:0;color:var(--insta-toolbox-text);font:inherit}
     .presence-routine h3,.presence-routine p{margin:0;overflow-wrap:anywhere}
     .presence-routine h3{font-size:16px;line-height:1.4}
     .presence-routine .presence-fields{display:grid;gap:12px;min-width:0}
@@ -8276,8 +8430,10 @@ function mountUserscriptPresencePanel({
     .presence-routine [hidden]{display:none!important}
     @media(forced-colors:active){.presence-routine input,.presence-routine textarea,.presence-routine button{border:1px solid ButtonText}.presence-routine summary{color:CanvasText;-webkit-text-fill-color:CanvasText}.presence-routine :focus-visible{outline-color:Highlight}}
   `);
-  const heading = create('h3', 'Stay connected');
   const context = create('p', 'Follow back from your latest checked lists.', 'presence-note');
+  const choicesDisclosure = create('details'); choicesDisclosure.open = true;
+  choicesDisclosure.setAttribute('data-presence', 'choices');
+  const choicesSummary = create('summary', 'Plan choices');
   const fields = create('div', null, 'presence-fields');
   const allowanceLabel = create('label', 'Accounts in this plan');
   const allowance = create('input'); allowance.type = 'number'; allowance.min = '0'; allowance.max = '50'; allowance.step = '1';
@@ -8290,7 +8446,7 @@ function mountUserscriptPresencePanel({
   includeLabel.append(includePrivate, document.createTextNode('Include private accounts'));
   const privacyNote = create('p', 'Privacy is not included in checked lists. Leave this off to hold accounts with unknown privacy.', 'presence-note');
   const hours = create('details');
-  const hoursSummary = create('summary', 'Plan options');
+  const hoursSummary = create('summary', 'Hours and privacy');
   const hoursFields = create('div', null, 'presence-fields');
   const startLabel = create('label', 'From');
   const start = create('input'); start.type = 'time'; start.setAttribute('data-presence', 'start');
@@ -8309,8 +8465,14 @@ function mountUserscriptPresencePanel({
   actions.append(buildButton, reviewButton, manualButton);
   const feedback = create('p', '', 'presence-note');
   feedback.hidden = true;
+  const storageNote = create('p', '', 'presence-note'); storageNote.hidden = true;
+  storageNote.setAttribute('data-presence', 'storage');
+  const repairButton = create('button', 'Save corrected choices', 'button quiet');
+  repairButton.type = 'button'; repairButton.hidden = true;
   const results = create('div', null, 'presence-results'); results.hidden = true;
   const summary = create('p');
+  summary.setAttribute('data-presence', 'plan-summary');
+  summary.setAttribute('tabindex', '-1');
   const targets = create('ul'); targets.setAttribute('aria-label', 'Suggested accounts');
   const held = create('details');
   const heldSummary = create('summary');
@@ -8319,24 +8481,123 @@ function mountUserscriptPresencePanel({
   held.append(heldSummary, heldList, moreHeld);
   const executionNote = create('p', LIVE_REASON, 'presence-note');
   results.append(summary, targets, held);
-  root.append(style, heading, context, fields, actions, feedback, results, executionNote);
+  choicesDisclosure.append(choicesSummary, fields, storageNote, repairButton);
+  root.append(style, context, executionNote, choicesDisclosure, feedback, results, actions);
   container.append(root);
 
   const listeners = [];
   const listen = (node, type, handler) => { node.addEventListener(type, handler); listeners.push(() => node.removeEventListener(type, handler)); };
   let disposed = false, epoch = 0, status = 'idle', reason = null;
   let plan = null, capture = null, heldRows = [], heldCount = PAGE_SIZE, reviewPending = false;
+  let storageWritable = true, saveEpoch = 0, preferencesLoading = Boolean(preferenceStore);
+  let needsRepair = false, repairing = false;
+  const edited = new Set();
   const selected = new Set();
   const initial = getProfile() || {};
   allowance.value = String(initial.followLimit ?? 6);
+  keep.value = (initial.protectedHandles || []).map(name => `@${name}`).join(', ');
   includePrivate.checked = initial.skipPrivate === false;
   const formatMinute = value => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
   start.value = formatMinute(initial.window?.start ?? 540);
   end.value = formatMinute(initial.window?.end ?? 1200);
   zone.textContent = `Plan hours · ${initial.timezone || 'UTC'}`;
 
+  const choices = [
+    [allowance, 'followLimit'], [keep, 'protectedHandles'], [start, 'window.start'],
+    [end, 'window.end'], [includePrivate, 'skipPrivate'],
+  ];
+  const showStorage = text => {
+    if (disposed) return;
+    storageNote.textContent = text; storageNote.hidden = !text;
+    repairButton.hidden = !needsRepair || !storageWritable;
+    repairButton.disabled = repairing;
+  };
+  const ready = preferenceStore ? Promise.resolve().then(() => preferenceStore.load()).then(saved => {
+    if (disposed) return;
+    storageWritable = saved.writable !== false;
+    needsRepair = saved.issues?.some(issue => !['older-record', 'version-unsupported', 'write-outcome-uncertain'].includes(issue)) || false;
+    const value = saved.preferences;
+    if (!edited.has('followLimit')) allowance.value = String(value.followLimit);
+    if (!edited.has('protectedHandles')) keep.value = value.protectedHandles.map(name => `@${name}`).join(', ');
+    if (!edited.has('skipPrivate')) includePrivate.checked = !value.skipPrivate;
+    if (!edited.has('window.start')) start.value = formatMinute(value.window.start);
+    if (!edited.has('window.end')) end.value = formatMinute(value.window.end);
+    if (plan) invalidate(null);
+    showStorage(!storageWritable ? saved.issues?.includes('version-unsupported')
+      ? 'Saved choices use a newer format. Changes stay in this tab.'
+      : 'Saving choices is unavailable. Changes stay in this tab.'
+      : needsRepair ? 'Check the saved choices above, then save the corrected values.' : '');
+  }).catch(() => {
+    storageWritable = false;
+    showStorage('Saved choices could not load. Changes stay in this tab.');
+  }).finally(() => {
+    preferencesLoading = false;
+    if (!disposed) controls();
+  }) : Promise.resolve();
+
+  function readChoices() {
+    const countText = String(allowance.value).trim();
+    if (!/^\d+$/.test(countText) || Number(countText) > 50) throw new Error('Choose a whole number from 0 to 50.');
+    const readMinute = value => {
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error('Choose valid plan hours.');
+      const [hour, minute] = value.split(':').map(Number);
+      return hour * 60 + minute;
+    };
+    const window = { start: readMinute(start.value), end: readMinute(end.value) };
+    if (window.start === window.end) throw new Error('Choose different start and end times.');
+    const tokens = String(keep.value || '').split(/[\s,;]+/).filter(Boolean);
+    if (tokens.length > 500) throw new Error('Keep at most 500 protected accounts.');
+    return { followLimit: Number(countText), skipPrivate: !includePrivate.checked, window,
+      protectedHandles: [...new Set(tokens.map(name => normalizeHandle(name)))] };
+  }
+
+  async function saveChoice(key) {
+    if (!preferenceStore || disposed) return;
+    const ticket = ++saveEpoch;
+    await ready;
+    if (disposed || !storageWritable) return;
+    if (needsRepair) { showStorage('Check the saved choices above, then save the corrected values.'); return; }
+    let patch;
+    try {
+      const value = readChoices();
+      patch = key.startsWith('window.') ? { window: { [key.split('.')[1]]: value.window[key.split('.')[1]] } }
+        : { [key]: value[key] };
+    }
+    catch { showStorage('Finish the choices above to save them.'); return; }
+    try {
+      await preferenceStore.update(patch);
+      if (!disposed && ticket === saveEpoch) showStorage('');
+    } catch {
+      if (!disposed && ticket === saveEpoch) showStorage('Choices could not save. Changes stay in this tab.');
+    }
+  }
+
+  async function repairChoices() {
+    if (disposed || !preferenceStore || !storageWritable || !needsRepair || repairing) return;
+    let values;
+    try { values = readChoices(); }
+    catch { showStorage('Finish the choices above to save them.'); return; }
+    const ticket = ++saveEpoch;
+    repairing = true; showStorage('Saving corrected choices…');
+    try {
+      await preferenceStore.update(values);
+      if (!disposed) {
+        if (ticket === saveEpoch) { needsRepair = false; showStorage(''); }
+        else showStorage('Choices changed while saving. Save the current choices.');
+      }
+    } catch {
+      showStorage('Choices could not save. Changes stay in this tab.');
+    } finally {
+      repairing = false;
+      if (!disposed) repairButton.disabled = false;
+    }
+  }
+
   function announce(text) { feedback.textContent = text; feedback.hidden = !text; onStatus(text); }
   function controls() {
+    buildButton.disabled = preferencesLoading;
+    buildButton.hidden = Boolean(plan);
+    choicesSummary.textContent = plan ? 'Edit plan choices' : 'Plan choices';
     reviewButton.hidden = !plan?.targets.length || typeof onReview !== 'function';
     reviewButton.disabled = reviewPending || !selected.size || typeof onReview !== 'function';
     reviewButton.textContent = `Review ${selected.size} account${selected.size === 1 ? '' : 's'}`;
@@ -8356,23 +8617,12 @@ function mountUserscriptPresencePanel({
     announce(MESSAGES[code] || 'This plan is unavailable. Check the lists and choices, then try again.');
   }
   function prepare() {
-    const countText = String(allowance.value).trim();
-    if (!/^\d+$/.test(countText) || Number(countText) > 50) throw new Error('Choose a whole number from 0 to 50.');
     const base = getProfile() || {};
-    const readMinute = value => {
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error('Choose valid plan hours.');
-      const [hour, minute] = value.split(':').map(Number);
-      return hour * 60 + minute;
-    };
-    const window = { start: readMinute(start.value), end: readMinute(end.value) };
-    if (window.start === window.end) throw new Error('Choose different start and end times.');
-    const preferences = { ...base, goal: 'maintain', followLimit: Number(countText), skipPrivate: !includePrivate.checked, window };
+    const { protectedHandles: names, ...choice } = readChoices();
+    const preferences = { ...base, goal: 'maintain', ...choice };
     const original = getCapture();
     const prepared = nativeAdapter.prepareProductionInputs({ capture: original, profile: preferences });
     if (prepared.status !== 'ready-for-review') return { original, prepared };
-    const tokens = String(keep.value || '').split(/[\s,;]+/).filter(Boolean);
-    if (tokens.length > 500) throw new Error('Keep at most 500 protected accounts.');
-    const names = [...new Set(tokens.map((name) => normalizeHandle(name)))];
     const protectedIds = new Set(prepared.inputs.profile.protectedIds);
     const unresolved = [];
     for (const name of names) {
@@ -8395,7 +8645,7 @@ function mountUserscriptPresencePanel({
     moreHeld.textContent = `Show ${Math.min(PAGE_SIZE, Math.max(0, heldRows.length - heldCount))} more`;
   }
   function renderPlan(prepared) {
-    context.textContent = `@${plan.profile.username} · Stay connected`;
+    context.textContent = `Follow-back plan for @${plan.profile.username}`;
     results.hidden = false; targets.replaceChildren();
     summary.textContent = `${plan.targets.length} suggested · ${plan.decisions.length - plan.targets.length} held`;
     for (const target of plan.targets) {
@@ -8421,13 +8671,15 @@ function mountUserscriptPresencePanel({
     if (!prepared.evidence.negativeFollowingEvidence) extras.push('Following is incomplete or unresolved; missing accounts stay unknown.');
     if (prepared.evidence.unresolvedFollowers || prepared.evidence.identityConflicts) extras.push('Unresolved account identities were left out.');
     if (prepared.evidence.truncated) extras.push(`${prepared.evidence.omitted} accounts are outside this plan’s input limit.`);
-    const message = plan.targets.length
-      ? typeof onReview === 'function' ? 'Choose the accounts to review.' : 'Suggested accounts are listed below.'
-      : 'No accounts match these choices.';
-    announce(`${message}${extras.length ? ` ${extras.join(' ')}` : ''}`);
+    const message = plan.targets.length ? '' : 'No accounts match these choices.';
+    feedback.textContent = [message, ...extras].filter(Boolean).join(' ');
+    feedback.hidden = !feedback.textContent;
+    onStatus([summary.textContent, feedback.textContent].filter(Boolean).join('. '));
   }
   function build() {
-    if (disposed) return false;
+    if (disposed || preferencesLoading) return false;
+    const activeElement = root.getRootNode?.()?.activeElement || document.activeElement;
+    const focusFromBuild = activeElement === buildButton;
     invalidate(null);
     try {
       const value = prepare();
@@ -8436,6 +8688,10 @@ function mountUserscriptPresencePanel({
       plan = compilePlan({ ...value.prepared.inputs, now: now() });
       selected.clear(); for (const target of plan.targets) selected.add(target.targetId);
       status = 'planned'; renderPlan(value.prepared);
+      // A deliberate Build can compact the form; background refresh never
+      // closes a disclosure or moves focus away from an edited control.
+      if (!choicesDisclosure.contains?.(activeElement)) choicesDisclosure.open = false;
+      if (focusFromBuild) summary.focus?.({ preventScroll: true });
       return true;
     } catch (error) {
       invalidate(null); status = 'unavailable'; reason = 'invalid-choices';
@@ -8492,13 +8748,19 @@ function mountUserscriptPresencePanel({
     }
   }
   listen(buildButton, 'click', build); listen(reviewButton, 'click', review);
+  listen(repairButton, 'click', repairChoices);
   listen(manualButton, 'click', () => { invalidate(null); onManual(); });
-  for (const node of [allowance, keep, start, end]) listen(node, 'input', () => invalidate());
-  listen(includePrivate, 'change', () => invalidate());
+  for (const [node, key] of choices) {
+    if (node !== includePrivate) listen(node, 'input', () => { edited.add(key); saveEpoch += 1; invalidate(); });
+    listen(node, 'change', () => {
+      edited.add(key); invalidate();
+      return saveChoice(key);
+    });
+  }
   listen(moreHeld, 'click', () => { heldCount += PAGE_SIZE; renderHeld(); });
   controls();
   return Object.freeze({
-    build, review, refresh, invalidate,
+    build, review, refresh, invalidate, ready,
     snapshot: () => ({ status, reason, executable: false, selectedTargetIds: [...selected], plan: plan ? structuredClone(plan) : null }),
     dispose() {
       if (disposed) return;
@@ -8510,11 +8772,210 @@ function mountUserscriptPresencePanel({
 
 return Object.freeze({ mountUserscriptPresencePanel });
 })();
+localModules["extension/presence-preferences.js"] = (() => {
+const { normalizeHandle } = localModules["src/core/presence.js"];
+
+const PRESENCE_PREFERENCES_KEY = 'instaToolboxPresencePreferencesV1';
+const PRESENCE_PREFERENCES_VERSION = 1;
+const FIELDS = new Set(['schemaVersion', 'followLimit', 'protectedHandles', 'window', 'skipPrivate']);
+const MAX_HANDLES = 500;
+const MAX_HANDLE_TEXT = 16_500;
+const plain = value => value !== null && typeof value === 'object'
+  && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+const entry = (value, key) => Object.getOwnPropertyDescriptor(value, key);
+const own = (value, key) => Object.hasOwn(value, key);
+const data = (value, key) => entry(value, key)?.value;
+const clone = value => structuredClone(value);
+const validMinute = value => Number.isSafeInteger(value) && value >= 0 && value <= 1439;
+function fail(code) { const error = new Error(code); error.code = code; throw error; }
+
+function defaultPresencePreferences() {
+  return { schemaVersion: PRESENCE_PREFERENCES_VERSION, followLimit: 6,
+    protectedHandles: [], window: { start: 540, end: 1200 }, skipPrivate: true };
+}
+
+function handles(value, strict, issues) {
+  let values;
+  if (typeof value === 'string' && value.length <= MAX_HANDLE_TEXT) values = value.split(/[\s,;]+/).filter(Boolean);
+  else if (Array.isArray(value)) values = Array.from({ length: Math.min(value.length, MAX_HANDLES + 1) },
+    (_, index) => data(value, String(index)));
+  if (!values || values.length > MAX_HANDLES) {
+    if (strict) fail('presence-preferences-protection-invalid');
+    issues.push('protected-handles-invalid');
+    values = values?.slice(0, MAX_HANDLES) || [];
+  }
+  const result = [];
+  for (const value of values) {
+    try {
+      const username = normalizeHandle(value);
+      if (!result.includes(username)) result.push(username);
+    } catch {
+      if (strict) fail('presence-preferences-protection-invalid');
+      if (!issues.includes('protected-handles-invalid')) issues.push('protected-handles-invalid');
+    }
+  }
+  return result;
+}
+
+function normalize(value, strict = false) {
+  const preferences = defaultPresencePreferences(), issues = [];
+  if (value == null && !strict) return { preferences, issues, writable: true };
+  if (!plain(value)) {
+    if (strict) fail('presence-preferences-record-invalid');
+    return { preferences, issues: ['record-invalid'], writable: true };
+  }
+  const version = data(value, 'schemaVersion');
+  if (own(value, 'schemaVersion') && version !== 0 && version !== PRESENCE_PREFERENCES_VERSION) {
+    if (strict) fail('presence-preferences-version-unsupported');
+    return { preferences, issues: ['version-unsupported'], writable: false };
+  }
+  if (version !== PRESENCE_PREFERENCES_VERSION) issues.push('older-record');
+  if (strict && Object.keys(value).some(key => !FIELDS.has(key))) fail('presence-preferences-field-invalid');
+  if (own(value, 'followLimit')) {
+    const limit = data(value, 'followLimit');
+    if (Number.isSafeInteger(limit) && limit >= 0 && limit <= 50) preferences.followLimit = limit;
+    else if (strict) fail('presence-preferences-allowance-invalid');
+    else issues.push('allowance-invalid');
+  }
+  if (own(value, 'protectedHandles')) preferences.protectedHandles = handles(data(value, 'protectedHandles'), strict, issues);
+  if (own(value, 'window')) {
+    const window = data(value, 'window');
+    if (plain(window) && validMinute(data(window, 'start')) && validMinute(data(window, 'end'))
+      && data(window, 'start') !== data(window, 'end')) {
+      if (strict && Object.keys(window).some(key => !['start', 'end'].includes(key))) fail('presence-preferences-hours-invalid');
+      preferences.window = { start: data(window, 'start'), end: data(window, 'end') };
+    } else if (strict) fail('presence-preferences-hours-invalid');
+    else issues.push('hours-invalid');
+  }
+  if (own(value, 'skipPrivate')) {
+    if (typeof data(value, 'skipPrivate') === 'boolean') preferences.skipPrivate = data(value, 'skipPrivate');
+    else if (strict) fail('presence-preferences-privacy-invalid');
+    else issues.push('privacy-invalid');
+  }
+  return { preferences, issues, writable: true };
+}
+
+/** Read only these editable choices; repairs are reported, never auto-written. */
+function normalizePresencePreferences(value) { return normalize(value); }
+
+/** Validate edits before they enter the persistence queue. */
+function validatePresencePreferences(value) { return normalize(value, true).preferences; }
+
+function capturePatch(value) {
+  if (!plain(value) || Object.keys(value).some(key => !FIELDS.has(key))) fail('presence-preferences-field-invalid');
+  const patch = {};
+  for (const key of Object.keys(value)) {
+    if (!own(entry(value, key), 'value')) fail('presence-preferences-field-invalid');
+    patch[key] = data(value, key);
+  }
+  if (own(patch, 'window')) {
+    if (!plain(patch.window) || Object.keys(patch.window).some(key => !['start', 'end'].includes(key))) fail('presence-preferences-hours-invalid');
+    for (const key of Object.keys(patch.window)) {
+      if (!validMinute(data(patch.window, key))) fail('presence-preferences-hours-invalid');
+    }
+    if (own(patch.window, 'start') && own(patch.window, 'end')
+      && data(patch.window, 'start') === data(patch.window, 'end')) fail('presence-preferences-hours-invalid');
+    patch.window = Object.fromEntries(Object.keys(patch.window).map(key => [key, data(patch.window, key)]));
+  }
+  // Check individual fields now; the complete hours pair is checked after merging.
+  const withoutWindow = { ...patch }; delete withoutWindow.window;
+  validatePresencePreferences(withoutWindow);
+  if (own(patch, 'protectedHandles')) patch.protectedHandles = handles(patch.protectedHandles, true, []);
+  return clone(patch);
+}
+
+function requireExplicitRepairs(issues, patch) {
+  const damagedFields = {
+    'allowance-invalid': 'followLimit',
+    'protected-handles-invalid': 'protectedHandles',
+    'hours-invalid': 'window',
+    'privacy-invalid': 'skipPrivate',
+  };
+  const required = issues.includes('record-invalid')
+    ? ['followLimit', 'protectedHandles', 'window', 'skipPrivate']
+    : issues.flatMap(issue => damagedFields[issue] ? [damagedFields[issue]] : []);
+  for (const field of required) {
+    if (!own(patch, field)) fail('presence-preferences-repair-required');
+    if (field === 'window' && (!own(patch.window, 'start') || !own(patch.window, 'end'))) {
+      fail('presence-preferences-repair-required');
+    }
+  }
+}
+
+/**
+ * read(key) and write(key, value) touch one private preference key only.
+ * withLock(operation), when supplied, must serialize this key across tabs.
+ * The local queue alone orders calls to this store instance, not other tabs.
+ */
+function createPresencePreferenceStore({ read, write, withLock = null, timeoutMs = 10_000 } = {}) {
+  if (typeof read !== 'function' || typeof write !== 'function'
+    || (withLock !== null && typeof withLock !== 'function')
+    || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) fail('presence-preferences-adapter-invalid');
+  let tail = Promise.resolve(), writeFailure = null;
+  function enqueue(operation) {
+    const result = tail.then(async () => {
+      let active = true, phase = 'lock', timer;
+      const guard = () => { if (!active) fail('presence-preferences-operation-expired'); };
+      const invoke = async () => {
+        guard(); phase = 'read';
+        let stored;
+        try { stored = await read(PRESENCE_PREFERENCES_KEY); }
+        catch { fail('presence-preferences-read-failed'); }
+        guard();
+        const current = normalizePresencePreferences(stored);
+        if (!operation) return { ...current,
+          issues: writeFailure ? [...current.issues, 'write-outcome-uncertain'] : current.issues,
+          writable: current.writable && !writeFailure };
+        if (writeFailure) throw writeFailure;
+        if (!current.writable) fail('presence-preferences-version-unsupported');
+        requireExplicitRepairs(current.issues, operation);
+        const next = validatePresencePreferences({ ...current.preferences, ...operation,
+          window: { ...current.preferences.window, ...(operation.window || {}) } });
+        guard(); phase = 'write';
+        try { await write(PRESENCE_PREFERENCES_KEY, clone(next)); }
+        catch {
+          writeFailure = new Error('presence-preferences-write-failed');
+          writeFailure.code = writeFailure.message; throw writeFailure;
+        }
+        guard(); phase = 'done';
+        return { preferences: next, issues: [], writable: true };
+      };
+      try {
+        return clone(await Promise.race([
+          Promise.resolve().then(() => withLock ? withLock(invoke) : invoke()),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => {
+              const error = new Error(`presence-preferences-${phase}-timeout`); error.code = error.message;
+              if (phase === 'write') writeFailure = error;
+              active = false; reject(error);
+            }, timeoutMs);
+          }),
+        ]));
+      } catch (error) {
+        if (String(error?.code || '').startsWith('presence-preferences-')) throw error;
+        fail('presence-preferences-lock-failed');
+      } finally { active = false; clearTimeout(timer); }
+    });
+    tail = result.catch(() => {});
+    return result;
+  }
+  return Object.freeze({
+    load: () => enqueue(null),
+    update(patch) {
+      try { return enqueue(capturePatch(patch)); }
+      catch (error) { return Promise.reject(error); }
+    },
+  });
+}
+
+return Object.freeze({ PRESENCE_PREFERENCES_KEY, PRESENCE_PREFERENCES_VERSION, defaultPresencePreferences, normalizePresencePreferences, validatePresencePreferences, createPresencePreferenceStore });
+})();
 globalThis.InstaToolboxInboxDiscovery = Object.freeze({ create: localModules['extension/inbox-userscript-discovery.js'].createUserscriptInboxDiscovery });
 globalThis.InstaToolboxInboxPanel = Object.freeze({ mount: localModules['extension/inbox-userscript-panel.js'].mountUserscriptInboxPanel });
 globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['extension/inbox-checkpoint-store.js'].createInboxCheckpointStore });
 globalThis.InstaToolboxPresenceInputs = Object.freeze({ create: localModules['extension/presence-native-inputs.js'].createPresenceNativeInputs });
 globalThis.InstaToolboxPresencePanel = Object.freeze({ mount: localModules['extension/presence-userscript-panel.js'].mountUserscriptPresencePanel });
+globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModules['extension/presence-preferences.js'].createPresencePreferenceStore });
 (async () => {
   'use strict';
 
@@ -9426,7 +9887,7 @@ globalThis.InstaToolboxPresencePanel = Object.freeze({ mount: localModules['exte
           <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
           <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
           <p class="lead" data-role="account-run-summary">Choose a source, then review the accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          <p class="notice">One profile at a time. Stops on blocks, rate limits, or unexpected pages.</p><details class="settings-inline" data-role="presence-disclosure"><summary>Presence · Live Like Me</summary><div data-role="presence-routine"></div></details></section>
+          <details class="settings-inline" data-role="presence-disclosure"><summary>Presence</summary><div data-role="presence-routine"></div></details></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
@@ -11626,6 +12087,7 @@ globalThis.InstaToolboxPresencePanel = Object.freeze({ mount: localModules['exte
         });
         return;
       }
+      if (!event.target.matches('input[type="file"][data-file="queue"], input[type="file"][data-file="dm"]')) return;
       const file = event.target.files?.[0];
       if (event.target.dataset.file === 'queue') await importQueue(file);
       if (event.target.dataset.file === 'dm') await importDmJob(file);
@@ -11880,11 +12342,19 @@ globalThis.InstaToolboxPresencePanel = Object.freeze({ mount: localModules['exte
   savePreferences(preferences);
   renderCleanupSettings({ initializeDraft: true });
   if (presenceInputs && globalThis.InstaToolboxPresencePanel) {
+    const presencePreferences = globalThis.InstaToolboxPresencePreferences?.create({
+      read: key => GM_getValue(key, null),
+      write: (key, value) => GM_setValue(key, value),
+      withLock: typeof navigator.locks?.request === 'function'
+        ? operation => navigator.locks.request('insta-toolbox-presence-preferences', operation)
+        : undefined,
+    });
     presencePanel = globalThis.InstaToolboxPresencePanel.mount({
       container: query('[data-role="presence-routine"]'), document,
       nativeAdapter: presenceInputs,
       getCapture: () => presenceCapture,
       getProfile: () => ({ goal: 'maintain', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+      preferenceStore: presencePreferences || null,
       onManual: () => {
         query('[data-role="presence-disclosure"]').open = false;
         query('[data-role="bot-action"]').focus();

@@ -36,6 +36,11 @@ export function mountUserscriptInboxPanel({
   const inbox = create('a', 'Open inbox', 'button quiet');
   inbox.href = 'https://www.instagram.com/direct/inbox/';
   const inventoryStatus = create('p', '', 'lead');
+  const filterLabel = create('label', 'Find a person or chat', 'field');
+  const filter = create('input'); filter.type = 'search'; filter.maxLength = 160;
+  filter.placeholder = 'Name or @username'; filter.setAttribute('aria-label', 'Filter conversations');
+  filterLabel.append(filter);
+  const filterStatus = create('p', '', 'lead');
   const list = create('div', null, 'inbox-selection');
   list.setAttribute('role', 'group'); list.setAttribute('aria-label', 'Conversations to clean up');
   const selectAll = create('button', 'Select all found', 'button quiet'); selectAll.type = 'button';
@@ -55,7 +60,7 @@ export function mountUserscriptInboxPanel({
   supportNote.hidden = !supportNote.textContent;
   controls.append(find, inbox);
   const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, resume, pause, skip, stop);
-  container.append(note, section, acknowledgment, controls, inventoryStatus, list, supportNote, recovery, actions, storageNote, results);
+  container.append(note, section, acknowledgment, controls, inventoryStatus, filterLabel, filterStatus, list, supportNote, recovery, actions, storageNote, results);
 
   function context() {
     const value = viewer.inspect({ document, location: window.location });
@@ -77,11 +82,25 @@ export function mountUserscriptInboxPanel({
   function updateControls() {
     inventoryStatus.hidden = !inventoryStatus.textContent;
     list.hidden = !rows.size;
+    filterLabel.hidden = !rows.size; filter.disabled = active;
+    const query = filter.value.trim().toLowerCase();
+    let shown = 0, hiddenSelected = 0;
+    for (const [id, row] of rows) {
+      const matches = !query || (query.startsWith('@')
+        ? Boolean(row.username) && row.username.includes(query.slice(1))
+        : row.title.toLowerCase().includes(query) || Boolean(row.username?.includes(query)));
+      row.label.hidden = !matches;
+      if (matches) shown += 1; else if (selected.has(id)) hiddenSelected += 1;
+    }
+    filterStatus.textContent = query
+      ? `${shown} shown${hiddenSelected ? ` · ${hiddenSelected} selected outside this filter` : ''}${query.startsWith('@') ? '. Only verified profile links match @usernames.' : ''}` : '';
+    filterStatus.hidden = !filterStatus.textContent;
     results.hidden = !checkpoint?.tasks?.length;
     storageNote.hidden = !storageNote.textContent;
     find.disabled = active || loading || loadFailed;
     section.disabled = active; acknowledged.disabled = active;
-    selectAll.hidden = !inventory?.conversations.length; selectAll.disabled = active;
+    selectAll.hidden = !inventory?.conversations.length; selectAll.disabled = active || !shown;
+    selectAll.textContent = query ? 'Select visible matches' : 'Select all found';
     review.hidden = !inventory?.conversations.length;
     review.disabled = active || loading || loadFailed || !selected.size || !window.navigator?.locks?.request
       || (needsReconciliation && !reconciled.checked);
@@ -97,18 +116,31 @@ export function mountUserscriptInboxPanel({
   function showInventory(value) {
     inventory = value.inventory;
     const threads = inventory?.conversations || [];
+    let labels;
+    try { labels = new Map((threads.length ? discovery.reviewLabels() : []).map(label => [label.threadId, label])); }
+    catch { inventory = null; selected.clear(); rows.clear(); list.replaceChildren(); updateControls(); return; }
     for (const thread of threads) {
-      if (rows.has(thread.threadId)) continue;
+      const display = labels.get(thread.threadId);
+      const existing = rows.get(thread.threadId);
+      if (existing) {
+        existing.title = display?.title || `Conversation ${existing.index}`;
+        existing.username = display?.username || null;
+        existing.name.textContent = existing.title;
+        existing.identity.textContent = `${existing.username ? `@${existing.username} · ` : ''}Thread ${thread.threadId}`;
+        continue;
+      }
       const label = create('label', null, 'inbox-choice');
       const input = create('input'); input.type = 'checkbox';
-      const name = create('span', `Conversation ${rows.size + 1}`);
-      const identity = create('small', `Thread ${thread.threadId}`);
+      const index = rows.size + 1;
+      const title = display?.title || `Conversation ${index}`, username = display?.username || null;
+      const name = create('span', title);
+      const identity = create('small', `${username ? `@${username} · ` : ''}Thread ${thread.threadId}`);
       const text = create('span'); text.append(name, identity); label.append(input, text);
       input.addEventListener('change', () => {
         if (input.checked) selected.add(thread.threadId); else selected.delete(thread.threadId);
         updateControls();
       });
-      rows.set(thread.threadId, { label, input }); list.append(label);
+      rows.set(thread.threadId, { label, input, name, identity, index, title, username }); list.append(label);
     }
     if (!inventory) { selected.clear(); rows.clear(); list.replaceChildren(); }
     const finding = value.status === 'discovering';
@@ -149,6 +181,7 @@ export function mountUserscriptInboxPanel({
     }
   }
   reconciled.addEventListener('change', updateControls);
+  filter.addEventListener('input', updateControls);
   async function loadCheckpoint() {
     const value = await load();
     if (!value) {
@@ -176,7 +209,7 @@ export function mountUserscriptInboxPanel({
     if (active || loading || loadFailed || busy()) return;
     if (!acknowledged.checked) { announce('Confirm that opening conversations may mark them read.'); acknowledged.focus(); return; }
     const epoch = ++operationEpoch;
-    active = true; inventory = null; selected.clear(); rows.clear(); list.replaceChildren(); unsubscribe?.(); controller = null; updateControls();
+    active = true; inventory = null; selected.clear(); rows.clear(); filter.value = ''; list.replaceChildren(); unsubscribe?.(); controller = null; updateControls();
     try {
       await loadCheckpoint();
       if (epoch !== operationEpoch) return;
@@ -187,7 +220,10 @@ export function mountUserscriptInboxPanel({
   });
   selectAll.addEventListener('click', () => {
     if (active) return;
-    for (const [id, row] of rows) { selected.add(id); row.input.checked = true; }
+    for (const [id, row] of rows) {
+      if (row.label.hidden) continue;
+      selected.add(id); row.input.checked = true;
+    }
     updateControls();
   });
   async function startReview(threadIds) {
