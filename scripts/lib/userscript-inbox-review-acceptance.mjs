@@ -241,16 +241,30 @@ export async function acceptUserscriptInboxReview({
         const nodes = [...inbox.querySelectorAll('button,input,select,a')].filter(visible)
           .map(node => node.matches('input[type="checkbox"]') ? node.closest('label') : node);
         const controls = [];
-        for (const node of nodes) {
-          node.scrollIntoView({block:'nearest',inline:'nearest'});
-          const before = node.getBoundingClientRect(), viewport = scroll.getBoundingClientRect();
-          scroll.scrollTop += before.top - viewport.top - Math.max(0, (viewport.height - before.height) / 2);
-          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const settleScroll = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const measureControl = node => {
           const rect = node.getBoundingClientRect(), clip = scroll.getBoundingClientRect();
           const hit = root.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-          controls.push({name:node.getAttribute('aria-label') || node.textContent.trim(), width:rect.width,height:rect.height,
-            left:rect.left,right:rect.right,reachable:rect.top >= clip.top - 1 && rect.bottom <= clip.bottom + 1,
-            receivesPointer:hit === node || node.contains(hit)});
+          return {name:node.getAttribute('aria-label') || node.textContent.trim(), width:rect.width,height:rect.height,
+            left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,clipTop:clip.top,clipBottom:clip.bottom,
+            reachable:rect.top >= clip.top - 1 && rect.bottom <= clip.bottom + 1,
+            receivesPointer:hit === node || node.contains(hit),
+            hit:hit?.getAttribute?.('aria-label') || hit?.textContent?.trim?.() || hit?.tagName || null};
+        };
+        for (const node of nodes) {
+          let control = null;
+          for (const block of ['center', 'start', 'end']) {
+            node.scrollIntoView({block,inline:'nearest'});
+            await settleScroll();
+            control = measureControl(node);
+            if (control.reachable && control.receivesPointer) break;
+          }
+          if (!control.reachable || !control.receivesPointer) {
+            (node.matches('label') ? node.querySelector('input') : node)?.focus?.({preventScroll:false});
+            await settleScroll();
+            control = measureControl(node);
+          }
+          controls.push(control);
         }
         const bounds = panel.getBoundingClientRect();
         const labels = [...inbox.querySelectorAll('.inbox-selection > label')];
