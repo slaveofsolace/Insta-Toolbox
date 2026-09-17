@@ -6,14 +6,14 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 - Recognize sent story and quoted replies when selecting the newest message.
 - Verify native removals across timestamp changes and history backfill without mistaking recycled rows for success.
-- Add the bounded reaction follow-up and separate result accounting behind the existing disabled capability; native acceptance remains pending.
+- Enable the optional userscript reaction follow-up after Unsend, with exact signed-in-account ownership proof, separate result accounting, and stop-on-uncertainty behavior. Authenticated disposable-reaction acceptance remains pending.
 - Group settings into Appearance, Cleanup defaults, Execution, and Data and troubleshooting; preserve existing preferences and separate appearance and layout resets.
 - Restore pre-Fast single-conversation traversal and adaptive 1–2 second pacing. Remove the speed selector and normalize saved Fast preferences without changing other settings.
 - Clean up cancelled waits and strengthen removal verification for recycled rows, temporary loading states, and reverted changes.
 - Stop safely on page suspension or lost evidence while preserving verified and uncertain outcomes separately.
 - Make blur and completion-summary preferences consistent across the extension and userscript.
-- Add reviewed, serial inbox cleanup to the userscript: discover conversations, select exact threads, confirm, and use the existing Unsend runner with Pause, Skip, and Stop. Native acceptance remains pending.
-- Keep managed worker tabs and own-reaction cleanup unavailable until their native adapters pass acceptance.
+- Add reviewed, serial Ghost mode to the userscript: scan every inbox section Instagram exposes, select exact conversations, confirm, and use the existing Unsend runner with Pause, Skip, and Stop. Native acceptance remains pending.
+- Keep managed worker tabs unavailable until their browser integration passes acceptance.
 - Replace the Presence plan builder with five direct activities, one finite maximum, and Start, Pause, Resume, and Stop controls.
 - Keep Presence review authority in memory, require exact visible Instagram targets and postconditions, and stop on uncertain outcomes.
 

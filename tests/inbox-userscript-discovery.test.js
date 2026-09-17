@@ -30,7 +30,7 @@ function fixture({ noRoute = false, onNavigate = null, unsupportedSection = fals
   const root = node({ clientHeight: 100, scrollHeight: 100, scrollTop: 0,
     contains: (element) => element.inRoot === true,
     querySelectorAll: (selector) => selector === '*' ? []
-      : selector === '[role="tab"][aria-selected="true"]' ? unsupportedSection ? [] : [section] : [row] });
+      : ['[role="tab"]', '[role="tab"][aria-selected="true"]'].includes(selector) ? unsupportedSection ? [] : [section] : [row] });
   const back = node({ getAttribute: () => '/direct/inbox/', click: () => { url = new URL('https://www.instagram.com/direct/inbox/'); replacePane(false); } });
   const document = { documentElement: {}, querySelectorAll: (selector) => selector === '[aria-label="Thread list"]' ? [root]
     : selector === '[role="tab"]' ? unsupportedSection ? [] : [section] : selector === 'a[href]' ? [back]
@@ -49,6 +49,7 @@ function fixture({ noRoute = false, onNavigate = null, unsupportedSection = fals
 
 test('native same-tab discovery feeds a frozen selected-ID review without execution', async () => {
   const f = fixture();
+  assert.deepEqual(f.adapter.availableSections(), ['primary']);
   const result = await f.adapter.discover({ navigationAcknowledged: true });
   assert.equal(result.status, 'ready'); assert.equal(result.executionAvailable, false);
   assert.equal(result.inventory.complete, false);

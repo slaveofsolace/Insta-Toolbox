@@ -2,11 +2,10 @@
 
 ## Status
 
-**Disabled on every surface pending native acceptance.** The userscript now
-contains a separate reaction adapter, bounded message traversal, and follow-up
-hook after a completed Unsend run. Settings still report reaction cleanup as
-unavailable, so saved preferences cannot turn it on. Ordinary Unsend does not
-depend on reaction discovery or account resolution.
+**Enabled in the 4.0.1 userscript candidate; disabled on the extension,
+desktop, and PWA.** The userscript contains a separate reaction adapter,
+bounded message traversal, and follow-up hook after a completed Unsend run.
+Ordinary Unsend does not depend on reaction discovery or account resolution.
 
 Native inspection found a reaction-details dialog with an explicit **Select to
 remove** instruction on the signed-in account's reaction row. This was observed
@@ -23,14 +22,14 @@ recreating the adapter or remounting the badge within the same runtime.
 
 | Surface | Current behavior | Fallback |
 | --- | --- | --- |
-| Tampermonkey | Setting disabled; effective preference is false | Remove the reaction through Instagram |
+| Tampermonkey | Optional **Remove my reactions afterward** choice; default off | Leave the choice off and remove reactions through Instagram |
 | Extension | Setting disabled; effective preference is false | Remove the reaction through Instagram |
 | Desktop / PWA | No authenticated Instagram worker runtime | Open the conversation in Instagram |
 
 ## Source and evidence
 
-- `extension/cleanup-settings.js`: validates the saved preference; `capabilities()` reports no reaction support and `effective()` keeps it off.
-- `extension/overlay/shell.js` and `userscripts/src/toolbox-shell.js`: disabled control with a specific explanation.
+- `extension/cleanup-settings.js`: validates the saved preference; the userscript capability preserves an explicit choice while other surfaces keep it off.
+- `extension/overlay/shell.js` and `userscripts/src/toolbox-shell.js`: the userscript exposes the optional choice; unsupported surfaces remain disabled.
 - `extension/action-labels.js`: shared message runner and read-only message walker. The walker visits surviving sent and received messages without reusing message ownership as reaction proof.
 - `extension/content-instagram.js`: exact-message inspection and message actions share the runner's ownership and settled-removal helpers; no own-reaction resolver.
 - `extension/inbox-coordinator.js`: separate message/reaction counters and review binding. This state contract does not provide a native reaction implementation.
@@ -43,14 +42,14 @@ recreating the adapter or remounting the badge within the same runtime.
   context evidence, not the numeric account proof required by Presence.
 - `userscripts/src/toolbox-shell.js`: action-specific reaction choice and
   confirmation binding, completed-message handoff, shared Stop control, and
-  separate reaction ledger field. The choice remains hidden while unsupported.
+  separate reaction ledger field. The choice is visible only on a supported surface.
 - `tests/own-reactions.test.js`: synthetic native reaction-dialog regressions.
 - `tests/dm-message-walker.test.js`, `tests/reaction-cleanup.test.js`, and
   `tests/userscript-reaction-flow.test.js`: traversal and follow-up behavior.
 - `tests/dm-foundation-v4.test.js`: received-message protection, recycled-row evidence, settlement, and Stop behavior in fixtures. These are not reaction acceptance tests.
 
-The details interaction is observed, but native removal and a live follow-up
-pass remain unverified. The adapter does not click a generic emoji toggle to
+The details interaction and generated-browser removal flow are verified, but a
+live authenticated follow-up remains unverified. The adapter does not click a generic emoji toggle to
 guess whether it adds or removes a reaction. The current account resolver and
 native removal instruction are English-layout adapters; other layouts remain
 unavailable until independently verified.
@@ -89,12 +88,12 @@ message. The walker never labels interrupted traversal as complete.
 ## Next step and release criterion
 
 **Responsible owner: runner/reactions.** Run specifically approved disposable
-reaction acceptance against the rebuilt userscript, then enable the userscript
-capability and verify the complete confirmation-to-result UI. Extension wiring
-is separate and remains disabled. Approval for message Unsend does not implicitly
-cover reaction removal.
+reaction acceptance against the rebuilt userscript. The userscript capability
+and complete confirmation-to-result UI are enabled in the branch candidate;
+extension wiring is separate and remains disabled. Approval for message Unsend
+does not implicitly cover reaction removal.
 
-Use disposable examples covering an own reaction on a received message and a shared emoji with another participant. Record sanitized control names and ownership evidence; do not retain private bodies or account identifiers. If removal cannot be distinguished from adding/changing a reaction, retain the disabled setting and record the unsupported state.
+Use disposable examples covering an own reaction on a received message and a shared emoji with another participant. Record sanitized control names and ownership evidence; do not retain private bodies or account identifiers. If live removal cannot be distinguished from adding or changing a reaction, disable the candidate capability before release and record the unsupported state.
 
 Before enabling the feature, require tests for:
 
@@ -105,6 +104,6 @@ Before enabling the feature, require tests for:
 - Idempotent repeated passes, wrong-thread/account changes, expiry, challenges, and rate limits.
 - Message preservation, separate verified counters, and no message-timestamp substitution.
 
-Enable only after fixture tests and specifically authorized disposable-content
-acceptance pass on each claimed browser surface. Implemented source behind a
-disabled capability is not a usable shipped cleanup feature.
+Claim authenticated compatibility only after fixture tests and specifically
+authorized disposable-content acceptance pass on each claimed browser surface.
+The current userscript candidate is fixture-tested; the live claim remains open.

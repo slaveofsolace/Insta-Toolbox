@@ -19,12 +19,14 @@ test('cleanup preferences add defaults without restoring authority or old global
   assert.equal(old.dailyDmLimit, 50);
 });
 
-test('unsupported saved preferences cannot enable unfinished adapters', () => {
+test('userscript reaction cleanup is supported without enabling unfinished adapters elsewhere', () => {
   for (const surface of ['userscript', 'extension', 'desktop', 'pwa']) {
     const effective = settings.effective({ speed: 'fast', removeOwnReactions: true, execution: 'background', workerCount: 2, notifications: true }, surface);
-    assert.deepEqual(plain(effective), { ...plain(settings.defaults()), speed: 'standard', showSummary: true });
+    assert.deepEqual(plain(effective), { ...plain(settings.defaults()), speed: 'standard', showSummary: true,
+      removeOwnReactions: surface === 'userscript' });
     assert.equal(settings.capabilities(surface).fast, false);
-    assert.ok(settings.capabilities(surface).reasons.reactions);
+    assert.equal(settings.capabilities(surface).reactions, surface === 'userscript');
+    if (surface !== 'userscript') assert.ok(settings.capabilities(surface).reasons.reactions);
   }
 });
 

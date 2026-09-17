@@ -26,7 +26,7 @@ export function mountUserscriptInboxPanel({
   find.type = 'button';
   const section = create('select');
   section.setAttribute('aria-label', 'Inbox section');
-  for (const [value, label] of [['primary', 'Primary'], ['general', 'General'], ['requests', 'Requests']]) {
+  for (const [value, label] of [['all', 'All available'], ['primary', 'Primary'], ['general', 'General'], ['requests', 'Requests']]) {
     const option = create('option', label); option.value = value; section.append(option);
   }
   const acknowledgment = create('label', null, 'inbox-choice');
@@ -213,7 +213,9 @@ export function mountUserscriptInboxPanel({
     try {
       await loadCheckpoint();
       if (epoch !== operationEpoch) return;
-      await discovery.discover({ navigationAcknowledged: true, sections: [section.value] });
+      const sections = section.value === 'all' ? discovery.availableSections() : [section.value];
+      if (!sections.length) throw new Error('section-control-unavailable');
+      await discovery.discover({ navigationAcknowledged: true, sections });
     }
     catch (error) { announce(friendlyReason(error.message)); }
     finally { active = false; updateControls(); }

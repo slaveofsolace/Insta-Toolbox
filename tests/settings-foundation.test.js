@@ -38,14 +38,15 @@ test('userscript fields group labels tightly without shrinking controls or crowd
   assert.match(userscript, /\.setting-option \{ display:grid; gap:4px; \}/);
 });
 
-test('userscript cleanup copy stays concise and unavailable reactions remain disabled', () => {
+test('userscript cleanup copy stays concise and reaction cleanup is selectable', () => {
   assert.doesNotMatch(userscript, /for="insta-toolbox-unsend-scope">Messages<\/label>/);
   assert.match(userscript, /id="insta-toolbox-unsend-scope"[^>]*aria-label="Messages to unsend"/);
   assert.match(userscript, /for="insta-toolbox-default-limit">Message count<\/label>/);
-  assert.match(userscript, /data-cleanup-preference="removeOwnReactions"[^>]+disabled> Remove my reactions<\/label><p[^>]+>Not available yet<\/p>/);
+  assert.match(userscript, /data-cleanup-preference="removeOwnReactions"[^>]*> Remove my reactions afterward<\/label><p[^>]+hidden><\/p>/);
+  assert.doesNotMatch(userscript, /<input[^>]+data-cleanup-preference="removeOwnReactions"[^>]+disabled/);
   assert.match(userscript, /label: 'Messages', value: scope/);
   assert.match(userscript, /conversation or message selection changed after review/);
-  assert.doesNotMatch(userscript, /Remove my reactions afterward|Own-reaction removal has not been verified|<strong>DM Unsend\.<\/strong>|>Scope<\/label>|>Default N<\/label>/);
+  assert.doesNotMatch(userscript, /Own-reaction removal has not been verified|<strong>DM Unsend\.<\/strong>|>Scope<\/label>|>Default N<\/label>/);
 });
 
 test('userscript disclosure text paints with its selected theme and system contrast colors', () => {

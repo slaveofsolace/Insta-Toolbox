@@ -40,10 +40,12 @@ replies and story replies through the generated userscript's primary action.
 Read-only native selection passed; post-removal authenticated acceptance is
 still pending for the repaired candidate.
 
-The separate reaction pass and userscript handoff have automated coverage for
-confirmation, cancellation, account/thread changes, expiry, and independent
-counts. The reaction capability remains disabled pending native acceptance;
-these tests do not establish live reaction removal.
+The optional userscript reaction pass is enabled in this branch candidate. Its
+generated-browser acceptance verifies confirmation, cancellation, exact
+signed-in-account ownership, one reaction removal, message preservation,
+dialog closure, and an independent verified count. This does not establish
+current authenticated Instagram reaction compatibility; a disposable live
+reaction remains a separate gate.
 
 Earlier version-refreshed visual checks, Chrome pairing, Windows packaging,
 archive inspection, and local checksums do not certify the current source

@@ -274,16 +274,17 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
   function capabilities(surface) {
     const inPage = ['extension', 'userscript'].includes(surface);
+    const userscript = surface === 'userscript';
     return Object.freeze({
       singleConversation: inPage,
       fast: false,
-      reactions: false,
+      reactions: userscript,
       background: false,
       managedWorkers: false,
       notifications: false,
       reasons: Object.freeze({
         fast: 'Unsend uses one pacing mode.',
-        reactions: 'Own-reaction removal has not been verified on Instagram.',
+        reactions: userscript ? null : 'Own-reaction removal is available in the Instagram userscript.',
         background: inPage ? 'Background execution is awaiting suspension and resume checks.' : 'This app does not control an authenticated Instagram tab.',
         managedWorkers: 'Managed tabs are awaiting browser integration and collision checks.',
         notifications: 'Completion notifications are not connected on this surface.',
@@ -6951,6 +6952,14 @@ function createUserscriptInboxDiscovery({
   };
   return Object.freeze({
     snapshot, stop,
+    availableSections() {
+      const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
+      if (roots.length !== 1) return [];
+      return [...new Set([...roots[0].querySelectorAll('[role="tab"]')]
+        .filter(visible)
+        .map((tab) => nativeInboxSection(tab.getAttribute('aria-label') || tab.textContent))
+        .filter(Boolean))];
+    },
     reviewLabels() {
       const current = context();
       if (state.inventory && current.accountId !== state.inventory.accountId) return rejectContext('inbox-account-changed');
@@ -7343,7 +7352,7 @@ function mountUserscriptInboxPanel({
   find.type = 'button';
   const section = create('select');
   section.setAttribute('aria-label', 'Inbox section');
-  for (const [value, label] of [['primary', 'Primary'], ['general', 'General'], ['requests', 'Requests']]) {
+  for (const [value, label] of [['all', 'All available'], ['primary', 'Primary'], ['general', 'General'], ['requests', 'Requests']]) {
     const option = create('option', label); option.value = value; section.append(option);
   }
   const acknowledgment = create('label', null, 'inbox-choice');
@@ -7530,7 +7539,9 @@ function mountUserscriptInboxPanel({
     try {
       await loadCheckpoint();
       if (epoch !== operationEpoch) return;
-      await discovery.discover({ navigationAcknowledged: true, sections: [section.value] });
+      const sections = section.value === 'all' ? discovery.availableSections() : [section.value];
+      if (!sections.length) throw new Error('section-control-unavailable');
+      await discovery.discover({ navigationAcknowledged: true, sections });
     }
     catch (error) { announce(friendlyReason(error.message)); }
     finally { active = false; updateControls(); }
@@ -8798,7 +8809,7 @@ function mountPresenceSessionPanel({
   `);
   const heading = create('h2', 'Presence');
   heading.id = 'insta-toolbox-presence-title';
-  const intro = create('p', 'Choose what Presence may do while this Instagram tab stays open.', 'lead');
+  const intro = create('p', 'Choose the Instagram actions. Presence uses the same visible controls you would.', 'lead');
   const options = create('div', null, 'presence-options');
   const controls = new Map();
   for (const [key, label] of ACTIONS) {
@@ -8831,7 +8842,7 @@ function mountPresenceSessionPanel({
   actions.append(start, pause, resume, stop);
   const statusBox = create('div', null, 'presence-status');
   const statusTitle = create('strong', 'Ready');
-  const statusDetail = create('span', 'No actions run until you review and confirm this session.');
+  const statusDetail = create('span', 'Nothing happens until you confirm.');
   statusBox.append(statusTitle, statusDetail);
   const results = create('ul', null, 'presence-results');
   results.setAttribute('aria-label', 'Presence results');
@@ -8875,14 +8886,14 @@ function mountPresenceSessionPanel({
   }
   function describe(snapshot) {
     const count = Number(snapshot.completed || 0);
-    if (snapshot.status === 'idle') return ['Ready', 'No actions run until you review and confirm this session.'];
+    if (snapshot.status === 'idle') return ['Ready', 'Nothing happens until you confirm.'];
     if (snapshot.status === 'running') return [snapshot.current?.label || 'Presence is running', `${count} verified action${count === 1 ? '' : 's'}.`];
     if (snapshot.status === 'waiting') return ['Taking a short pause', `${count} verified action${count === 1 ? '' : 's'}.`];
     if (snapshot.status === 'paused') return ['Paused', `${count} verified action${count === 1 ? '' : 's'}. Resume or stop when ready.`];
     if (snapshot.status === 'stopping') return ['Stopping', 'No new action will begin.'];
     if (snapshot.status === 'stopped') return ['Stopped', `${count} verified action${count === 1 ? '' : 's'}.`];
-    if (snapshot.status === 'completed') return ['Session complete', `${count} verified action${count === 1 ? '' : 's'}.`];
-    if (snapshot.status === 'expired') return ['Session expired', `${count} verified action${count === 1 ? '' : 's'}. Start a new session to continue.`];
+    if (snapshot.status === 'completed') return ['Presence finished', `${count} verified action${count === 1 ? '' : 's'}.`];
+    if (snapshot.status === 'expired') return ['Time limit reached', `${count} verified action${count === 1 ? '' : 's'}. Start again to continue.`];
     return ['Needs attention', clean(snapshot.reason) || 'Check Instagram before starting again.'];
   }
   function render(snapshot = session.snapshot()) {
@@ -8943,7 +8954,7 @@ function mountPresenceSessionPanel({
         maxActions: options.maxActions, options: reviewedSignature },
     });
     confirming = false;
-    if (!confirmation) { render(); onStatus('Presence canceled. Nothing was changed.'); return false; }
+    if (!confirmation) { render(); onStatus('Presence canceled. Nothing changed.'); return false; }
     const current = inspectAccount();
     const currentOptions = readOptions();
     if (current?.accountVerified !== true || current.usable !== true
@@ -8952,7 +8963,7 @@ function mountPresenceSessionPanel({
       || confirmation.maxActions !== options.maxActions || confirmation.options !== reviewedSignature
       || Number(confirmation.expiresAt) !== expiresAt || expiresAt <= now()) {
       render();
-      onStatus('Presence choices or account changed after review. Nothing was changed.');
+      onStatus('The account or Presence choices changed. Start again.');
       return false;
     }
     const review = session.createReview({ accountId: account.accountId, options, expiresAt });
@@ -9912,8 +9923,8 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
           </details></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
-          <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
-          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><details class="settings-inline"><summary>Inbox cleanup</summary><div data-role="inbox-cleanup"></div></details></section>
+          <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions afterward</label></div>
+          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><details class="settings-inline"><summary>Ghost mode</summary><div data-role="inbox-cleanup"></div></details></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
@@ -9939,7 +9950,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
         <details class="settings-inline settings-section"><summary>Cleanup defaults</summary>
         <div class="field"><label for="insta-toolbox-default-scope">Messages</label><select id="insta-toolbox-default-scope" data-cleanup-preference="messageScope"><option value="all">All my messages</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div>
         <div class="field"><label for="insta-toolbox-default-limit">Message count</label><input id="insta-toolbox-default-limit" type="number" min="1" max="250" data-cleanup-preference="messageLimit"></div>
-        <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="removeOwnReactions" aria-describedby="insta-toolbox-reactions-note" disabled> Remove my reactions</label><p class="setting-note" id="insta-toolbox-reactions-note">Not available yet</p></div>
+        <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="removeOwnReactions" aria-describedby="insta-toolbox-reactions-note"> Remove my reactions afterward</label><p class="setting-note" id="insta-toolbox-reactions-note" hidden></p></div>
         <label><input type="checkbox" data-cleanup-preference="showSummary"> Show completed run details</label></details>
         <details class="settings-inline settings-section"><summary>Execution</summary>
         <div class="field"><label for="insta-toolbox-execution-mode">Run in</label><select id="insta-toolbox-execution-mode" data-cleanup-preference="execution"><option value="foreground">Foreground</option><option value="background" disabled>Background — not available yet</option></select><p class="setting-note">Keep this Instagram tab active.</p></div>

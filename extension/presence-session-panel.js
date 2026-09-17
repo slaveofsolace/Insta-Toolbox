@@ -64,7 +64,7 @@ export function mountPresenceSessionPanel({
   `);
   const heading = create('h2', 'Presence');
   heading.id = 'insta-toolbox-presence-title';
-  const intro = create('p', 'Choose what Presence may do while this Instagram tab stays open.', 'lead');
+  const intro = create('p', 'Choose the Instagram actions. Presence uses the same visible controls you would.', 'lead');
   const options = create('div', null, 'presence-options');
   const controls = new Map();
   for (const [key, label] of ACTIONS) {
@@ -97,7 +97,7 @@ export function mountPresenceSessionPanel({
   actions.append(start, pause, resume, stop);
   const statusBox = create('div', null, 'presence-status');
   const statusTitle = create('strong', 'Ready');
-  const statusDetail = create('span', 'No actions run until you review and confirm this session.');
+  const statusDetail = create('span', 'Nothing happens until you confirm.');
   statusBox.append(statusTitle, statusDetail);
   const results = create('ul', null, 'presence-results');
   results.setAttribute('aria-label', 'Presence results');
@@ -141,14 +141,14 @@ export function mountPresenceSessionPanel({
   }
   function describe(snapshot) {
     const count = Number(snapshot.completed || 0);
-    if (snapshot.status === 'idle') return ['Ready', 'No actions run until you review and confirm this session.'];
+    if (snapshot.status === 'idle') return ['Ready', 'Nothing happens until you confirm.'];
     if (snapshot.status === 'running') return [snapshot.current?.label || 'Presence is running', `${count} verified action${count === 1 ? '' : 's'}.`];
     if (snapshot.status === 'waiting') return ['Taking a short pause', `${count} verified action${count === 1 ? '' : 's'}.`];
     if (snapshot.status === 'paused') return ['Paused', `${count} verified action${count === 1 ? '' : 's'}. Resume or stop when ready.`];
     if (snapshot.status === 'stopping') return ['Stopping', 'No new action will begin.'];
     if (snapshot.status === 'stopped') return ['Stopped', `${count} verified action${count === 1 ? '' : 's'}.`];
-    if (snapshot.status === 'completed') return ['Session complete', `${count} verified action${count === 1 ? '' : 's'}.`];
-    if (snapshot.status === 'expired') return ['Session expired', `${count} verified action${count === 1 ? '' : 's'}. Start a new session to continue.`];
+    if (snapshot.status === 'completed') return ['Presence finished', `${count} verified action${count === 1 ? '' : 's'}.`];
+    if (snapshot.status === 'expired') return ['Time limit reached', `${count} verified action${count === 1 ? '' : 's'}. Start again to continue.`];
     return ['Needs attention', clean(snapshot.reason) || 'Check Instagram before starting again.'];
   }
   function render(snapshot = session.snapshot()) {
@@ -209,7 +209,7 @@ export function mountPresenceSessionPanel({
         maxActions: options.maxActions, options: reviewedSignature },
     });
     confirming = false;
-    if (!confirmation) { render(); onStatus('Presence canceled. Nothing was changed.'); return false; }
+    if (!confirmation) { render(); onStatus('Presence canceled. Nothing changed.'); return false; }
     const current = inspectAccount();
     const currentOptions = readOptions();
     if (current?.accountVerified !== true || current.usable !== true
@@ -218,7 +218,7 @@ export function mountPresenceSessionPanel({
       || confirmation.maxActions !== options.maxActions || confirmation.options !== reviewedSignature
       || Number(confirmation.expiresAt) !== expiresAt || expiresAt <= now()) {
       render();
-      onStatus('Presence choices or account changed after review. Nothing was changed.');
+      onStatus('The account or Presence choices changed. Start again.');
       return false;
     }
     const review = session.createReview({ accountId: account.accountId, options, expiresAt });

@@ -389,6 +389,70 @@
         menu.append(choice);
       });
     };
+    globalThis.fixtureSetReactionMessages = () => {
+      history.replaceState({}, '', '/direct/t/123/');
+      globalThis.fixtureReactionRemoved = 0;
+      globalThis.fixtureReactionBadgeClicks = 0;
+      document.querySelectorAll('[data-fixture-viewer]').forEach((node) => node.remove());
+      const accountPicker = document.createElement('div');
+      accountPicker.dataset.fixtureViewer = 'picker';
+      accountPicker.setAttribute('aria-label', 'Thread list');
+      accountPicker.innerHTML = '<button type="button" role="button" tabindex="0"><h2>demo_creator</h2></button>';
+      const navigation = document.createElement('nav');
+      navigation.dataset.fixtureViewer = 'navigation';
+      navigation.innerHTML = `
+        <a role="link" href="/demo_creator/"><img width="24" height="24" alt="demo_creator's profile picture" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'/%3E"></a>
+        <a href="/">Home</a><a href="/reels/">Reels</a><a href="/direct/inbox/">Messages</a>`;
+      document.body.append(accountPicker, navigation);
+      document.querySelector('main').innerHTML = `
+        <section data-pagelet="IGDMessagesList">
+          <header><h1>studio_friend</h1></header>
+          <div id="fixture-reaction-row" role="row" data-message-id="received-reaction" data-timestamp-ms="1700000000200" data-sent-by-me="false">
+            <div dir="auto">A received message that remains in the conversation.</div>
+            <div aria-label="Message actions"></div>
+            <button id="fixture-reaction-badge" type="button" role="button" tabindex="0"><span role="none">❤️</span></button>
+          </div>
+        </section>`;
+      const message = document.querySelector('#fixture-reaction-row');
+      const badge = document.querySelector('#fixture-reaction-badge');
+      badge.addEventListener('click', () => {
+        globalThis.fixtureReactionBadgeClicks += 1;
+        const dialog = document.createElement('div');
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        const heading = document.createElement('h2');
+        heading.textContent = 'Reactions';
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.setAttribute('aria-label', 'Close');
+        close.textContent = 'Close';
+        close.addEventListener('click', () => dialog.remove());
+        const mine = document.createElement('div');
+        mine.setAttribute('role', 'button');
+        mine.setAttribute('tabindex', '0');
+        const emoji = document.createElement('span');
+        emoji.textContent = '❤️';
+        const column = document.createElement('div');
+        column.style.cssText = 'display:flex;flex-direction:column';
+        const name = document.createElement('span');
+        name.textContent = 'demo_creator';
+        const secondary = document.createElement('div');
+        secondary.style.cssText = 'display:flex;flex-direction:column';
+        const hint = document.createElement('span');
+        hint.textContent = 'Select to remove';
+        secondary.append(hint);
+        column.append(name, secondary);
+        mine.append(emoji, column);
+        mine.addEventListener('click', () => {
+          mine.remove();
+          badge.remove();
+          globalThis.fixtureReactionRemoved += 1;
+        });
+        dialog.append(heading, close, mine);
+        document.body.append(dialog);
+      });
+      return { messageConnected: message.isConnected, badgeConnected: badge.isConnected };
+    };
   </script>
   <script src="/userscripts/insta-toolbox.user.js"></script>
   <script src="/userscripts/insta-toolbox.user.js"></script>

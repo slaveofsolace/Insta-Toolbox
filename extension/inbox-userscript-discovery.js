@@ -53,6 +53,14 @@ export function createUserscriptInboxDiscovery({
   };
   return Object.freeze({
     snapshot, stop,
+    availableSections() {
+      const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
+      if (roots.length !== 1) return [];
+      return [...new Set([...roots[0].querySelectorAll('[role="tab"]')]
+        .filter(visible)
+        .map((tab) => nativeInboxSection(tab.getAttribute('aria-label') || tab.textContent))
+        .filter(Boolean))];
+    },
     reviewLabels() {
       const current = context();
       if (state.inventory && current.accountId !== state.inventory.accountId) return rejectContext('inbox-account-changed');

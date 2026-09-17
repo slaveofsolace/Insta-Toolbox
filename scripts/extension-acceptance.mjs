@@ -1606,8 +1606,8 @@ async function acceptUserscriptFieldSpacing(webContents, baseUrl) {
         assert.ok(metrics.fieldGaps.every(gap => gap >= 12 && gap <= 24), `${state}: stacked field gaps ${JSON.stringify(metrics)}`);
         assert.ok(metrics.overflow <= 1 && metrics.left >= -1 && metrics.right <= metrics.width + 1,
           `${viewport.label}/${state}: horizontal overflow ${JSON.stringify(metrics)}`);
-        assert.equal(metrics.reactionDisabled, true);
-        assert.equal(metrics.reactionLabel, 'Remove my reactions');
+        assert.equal(metrics.reactionDisabled, false);
+        assert.equal(metrics.reactionLabel, 'Remove my reactions afterward');
         const expectedSummaryColor = viewport.theme === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)';
         assert.ok(metrics.summaries.every(summary => viewport.forcedColors
           ? summary.color === metrics.textColor || summary.color === metrics.linkText
@@ -1719,7 +1719,7 @@ async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
           confirmationOpen: root.querySelector('[data-role="action-confirmation"]').open };
       })()`, true);
       assert.deepEqual(metrics.controls.map(control => control.name), [
-        'Inbox cleanup', 'Inbox section', 'Opening conversations may mark them read.', 'Find conversations', 'Open inbox',
+        'Ghost mode', 'Inbox section', 'Opening conversations may mark them read.', 'Find conversations', 'Open inbox',
       ], `${viewport.label}: initial inbox controls`);
       assert.ok(metrics.controls.every(control => control.height >= 44 && control.width >= 44),
         `${viewport.label}: inbox targets below 44px ${JSON.stringify(metrics.controls)}`);
@@ -1733,7 +1733,7 @@ async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
       assert.ok(metrics.inbox.overflow <= 1 && metrics.scrollOverflow <= 1,
         `${viewport.label}: horizontal overflow ${JSON.stringify(metrics)}`);
       assert.equal(metrics.disclosureOpen, true);
-      assert.deepEqual(metrics.sectionOptions, ['Primary', 'General', 'Requests']);
+      assert.deepEqual(metrics.sectionOptions, ['All available', 'Primary', 'General', 'Requests']);
       assert.equal(metrics.reviewHidden, true, 'no enabled-looking review before discovery');
       assert.equal(metrics.liveRegions, 1);
       assert.equal(metrics.fastControls, 0);
@@ -1765,7 +1765,99 @@ async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
   }
   await writeFile(path.join(screenshotRoot, 'metrics.json'),
     `${JSON.stringify({ fixtureOnly: true, version: releaseVersion, states: evidence }, null, 2)}\n`);
-  console.log(`Accepted userscript Inbox cleanup layout in ${evidence.length} rendered states: 44px targets, reachable controls, actual 200% zoom, no Fast controls, zero removals.`);
+  console.log(`Accepted userscript Ghost mode layout in ${evidence.length} rendered states: 44px targets, reachable controls, actual 200% zoom, no Fast controls, zero removals.`);
+}
+
+async function acceptUserscriptReactionCleanup({ window, isolatedSession, fixtureAssets }) {
+  const webContents = window.webContents;
+  await isolatedSession.protocol.handle('http', () => new Response('', { status: 403 }));
+  await isolatedSession.protocol.handle('https', async request => {
+    const url = new URL(request.url);
+    if (url.origin !== 'https://www.instagram.com') return new Response('', { status: 403 });
+    const file = fixtureAssets.get(url.pathname);
+    if (!file) return new Response('', { status: 404 });
+    return new Response(await readFile(file), { headers: {
+      'Content-Type': file.endsWith('.html') ? 'text/html' : 'text/javascript',
+      'Content-Security-Policy': "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+    } });
+  });
+  try {
+  await withTimeout(webContents.loadURL('https://www.instagram.com/userscript-fixture.html'), 'reaction cleanup fixture');
+  await waitForPageValue(webContents,
+    `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'reaction cleanup shell');
+  await webContents.executeJavaScript(`(() => {
+    globalThis.fixtureSetReactionMessages();
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    if (root.querySelector('.panel').hidden) root.querySelector('.launcher').click();
+    root.querySelector('[data-view="messages"]').click();
+    return true;
+  })()`, true);
+  await waitForPageValue(webContents, `(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const option = root.querySelector('[data-role="unsend-reactions-option"]');
+    const checkbox = root.querySelector('[data-role="unsend-reactions"]');
+    return !option.hidden && !checkbox.disabled && !root.querySelector('[data-role="unsend-primary"]').disabled;
+  })()`, 'reaction cleanup option');
+  const viewer = await webContents.executeJavaScript('globalThis.InstaToolboxInstagramViewer.inspect()', true);
+  assert.equal(viewer.accountVerified, true, `reaction fixture viewer proof: ${JSON.stringify(viewer)}`);
+  await webContents.executeJavaScript(`(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const checkbox = root.querySelector('[data-role="unsend-reactions"]');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    root.querySelector('[data-role="unsend-primary"]').click();
+  })()`, true);
+  const gate = await waitForPageValue(webContents, `(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const dialog = root.querySelector('[data-role="action-confirmation"]');
+    const context = root.querySelector('[data-role="context"]')?.textContent?.trim() || '';
+    return dialog.open ? { open: true, context } : /could not|stopped|failed|unavailable/i.test(context)
+      ? { open: false, context } : null;
+  })()`, 'reaction cleanup review');
+  assert.equal(gate.open, true, `reaction cleanup did not reach review: ${JSON.stringify(gate)}`);
+  const review = await webContents.executeJavaScript(`(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    return root.querySelector('[data-role="action-confirmation"]').textContent;
+  })()`, true);
+  assert.match(review, /Remove reactions added by @demo_creator/);
+  await trustedClick(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="confirm-cancel"]')`,
+    'reaction cleanup cancel');
+  assert.equal(await webContents.executeJavaScript('globalThis.fixtureReactionRemoved', true), 0,
+    'Cancel removes no reaction');
+  await webContents.executeJavaScript(`(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    root.querySelector('[data-role="unsend-primary"]').click();
+  })()`, true);
+  await waitForPageValue(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="action-confirmation"]').open`,
+    'reaction cleanup second review');
+  await trustedClick(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="confirm-accept"]')`,
+    'reaction cleanup confirmed start');
+  await waitForPageValue(webContents, `globalThis.fixtureReactionRemoved === 1`,
+    'verified reaction removal', 20_000);
+  const result = await waitForPageValue(webContents, `(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const title = root.querySelector('[data-role="dm-summary-title"]')?.textContent || '';
+    if (!title.includes('1 reaction removed')) return null;
+    return {
+      title,
+      messageRetained: Boolean(document.querySelector('#fixture-reaction-row')),
+      badgeRemoved: !document.querySelector('#fixture-reaction-badge'),
+      badgeClicks: globalThis.fixtureReactionBadgeClicks,
+      openDialogs: document.querySelectorAll('[role="dialog"][aria-modal="true"]').length,
+    };
+  })()`, 'reaction cleanup verified summary', 20_000);
+  assert.equal(result.messageRetained, true);
+  assert.equal(result.badgeRemoved, true);
+  assert.equal(result.badgeClicks, 1);
+  assert.equal(result.openDialogs, 0);
+  console.log('Accepted generated userscript reaction cleanup: Cancel stayed safe, one exact owned reaction was removed, and the received message remained.');
+  } finally {
+    isolatedSession.protocol.unhandle('https');
+    isolatedSession.protocol.unhandle('http');
+  }
 }
 
 async function acceptToolboxLayout(webContents, baseUrl) {
@@ -3035,6 +3127,11 @@ async function run() {
       assert.deepEqual(overlay.problems, [], 'userscript Ghost review browser problems');
       return;
     }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_REACTION_ONLY === '1') {
+      await acceptUserscriptReactionCleanup(presenceOptions);
+      assert.deepEqual(overlay.problems, [], 'userscript reaction cleanup browser problems');
+      return;
+    }
     if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_PRESENCE_ONLY === '1') {
       await acceptUserscriptPresence(presenceOptions);
       assert.deepEqual(overlay.problems, [], 'userscript Presence browser problems');
@@ -3105,6 +3202,7 @@ async function run() {
         { surfaces: ['userscript'], nativeLayout: true, newestKind });
     }
     await acceptUserscriptInboxPanelLayout(overlay.window.webContents, overlayBaseUrl);
+    await acceptUserscriptReactionCleanup(presenceOptions);
     await acceptThreadUnsendStop(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsend(overlay.window.webContents, overlayBaseUrl);
     await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);

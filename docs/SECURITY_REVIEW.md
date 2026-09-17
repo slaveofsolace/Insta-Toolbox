@@ -54,7 +54,7 @@ The restored runner retains bounded menu readiness and adaptive 1–2 second suc
 
 Page freeze and page exit revoke current action authority. Already-dispatched removals settle as verified or uncertain; the next mutation is not dispatched. Resuming the page does not restore authority. Ordinary focus changes do not themselves revoke a run, but reliable inactive-tab execution still needs separate acceptance. Waits release listeners, observers, and timers on settlement.
 
-Inbox coordination modules are not registered for live execution. Their fixtures cover frozen inventories, serial scheduling, worker fencing, persistence failures, and uncertain acknowledgments. Those results do not establish a native discovery adapter, historical message cutoff, or crash-safe external execution. Own-reaction cleanup also remains disabled until the native ownership and removal interaction is verified.
+Managed-tab inbox coordination modules are not registered for live execution. Their fixtures cover frozen inventories, serial scheduling, worker fencing, persistence failures, and uncertain acknowledgments. Those results do not establish crash-safe external execution. The userscript's serial Ghost path and optional own-reaction follow-up are connected: both require exact account/thread context, action-specific confirmation, bounded traversal, and verified outcomes. Generated-browser acceptance is not authenticated Instagram compatibility, so extension reaction execution and managed workers remain disabled.
 
 Visible DM evidence is scoped to the exact open thread. Navigating to the inbox, feed, a profile, or a different thread hides and clears previously exposed candidates.
 

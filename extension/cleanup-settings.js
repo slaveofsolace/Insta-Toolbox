@@ -49,16 +49,17 @@
 
   function capabilities(surface) {
     const inPage = ['extension', 'userscript'].includes(surface);
+    const userscript = surface === 'userscript';
     return Object.freeze({
       singleConversation: inPage,
       fast: false,
-      reactions: false,
+      reactions: userscript,
       background: false,
       managedWorkers: false,
       notifications: false,
       reasons: Object.freeze({
         fast: 'Unsend uses one pacing mode.',
-        reactions: 'Own-reaction removal has not been verified on Instagram.',
+        reactions: userscript ? null : 'Own-reaction removal is available in the Instagram userscript.',
         background: inPage ? 'Background execution is awaiting suspension and resume checks.' : 'This app does not control an authenticated Instagram tab.',
         managedWorkers: 'Managed tabs are awaiting browser integration and collision checks.',
         notifications: 'Completion notifications are not connected on this surface.',
