@@ -894,7 +894,7 @@
       </div>
       <nav class="tabs" role="tablist" aria-label="Insta Toolbox tools">
         <button id="insta-toolbox-tab-checker" class="tab" type="button" role="tab" data-view="checker" aria-controls="insta-toolbox-panel-checker" aria-selected="true" tabindex="0">Mutual Checker</button>
-        <button id="insta-toolbox-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="insta-toolbox-panel-account" aria-selected="false" tabindex="-1">Follow / Unfollow</button>
+        <button id="insta-toolbox-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="insta-toolbox-panel-account" aria-selected="false" tabindex="-1">Presence</button>
         <button id="insta-toolbox-tab-messages" class="tab" type="button" role="tab" data-view="messages" aria-controls="insta-toolbox-panel-messages" aria-selected="false" tabindex="-1">DM Unsend</button>
       </nav>
       <div class="scroll">
@@ -903,13 +903,14 @@
           <div class="card" data-role="comparison"></div>
           <section class="card comparison-browser" data-role="comparison-browser" aria-labelledby="insta-toolbox-comparison-browser-title" hidden><h2 id="insta-toolbox-comparison-browser-title">Comparison list</h2><div class="comparison-controls"><div class="field"><label for="insta-toolbox-comparison-category">Show accounts</label><select id="insta-toolbox-comparison-category" data-role="comparison-category" aria-controls="insta-toolbox-comparison-list"><option value="not-following-me-back">Don't follow you back</option><option value="i-do-not-follow-back">You don't follow back</option><option value="mutuals">Mutuals</option></select></div><div class="field"><label for="insta-toolbox-filter">Find a username</label><input id="insta-toolbox-filter" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-role="result-filter" aria-controls="insta-toolbox-comparison-list"></div></div><p id="insta-toolbox-comparison-count" class="comparison-count" data-role="comparison-count" tabindex="-1"></p><ul id="insta-toolbox-comparison-list" class="list comparison-list" data-role="comparison-list" aria-describedby="insta-toolbox-comparison-count"></ul><button class="button quiet comparison-more" type="button" data-action="show-more-comparison" data-role="comparison-more" hidden>Show more</button></section>
           <details class="settings-inline"><summary>Capture lists and export</summary><p class="lead">If the account check fails, open Followers or Following and scan that list.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="insta-toolbox-list-type">Raw list</label><select id="insta-toolbox-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
-        <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><p class="lead">Choose an action, then review the accounts.</p><div class="card" data-role="queue-current"></div>
-          <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Refresh profile status</button><button class="button quiet" type="button" data-action="open-profile">Open profile</button></div><details class="settings-inline"><summary>Queue and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
-          <div class="field"><label for="insta-toolbox-bot-action">What do you want to do?</label><select id="insta-toolbox-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
-          <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
-          <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
-          <p class="lead" data-role="account-run-summary">Choose a source, then review the accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          <details class="settings-inline" data-role="presence-disclosure"><summary>Presence</summary><div data-role="presence-routine"></div></details></section>
+        <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><div class="card" data-role="presence-routine"></div>
+          <details class="settings-inline" data-role="manual-account-disclosure"><summary>Manual Follow / Unfollow</summary><p class="lead">Review exact accounts before changing them.</p><div class="card" data-role="queue-current"></div>
+            <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Refresh profile status</button><button class="button quiet" type="button" data-action="open-profile">Open profile</button></div><details class="settings-inline"><summary>Queue and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
+            <div class="field"><label for="insta-toolbox-bot-action">Action</label><select id="insta-toolbox-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
+            <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
+            <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
+            <p class="lead" data-role="account-run-summary">Choose accounts, then review them.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
+          </details></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
@@ -1519,6 +1520,7 @@
   let reactionSnapshot = null;
   let inboxPanel = null;
   let presencePanel = null;
+  let presenceSession = null;
   let presenceCapture = null;
 
   const engine = globalThis.InstaToolboxInstagramInspector;
@@ -1529,7 +1531,24 @@
   const invalidatePresence = () => {
     presenceCapture = null;
     presenceInputs?.invalidate();
-    presencePanel?.invalidate(null);
+  };
+  const inspectPresenceAccount = () => {
+    const session = engine.inspectSession?.() || {};
+    const accountId = engine.detectAuthenticatedUsername?.() || '';
+    const restricted = Boolean(session.sessionExpired || session.challenge
+      || session.actionBlocked || session.rateLimited);
+    return {
+      ...session,
+      accountVerified: Boolean(accountId) && !restricted,
+      usable: location.origin === 'https://www.instagram.com' && Boolean(accountId) && !restricted,
+      accountId,
+      restriction: restricted,
+      frozen: document.visibilityState === 'hidden' && document.wasDiscarded === true,
+      discarded: document.wasDiscarded === true,
+    };
+  };
+  const stopPresenceSession = () => {
+    presenceSession?.stop();
   };
   const dmRunner = globalThis.InstaToolboxDmThreadUnsender;
   if (dmRunner) {
@@ -2104,6 +2123,7 @@
 
   async function checkAccountRelationships() {
     if (inboxPanel?.busy()) { status('Stop inbox cleanup before checking mutuals.'); return; }
+    if (presencePanel?.busy()) { status('Pause or stop Presence before checking mutuals.'); return; }
     if (relationshipController) {
       relationshipController.abort();
       status('Stopping the mutual check. Saved comparison data was not changed.');
@@ -2556,6 +2576,10 @@
 
   async function runDmUnsend() {
     if (inboxPanel?.busy()) { inboxPanel.stop(); return; }
+    if (typeof presencePanel !== 'undefined' && presencePanel?.busy()) {
+      status('Pause or stop Presence before using DM Unsend.');
+      return;
+    }
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
     if (stopDmCleanup()) return;
     if (confirmationController?.isPending()) return;
@@ -2780,6 +2804,10 @@
       savePreferences({ open: false });
     },
     'stop-run': () => {
+      if (presenceSession?.stop()) {
+        status('Stopping Presence after the current step.');
+        return;
+      }
       if (stopDmCleanup()) return;
       if (dmRunner?.stop?.()) {
         status('Stopping DM Unsend after the current step.');
@@ -2850,6 +2878,7 @@
     'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
       if (inboxPanel?.busy()) { status('Inbox cleanup is active. Use Stop all to end it.'); return; }
+      if (presencePanel?.busy()) { status('Pause or stop Presence before starting Follow / Unfollow.'); return; }
       if (confirmationController?.isPending()) return;
       const current = accountRunPlan();
       if (!accountRunDraft || accountRunDraft.signature !== current.signature) {
@@ -3351,9 +3380,10 @@
     confirmationController?.destroy();
     inboxPanel?.dispose();
     presencePanel?.dispose();
+    presenceSession?.stop();
     invalidatePresence();
-    window.removeEventListener('pagehide', invalidatePresence);
-    document.removeEventListener('freeze', invalidatePresence);
+    window.removeEventListener('pagehide', stopPresenceSession);
+    document.removeEventListener('freeze', stopPresenceSession);
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -3363,29 +3393,29 @@
   saveState();
   savePreferences(preferences);
   renderCleanupSettings({ initializeDraft: true });
-  if (presenceInputs && globalThis.InstaToolboxPresencePanel) {
-    const presencePreferences = globalThis.InstaToolboxPresencePreferences?.create({
-      read: key => GM_getValue(key, null),
-      write: (key, value) => GM_setValue(key, value),
-      withLock: typeof navigator.locks?.request === 'function'
-        ? operation => navigator.locks.request('insta-toolbox-presence-preferences', operation)
-        : undefined,
+  if (globalThis.InstaToolboxPresenceNativeActions
+    && globalThis.InstaToolboxPresenceSession
+    && globalThis.InstaToolboxPresenceSessionPanel) {
+    const nativeActions = globalThis.InstaToolboxPresenceNativeActions.create({
+      document, location, inspectViewer: inspectPresenceAccount,
     });
-    presencePanel = globalThis.InstaToolboxPresencePanel.mount({
+    presenceSession = globalThis.InstaToolboxPresenceSession.create({
+      nativeActions,
+      onUpdate: next => presencePanel?.render(next),
+    });
+    presencePanel = globalThis.InstaToolboxPresenceSessionPanel.mount({
       container: query('[data-role="presence-routine"]'), document,
-      nativeAdapter: presenceInputs,
-      getCapture: () => presenceCapture,
-      getProfile: () => ({ goal: 'maintain', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
-      preferenceStore: presencePreferences || null,
-      onManual: () => {
-        query('[data-role="presence-disclosure"]').open = false;
-        query('[data-role="bot-action"]').focus();
-      },
+      session: presenceSession,
+      inspectAccount: inspectPresenceAccount,
+      confirmAction: confirmRun,
+      readPreferences: () => GM_getValue('instaToolboxPresenceSessionV1', null),
+      writePreferences: value => GM_setValue('instaToolboxPresenceSessionV1', value),
+      busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
+        || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()),
       onStatus: status,
     });
-    query('[data-role="presence-disclosure"]').addEventListener('toggle', () => presencePanel.refresh());
-    window.addEventListener('pagehide', invalidatePresence);
-    document.addEventListener('freeze', invalidatePresence);
+    window.addEventListener('pagehide', stopPresenceSession);
+    document.addEventListener('freeze', stopPresenceSession);
   }
   if (globalThis.InstaToolboxInboxPanel) {
     const inspectInboxAccount = () => {
@@ -3410,7 +3440,7 @@
       load: () => inspectInboxAccount().accountVerified ? inboxCheckpoints.load() : null,
       save: checkpoint => inboxCheckpoints.save(checkpoint),
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
-        || relationshipController || state.run?.status === 'running'),
+        || relationshipController || state.run?.status === 'running' || presencePanel?.busy()),
       onStatus: status,
     });
   }

@@ -1,22 +1,22 @@
 # Release status
 
-Current candidate: **4.0.0**
+Current candidate: **4.0.1**
 
-Development candidate only. The published release remains **3.1.12**; the stable update URL is unchanged. The userscript contains reviewed serial inbox cleanup awaiting native acceptance. Own-reaction cleanup and managed worker tabs are not enabled.
-
-The active development branch is preparing **4.0.1**. Its package metadata
-remains 4.0.0 until integration is complete. See [DM restoration](./DM_RESTORATION_4.0.1.md)
-for the native selection and removal-reporting regressions under repair.
+Development candidate only. The published release remains **3.1.12**; the
+stable update URL is unchanged. The userscript contains reviewed serial inbox
+cleanup and the compact Presence session. Authenticated acceptance remains
+separate from the fixture results. See [DM restoration](./DM_RESTORATION_4.0.1.md)
+for the native selection and removal-reporting history.
 
 ## Release files
 
 | Surface | File |
 | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` |
-| Chrome extension | `Insta-Toolbox-Extension-4.0.0.zip` |
-| Web/PWA | `insta-toolbox-web-4.0.0.zip` |
-| Windows | `Insta-Toolbox-Setup-4.0.0.exe` |
-| macOS | `Insta-Toolbox-4.0.0-universal.dmg` and `.zip` |
+| Chrome extension | `Insta-Toolbox-Extension-4.0.1.zip` |
+| Web/PWA | `insta-toolbox-web-4.0.1.zip` |
+| Windows | `Insta-Toolbox-Setup-4.0.1.exe` |
+| macOS | `Insta-Toolbox-4.0.1-universal.dmg` and `.zip` |
 | Integrity | `SHA256SUMS.txt`, SBOM, and GitHub provenance attestation |
 
 The stable userscript channel is:
@@ -29,10 +29,11 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 869 automated tests at the restored-Unsend and serial-inbox source checkpoint;
-- 45 overlay screenshot states;
-- 11 PWA screenshot states;
-- service-worker cache generation `insta-toolbox-v400`.
+- 972 automated tests at the Presence integration checkpoint;
+- complete generated-userscript and extension fixture acceptance;
+- 45 historical 4.0.0 overlay screenshot states awaiting 4.0.1 recapture;
+- 11 historical 4.0.0 PWA screenshot states awaiting 4.0.1 recapture;
+- service-worker cache generation `insta-toolbox-v401`.
 
 The native DM regression matrix also covers restored pre-Fast handling of sent
 replies and story replies through the generated userscript's primary action.
@@ -72,7 +73,8 @@ The macOS application is ad-hoc signed for bundle integrity but is not Developer
 
 ## Evidence and nonclaims
 
-The candidate record is [acceptance/4.0.0.md](./acceptance/4.0.0.md). Compatibility is tracked in [compatibility/4.0.0.md](./compatibility/4.0.0.md).
+The candidate record is [acceptance/4.0.1.md](./acceptance/4.0.1.md).
+Compatibility is tracked in [compatibility/4.0.1.md](./compatibility/4.0.1.md).
 
 Automated fixtures do not prove current authenticated Instagram selectors, human screen-reader use, persistent-profile behavior, SmartScreen trust, Gatekeeper trust, or notarization. Record those checks separately without committing usernames, messages, thread IDs, cookies, tokens, or private screenshots.
 

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.0.0
-// @description  Mutual Checker, Follow / Unfollow, and DM Unsend on Instagram.
+// @version      4.0.1
+// @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
 // @supportURL   https://github.com/slaveofsolace/Insta-Toolbox/issues
@@ -8241,741 +8241,762 @@ function createPresenceNativeInputs({ fetchFollowerComparison, inspectViewer, no
 
 return Object.freeze({ createPresenceNativeInputs });
 })();
-localModules["extension/presence-batch-review.js"] = (() => {
-const { compilePlan, normalizeProfile, PRESENCE_VERSION } = localModules["src/core/presence.js"];
+localModules["extension/presence-native-actions.js"] = (() => {
 
-const PRESENCE_BATCH_CAPABILITIES = Object.freeze({
-  reviewDraft: true,
-  live: false,
-  scheduledExecution: false,
+const PROFILE_PATH = /^\/([A-Za-z0-9._]{1,30})\/?$/;
+const STORY_PATH = /^\/stories\/([A-Za-z0-9._]{1,30})\/([^/?#]+)\/?/;
+const CONTENT_PATH = /^\/(?:p|reel)\/([^/?#]+)\/?/;
+const RESERVED = new Set(['accounts', 'about', 'api', 'direct', 'explore', 'reels', 'settings', 'stories', 'web']);
+
+const clean = (value) => String(value ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+const lower = (value) => clean(value).toLocaleLowerCase();
+const fail = (reason, details = {}) => Object.assign(new Error(reason), details);
+
+function createPresenceNativeActions({
+  document = globalThis.document,
+  location = globalThis.location,
+  inspectViewer,
+  getStyle = globalThis.getComputedStyle,
+  MutationObserver = globalThis.MutationObserver,
+  now = Date.now,
+  timeoutMs = 6_000,
+} = {}) {
+  if (!document?.querySelectorAll || !location || typeof inspectViewer !== 'function'
+    || typeof getStyle !== 'function' || typeof MutationObserver !== 'function'
+    || typeof now !== 'function' || !Number.isFinite(timeoutMs) || timeoutMs < 500) {
+    throw new Error('presence-native-adapter-required');
+  }
+
+  const visible = (node) => {
+    if (!node?.isConnected || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
+    const style = getStyle(node);
+    if (style?.display === 'none' || style?.visibility === 'hidden' || Number(style?.opacity) === 0) return false;
+    const rects = node.getClientRects?.();
+    return !rects || rects.length > 0;
+  };
+  const controlName = (node) => clean(node?.getAttribute?.('aria-label')
+    || node?.textContent
+    || node?.querySelector?.('[aria-label]')?.getAttribute?.('aria-label')
+    || node?.querySelector?.('title')?.textContent);
+  const exactButtons = (root, names) => [...root.querySelectorAll('button')]
+    .filter(visible)
+    .filter((node) => names.has(lower(controlName(node))));
+  const url = (node) => {
+    try { return new URL(node?.getAttribute?.('href') || '', location.origin); }
+    catch { return null; }
+  };
+  const profile = (node) => {
+    const candidate = url(node);
+    if (!candidate || candidate.origin !== location.origin) return null;
+    const match = candidate.pathname.match(PROFILE_PATH);
+    const username = match?.[1]?.toLocaleLowerCase() || '';
+    return username && !RESERVED.has(username) ? { username, href: candidate.href } : null;
+  };
+  const content = (node) => {
+    const candidate = url(node);
+    if (!candidate || candidate.origin !== location.origin) return null;
+    const match = candidate.pathname.match(CONTENT_PATH);
+    return match ? { contentId: match[1], href: candidate.href } : null;
+  };
+  const story = (node) => {
+    const candidate = url(node);
+    if (!candidate || candidate.origin !== location.origin) return null;
+    const match = candidate.pathname.match(STORY_PATH);
+    return match ? { username: match[1].toLocaleLowerCase(), storyId: match[2], href: candidate.href } : null;
+  };
+  const logicalContainer = (control, buttonName) => {
+    let node = control;
+    for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+      const matches = exactButtons(node, new Set([buttonName]));
+      const profiles = [...node.querySelectorAll('a[href]')].map(profile).filter(Boolean);
+      const names = new Set(profiles.map(value => value.username));
+      if (matches.length === 1 && names.size === 1) return { node, profile: profiles[0] };
+    }
+    return null;
+  };
+  const storyLoaded = (expected) => {
+    const match = String(location.pathname || '').match(STORY_PATH);
+    if (!match || match[1].toLocaleLowerCase() !== expected.username || match[2] !== expected.storyId) return false;
+    const media = [...document.querySelectorAll('main video, main img, [role="dialog"] video, [role="dialog"] img')].filter(visible);
+    const controls = exactButtons(document, new Set(['pause', 'next', 'like', 'unlike']));
+    return media.length > 0 && controls.length > 0;
+  };
+  const waitFor = (predicate, signal) => new Promise((resolve, reject) => {
+    const startedAt = now();
+    let observer = null;
+    let timer = null;
+    let settled = false;
+    const finish = (value, error = null) => {
+      if (settled) return;
+      settled = true;
+      observer?.disconnect();
+      if (timer !== null) clearTimeout(timer);
+      signal?.removeEventListener?.('abort', abort);
+      if (error) reject(error); else resolve(value);
+    };
+    const abort = () => finish(false, new DOMException('Stopped', 'AbortError'));
+    const check = () => {
+      if (signal?.aborted) return abort();
+      let result = false;
+      try { result = predicate() === true; } catch {}
+      if (result) return finish(true);
+      if (now() - startedAt >= timeoutMs) return finish(false);
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(check, 100);
+    };
+    if (signal?.aborted) return abort();
+    signal?.addEventListener?.('abort', abort, { once: true });
+    observer = new MutationObserver(check);
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true,
+      attributeFilter: ['aria-label', 'href', 'hidden'] });
+    check();
+  });
+
+  function candidates(action) {
+    if (action === 'likePosts') {
+      return [...document.querySelectorAll('article')].filter(visible).flatMap((article) => {
+        const links = [...article.querySelectorAll('a[href]')].map(content).filter(Boolean);
+        const distinct = new Map(links.map(item => [item.contentId, item]));
+        const controls = exactButtons(article, new Set(['like']));
+        if (distinct.size !== 1 || controls.length !== 1) return [];
+        const target = [...distinct.values()][0];
+        return [{ action, id: `post:${target.contentId}`, label: `Post ${target.contentId}`,
+          target, root: article, control: controls[0] }];
+      });
+    }
+    if (action === 'followPeople') {
+      return exactButtons(document, new Set(['follow'])).flatMap((control) => {
+        const resolved = logicalContainer(control, 'follow');
+        if (!resolved) return [];
+        const viewer = inspectViewer();
+        if (resolved.profile.username === lower(viewer?.accountId)) return [];
+        return [{ action, id: `profile:${resolved.profile.username}`, label: `@${resolved.profile.username}`,
+          target: resolved.profile, root: resolved.node, control }];
+      });
+    }
+    if (action === 'viewStories') {
+      const current = String(location.pathname || '').match(STORY_PATH);
+      if (current && storyLoaded({ username: current[1].toLocaleLowerCase(), storyId: current[2] })) return [];
+      const unique = new Map();
+      for (const link of [...document.querySelectorAll('a[href]')].filter(visible)) {
+        const target = story(link);
+        if (target && !unique.has(target.storyId)) unique.set(target.storyId, { action,
+          id: `story:${target.username}:${target.storyId}`, label: `@${target.username}'s story`,
+          target, root: link, control: link });
+      }
+      return [...unique.values()];
+    }
+    if (action === 'reactStories') {
+      const current = String(location.pathname || '').match(STORY_PATH);
+      if (!current) return [];
+      const controls = exactButtons(document, new Set(['like']));
+      if (controls.length !== 1) return [];
+      const target = { username: current[1].toLocaleLowerCase(), storyId: current[2] };
+      return [{ action, id: `story-reaction:${target.username}:${target.storyId}`,
+        label: `React to @${target.username}'s story`, target, root: document, control: controls[0] }];
+    }
+    if (action === 'acceptRequests') {
+      return exactButtons(document, new Set(['confirm'])).flatMap((control) => {
+        const resolved = logicalContainer(control, 'confirm');
+        if (!resolved) return [];
+        return [{ action, id: `request:${resolved.profile.username}`, label: `@${resolved.profile.username}`,
+          target: resolved.profile, root: resolved.node, control }];
+      });
+    }
+    return [];
+  }
+
+  function resolve(action, id) {
+    const matches = candidates(action).filter((candidate) => candidate.id === id);
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  return Object.freeze({
+    inspectContext() {
+      const viewer = inspectViewer();
+      return Object.freeze({ ...viewer,
+        frozen: document.visibilityState === 'hidden' && document.wasDiscarded === true,
+        discarded: document.wasDiscarded === true });
+    },
+    async find(action, { seen = new Set(), signal } = {}) {
+      if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
+      const available = candidates(action).filter((candidate) => !seen.has(candidate.id));
+      return available.length ? Object.freeze(available[0]) : null;
+    },
+    async execute(action, candidate, { signal, assertCurrent } = {}) {
+      if (!candidate || candidate.action !== action || typeof assertCurrent !== 'function') {
+        throw new Error('presence-native-target-invalid');
+      }
+      assertCurrent();
+      const current = resolve(action, candidate.id);
+      if (!current || current.control !== candidate.control || current.root !== candidate.root) {
+        return { verified: false, skipped: true, reason: 'Target changed before the action' };
+      }
+      if (action === 'viewStories') {
+        current.control.click();
+        const verified = await waitFor(() => storyLoaded(current.target), signal);
+        return verified
+          ? { verified: true, label: current.label, reason: 'Story opened' }
+          : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+      }
+      current.control.click();
+      const verified = await waitFor(() => {
+        if (!current.root.isConnected) return false;
+        if (action === 'likePosts' || action === 'reactStories') {
+          return exactButtons(current.root, new Set(['unlike'])).length === 1;
+        }
+        if (action === 'followPeople') {
+          return exactButtons(current.root, new Set(['following', 'requested'])).length === 1;
+        }
+        if (action === 'acceptRequests') {
+          return exactButtons(current.root, new Set(['following', 'remove'])).length === 1;
+        }
+        return false;
+      }, signal);
+      if (!verified) return { verified: false, uncertain: true, reason: 'Instagram did not confirm the action' };
+      const reason = action === 'likePosts' ? 'Post liked'
+        : action === 'reactStories' ? 'Story reaction added'
+          : action === 'followPeople' ? 'Follow confirmed'
+            : 'Follow request accepted';
+      return { verified: true, label: current.label, reason };
+    },
+    inspectAvailable: () => Object.freeze(Object.fromEntries([
+      'viewStories', 'reactStories', 'likePosts', 'followPeople', 'acceptRequests',
+    ].map(action => [action, candidates(action).length]))),
+  });
+}
+
+return Object.freeze({ createPresenceNativeActions });
+})();
+localModules["extension/presence-session.js"] = (() => {
+
+const ACTION_ORDER = Object.freeze([
+  'viewStories',
+  'reactStories',
+  'likePosts',
+  'followPeople',
+  'acceptRequests',
+]);
+
+const PRESENCE_ACTION_LABELS = Object.freeze({
+  viewStories: 'View stories',
+  reactStories: 'React to stories',
+  likePosts: 'Like posts',
+  followPeople: 'Follow people',
+  acceptRequests: 'Accept follow requests',
 });
 
-function freeze(value) {
-  if (value && typeof value === 'object') {
-    for (const child of Object.values(value)) freeze(child);
-    Object.freeze(value);
+const REVIEW_TTL_MS = 15 * 60_000;
+const MAX_ACTIONS = 50;
+const MIN_ACTIONS = 1;
+const reviews = new WeakSet();
+const consumed = new WeakSet();
+
+const fail = (reason) => { throw new Error(reason); };
+const text = (value) => typeof value === 'string' ? value.trim() : '';
+const count = (value, fallback = 10) => {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= MIN_ACTIONS && number <= MAX_ACTIONS
+    ? number : fallback;
+};
+const digest = (value) => {
+  const source = JSON.stringify(value);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
   }
-  return value;
-}
+  return (hash >>> 0).toString(16).padStart(8, '0');
+};
+const clone = (value) => structuredClone(value);
 
-function record(value, name) {
-  if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
-    throw new TypeError(`${name} must be a plain record.`);
-  }
-  return value;
-}
-
-function canonical(value) {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
-  }
-  return value;
-}
-
-function same(left, right) {
-  return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
-}
-
-function reject(reason) {
-  return freeze({
-    kind: 'presence-batch-review-draft', version: 1,
-    status: 'unavailable', executable: false, reason,
-    capabilities: PRESENCE_BATCH_CAPABILITIES,
-    queueDraft: null, confirmationDraft: null,
+function normalizePresenceSessionOptions(value = {}) {
+  const source = value && typeof value === 'object' ? value : {};
+  const actions = Object.fromEntries(ACTION_ORDER.map((action) => [action, source.actions?.[action] === true]));
+  if (actions.reactStories) actions.viewStories = true;
+  return Object.freeze({
+    actions: Object.freeze(actions),
+    maxActions: count(source.maxActions),
   });
 }
 
-/** Build presentation data only. Neither a plan nor this draft is action authority. */
-function createPresenceBatchDraft({ reviewedPlan, current, selectedTargetIds, now } = {}) {
-  record(reviewedPlan, 'Reviewed plan');
-  record(current, 'Current observations');
-  if (!Number.isSafeInteger(now) || now <= 0) throw new TypeError('A current timestamp is required.');
-  if (reviewedPlan.kind !== 'presence-review'
-    || reviewedPlan.version !== PRESENCE_VERSION || reviewedPlan.executable !== false) {
-    return reject('presence-review-required');
+function createPresenceSession({
+  nativeActions,
+  now = Date.now,
+  random = Math.random,
+  wait = null,
+  onUpdate = () => {},
+  minDelayMs = 2_000,
+  maxDelayMs = 5_000,
+} = {}) {
+  if (typeof nativeActions?.inspectContext !== 'function'
+    || typeof nativeActions?.find !== 'function'
+    || typeof nativeActions?.execute !== 'function'
+    || typeof now !== 'function' || typeof random !== 'function'
+    || (wait !== null && typeof wait !== 'function') || typeof onUpdate !== 'function') {
+    fail('presence-session-adapter-required');
   }
-  const { createdAt, expiresAt } = reviewedPlan;
-  if (!Number.isSafeInteger(createdAt) || !Number.isSafeInteger(expiresAt)
-    || createdAt <= 0 || expiresAt <= createdAt || expiresAt - createdAt > 15 * 60_000) {
-    return reject('invalid-review-lifetime');
-  }
-  if (now < createdAt || now >= expiresAt) return reject('review-expired');
-  if (!Array.isArray(reviewedPlan.targets) || !reviewedPlan.targets.length
-    || reviewedPlan.targets.length > 100) return reject('finite-targets-required');
-  if (!Array.isArray(selectedTargetIds) || !selectedTargetIds.length
-    || selectedTargetIds.length > 100
-    || selectedTargetIds.some((id) => typeof id !== 'string' || !/^[1-9]\d{0,29}$/.test(id))
-    || new Set(selectedTargetIds).size !== selectedTargetIds.length) {
-    return reject('exact-selection-required');
+  if (!Number.isFinite(minDelayMs) || !Number.isFinite(maxDelayMs)
+    || minDelayMs < 0 || maxDelayMs < minDelayMs || maxDelayMs > 60_000) {
+    fail('presence-session-pacing-invalid');
   }
 
-  // Recompile observations rather than accepting previously simulated decisions.
-  const fresh = compilePlan({
-    profile: current.profile, candidates: current.candidates,
-    history: current.history, usage: current.usage, now,
+  let controller = null;
+  let pauseGate = null;
+  let state = Object.freeze({
+    status: 'idle', reason: null, accountId: null, current: null,
+    completed: 0, skipped: 0, uncertain: 0, maxActions: 0,
+    enabledActions: Object.freeze([]), results: Object.freeze([]), canPause: false,
+    canResume: false, canStop: false,
   });
-  if (reviewedPlan.accountId !== fresh.accountId) return reject('account-changed');
-  if (!same(normalizeProfile(reviewedPlan.profile), fresh.profile)) return reject('routine-changed');
-  if (reviewedPlan.activeWindow !== true || fresh.activeWindow !== true) return reject('outside-active-window');
-  if (!same(reviewedPlan.targets, fresh.targets)) return reject('targets-changed');
-  const selectedSet = new Set(selectedTargetIds);
-  const targets = fresh.targets.filter((target) => selectedSet.has(target.targetId));
-  if (targets.length !== selectedSet.size) return reject('selection-outside-review');
-  const action = targets[0].action;
-  if (!['follow', 'unfollow'].includes(action) || targets.some((target) => target.action !== action)) {
-    return reject('single-action-required');
-  }
 
-  const selected = targets.map((target) => target.username);
-  const partial = (current.candidates || []).some((candidate) => (
-    selectedSet.has(candidate.targetId) && candidate.followsMeEvidence === 'partial-list'
-  ));
-  const source = 'presence';
-  const requested = selected.length;
-  const skipped = [];
-  for (const decision of fresh.decisions) {
-    if (fresh.targets.some((target) => target.targetId === decision.targetId)) continue;
-    const existing = skipped.find((entry) => entry.reason === decision.reason);
-    if (existing) existing.count += 1;
-    else skipped.push({ count: 1, reason: decision.reason });
-  }
-  const queueDraft = {
-    action, omitted: fresh.targets.length - targets.length, removed: 0,
-    requested, partial, selected, skipped, source,
-    signature: JSON.stringify({ action, requested, selected, source, partial }),
+  const publish = (patch = {}) => {
+    const nextResults = patch.results || state.results;
+    state = Object.freeze({ ...state, ...patch, results: Object.freeze([...nextResults].slice(0, 50)) });
+    onUpdate(snapshot());
+    return state;
   };
-  return freeze({
-    kind: 'presence-batch-review-draft', version: 1,
-    status: 'review-required', executable: false,
-    capabilities: PRESENCE_BATCH_CAPABILITIES,
-    liveUnavailableReason: 'presence-trusted-runtime-required',
-    accountId: fresh.accountId, createdAt: now, expiresAt,
-    bindings: targets.map(({ targetId, username, action: targetAction }) => ({
-      accountId: fresh.accountId, targetId, username, action: targetAction,
-    })),
-    queueDraft,
-    confirmationDraft: {
-      kind: 'account', action,
-      items: targets.map((target, index) => ({
-        id: `presence-${action}-${target.targetId}-${index}`, username: target.username,
-      })),
-      description: `${selected.length} reviewed ${action} target${selected.length === 1 ? '' : 's'}. Nothing has run.`,
+  const snapshot = () => clone(state);
+  const active = () => controller && ['running', 'waiting', 'paused', 'stopping'].includes(state.status);
+  const context = (accountId) => {
+    const value = nativeActions.inspectContext();
+    if (value?.accountVerified !== true || value.usable !== true || value.accountId !== accountId
+      || value.challenge || value.actionBlocked || value.rateLimited || value.sessionExpired
+      || value.frozen || value.discarded) fail('presence-context-changed');
+    return value;
+  };
+  const sleep = async (ms, signal) => {
+    if (wait) return wait(ms, signal);
+    await new Promise((resolve, reject) => {
+      let timer = null;
+      const done = () => { signal?.removeEventListener?.('abort', abort); if (timer !== null) clearTimeout(timer); resolve(); };
+      const abort = () => { if (timer !== null) clearTimeout(timer); reject(new DOMException('Stopped', 'AbortError')); };
+      if (signal?.aborted) return abort();
+      signal?.addEventListener?.('abort', abort, { once: true });
+      timer = setTimeout(done, ms);
+    });
+  };
+  const awaitResume = async (signal) => {
+    while (state.status === 'paused') {
+      await new Promise((resolve, reject) => {
+        const abort = () => reject(new DOMException('Stopped', 'AbortError'));
+        if (signal.aborted) return abort();
+        pauseGate = () => { signal.removeEventListener('abort', abort); pauseGate = null; resolve(); };
+        signal.addEventListener('abort', abort, { once: true });
+      });
+    }
+  };
+
+  function createReview({ accountId, options, expiresAt = now() + REVIEW_TTL_MS } = {}) {
+    const normalized = normalizePresenceSessionOptions(options);
+    const enabledActions = ACTION_ORDER.filter((action) => normalized.actions[action]);
+    if (!/^[A-Za-z0-9_.-]{1,128}$/.test(text(accountId))) fail('presence-account-required');
+    if (!enabledActions.length) fail('presence-action-required');
+    const expiry = Math.min(Number(expiresAt) || 0, now() + REVIEW_TTL_MS);
+    if (expiry <= now()) fail('presence-review-expired');
+    const payload = Object.freeze({ accountId: text(accountId), options: normalized,
+      enabledActions: Object.freeze(enabledActions), expiresAt: expiry });
+    const review = Object.freeze({ version: 1, ...payload,
+      reviewedDigest: digest({ ...payload, options: normalized }) });
+    reviews.add(review);
+    return review;
+  }
+
+  async function start(review) {
+    if (active()) fail('presence-session-active');
+    if (!review || !reviews.has(review) || consumed.has(review)) fail('presence-review-required');
+    if (review.expiresAt <= now()) fail('presence-review-expired');
+    context(review.accountId);
+    consumed.add(review);
+    controller = new AbortController();
+    const { signal } = controller;
+    const results = [];
+    const seen = new Set();
+    const empty = new Set();
+    let cursor = 0;
+    publish({
+      status: 'running', reason: null, accountId: review.accountId, current: null,
+      completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
+      enabledActions: review.enabledActions, results, canPause: true, canResume: false, canStop: true,
+    });
+    try {
+      while (!signal.aborted && state.completed < review.options.maxActions && now() < review.expiresAt) {
+        await awaitResume(signal);
+        context(review.accountId);
+        const action = review.enabledActions[cursor % review.enabledActions.length];
+        cursor += 1;
+        let candidate;
+        try {
+          candidate = await nativeActions.find(action, Object.freeze({ accountId: review.accountId,
+            seen: new Set(seen), signal }));
+        } catch (error) {
+          if (signal.aborted) throw error;
+          fail(error?.message || 'presence-discovery-failed');
+        }
+        if (!candidate) {
+          empty.add(action);
+          if (empty.size === review.enabledActions.length) break;
+          continue;
+        }
+        if (!text(candidate.id) || candidate.action !== action || seen.has(candidate.id)) {
+          fail('presence-target-invalid');
+        }
+        empty.delete(action);
+        const actionId = `${action}:${candidate.id}`;
+        publish({ status: 'running', current: { action, id: candidate.id,
+          label: text(candidate.label) || PRESENCE_ACTION_LABELS[action] } });
+        const assertCurrent = () => {
+          if (signal.aborted || state.status === 'paused' || now() >= review.expiresAt) {
+            fail('presence-grant-revoked');
+          }
+          context(review.accountId);
+          return true;
+        };
+        let outcome;
+        try {
+          assertCurrent();
+          outcome = await nativeActions.execute(action, candidate, Object.freeze({ signal, assertCurrent, actionId }));
+        } catch (error) {
+          if (signal.aborted) throw error;
+          outcome = { verified: false, uncertain: true, reason: error?.message || 'presence-outcome-uncertain' };
+        }
+        seen.add(candidate.id);
+        if (outcome?.verified === true) {
+          results.unshift({ action, id: candidate.id, label: text(outcome.label) || text(candidate.label),
+            status: 'completed', reason: text(outcome.reason) });
+          publish({ completed: state.completed + 1, current: null, results });
+        } else if (outcome?.skipped === true && outcome?.uncertain !== true) {
+          results.unshift({ action, id: candidate.id, label: text(candidate.label),
+            status: 'skipped', reason: text(outcome.reason) || 'No longer available' });
+          publish({ skipped: state.skipped + 1, current: null, results });
+        } else {
+          results.unshift({ action, id: candidate.id, label: text(candidate.label),
+            status: 'uncertain', reason: text(outcome?.reason) || 'Check Instagram before continuing' });
+          publish({ status: 'needs-attention', reason: text(outcome?.reason) || 'presence-outcome-uncertain',
+            uncertain: state.uncertain + 1, current: null, results,
+            canPause: false, canResume: false, canStop: false });
+          return snapshot();
+        }
+        if (state.completed >= review.options.maxActions) break;
+        const delay = Math.round(minDelayMs + random() * (maxDelayMs - minDelayMs));
+        publish({ status: 'waiting', current: null });
+        await sleep(delay, signal);
+        if (!signal.aborted && state.status !== 'paused') publish({ status: 'running' });
+      }
+      if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+      const expired = now() >= review.expiresAt;
+      publish({ status: expired ? 'expired' : 'completed',
+        reason: expired ? 'presence-session-expired' : null, current: null,
+        canPause: false, canResume: false, canStop: false });
+      return snapshot();
+    } catch (error) {
+      if (signal.aborted || error?.name === 'AbortError') {
+        publish({ status: 'stopped', reason: 'presence-session-stopped', current: null,
+          canPause: false, canResume: false, canStop: false });
+        return snapshot();
+      }
+      publish({ status: 'needs-attention', reason: error?.message || 'presence-session-failed', current: null,
+        canPause: false, canResume: false, canStop: false });
+      return snapshot();
+    } finally {
+      controller = null;
+      pauseGate = null;
+    }
+  }
+
+  return Object.freeze({
+    createReview,
+    start,
+    snapshot,
+    pause() {
+      if (!controller || !['running', 'waiting'].includes(state.status)) return false;
+      publish({ status: 'paused', canPause: false, canResume: true, canStop: true });
+      return true;
+    },
+    resume() {
+      if (!controller || state.status !== 'paused') return false;
+      publish({ status: 'running', canPause: true, canResume: false, canStop: true });
+      pauseGate?.();
+      return true;
+    },
+    stop() {
+      if (!controller || !active()) return false;
+      publish({ status: 'stopping', canPause: false, canResume: false, canStop: false });
+      controller.abort('Stopped');
+      pauseGate?.();
+      return true;
     },
   });
 }
 
-return Object.freeze({ PRESENCE_BATCH_CAPABILITIES, createPresenceBatchDraft });
+return Object.freeze({ PRESENCE_ACTION_LABELS, normalizePresenceSessionOptions, createPresenceSession });
 })();
-localModules["extension/presence-userscript-panel.js"] = (() => {
-const { compilePlan, normalizeHandle } = localModules["src/core/presence.js"];
-const { createPresenceBatchDraft } = localModules["extension/presence-batch-review.js"];
+localModules["extension/presence-session-panel.js"] = (() => {
+const { PRESENCE_ACTION_LABELS, normalizePresenceSessionOptions } = localModules["extension/presence-session.js"];
 
+const ACTIONS = Object.freeze([
+  ['viewStories', 'View stories'],
+  ['reactStories', 'React to stories'],
+  ['likePosts', 'Like posts'],
+  ['followPeople', 'Follow people'],
+  ['acceptRequests', 'Accept follow requests'],
+]);
 
-const MESSAGES = Object.freeze({
-  'fresh-runtime-capture-required': 'Run Mutual Checker for your account from the inbox, then build a plan.',
-  'viewer-changed-or-unavailable': 'Open your inbox so the signed-in account can be checked.',
-  'capture-expired': 'These lists are out of date. Run Mutual Checker again.',
-  'profile-account-mismatch': 'The saved routine belongs to another account.',
-  'routine-source-unavailable': 'These lists support follow-back plans only.',
-  'review-expired': 'This plan expired. Build it again.',
-  'capture-changed': 'The checked lists changed. Build a new plan.',
-  'targets-changed': 'The suggested accounts changed. Build a new plan.',
-  'routine-changed': 'The routine changed. Build a new plan.',
-  'account-changed': 'The signed-in account changed. Build a new plan.',
-  'outside-active-window': 'This is outside your routine’s active hours.',
-});
-const LIVE_REASON = 'Planning only. No actions run here.';
-const PAGE_SIZE = 25;
+const clean = (value) => String(value ?? '').trim();
 
-function mountUserscriptPresencePanel({
-  container, document = globalThis.document, nativeAdapter, getCapture, getProfile,
-  onReview = null, onManual, onStatus = () => {}, now = Date.now, preferenceStore = null,
+function mountPresenceSessionPanel({
+  container,
+  session,
+  inspectAccount,
+  confirmAction,
+  readPreferences = () => null,
+  writePreferences = () => {},
+  busy = () => false,
+  onStatus = () => {},
+  document = globalThis.document,
+  now = Date.now,
 } = {}) {
-  if (!container || !document?.createElement || typeof nativeAdapter?.prepareProductionInputs !== 'function'
-    || typeof getCapture !== 'function' || typeof getProfile !== 'function'
-    || typeof onManual !== 'function' || (onReview !== null && typeof onReview !== 'function')
-    || typeof onStatus !== 'function' || typeof now !== 'function'
-    || (preferenceStore !== null && (typeof preferenceStore.load !== 'function'
-      || typeof preferenceStore.update !== 'function'))) throw new Error('presence-panel-adapter-required');
+  if (!container || !document?.createElement || typeof session?.createReview !== 'function'
+    || typeof session?.start !== 'function' || typeof session?.snapshot !== 'function'
+    || typeof inspectAccount !== 'function' || typeof confirmAction !== 'function'
+    || typeof readPreferences !== 'function' || typeof writePreferences !== 'function'
+    || typeof busy !== 'function' || typeof onStatus !== 'function' || typeof now !== 'function') {
+    throw new Error('presence-panel-adapter-required');
+  }
+
   const create = (tag, text, className) => {
     const node = document.createElement(tag);
     if (text !== undefined && text !== null) node.textContent = text;
     if (className) node.className = className;
     return node;
   };
-  const root = create('section', null, 'presence-routine');
-  root.setAttribute('aria-label', 'Presence');
+  const root = create('section', null, 'presence-session');
+  root.setAttribute('aria-labelledby', 'insta-toolbox-presence-title');
   const style = create('style', `
-    .presence-routine{display:grid;gap:12px;min-width:0;color:var(--insta-toolbox-text);font:inherit}
-    .presence-routine h3,.presence-routine p{margin:0;overflow-wrap:anywhere}
-    .presence-routine h3{font-size:16px;line-height:1.4}
-    .presence-routine .presence-fields{display:grid;gap:12px;min-width:0}
-    .presence-routine label{display:grid;gap:4px;min-width:0}
-    .presence-routine input:not([type=checkbox]),.presence-routine textarea{box-sizing:border-box;width:100%;min-height:44px;font:inherit;color:inherit;background:var(--insta-toolbox-bg-sunken);border:1px solid var(--insta-toolbox-line);border-radius:8px;padding:8px}
-    .presence-routine textarea{min-height:64px;resize:vertical}
-    .presence-routine .presence-choice{display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere}
-    .presence-routine input[type=checkbox]{flex:0 0 auto;accent-color:var(--insta-toolbox-accent)}
-    .presence-routine .presence-actions{display:flex;flex-wrap:wrap;gap:8px}
-    .presence-routine .presence-actions button{flex:1 1 140px;white-space:normal}
-    .presence-routine .presence-note{font-size:12px;line-height:1.5;color:var(--insta-toolbox-muted,var(--insta-toolbox-text))}
-    .presence-routine .presence-results{display:grid;gap:8px;min-width:0}
-    .presence-routine ul{list-style:none;padding:0;margin:0;display:grid;gap:8px}
-    .presence-routine li{min-width:0;overflow-wrap:anywhere}
-    .presence-routine .presence-target-text{display:grid;gap:4px;min-width:0}
-    .presence-routine details{border-top:1px solid var(--insta-toolbox-line);padding-top:8px}
-    .presence-routine summary{display:list-item;cursor:pointer;min-height:44px;align-content:center;list-style:disclosure-closed inside}
-    .presence-routine details[open]>summary{list-style-type:disclosure-open}
-    .presence-routine :focus-visible{outline:2px solid var(--insta-toolbox-accent,Highlight);outline-offset:2px}
-    .presence-routine [hidden]{display:none!important}
-    @media(forced-colors:active){.presence-routine input,.presence-routine textarea,.presence-routine button{border:1px solid ButtonText}.presence-routine summary{color:CanvasText;-webkit-text-fill-color:CanvasText}.presence-routine :focus-visible{outline-color:Highlight}}
+    .presence-session{display:grid;gap:16px;min-width:0;color:var(--insta-toolbox-text);font:inherit}
+    .presence-session h2,.presence-session p{margin:0;overflow-wrap:anywhere}
+    .presence-session h2{font-size:18px;line-height:1.35}
+    .presence-session .presence-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .presence-session .presence-option{display:flex;align-items:center;gap:10px;min-width:0;min-height:44px;padding:8px 10px;border:1px solid var(--insta-toolbox-line);border-radius:10px;background:var(--insta-toolbox-bg-sunken)}
+    .presence-session .presence-option:last-child:nth-child(odd){grid-column:1/-1}
+    .presence-session .presence-option input{flex:0 0 auto;width:18px;height:18px;accent-color:var(--insta-toolbox-accent)}
+    .presence-session .presence-limit{display:grid;gap:6px;max-width:180px}
+    .presence-session .presence-limit input{box-sizing:border-box;width:100%;min-height:44px;font:inherit;color:inherit;background:var(--insta-toolbox-bg-sunken);border:1px solid var(--insta-toolbox-line);border-radius:8px;padding:8px 10px}
+    .presence-session .presence-controls{display:flex;flex-wrap:wrap;gap:8px}
+    .presence-session .presence-controls .button{flex:1 1 132px;white-space:normal}
+    .presence-session .presence-status{display:grid;gap:5px;padding:12px;border-left:3px solid var(--insta-toolbox-accent);background:var(--insta-toolbox-bg-sunken);border-radius:0 8px 8px 0}
+    .presence-session .presence-status strong,.presence-session .presence-status span{overflow-wrap:anywhere}
+    .presence-session .presence-status span{font-size:12px;line-height:1.5;color:var(--insta-toolbox-muted,var(--insta-toolbox-text))}
+    .presence-session .presence-results{list-style:none;display:grid;gap:8px;margin:0;padding:0}
+    .presence-session .presence-results li{display:grid;gap:2px;min-width:0;padding-top:8px;border-top:1px solid var(--insta-toolbox-line);overflow-wrap:anywhere}
+    .presence-session .presence-results small{color:var(--insta-toolbox-muted,var(--insta-toolbox-text));line-height:1.45}
+    .presence-session [hidden]{display:none!important}
+    .presence-session :focus-visible{outline:2px solid var(--insta-toolbox-accent,Highlight);outline-offset:2px}
+    @container (max-width:280px){.presence-session .presence-options{grid-template-columns:1fr}.presence-session .presence-option:last-child:nth-child(odd){grid-column:auto}}
+    @media(max-width:600px){.presence-session .presence-options{grid-template-columns:1fr}.presence-session .presence-option:last-child:nth-child(odd){grid-column:auto}}
+    @media(forced-colors:active){.presence-session .presence-option,.presence-session .presence-limit input,.presence-session .presence-status{border:1px solid CanvasText}.presence-session :focus-visible{outline-color:Highlight}}
   `);
-  const context = create('p', 'Follow back from your latest checked lists.', 'presence-note');
-  const choicesDisclosure = create('details'); choicesDisclosure.open = true;
-  choicesDisclosure.setAttribute('data-presence', 'choices');
-  const choicesSummary = create('summary', 'Plan choices');
-  const fields = create('div', null, 'presence-fields');
-  const allowanceLabel = create('label', 'Accounts in this plan');
-  const allowance = create('input'); allowance.type = 'number'; allowance.min = '0'; allowance.max = '50'; allowance.step = '1';
-  allowance.setAttribute('data-presence', 'allowance');
-  const keepLabel = create('label', 'Keep these accounts unchanged');
-  const keep = create('textarea'); keep.rows = 2; keep.placeholder = '@account, @another';
-  keep.setAttribute('data-presence', 'protected');
-  const includeLabel = create('label', null, 'presence-choice');
-  const includePrivate = create('input'); includePrivate.type = 'checkbox'; includePrivate.setAttribute('data-presence', 'private');
-  includeLabel.append(includePrivate, document.createTextNode('Include private accounts'));
-  const privacyNote = create('p', 'Privacy is not included in checked lists. Leave this off to hold accounts with unknown privacy.', 'presence-note');
-  const hours = create('details');
-  const hoursSummary = create('summary', 'Hours and privacy');
-  const hoursFields = create('div', null, 'presence-fields');
-  const startLabel = create('label', 'From');
-  const start = create('input'); start.type = 'time'; start.setAttribute('data-presence', 'start');
-  const endLabel = create('label', 'Until');
-  const end = create('input'); end.type = 'time'; end.setAttribute('data-presence', 'end');
-  const zone = create('p', '', 'presence-note');
-  startLabel.append(start); endLabel.append(end);
-  hoursFields.append(startLabel, endLabel, zone, includeLabel, privacyNote);
-  hours.append(hoursSummary, hoursFields);
-  allowanceLabel.append(allowance); keepLabel.append(keep);
-  fields.append(allowanceLabel, keepLabel, hours);
-  const actions = create('div', null, 'presence-actions');
-  const buildButton = create('button', 'Build my plan', 'button primary'); buildButton.type = 'button';
-  const reviewButton = create('button', 'Review selected', 'button primary'); reviewButton.type = 'button'; reviewButton.hidden = true;
-  const manualButton = create('button', 'Manual Follow / Unfollow', 'button quiet'); manualButton.type = 'button';
-  actions.append(buildButton, reviewButton, manualButton);
-  const feedback = create('p', '', 'presence-note');
-  feedback.hidden = true;
-  const storageNote = create('p', '', 'presence-note'); storageNote.hidden = true;
-  storageNote.setAttribute('data-presence', 'storage');
-  const repairButton = create('button', 'Save corrected choices', 'button quiet');
-  repairButton.type = 'button'; repairButton.hidden = true;
-  const results = create('div', null, 'presence-results'); results.hidden = true;
-  const summary = create('p');
-  summary.setAttribute('data-presence', 'plan-summary');
-  summary.setAttribute('tabindex', '-1');
-  const targets = create('ul'); targets.setAttribute('aria-label', 'Suggested accounts');
-  const held = create('details');
-  const heldSummary = create('summary');
-  const heldList = create('ul');
-  const moreHeld = create('button', 'Show more', 'button quiet'); moreHeld.type = 'button';
-  held.append(heldSummary, heldList, moreHeld);
-  const executionNote = create('p', LIVE_REASON, 'presence-note');
-  results.append(summary, targets, held);
-  choicesDisclosure.append(choicesSummary, fields, storageNote, repairButton);
-  root.append(style, context, executionNote, choicesDisclosure, feedback, results, actions);
-  container.append(root);
+  const heading = create('h2', 'Presence');
+  heading.id = 'insta-toolbox-presence-title';
+  const intro = create('p', 'Choose what Presence may do while this Instagram tab stays open.', 'lead');
+  const options = create('div', null, 'presence-options');
+  const controls = new Map();
+  for (const [key, label] of ACTIONS) {
+    const wrapper = create('label', null, 'presence-option');
+    const input = create('input');
+    input.type = 'checkbox';
+    input.setAttribute('data-presence-action', key);
+    wrapper.append(input, document.createTextNode(label));
+    controls.set(key, input);
+    options.append(wrapper);
+  }
+  const limitLabel = create('label', 'Maximum actions', 'presence-limit');
+  const limit = create('input');
+  limit.type = 'number';
+  limit.min = '1';
+  limit.max = '50';
+  limit.step = '1';
+  limit.inputMode = 'numeric';
+  limit.setAttribute('data-presence-limit', '');
+  limitLabel.append(limit);
+  const actions = create('div', null, 'presence-controls');
+  const start = create('button', 'Start Presence', 'button primary big');
+  start.type = 'button';
+  const pause = create('button', 'Pause', 'button quiet');
+  pause.type = 'button';
+  const resume = create('button', 'Resume', 'button primary');
+  resume.type = 'button';
+  const stop = create('button', 'Stop', 'button danger');
+  stop.type = 'button';
+  actions.append(start, pause, resume, stop);
+  const statusBox = create('div', null, 'presence-status');
+  const statusTitle = create('strong', 'Ready');
+  const statusDetail = create('span', 'No actions run until you review and confirm this session.');
+  statusBox.append(statusTitle, statusDetail);
+  const results = create('ul', null, 'presence-results');
+  results.setAttribute('aria-label', 'Presence results');
+  root.append(style, heading, intro, options, limitLabel, statusBox, actions, results);
+  container.replaceChildren(root);
 
+  let disposed = false;
+  let confirming = false;
   const listeners = [];
-  const listen = (node, type, handler) => { node.addEventListener(type, handler); listeners.push(() => node.removeEventListener(type, handler)); };
-  let disposed = false, epoch = 0, status = 'idle', reason = null;
-  let plan = null, capture = null, heldRows = [], heldCount = PAGE_SIZE, reviewPending = false;
-  let storageWritable = true, saveEpoch = 0, preferencesLoading = Boolean(preferenceStore);
-  let needsRepair = false, repairing = false;
-  const edited = new Set();
-  const selected = new Set();
-  const initial = getProfile() || {};
-  allowance.value = String(initial.followLimit ?? 6);
-  keep.value = (initial.protectedHandles || []).map(name => `@${name}`).join(', ');
-  includePrivate.checked = initial.skipPrivate === false;
-  const formatMinute = value => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
-  start.value = formatMinute(initial.window?.start ?? 540);
-  end.value = formatMinute(initial.window?.end ?? 1200);
-  zone.textContent = `Plan hours · ${initial.timezone || 'UTC'}`;
-
-  const choices = [
-    [allowance, 'followLimit'], [keep, 'protectedHandles'], [start, 'window.start'],
-    [end, 'window.end'], [includePrivate, 'skipPrivate'],
-  ];
-  const showStorage = text => {
-    if (disposed) return;
-    storageNote.textContent = text; storageNote.hidden = !text;
-    repairButton.hidden = !needsRepair || !storageWritable;
-    repairButton.disabled = repairing;
+  const listen = (node, type, handler) => {
+    node.addEventListener(type, handler);
+    listeners.push(() => node.removeEventListener(type, handler));
   };
-  const ready = preferenceStore ? Promise.resolve().then(() => preferenceStore.load()).then(saved => {
-    if (disposed) return;
-    storageWritable = saved.writable !== false;
-    needsRepair = saved.issues?.some(issue => !['older-record', 'version-unsupported', 'write-outcome-uncertain'].includes(issue)) || false;
-    const value = saved.preferences;
-    if (!edited.has('followLimit')) allowance.value = String(value.followLimit);
-    if (!edited.has('protectedHandles')) keep.value = value.protectedHandles.map(name => `@${name}`).join(', ');
-    if (!edited.has('skipPrivate')) includePrivate.checked = !value.skipPrivate;
-    if (!edited.has('window.start')) start.value = formatMinute(value.window.start);
-    if (!edited.has('window.end')) end.value = formatMinute(value.window.end);
-    if (plan) invalidate(null);
-    showStorage(!storageWritable ? saved.issues?.includes('version-unsupported')
-      ? 'Saved choices use a newer format. Changes stay in this tab.'
-      : 'Saving choices is unavailable. Changes stay in this tab.'
-      : needsRepair ? 'Check the saved choices above, then save the corrected values.' : '');
-  }).catch(() => {
-    storageWritable = false;
-    showStorage('Saved choices could not load. Changes stay in this tab.');
-  }).finally(() => {
-    preferencesLoading = false;
-    if (!disposed) controls();
-  }) : Promise.resolve();
 
-  function readChoices() {
-    const countText = String(allowance.value).trim();
-    if (!/^\d+$/.test(countText) || Number(countText) > 50) throw new Error('Choose a whole number from 0 to 50.');
-    const readMinute = value => {
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error('Choose valid plan hours.');
-      const [hour, minute] = value.split(':').map(Number);
-      return hour * 60 + minute;
-    };
-    const window = { start: readMinute(start.value), end: readMinute(end.value) };
-    if (window.start === window.end) throw new Error('Choose different start and end times.');
-    const tokens = String(keep.value || '').split(/[\s,;]+/).filter(Boolean);
-    if (tokens.length > 500) throw new Error('Keep at most 500 protected accounts.');
-    return { followLimit: Number(countText), skipPrivate: !includePrivate.checked, window,
-      protectedHandles: [...new Set(tokens.map(name => normalizeHandle(name)))] };
-  }
-
-  async function saveChoice(key) {
-    if (!preferenceStore || disposed) return;
-    const ticket = ++saveEpoch;
-    await ready;
-    if (disposed || !storageWritable) return;
-    if (needsRepair) { showStorage('Check the saved choices above, then save the corrected values.'); return; }
-    let patch;
-    try {
-      const value = readChoices();
-      patch = key.startsWith('window.') ? { window: { [key.split('.')[1]]: value.window[key.split('.')[1]] } }
-        : { [key]: value[key] };
+  function readOptions() {
+    const maxActions = Number(limit.value);
+    if (!Number.isInteger(maxActions) || maxActions < 1 || maxActions > 50) {
+      throw new Error('presence-action-limit-invalid');
     }
-    catch { showStorage('Finish the choices above to save them.'); return; }
-    try {
-      await preferenceStore.update(patch);
-      if (!disposed && ticket === saveEpoch) showStorage('');
-    } catch {
-      if (!disposed && ticket === saveEpoch) showStorage('Choices could not save. Changes stay in this tab.');
-    }
-  }
-
-  async function repairChoices() {
-    if (disposed || !preferenceStore || !storageWritable || !needsRepair || repairing) return;
-    let values;
-    try { values = readChoices(); }
-    catch { showStorage('Finish the choices above to save them.'); return; }
-    const ticket = ++saveEpoch;
-    repairing = true; showStorage('Saving corrected choices…');
-    try {
-      await preferenceStore.update(values);
-      if (!disposed) {
-        if (ticket === saveEpoch) { needsRepair = false; showStorage(''); }
-        else showStorage('Choices changed while saving. Save the current choices.');
-      }
-    } catch {
-      showStorage('Choices could not save. Changes stay in this tab.');
-    } finally {
-      repairing = false;
-      if (!disposed) repairButton.disabled = false;
-    }
-  }
-
-  function announce(text) { feedback.textContent = text; feedback.hidden = !text; onStatus(text); }
-  function controls() {
-    buildButton.disabled = preferencesLoading;
-    buildButton.hidden = Boolean(plan);
-    choicesSummary.textContent = plan ? 'Edit plan choices' : 'Plan choices';
-    reviewButton.hidden = !plan?.targets.length || typeof onReview !== 'function';
-    reviewButton.disabled = reviewPending || !selected.size || typeof onReview !== 'function';
-    reviewButton.textContent = `Review ${selected.size} account${selected.size === 1 ? '' : 's'}`;
-    buildButton.className = plan?.targets.length && typeof onReview === 'function' ? 'button quiet' : 'button primary';
-  }
-  function invalidate(message = 'Build a new plan to review these choices.') {
-    if (disposed) return;
-    epoch += 1; plan = null; capture = null; selected.clear(); reviewPending = false;
-    status = 'idle'; reason = null; results.hidden = true; targets.replaceChildren(); heldList.replaceChildren();
-    context.textContent = 'Follow back from your latest checked lists.';
-    controls();
-    if (message) announce(message);
-    else { feedback.textContent = ''; feedback.hidden = true; }
-  }
-  function unavailable(code) {
-    invalidate(null); status = 'unavailable'; reason = code;
-    announce(MESSAGES[code] || 'This plan is unavailable. Check the lists and choices, then try again.');
-  }
-  function prepare() {
-    const base = getProfile() || {};
-    const { protectedHandles: names, ...choice } = readChoices();
-    const preferences = { ...base, goal: 'maintain', ...choice };
-    const original = getCapture();
-    const prepared = nativeAdapter.prepareProductionInputs({ capture: original, profile: preferences });
-    if (prepared.status !== 'ready-for-review') return { original, prepared };
-    const protectedIds = new Set(prepared.inputs.profile.protectedIds);
-    const unresolved = [];
-    for (const name of names) {
-      const matches = prepared.inputs.candidates.filter((candidate) => candidate.username === name);
-      if (matches.length !== 1) unresolved.push(`@${name}`);
-      else protectedIds.add(matches[0].targetId);
-    }
-    if (unresolved.length) throw new Error(`Not found in these checked lists: ${unresolved.slice(0, 3).join(', ')}${unresolved.length > 3 ? '…' : ''}. Refresh the lists or update the protected accounts.`);
-    const final = nativeAdapter.prepareProductionInputs({ capture: original, profile: { ...preferences, protectedIds: [...protectedIds] } });
-    return { original, prepared: final };
-  }
-  function renderHeld() {
-    heldList.replaceChildren();
-    for (const decision of heldRows.slice(0, heldCount)) {
-      const row = create('li');
-      row.append(create('strong', `@${decision.username}`), create('p', decision.reason, 'presence-note'));
-      heldList.append(row);
-    }
-    moreHeld.hidden = heldRows.length <= heldCount;
-    moreHeld.textContent = `Show ${Math.min(PAGE_SIZE, Math.max(0, heldRows.length - heldCount))} more`;
-  }
-  function renderPlan(prepared) {
-    context.textContent = `Follow-back plan for @${plan.profile.username}`;
-    results.hidden = false; targets.replaceChildren();
-    summary.textContent = `${plan.targets.length} suggested · ${plan.decisions.length - plan.targets.length} held`;
-    for (const target of plan.targets) {
-      const row = create('li');
-      const text = create('span', null, 'presence-target-text');
-      text.append(create('strong', `@${target.username}`), create('span', target.reason, 'presence-note'));
-      if (typeof onReview !== 'function') { row.append(text); targets.append(row); continue; }
-      const label = create('label', null, 'presence-choice');
-      const input = create('input'); input.type = 'checkbox'; input.checked = true;
-      input.setAttribute('data-presence-target', target.targetId);
-      label.append(input, text); row.append(label); targets.append(row);
-      input.addEventListener('change', () => {
-        if (disposed || !plan) return;
-        if (input.checked) selected.add(target.targetId); else selected.delete(target.targetId);
-        epoch += 1; reviewPending = false; status = 'planned'; controls();
-      });
-    }
-    heldRows = plan.decisions.filter((decision) => !plan.targets.some((target) => target.targetId === decision.targetId));
-    heldCount = PAGE_SIZE; held.hidden = !heldRows.length;
-    heldSummary.textContent = `Held accounts (${heldRows.length})`; renderHeld(); controls();
-    const extras = [];
-    if (!prepared.evidence.followersComplete) extras.push('Follower list is partial; only found accounts are considered.');
-    if (!prepared.evidence.negativeFollowingEvidence) extras.push('Following is incomplete or unresolved; missing accounts stay unknown.');
-    if (prepared.evidence.unresolvedFollowers || prepared.evidence.identityConflicts) extras.push('Unresolved account identities were left out.');
-    if (prepared.evidence.truncated) extras.push(`${prepared.evidence.omitted} accounts are outside this plan’s input limit.`);
-    const message = plan.targets.length ? '' : 'No accounts match these choices.';
-    feedback.textContent = [message, ...extras].filter(Boolean).join(' ');
-    feedback.hidden = !feedback.textContent;
-    onStatus([summary.textContent, feedback.textContent].filter(Boolean).join('. '));
-  }
-  function build() {
-    if (disposed || preferencesLoading) return false;
-    const activeElement = root.getRootNode?.()?.activeElement || document.activeElement;
-    const focusFromBuild = activeElement === buildButton;
-    invalidate(null);
-    try {
-      const value = prepare();
-      if (value.prepared.status !== 'ready-for-review') { unavailable(value.prepared.reason); return false; }
-      capture = value.original;
-      plan = compilePlan({ ...value.prepared.inputs, now: now() });
-      selected.clear(); for (const target of plan.targets) selected.add(target.targetId);
-      status = 'planned'; renderPlan(value.prepared);
-      // A deliberate Build can compact the form; background refresh never
-      // closes a disclosure or moves focus away from an edited control.
-      if (!choicesDisclosure.contains?.(activeElement)) choicesDisclosure.open = false;
-      if (focusFromBuild) summary.focus?.({ preventScroll: true });
-      return true;
-    } catch (error) {
-      invalidate(null); status = 'unavailable'; reason = 'invalid-choices';
-      const message = String(error?.message || '');
-      announce(/^(Choose a whole number|Choose valid plan hours|Choose different start|Keep at most|Not found in these checked lists)/.test(message)
-        ? message : 'Check the account names and routine choices.');
-      return false;
-    }
-  }
-  function currentDraft({ allowEmptySelection = false } = {}) {
-    if (!plan || (!selected.size && !allowEmptySelection)) return { status: 'unavailable', reason: 'exact-selection-required' };
-    const value = prepare();
-    if (value.original !== capture) return { status: 'unavailable', reason: 'capture-changed' };
-    if (value.prepared.status !== 'ready-for-review') return value.prepared;
-    return createPresenceBatchDraft({ reviewedPlan: plan, current: value.prepared.inputs,
-      selectedTargetIds: selected.size ? [...selected] : plan.targets.map((target) => target.targetId), now: now() });
-  }
-  async function review() {
-    if (disposed || reviewPending || typeof onReview !== 'function') return false;
-    let token = epoch;
-    try {
-      const draft = currentDraft();
-      if (draft.status !== 'review-required') { unavailable(draft.reason); return false; }
-      token = ++epoch; reviewPending = true; status = 'reviewing'; controls();
-      await onReview(draft);
-      if (disposed || token !== epoch) return false;
-      const checked = currentDraft();
-      if (checked.status !== 'review-required') { unavailable(checked.reason); return false; }
-      reviewPending = false; status = 'reviewed'; controls();
-      announce('Selection reviewed. No actions have run.');
-      return true;
-    } catch {
-      if (!disposed && token === epoch) { invalidate(null); status = 'unavailable'; reason = 'review-unavailable'; announce('Review could not open. Build the plan again.'); }
-      return false;
-    }
-  }
-  function refresh() {
-    if (disposed) return;
-    if (plan?.targets.length) {
-      try { const draft = currentDraft({ allowEmptySelection: true }); if (draft.status !== 'review-required') unavailable(draft.reason); }
-      catch { unavailable('routine-changed'); }
-    } else if (plan) {
-      try {
-        const value = prepare();
-        if (value.original !== capture) unavailable('capture-changed');
-        else if (value.prepared.status !== 'ready-for-review') unavailable(value.prepared.reason);
-        else if (now() < plan.createdAt || now() >= plan.expiresAt) unavailable('review-expired');
-        else {
-          const fresh = compilePlan({ ...value.prepared.inputs, now: now() });
-          if (JSON.stringify(fresh.profile) !== JSON.stringify(plan.profile)
-            || JSON.stringify(fresh.targets) !== JSON.stringify(plan.targets)) unavailable('routine-changed');
-        }
-      } catch { unavailable('routine-changed'); }
-    }
-  }
-  listen(buildButton, 'click', build); listen(reviewButton, 'click', review);
-  listen(repairButton, 'click', repairChoices);
-  listen(manualButton, 'click', () => { invalidate(null); onManual(); });
-  for (const [node, key] of choices) {
-    if (node !== includePrivate) listen(node, 'input', () => { edited.add(key); saveEpoch += 1; invalidate(); });
-    listen(node, 'change', () => {
-      edited.add(key); invalidate();
-      return saveChoice(key);
+    return normalizePresenceSessionOptions({
+      actions: Object.fromEntries([...controls].map(([key, input]) => [key, input.checked])),
+      maxActions,
     });
   }
-  listen(moreHeld, 'click', () => { heldCount += PAGE_SIZE; renderHeld(); });
-  controls();
+  function signature(options) {
+    return JSON.stringify({ actions: options.actions, maxActions: options.maxActions });
+  }
+  function save() {
+    const options = readOptions();
+    for (const [key, input] of controls) input.checked = options.actions[key];
+    limit.value = String(options.maxActions);
+    writePreferences(structuredClone(options));
+    return options;
+  }
+  function load() {
+    const saved = normalizePresenceSessionOptions(readPreferences() || {
+      actions: { viewStories: true, likePosts: true }, maxActions: 10,
+    });
+    for (const [key, input] of controls) input.checked = saved.actions[key];
+    limit.value = String(saved.maxActions);
+  }
+  function describe(snapshot) {
+    const count = Number(snapshot.completed || 0);
+    if (snapshot.status === 'idle') return ['Ready', 'No actions run until you review and confirm this session.'];
+    if (snapshot.status === 'running') return [snapshot.current?.label || 'Presence is running', `${count} verified action${count === 1 ? '' : 's'}.`];
+    if (snapshot.status === 'waiting') return ['Taking a short pause', `${count} verified action${count === 1 ? '' : 's'}.`];
+    if (snapshot.status === 'paused') return ['Paused', `${count} verified action${count === 1 ? '' : 's'}. Resume or stop when ready.`];
+    if (snapshot.status === 'stopping') return ['Stopping', 'No new action will begin.'];
+    if (snapshot.status === 'stopped') return ['Stopped', `${count} verified action${count === 1 ? '' : 's'}.`];
+    if (snapshot.status === 'completed') return ['Session complete', `${count} verified action${count === 1 ? '' : 's'}.`];
+    if (snapshot.status === 'expired') return ['Session expired', `${count} verified action${count === 1 ? '' : 's'}. Start a new session to continue.`];
+    return ['Needs attention', clean(snapshot.reason) || 'Check Instagram before starting again.'];
+  }
+  function render(snapshot = session.snapshot()) {
+    if (disposed) return;
+    const [title, detail] = describe(snapshot);
+    const active = ['running', 'waiting', 'paused', 'stopping'].includes(snapshot.status);
+    intro.hidden = active;
+    options.hidden = active;
+    limitLabel.hidden = active;
+    statusBox.hidden = snapshot.status === 'idle';
+    statusTitle.textContent = title;
+    statusDetail.textContent = detail;
+    start.hidden = snapshot.status !== 'idle' && !['completed', 'stopped', 'expired', 'needs-attention'].includes(snapshot.status);
+    start.disabled = confirming || busy();
+    pause.hidden = snapshot.canPause !== true;
+    pause.disabled = snapshot.canPause !== true;
+    resume.hidden = snapshot.canResume !== true;
+    resume.disabled = snapshot.canResume !== true;
+    stop.hidden = snapshot.canStop !== true;
+    stop.disabled = snapshot.canStop !== true;
+    const locked = confirming || snapshot.canStop === true || snapshot.canResume === true;
+    for (const input of controls.values()) input.disabled = locked;
+    limit.disabled = locked;
+    results.replaceChildren();
+    for (const entry of (snapshot.results || []).slice(0, 12)) {
+      const row = create('li');
+      row.append(create('strong', clean(entry.label) || PRESENCE_ACTION_LABELS[entry.action] || 'Presence action'));
+      row.append(create('small', `${entry.status === 'completed' ? 'Done' : entry.status === 'skipped' ? 'Skipped' : 'Needs attention'}${entry.reason ? ` — ${entry.reason}` : ''}`));
+      results.append(row);
+    }
+  }
+  async function begin() {
+    if (disposed || confirming || busy()) return false;
+    let options;
+    try { options = save(); } catch { onStatus('Choose a valid action limit.'); return false; }
+    const enabled = ACTIONS.filter(([key]) => options.actions[key]);
+    if (!enabled.length) { onStatus('Choose at least one Presence action.'); return false; }
+    const account = inspectAccount();
+    if (account?.accountVerified !== true || account.usable !== true || !clean(account.accountId)) {
+      onStatus('Instagram account could not be verified. Reload Instagram and try again.');
+      return false;
+    }
+    const reviewedSignature = signature(options);
+    const expiresAt = now() + 15 * 60_000;
+    confirming = true;
+    render();
+    const confirmation = await confirmAction({
+      title: `Start Presence for @${account.accountId}?`,
+      message: `Allow up to ${options.maxActions} action${options.maxActions === 1 ? '' : 's'} in this tab.`,
+      detail: 'Presence stops on Instagram restrictions, an account change, an uncertain result, or when you press Stop.',
+      confirmLabel: 'Start Presence',
+      facts: [
+        { label: 'Account', value: `@${account.accountId}` },
+        { label: 'Actions', value: enabled.map(([, label]) => label).join(', ') },
+        { label: 'Maximum', value: String(options.maxActions) },
+      ],
+      binding: { action: 'presence', accountId: account.accountId, expiresAt,
+        maxActions: options.maxActions, options: reviewedSignature },
+    });
+    confirming = false;
+    if (!confirmation) { render(); onStatus('Presence canceled. Nothing was changed.'); return false; }
+    const current = inspectAccount();
+    const currentOptions = readOptions();
+    if (current?.accountVerified !== true || current.usable !== true
+      || current.accountId !== account.accountId || signature(currentOptions) !== reviewedSignature
+      || confirmation.action !== 'presence' || confirmation.accountId !== account.accountId
+      || confirmation.maxActions !== options.maxActions || confirmation.options !== reviewedSignature
+      || Number(confirmation.expiresAt) !== expiresAt || expiresAt <= now()) {
+      render();
+      onStatus('Presence choices or account changed after review. Nothing was changed.');
+      return false;
+    }
+    const review = session.createReview({ accountId: account.accountId, options, expiresAt });
+    render(session.snapshot());
+    const outcome = await session.start(review);
+    render(outcome);
+    onStatus(describe(outcome).join('. '));
+    return outcome.status === 'completed';
+  }
+
+  load();
+  listen(start, 'click', () => { void begin(); });
+  listen(pause, 'click', () => { if (session.pause()) { render(); onStatus('Presence paused.'); } });
+  listen(resume, 'click', () => { if (session.resume()) { render(); onStatus('Presence resumed.'); } });
+  listen(stop, 'click', () => { if (session.stop()) { render(); onStatus('Stopping Presence.'); } });
+  for (const input of controls.values()) listen(input, 'change', () => { save(); render(); });
+  listen(limit, 'change', () => { save(); render(); });
+  render();
+
   return Object.freeze({
-    build, review, refresh, invalidate, ready,
-    snapshot: () => ({ status, reason, executable: false, selectedTargetIds: [...selected], plan: plan ? structuredClone(plan) : null }),
+    begin,
+    render,
+    stop: () => session.stop(),
+    busy: () => ['running', 'waiting', 'paused', 'stopping'].includes(session.snapshot().status),
+    snapshot: () => session.snapshot(),
     dispose() {
       if (disposed) return;
-      invalidate(null); disposed = true; status = 'disposed'; listeners.forEach((remove) => remove());
+      session.stop();
+      disposed = true;
+      listeners.splice(0).forEach((remove) => remove());
       root.remove();
     },
   });
 }
 
-return Object.freeze({ mountUserscriptPresencePanel });
-})();
-localModules["extension/presence-preferences.js"] = (() => {
-const { normalizeHandle } = localModules["src/core/presence.js"];
-
-const PRESENCE_PREFERENCES_KEY = 'instaToolboxPresencePreferencesV1';
-const PRESENCE_PREFERENCES_VERSION = 1;
-const FIELDS = new Set(['schemaVersion', 'followLimit', 'protectedHandles', 'window', 'skipPrivate']);
-const MAX_HANDLES = 500;
-const MAX_HANDLE_TEXT = 16_500;
-const plain = value => value !== null && typeof value === 'object'
-  && [Object.prototype, null].includes(Object.getPrototypeOf(value));
-const entry = (value, key) => Object.getOwnPropertyDescriptor(value, key);
-const own = (value, key) => Object.hasOwn(value, key);
-const data = (value, key) => entry(value, key)?.value;
-const clone = value => structuredClone(value);
-const validMinute = value => Number.isSafeInteger(value) && value >= 0 && value <= 1439;
-function fail(code) { const error = new Error(code); error.code = code; throw error; }
-
-function defaultPresencePreferences() {
-  return { schemaVersion: PRESENCE_PREFERENCES_VERSION, followLimit: 6,
-    protectedHandles: [], window: { start: 540, end: 1200 }, skipPrivate: true };
-}
-
-function handles(value, strict, issues) {
-  let values;
-  if (typeof value === 'string' && value.length <= MAX_HANDLE_TEXT) values = value.split(/[\s,;]+/).filter(Boolean);
-  else if (Array.isArray(value)) values = Array.from({ length: Math.min(value.length, MAX_HANDLES + 1) },
-    (_, index) => data(value, String(index)));
-  if (!values || values.length > MAX_HANDLES) {
-    if (strict) fail('presence-preferences-protection-invalid');
-    issues.push('protected-handles-invalid');
-    values = values?.slice(0, MAX_HANDLES) || [];
-  }
-  const result = [];
-  for (const value of values) {
-    try {
-      const username = normalizeHandle(value);
-      if (!result.includes(username)) result.push(username);
-    } catch {
-      if (strict) fail('presence-preferences-protection-invalid');
-      if (!issues.includes('protected-handles-invalid')) issues.push('protected-handles-invalid');
-    }
-  }
-  return result;
-}
-
-function normalize(value, strict = false) {
-  const preferences = defaultPresencePreferences(), issues = [];
-  if (value == null && !strict) return { preferences, issues, writable: true };
-  if (!plain(value)) {
-    if (strict) fail('presence-preferences-record-invalid');
-    return { preferences, issues: ['record-invalid'], writable: true };
-  }
-  const version = data(value, 'schemaVersion');
-  if (own(value, 'schemaVersion') && version !== 0 && version !== PRESENCE_PREFERENCES_VERSION) {
-    if (strict) fail('presence-preferences-version-unsupported');
-    return { preferences, issues: ['version-unsupported'], writable: false };
-  }
-  if (version !== PRESENCE_PREFERENCES_VERSION) issues.push('older-record');
-  if (strict && Object.keys(value).some(key => !FIELDS.has(key))) fail('presence-preferences-field-invalid');
-  if (own(value, 'followLimit')) {
-    const limit = data(value, 'followLimit');
-    if (Number.isSafeInteger(limit) && limit >= 0 && limit <= 50) preferences.followLimit = limit;
-    else if (strict) fail('presence-preferences-allowance-invalid');
-    else issues.push('allowance-invalid');
-  }
-  if (own(value, 'protectedHandles')) preferences.protectedHandles = handles(data(value, 'protectedHandles'), strict, issues);
-  if (own(value, 'window')) {
-    const window = data(value, 'window');
-    if (plain(window) && validMinute(data(window, 'start')) && validMinute(data(window, 'end'))
-      && data(window, 'start') !== data(window, 'end')) {
-      if (strict && Object.keys(window).some(key => !['start', 'end'].includes(key))) fail('presence-preferences-hours-invalid');
-      preferences.window = { start: data(window, 'start'), end: data(window, 'end') };
-    } else if (strict) fail('presence-preferences-hours-invalid');
-    else issues.push('hours-invalid');
-  }
-  if (own(value, 'skipPrivate')) {
-    if (typeof data(value, 'skipPrivate') === 'boolean') preferences.skipPrivate = data(value, 'skipPrivate');
-    else if (strict) fail('presence-preferences-privacy-invalid');
-    else issues.push('privacy-invalid');
-  }
-  return { preferences, issues, writable: true };
-}
-
-/** Read only these editable choices; repairs are reported, never auto-written. */
-function normalizePresencePreferences(value) { return normalize(value); }
-
-/** Validate edits before they enter the persistence queue. */
-function validatePresencePreferences(value) { return normalize(value, true).preferences; }
-
-function capturePatch(value) {
-  if (!plain(value) || Object.keys(value).some(key => !FIELDS.has(key))) fail('presence-preferences-field-invalid');
-  const patch = {};
-  for (const key of Object.keys(value)) {
-    if (!own(entry(value, key), 'value')) fail('presence-preferences-field-invalid');
-    patch[key] = data(value, key);
-  }
-  if (own(patch, 'window')) {
-    if (!plain(patch.window) || Object.keys(patch.window).some(key => !['start', 'end'].includes(key))) fail('presence-preferences-hours-invalid');
-    for (const key of Object.keys(patch.window)) {
-      if (!validMinute(data(patch.window, key))) fail('presence-preferences-hours-invalid');
-    }
-    if (own(patch.window, 'start') && own(patch.window, 'end')
-      && data(patch.window, 'start') === data(patch.window, 'end')) fail('presence-preferences-hours-invalid');
-    patch.window = Object.fromEntries(Object.keys(patch.window).map(key => [key, data(patch.window, key)]));
-  }
-  // Check individual fields now; the complete hours pair is checked after merging.
-  const withoutWindow = { ...patch }; delete withoutWindow.window;
-  validatePresencePreferences(withoutWindow);
-  if (own(patch, 'protectedHandles')) patch.protectedHandles = handles(patch.protectedHandles, true, []);
-  return clone(patch);
-}
-
-function requireExplicitRepairs(issues, patch) {
-  const damagedFields = {
-    'allowance-invalid': 'followLimit',
-    'protected-handles-invalid': 'protectedHandles',
-    'hours-invalid': 'window',
-    'privacy-invalid': 'skipPrivate',
-  };
-  const required = issues.includes('record-invalid')
-    ? ['followLimit', 'protectedHandles', 'window', 'skipPrivate']
-    : issues.flatMap(issue => damagedFields[issue] ? [damagedFields[issue]] : []);
-  for (const field of required) {
-    if (!own(patch, field)) fail('presence-preferences-repair-required');
-    if (field === 'window' && (!own(patch.window, 'start') || !own(patch.window, 'end'))) {
-      fail('presence-preferences-repair-required');
-    }
-  }
-}
-
-/**
- * read(key) and write(key, value) touch one private preference key only.
- * withLock(operation), when supplied, must serialize this key across tabs.
- * The local queue alone orders calls to this store instance, not other tabs.
- */
-function createPresencePreferenceStore({ read, write, withLock = null, timeoutMs = 10_000 } = {}) {
-  if (typeof read !== 'function' || typeof write !== 'function'
-    || (withLock !== null && typeof withLock !== 'function')
-    || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) fail('presence-preferences-adapter-invalid');
-  let tail = Promise.resolve(), writeFailure = null;
-  function enqueue(operation) {
-    const result = tail.then(async () => {
-      let active = true, phase = 'lock', timer;
-      const guard = () => { if (!active) fail('presence-preferences-operation-expired'); };
-      const invoke = async () => {
-        guard(); phase = 'read';
-        let stored;
-        try { stored = await read(PRESENCE_PREFERENCES_KEY); }
-        catch { fail('presence-preferences-read-failed'); }
-        guard();
-        const current = normalizePresencePreferences(stored);
-        if (!operation) return { ...current,
-          issues: writeFailure ? [...current.issues, 'write-outcome-uncertain'] : current.issues,
-          writable: current.writable && !writeFailure };
-        if (writeFailure) throw writeFailure;
-        if (!current.writable) fail('presence-preferences-version-unsupported');
-        requireExplicitRepairs(current.issues, operation);
-        const next = validatePresencePreferences({ ...current.preferences, ...operation,
-          window: { ...current.preferences.window, ...(operation.window || {}) } });
-        guard(); phase = 'write';
-        try { await write(PRESENCE_PREFERENCES_KEY, clone(next)); }
-        catch {
-          writeFailure = new Error('presence-preferences-write-failed');
-          writeFailure.code = writeFailure.message; throw writeFailure;
-        }
-        guard(); phase = 'done';
-        return { preferences: next, issues: [], writable: true };
-      };
-      try {
-        return clone(await Promise.race([
-          Promise.resolve().then(() => withLock ? withLock(invoke) : invoke()),
-          new Promise((_, reject) => {
-            timer = setTimeout(() => {
-              const error = new Error(`presence-preferences-${phase}-timeout`); error.code = error.message;
-              if (phase === 'write') writeFailure = error;
-              active = false; reject(error);
-            }, timeoutMs);
-          }),
-        ]));
-      } catch (error) {
-        if (String(error?.code || '').startsWith('presence-preferences-')) throw error;
-        fail('presence-preferences-lock-failed');
-      } finally { active = false; clearTimeout(timer); }
-    });
-    tail = result.catch(() => {});
-    return result;
-  }
-  return Object.freeze({
-    load: () => enqueue(null),
-    update(patch) {
-      try { return enqueue(capturePatch(patch)); }
-      catch (error) { return Promise.reject(error); }
-    },
-  });
-}
-
-return Object.freeze({ PRESENCE_PREFERENCES_KEY, PRESENCE_PREFERENCES_VERSION, defaultPresencePreferences, normalizePresencePreferences, validatePresencePreferences, createPresencePreferenceStore });
+return Object.freeze({ mountPresenceSessionPanel });
 })();
 globalThis.InstaToolboxInboxDiscovery = Object.freeze({ create: localModules['extension/inbox-userscript-discovery.js'].createUserscriptInboxDiscovery });
 globalThis.InstaToolboxInboxPanel = Object.freeze({ mount: localModules['extension/inbox-userscript-panel.js'].mountUserscriptInboxPanel });
 globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['extension/inbox-checkpoint-store.js'].createInboxCheckpointStore });
 globalThis.InstaToolboxPresenceInputs = Object.freeze({ create: localModules['extension/presence-native-inputs.js'].createPresenceNativeInputs });
-globalThis.InstaToolboxPresencePanel = Object.freeze({ mount: localModules['extension/presence-userscript-panel.js'].mountUserscriptPresencePanel });
-globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModules['extension/presence-preferences.js'].createPresencePreferenceStore });
+globalThis.InstaToolboxPresenceNativeActions = Object.freeze({ create: localModules['extension/presence-native-actions.js'].createPresenceNativeActions });
+globalThis.InstaToolboxPresenceSession = Object.freeze({ create: localModules['extension/presence-session.js'].createPresenceSession });
+globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModules['extension/presence-session-panel.js'].mountPresenceSessionPanel });
 (async () => {
   'use strict';
 
@@ -9872,7 +9893,7 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
       </div>
       <nav class="tabs" role="tablist" aria-label="Insta Toolbox tools">
         <button id="insta-toolbox-tab-checker" class="tab" type="button" role="tab" data-view="checker" aria-controls="insta-toolbox-panel-checker" aria-selected="true" tabindex="0">Mutual Checker</button>
-        <button id="insta-toolbox-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="insta-toolbox-panel-account" aria-selected="false" tabindex="-1">Follow / Unfollow</button>
+        <button id="insta-toolbox-tab-account" class="tab" type="button" role="tab" data-view="account" aria-controls="insta-toolbox-panel-account" aria-selected="false" tabindex="-1">Presence</button>
         <button id="insta-toolbox-tab-messages" class="tab" type="button" role="tab" data-view="messages" aria-controls="insta-toolbox-panel-messages" aria-selected="false" tabindex="-1">DM Unsend</button>
       </nav>
       <div class="scroll">
@@ -9881,13 +9902,14 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
           <div class="card" data-role="comparison"></div>
           <section class="card comparison-browser" data-role="comparison-browser" aria-labelledby="insta-toolbox-comparison-browser-title" hidden><h2 id="insta-toolbox-comparison-browser-title">Comparison list</h2><div class="comparison-controls"><div class="field"><label for="insta-toolbox-comparison-category">Show accounts</label><select id="insta-toolbox-comparison-category" data-role="comparison-category" aria-controls="insta-toolbox-comparison-list"><option value="not-following-me-back">Don't follow you back</option><option value="i-do-not-follow-back">You don't follow back</option><option value="mutuals">Mutuals</option></select></div><div class="field"><label for="insta-toolbox-filter">Find a username</label><input id="insta-toolbox-filter" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-role="result-filter" aria-controls="insta-toolbox-comparison-list"></div></div><p id="insta-toolbox-comparison-count" class="comparison-count" data-role="comparison-count" tabindex="-1"></p><ul id="insta-toolbox-comparison-list" class="list comparison-list" data-role="comparison-list" aria-describedby="insta-toolbox-comparison-count"></ul><button class="button quiet comparison-more" type="button" data-action="show-more-comparison" data-role="comparison-more" hidden>Show more</button></section>
           <details class="settings-inline"><summary>Capture lists and export</summary><p class="lead">If the account check fails, open Followers or Following and scan that list.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="insta-toolbox-list-type">Raw list</label><select id="insta-toolbox-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
-        <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><p class="lead">Choose an action, then review the accounts.</p><div class="card" data-role="queue-current"></div>
-          <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Refresh profile status</button><button class="button quiet" type="button" data-action="open-profile">Open profile</button></div><details class="settings-inline"><summary>Queue and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
-          <div class="field"><label for="insta-toolbox-bot-action">What do you want to do?</label><select id="insta-toolbox-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
-          <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
-          <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
-          <p class="lead" data-role="account-run-summary">Choose a source, then review the accounts.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          <details class="settings-inline" data-role="presence-disclosure"><summary>Presence</summary><div data-role="presence-routine"></div></details></section>
+        <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><div class="card" data-role="presence-routine"></div>
+          <details class="settings-inline" data-role="manual-account-disclosure"><summary>Manual Follow / Unfollow</summary><p class="lead">Review exact accounts before changing them.</p><div class="card" data-role="queue-current"></div>
+            <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Refresh profile status</button><button class="button quiet" type="button" data-action="open-profile">Open profile</button></div><details class="settings-inline"><summary>Queue and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
+            <div class="field"><label for="insta-toolbox-bot-action">Action</label><select id="insta-toolbox-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
+            <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
+            <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
+            <p class="lead" data-role="account-run-summary">Choose accounts, then review them.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
+          </details></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions</label></div>
@@ -10497,6 +10519,7 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
   let reactionSnapshot = null;
   let inboxPanel = null;
   let presencePanel = null;
+  let presenceSession = null;
   let presenceCapture = null;
 
   const engine = globalThis.InstaToolboxInstagramInspector;
@@ -10507,7 +10530,24 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
   const invalidatePresence = () => {
     presenceCapture = null;
     presenceInputs?.invalidate();
-    presencePanel?.invalidate(null);
+  };
+  const inspectPresenceAccount = () => {
+    const session = engine.inspectSession?.() || {};
+    const accountId = engine.detectAuthenticatedUsername?.() || '';
+    const restricted = Boolean(session.sessionExpired || session.challenge
+      || session.actionBlocked || session.rateLimited);
+    return {
+      ...session,
+      accountVerified: Boolean(accountId) && !restricted,
+      usable: location.origin === 'https://www.instagram.com' && Boolean(accountId) && !restricted,
+      accountId,
+      restriction: restricted,
+      frozen: document.visibilityState === 'hidden' && document.wasDiscarded === true,
+      discarded: document.wasDiscarded === true,
+    };
+  };
+  const stopPresenceSession = () => {
+    presenceSession?.stop();
   };
   const dmRunner = globalThis.InstaToolboxDmThreadUnsender;
   if (dmRunner) {
@@ -11082,6 +11122,7 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
 
   async function checkAccountRelationships() {
     if (inboxPanel?.busy()) { status('Stop inbox cleanup before checking mutuals.'); return; }
+    if (presencePanel?.busy()) { status('Pause or stop Presence before checking mutuals.'); return; }
     if (relationshipController) {
       relationshipController.abort();
       status('Stopping the mutual check. Saved comparison data was not changed.');
@@ -11534,6 +11575,10 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
 
   async function runDmUnsend() {
     if (inboxPanel?.busy()) { inboxPanel.stop(); return; }
+    if (typeof presencePanel !== 'undefined' && presencePanel?.busy()) {
+      status('Pause or stop Presence before using DM Unsend.');
+      return;
+    }
     if (!dmRunner) throw new Error('Reload Instagram to load the DM Unsend runner.');
     if (stopDmCleanup()) return;
     if (confirmationController?.isPending()) return;
@@ -11758,6 +11803,10 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
       savePreferences({ open: false });
     },
     'stop-run': () => {
+      if (presenceSession?.stop()) {
+        status('Stopping Presence after the current step.');
+        return;
+      }
       if (stopDmCleanup()) return;
       if (dmRunner?.stop?.()) {
         status('Stopping DM Unsend after the current step.');
@@ -11828,6 +11877,7 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
     'scan-sent': () => scanSentConversation(),
     'run-accounts': async () => {
       if (inboxPanel?.busy()) { status('Inbox cleanup is active. Use Stop all to end it.'); return; }
+      if (presencePanel?.busy()) { status('Pause or stop Presence before starting Follow / Unfollow.'); return; }
       if (confirmationController?.isPending()) return;
       const current = accountRunPlan();
       if (!accountRunDraft || accountRunDraft.signature !== current.signature) {
@@ -12329,9 +12379,10 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
     confirmationController?.destroy();
     inboxPanel?.dispose();
     presencePanel?.dispose();
+    presenceSession?.stop();
     invalidatePresence();
-    window.removeEventListener('pagehide', invalidatePresence);
-    document.removeEventListener('freeze', invalidatePresence);
+    window.removeEventListener('pagehide', stopPresenceSession);
+    document.removeEventListener('freeze', stopPresenceSession);
     host.remove();
   });
   duplicateObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -12341,29 +12392,29 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
   saveState();
   savePreferences(preferences);
   renderCleanupSettings({ initializeDraft: true });
-  if (presenceInputs && globalThis.InstaToolboxPresencePanel) {
-    const presencePreferences = globalThis.InstaToolboxPresencePreferences?.create({
-      read: key => GM_getValue(key, null),
-      write: (key, value) => GM_setValue(key, value),
-      withLock: typeof navigator.locks?.request === 'function'
-        ? operation => navigator.locks.request('insta-toolbox-presence-preferences', operation)
-        : undefined,
+  if (globalThis.InstaToolboxPresenceNativeActions
+    && globalThis.InstaToolboxPresenceSession
+    && globalThis.InstaToolboxPresenceSessionPanel) {
+    const nativeActions = globalThis.InstaToolboxPresenceNativeActions.create({
+      document, location, inspectViewer: inspectPresenceAccount,
     });
-    presencePanel = globalThis.InstaToolboxPresencePanel.mount({
+    presenceSession = globalThis.InstaToolboxPresenceSession.create({
+      nativeActions,
+      onUpdate: next => presencePanel?.render(next),
+    });
+    presencePanel = globalThis.InstaToolboxPresenceSessionPanel.mount({
       container: query('[data-role="presence-routine"]'), document,
-      nativeAdapter: presenceInputs,
-      getCapture: () => presenceCapture,
-      getProfile: () => ({ goal: 'maintain', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
-      preferenceStore: presencePreferences || null,
-      onManual: () => {
-        query('[data-role="presence-disclosure"]').open = false;
-        query('[data-role="bot-action"]').focus();
-      },
+      session: presenceSession,
+      inspectAccount: inspectPresenceAccount,
+      confirmAction: confirmRun,
+      readPreferences: () => GM_getValue('instaToolboxPresenceSessionV1', null),
+      writePreferences: value => GM_setValue('instaToolboxPresenceSessionV1', value),
+      busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
+        || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()),
       onStatus: status,
     });
-    query('[data-role="presence-disclosure"]').addEventListener('toggle', () => presencePanel.refresh());
-    window.addEventListener('pagehide', invalidatePresence);
-    document.addEventListener('freeze', invalidatePresence);
+    window.addEventListener('pagehide', stopPresenceSession);
+    document.addEventListener('freeze', stopPresenceSession);
   }
   if (globalThis.InstaToolboxInboxPanel) {
     const inspectInboxAccount = () => {
@@ -12388,7 +12439,7 @@ globalThis.InstaToolboxPresencePreferences = Object.freeze({ create: localModule
       load: () => inspectInboxAccount().accountVerified ? inboxCheckpoints.load() : null,
       save: checkpoint => inboxCheckpoints.save(checkpoint),
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
-        || relationshipController || state.run?.status === 'running'),
+        || relationshipController || state.run?.status === 'running' || presencePanel?.busy()),
       onStatus: status,
     });
   }

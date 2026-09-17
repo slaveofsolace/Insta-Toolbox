@@ -3,15 +3,26 @@
 Continue the work in `slaveofsolace/Insta-Toolbox` on `feat/live-like-me-scaffold`.
 
 Current integration status is recorded in [Production integration](PRODUCTION_INTEGRATION.md).
-The userscript now bundles native-data Stay connected planning and serial inbox
-cleanup. Live Presence and managed tabs remain unavailable. The scaffold history
-below describes the original branch point; preserve the newer integrated work.
+The userscript now ships a compact Presence session and serial inbox cleanup.
+The scaffold history below describes the original branch point; preserve the
+newer integrated work.
+
+Current direction supersedes the older planner-first interface described later
+in this document. The shipped Presence flow is five direct choices—view stories,
+react to stories, like posts, follow people, and accept follow requests—plus a
+finite maximum and Start/Pause/Resume/Stop. The planner remains useful internal
+research, but it is not the primary userscript interaction.
 
 ## 1. Read this before editing
 
-Presence evolves Follow / Unfollow into a personally configured account routine. The companion feature is **Ghost**, which separately handles inbox cleanup. Preserve that product ambition. Do not reduce the final product to another exported list or leave an enabled-looking session control that only simulates work.
+Presence handles a bounded, human-paced Instagram session. The companion feature
+is **Ghost**, which separately handles inbox cleanup. Do not leave enabled-looking
+controls that only simulate work.
 
-This branch is the scaffold, not the completed automation. Its implemented planner and prototype are useful foundations; all live capability flags remain false intentionally. Complete the runtime incrementally and make supported versus unavailable behavior unmistakable.
+The earlier planner and prototype remain useful research, but the generated
+userscript now contains a production-shaped Presence session. Its native action
+adapters are fixture-verified and still require authenticated disposable-target
+acceptance. Keep supported, fixture-only, and unavailable behavior unmistakable.
 
 Branch point:
 
@@ -67,18 +78,16 @@ Protections include self, keep list, mutuals, existing/pending follows, previous
 
 ## 4. Product contract
 
-Use **Presence** as the feature name, without an additional slogan or alternate name. Use **Preview session** for the separate synthetic-data concept. A production Start action must execute a reviewed routine, not merely advance counters.
+Use **Presence** as the feature name, without an additional slogan or alternate
+name. Use **Preview session** only for the separate synthetic-data concept. The
+production Start action executes the reviewed finite session; it does not merely
+advance counters.
 
-The product should make the following story simple:
-
-- This is my account.
-- These are my interests and the people I want to stay connected with.
-- These are my boundaries and active hours.
-- This is what the next session proposes and why.
-- This is what was actually done, what was skipped, and what needs attention.
-- I can pause or stop it at any time.
-
-The user's ambition is ongoing account assistance, not merely one isolated click. Build toward saved routines and bounded delegated sessions. The first production integration should reuse the existing exact finite review. Longer-lived routine execution needs a separately reviewed policy contract covering account, source inventory, allowed actions, maximum scope, active windows, expiration, renewal and cancellation. A schedule becoming due must not revive an expired approval.
+The product story is intentionally short: verify my account, choose the allowed
+activities, choose a maximum, review once, then let the finite session run with
+Pause and Stop always available. Each action is re-resolved and verified before
+the next begins. Longer-lived execution still needs separately reviewed expiry,
+renewal, and cancellation rules; a schedule must never revive expired approval.
 
 Do not promise guaranteed growth, human imitation, undetectability or operation while the browser is closed. Routines follow explicitly selected preferences. Do not infer sensitive traits or mine private DMs to construct a personality.
 
@@ -128,20 +137,18 @@ Record verified follow completion before starting the waiting window. A click, n
 
 A session can process its reviewed finite list without repeatedly asking the same question for every entry. Material scope changes require fresh review. Keep the current account and Stop visible. Pause prevents new actions, while already dispatched work settles as verified, failed or uncertain.
 
-## 8. Living routines beyond Follow / Unfollow
+## 8. Presence actions
 
-These are future product lanes, not implemented features. Keep them out of release claims until their native adapters and acceptance are complete:
+The intended action set is deliberately narrow: post likes, follows, incoming
+follow-request acceptance, story views, and story reactions. Each action has a
+separate exact-DOM adapter and verified postcondition. Story reactions require
+the story to be opened first. Private-profile follows may end in Requested; that
+is distinct from an established follow.
 
-- A discover-and-review feed organized around selected interests.
-- A revisit queue with Keep, Later and Unfollow choices.
-- Optional likes or saves for explicitly approved posts through separate exact-post adapters.
-- User-authored comment drafts that show the exact destination and text before posting.
-- Routine reminders and a readable session recap.
-- Outcome history separating observed follower changes from causal growth claims.
-
-Do not silently add automated comments, DM campaigns, story views or read receipts to a follow routine. Reading/rendering a surface is not necessarily side-effect free; prove the behavior before labeling it read-only. Do not ship fake activity metrics, fabricated social proof or meaningless clicks intended to make a bot appear human.
-
-“Grow my account” can select a goal and routine settings; it must not display promised gains. Keep unused controls absent or explicitly unavailable, never cosmetically enabled.
+Do not silently add comments, saves, DM campaigns, inferred interests, or fake
+activity. Do not promise growth, stealth, or undetectability. An adapter that is
+not verified on a current layout stays unavailable rather than becoming a
+cosmetic toggle.
 
 ## 9. Presence and Ghost coordination
 
@@ -174,15 +181,13 @@ Do not spoof visibility, play fake audio, rotate proxies, change fingerprints, b
 
 Preserve the clean Instagram-compatible system from the parent. The experiment is a design lab, not a new mandatory full-page app. Integrate a compact routine composer into the existing account-tool destination first. Keep the conventional manual Follow / Unfollow route accessible until migration and feature parity are proven.
 
-Recommended hierarchy:
+Required hierarchy:
 
-- Account context and current mode.
-- Routine selector.
-- Interests and a concise allowance/schedule summary.
-- One primary action: Build my plan / Review session / Start reviewed session.
-- Explained target rows, with held/protected items in a disclosure.
-- Persistent run status and Stop while executing.
-- Secondary history/settings.
+- Five activity toggles.
+- One finite maximum.
+- One primary Start action.
+- Compact verified result/status area with Pause/Resume/Stop during a run.
+- Manual Follow / Unfollow in one secondary disclosure.
 
 Avoid nested cards, duplicate counts, repeated safety paragraphs and a tab for every preference. Appearance settings belong in the shared 4.0 settings groups, not another isolated store. Use one spacing and typography system across extension/userscript/PWA.
 
@@ -239,4 +244,7 @@ For every unfinished item add a **Codex-Handoff** entry with: current behavior; 
 
 Final report must include branch SHA, parent/main relationship, changed-file inventory, implemented/scaffolded/proposed feature matrix by surface, migration decisions, screenshots, exact commands/results, actual native evidence versus fixtures, known risks, untouched Ghost work, release status and remaining handoff entries.
 
-The next milestone is a working reviewed single-account Presence routine in the existing interface. The later milestone is bounded ongoing account assistance sharing a trustworthy scheduler with Ghost. Do not confuse the two or report the second as delivered by a prototype.
+The next milestone is authenticated acceptance of the reviewed single-account
+Presence session in the existing interface. The later milestone is reliable
+longer-lived assistance sharing a trustworthy scheduler with Ghost. Do not
+confuse fixture acceptance with that later milestone.

@@ -75,7 +75,7 @@ Provenance-verified partial comparisons remain visible and downloadable with unc
 
 ## Local app and web delivery
 
-The PWA service worker uses network-first same-origin GET handling, caches only successful same-origin responses, bypasses the HTTP cache for service-worker update checks, and removes earlier cache generations. Version 4.0 uses `insta-toolbox-v400`; persisted workspace and settings keys are unchanged.
+The PWA service worker uses network-first same-origin GET handling, caches only successful same-origin responses, bypasses the HTTP cache for service-worker update checks, and removes earlier cache generations. Version 4.0.1 uses `insta-toolbox-v401`; persisted workspace and settings keys are unchanged.
 
 The loopback development server accepts only loopback Host headers and serves an explicit asset allowlist. Repository metadata, tests, documentation, and Git internals are not served. Framing protection is sent as HTTP headers because `frame-ancestors` is ineffective in a meta policy.
 
@@ -101,7 +101,7 @@ Runtime application code has no third-party production dependencies. The lockfil
 
 CI actions are pinned to full commit SHAs. Pull requests receive dependency review; CodeQL runs on pull requests, `main`, and weekly. Dependabot proposes npm and action updates. Release promotion accepts only artifacts from the successful current `main` CI run, rechecks versions and checksums, generates an SBOM, and requests GitHub provenance attestation without rebuilding.
 
-The 4.0 development matrix contains 503 tests, 45 overlay states, and 11 PWA states. Results and hashes are tracked in [the 4.0.0 acceptance record](./acceptance/4.0.0.md). Fixtures do not prove current authenticated Instagram behavior.
+The 4.0.1 development matrix contains 972 tests. The 45 overlay states and 11 PWA states remain recorded in the 4.0.0 visual evidence until the 4.0.1 release candidate is recaptured. Current results are tracked in [the 4.0.1 acceptance record](./acceptance/4.0.1.md). Fixtures do not prove current authenticated Instagram behavior.
 
 Partial mutual comparisons are available for display, export, and Follow / Unfollow target review. Target reviews and their existing confirmation show an uncertainty notice; missing records are not proof of a non-mutual relationship. Captures must belong to the signed-in account, and each profile's current relationship is checked before acting. Schema-1 comparison exports preserve existing fields and add `partial`, `labels`, and `warning`; completeness flags are not promoted by downloading.
 

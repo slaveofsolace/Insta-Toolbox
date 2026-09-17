@@ -2118,7 +2118,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     };
   })()`, true);
   // Exactly the three tools, with no landing tab in front of them.
-  assert.deepEqual(initial.labels, ['Mutual Checker', 'Follow / Unfollow', 'DM Unsend']);
+  assert.deepEqual(initial.labels, ['Mutual Checker', 'Presence', 'DM Unsend']);
   assert.deepEqual(initial.tabs, [
     { controls: 'insta-toolbox-panel-checker', selected: 'true', tabIndex: 0 },
     { controls: 'insta-toolbox-panel-account', selected: 'false', tabIndex: -1 },

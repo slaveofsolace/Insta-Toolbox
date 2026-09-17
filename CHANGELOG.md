@@ -2,7 +2,7 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
-## 4.0.0 - 2026-09-16 (Unreleased)
+## 4.0.1 - 2026-09-16 (Unreleased)
 
 - Recognize sent story and quoted replies when selecting the newest message.
 - Verify native removals across timestamp changes and history backfill without mistaking recycled rows for success.
@@ -14,6 +14,8 @@ This project uses [Semantic Versioning](https://semver.org/).
 - Make blur and completion-summary preferences consistent across the extension and userscript.
 - Add reviewed, serial inbox cleanup to the userscript: discover conversations, select exact threads, confirm, and use the existing Unsend runner with Pause, Skip, and Stop. Native acceptance remains pending.
 - Keep managed worker tabs and own-reaction cleanup unavailable until their native adapters pass acceptance.
+- Replace the Presence plan builder with five direct activities, one finite maximum, and Start, Pause, Resume, and Stop controls.
+- Keep Presence review authority in memory, require exact visible Instagram targets and postconditions, and stop on uncertain outcomes.
 
 ## 3.1.12 - 2026-09-12
 

@@ -1,49 +1,66 @@
-# Presence scaffold validation
+# Presence validation
 
-Date: September 16, 2026. Scope: the newly added planner, synthetic concept and isolated preview server. This record does not certify a live Instagram integration.
+Date: September 16, 2026.
 
-## Repository handling
+## Current production-shaped fixture
 
-The branch was created from PR #52's exact `sol/settings-dm-4.0` head `9e9bcb6c3ea62f0b6bd4c42076742987088097dd`. Existing files were inspected through the GitHub connector. New files were added through that connector. Main, the parent branch, the current tools, the generated userscript and release metadata were not edited by this scaffold.
+The generated userscript mounts the compact Presence session in its primary
+account tab. Seven controller tests and seven browser gates pass across five
+rendered states.
 
-## Local checks completed
+Verified in deterministic Instagram-shaped fixtures:
 
-| Check | Result | Qualification |
-| --- | --- | --- |
-| `node --test tests/presence.test.js` | 37 passed, 0 failed | Executed on Node 22.16.0 in a local workspace containing the new files. The actual repository requires Node 24; run the full declared environment before merge. |
-| New JavaScript syntax | Passed | Core, tests, preview module and preview server. |
-| Preview HTTP responses | Passed | `/` and `/src/core/presence.js` return 200; `/package.json` returns 404; an unrelated Host header returns 421. |
-| Desktop fixture | Passed | Chromium 144.0.7559.96, 1440 x 1050. Routine editor, seven decision rows, plan generation, pause/resume and simulated completion. |
-| Responsive fixture | Passed | 390 x 844, 320 x 640 and 768 x 500; no horizontal overflow. |
-| Appearance | Reviewed | Light/dark screenshots after transition settlement; forced-colors rendering and reduced-motion transition suppression. These are concept screenshots, not accepted production overlay baselines. |
-| Ghost dialog | Passed | Dialog opens/closes and returns focus to the initiating control. No Ghost executor exists in the experiment. |
-| Storage denial | Passed | Read/save/reset failures are reported without claiming persistence succeeded. Successful persistence is not established by this fixture. |
-| Runtime errors/external requests | None observed | Offline fixture only. No Instagram session was opened or changed. |
+- one trusted confirmation occurs before the first action;
+- Cancel performs no action;
+- post Like verifies the matching Unlike state;
+- Follow verifies Following or Requested;
+- request confirmation verifies Following or Remove;
+- story opening verifies the exact story route and loaded media;
+- story reaction verifies the matching Unlike state;
+- copied, replayed, expired, or wrong-account reviews fail;
+- Pause prevents the next action, Resume continues the same review, and Stop
+  aborts the wait before another action;
+- uncertain results stop without retry;
+- one polite live region, 44 px controls, narrow and short layouts, light and
+  dark themes, and true 200% zoom remain usable.
 
-Focused core coverage includes normalization, malformed/prototype-backed data, version rejection, account provenance, stable identity, duplicate candidates/history, stale/future observations, private/unknown state, topic exclusions, protected/self/mutual accounts, pending requests, no repeat cycles, exact seven-day boundary, partial non-mutual uncertainty, active windows/DST, zero allowance and supplied usage, immutable plans, deterministic sorting, review-before-preview, pause/resume, Stop, account switch, expiry, Ghost separation and unavailable live capabilities.
+The full extension/userscript acceptance matrix also passes with the Presence
+session mounted. This covers regressions against Mutual Checker, DM Unsend,
+Ghost, Manual Follow / Unfollow, responsive layouts, and the existing
+accessibility contract.
 
-## Browser test limitation
+## Historical planner fixture
 
-The browser plugin was not available. Regular Playwright with the installed Chromium was used. Normal loopback browser navigation returned `net::ERR_BLOCKED_BY_ADMINISTRATOR` in this environment; the policy was not bypassed or changed.
+The repository retains a synthetic planner and loopback preview as design
+research. Its 37 pure-model tests cover normalization, evidence handling,
+protections, time windows, deterministic suggestions, and simulated session
+states. The preview has no Instagram actuator and is not part of the shipped
+userscript interface.
 
-A separate offline test harness therefore used `page.set_content`, injected the stylesheet, and flattened the module import/export boundary for fixture execution. The harness removed the CSP element only in its in-memory fixture; committed HTML retains its CSP. This validates the rendered concept and its local interactions, not the real ESM loading path, deployed CSP behavior, browser-origin storage or installed userscript.
+Historical planner exports remain non-executable. Planner success does not
+establish production Presence compatibility or permission.
 
-The separate HTTP server was checked using a non-browser loopback client. HTTP 200 is not a substitute for normal-browser acceptance. Do not report the fixture as an installed extension, a Tampermonkey execution test, or an authenticated session.
+## Not yet established
 
-## Full repository checks not claimed locally
+The current checks do not establish:
 
-A shell clone failed because github.com could not resolve from the working container. The GitHub connector remained usable. The local environment did not contain the current full repository, Node 24, or the locked pnpm dependency tree. Consequently no new claim is made here for the parent/full unit suite, generated parity, release hygiene, extension acceptance, real Chrome pairing, desktop packages or persistent-profile behavior.
+- compatibility with the latest authenticated Instagram layouts;
+- reliable discovery beyond exact rendered targets;
+- shared cross-tab ownership with an active Ghost job;
+- operation in a frozen, discarded, closed, or signed-out tab;
+- any guaranteed account-growth outcome.
 
-The parent PR's reported 503 tests and screenshot results belong to the parent revision, not this scaffold's local run. The stacked PR's exact-commit Actions checks are the appropriate next full-environment evidence. Record their actual result separately; do not infer green CI from successful file creation.
+## Required acceptance
 
-## Required next acceptance
+1. Install the exact branch-generated userscript in a persistent Chrome profile.
+2. Verify the signed-in account and every enabled choice before confirmation.
+3. Use specifically approved disposable targets for one Like, Follow or
+   Requested result, request confirmation, story view, and story reaction.
+4. Verify Pause, Resume, Stop, restriction handling, account changes, and an
+   uncertain postcondition without a repeat click.
+5. Connect and test the existing account-level owner shared by Presence and
+   Ghost before allowing the modes to overlap across tabs.
+6. Rebuild the userscript from source and rerun the complete repository,
+   browser, hygiene, parity, and release checks at the final candidate commit.
 
-1. Run the full current repository suite with Node 24 and its locked dependencies.
-2. Load the concept normally from the allowlisted server; verify ESM, CSP, keyboard paths and successful preference save/reload/reset.
-3. Check true 200% zoom, screen-reader behavior, long labels, large candidate sets, interrupted export, storage quota/corruption and cross-tab preference changes.
-4. Integrate through the existing overlay/batch interfaces with fresh account/target evidence, not through imported planning authority.
-5. Test mode arbitration, persistence and browser lifecycle before enabling Presence/Ghost coexistence.
-6. Obtain explicit approval for exact disposable targets before any native action acceptance.
-7. Verify generated artifacts, installation/update and release gates only after production integration.
-
-The committed concept and core contain no live account executor. Discovery, autonomous sessions, likes/comments/messages, background work and Ghost mutation handoff remain proposed or blocked integration lanes, not delivered functionality.
+Authenticated acceptance must be recorded separately from fixture success.
