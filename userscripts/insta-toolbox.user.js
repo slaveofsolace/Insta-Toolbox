@@ -8497,7 +8497,7 @@ const PRESENCE_ACTION_LABELS = Object.freeze({
   reactStories: 'React to stories',
   likePosts: 'Like posts',
   followPeople: 'Follow people',
-  acceptRequests: 'Accept follow requests',
+  acceptRequests: 'Accept incoming requests',
 });
 
 const REVIEW_TTL_MS = 15 * 60_000;
@@ -8812,7 +8812,7 @@ function mountPresenceSessionPanel({
   `);
   const heading = create('h2', 'Presence');
   heading.id = 'insta-toolbox-presence-title';
-  const intro = create('p', 'Choose the Instagram actions. Presence uses the same visible controls you would.', 'lead');
+  const intro = create('p', 'Choose what Presence can do.', 'lead');
   const options = create('div', null, 'presence-options');
   const controls = new Map();
   for (const [key, label] of ACTIONS) {
@@ -8824,7 +8824,7 @@ function mountPresenceSessionPanel({
     controls.set(key, input);
     options.append(wrapper);
   }
-  const limitLabel = create('label', 'Maximum actions', 'presence-limit');
+  const limitLabel = create('label', 'Actions per run', 'presence-limit');
   const limit = create('input');
   limit.type = 'number';
   limit.min = '1';
@@ -8834,7 +8834,7 @@ function mountPresenceSessionPanel({
   limit.setAttribute('data-presence-limit', '');
   limitLabel.append(limit);
   const actions = create('div', null, 'presence-controls');
-  const start = create('button', 'Start Presence', 'button primary big');
+  const start = create('button', 'Start', 'button primary big');
   start.type = 'button';
   const pause = create('button', 'Pause', 'button quiet');
   pause.type = 'button';
@@ -9860,7 +9860,8 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       .confirm-dialog .toolbar { justify-content: flex-end; }
       [data-role="inbox-cleanup"] { display:grid; gap:12px; margin-top:12px; }
       .inbox-selection { display:grid; gap:4px; max-height:240px; overflow:auto; }
-      .inbox-choice { display:flex; align-items:center; gap:12px; min-height:44px; padding:4px 8px; }
+      .inbox-choice { position:relative; display:flex; flex:none; align-items:center; gap:12px; width:100%; min-height:44px; padding:4px 8px; line-height:20px; scroll-margin-block:12px; }
+      .inbox-choice > input[type="checkbox"] { flex:0 0 auto; min-width:20px; min-height:20px; }
       .inbox-choice > span { display:grid; gap:4px; min-width:0; }
       .inbox-choice small { color:var(--insta-toolbox-text-muted, #687068); overflow-wrap:anywhere; }
       .settings-dialog { width: min(440px, calc(100vw - 28px)); max-height: min(720px, calc(100dvh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); font-family: var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }

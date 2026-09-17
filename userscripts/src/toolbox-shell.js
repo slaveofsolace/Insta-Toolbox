@@ -847,7 +847,8 @@
       .confirm-dialog .toolbar { justify-content: flex-end; }
       [data-role="inbox-cleanup"] { display:grid; gap:12px; margin-top:12px; }
       .inbox-selection { display:grid; gap:4px; max-height:240px; overflow:auto; }
-      .inbox-choice { display:flex; align-items:center; gap:12px; min-height:44px; padding:4px 8px; }
+      .inbox-choice { position:relative; display:flex; flex:none; align-items:center; gap:12px; width:100%; min-height:44px; padding:4px 8px; line-height:20px; scroll-margin-block:12px; }
+      .inbox-choice > input[type="checkbox"] { flex:0 0 auto; min-width:20px; min-height:20px; }
       .inbox-choice > span { display:grid; gap:4px; min-width:0; }
       .inbox-choice small { color:var(--insta-toolbox-text-muted, #687068); overflow-wrap:anywhere; }
       .settings-dialog { width: min(440px, calc(100vw - 28px)); max-height: min(720px, calc(100dvh - 28px)); box-sizing: border-box; overflow: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 14px; padding: 0; background: var(--insta-toolbox-bg-raised, #fff); color: var(--insta-toolbox-text, #1b211c); box-shadow: var(--insta-toolbox-shadow-panel); font-family: var(--insta-toolbox-font, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif); }

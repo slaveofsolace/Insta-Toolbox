@@ -11,7 +11,7 @@ export const PRESENCE_ACTION_LABELS = Object.freeze({
   reactStories: 'React to stories',
   likePosts: 'Like posts',
   followPeople: 'Follow people',
-  acceptRequests: 'Accept follow requests',
+  acceptRequests: 'Accept incoming requests',
 });
 
 const REVIEW_TTL_MS = 15 * 60_000;

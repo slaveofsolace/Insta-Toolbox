@@ -64,7 +64,7 @@ export function mountPresenceSessionPanel({
   `);
   const heading = create('h2', 'Presence');
   heading.id = 'insta-toolbox-presence-title';
-  const intro = create('p', 'Choose the Instagram actions. Presence uses the same visible controls you would.', 'lead');
+  const intro = create('p', 'Choose what Presence can do.', 'lead');
   const options = create('div', null, 'presence-options');
   const controls = new Map();
   for (const [key, label] of ACTIONS) {
@@ -76,7 +76,7 @@ export function mountPresenceSessionPanel({
     controls.set(key, input);
     options.append(wrapper);
   }
-  const limitLabel = create('label', 'Maximum actions', 'presence-limit');
+  const limitLabel = create('label', 'Actions per run', 'presence-limit');
   const limit = create('input');
   limit.type = 'number';
   limit.min = '1';
@@ -86,7 +86,7 @@ export function mountPresenceSessionPanel({
   limit.setAttribute('data-presence-limit', '');
   limitLabel.append(limit);
   const actions = create('div', null, 'presence-controls');
-  const start = create('button', 'Start Presence', 'button primary big');
+  const start = create('button', 'Start', 'button primary big');
   start.type = 'button';
   const pause = create('button', 'Pause', 'button quiet');
   pause.type = 'button';

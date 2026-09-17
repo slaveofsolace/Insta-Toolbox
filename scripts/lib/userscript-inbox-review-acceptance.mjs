@@ -242,7 +242,9 @@ export async function acceptUserscriptInboxReview({
           .map(node => node.matches('input[type="checkbox"]') ? node.closest('label') : node);
         const controls = [];
         for (const node of nodes) {
-          node.scrollIntoView({block:'center',inline:'nearest'});
+          node.scrollIntoView({block:'nearest',inline:'nearest'});
+          const before = node.getBoundingClientRect(), viewport = scroll.getBoundingClientRect();
+          scroll.scrollTop += before.top - viewport.top - Math.max(0, (viewport.height - before.height) / 2);
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           const rect = node.getBoundingClientRect(), clip = scroll.getBoundingClientRect();
           const hit = root.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
