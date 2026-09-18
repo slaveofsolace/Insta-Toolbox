@@ -2587,10 +2587,27 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       return true;
     };
     const abortExternal = () => controller.abort('DM_WALKER_ABORTED');
-    const abortInternal = () => finish('stopped', Date.now() >= deadline
-      ? (expiresAt <= Date.now() ? 'DM_WALKER_EXPIRED' : 'DM_WALKER_TIMEOUT')
-      : currentThreadId() !== threadId ? 'DM_WALKER_CONTEXT'
-        : lifecycleReason(controller.signal) || 'DM_WALKER_ABORTED');
+    const deadlineReason = () => expiresAt <= Date.now()
+      ? 'DM_WALKER_EXPIRED'
+      : 'DM_WALKER_TIMEOUT';
+    const abortInternal = () => {
+      const explicitReason = controller.signal.reason;
+      const timedReason = explicitReason === 'DM_WALKER_EXPIRED' || explicitReason === 'DM_WALKER_TIMEOUT'
+        ? explicitReason
+        : null;
+      finish('stopped', timedReason || (Date.now() >= deadline
+        ? deadlineReason()
+        : currentThreadId() !== threadId ? 'DM_WALKER_CONTEXT'
+          : lifecycleReason(controller.signal) || 'DM_WALKER_ABORTED'));
+    };
+    const abortAtDeadline = () => {
+      const remaining = deadline - Date.now();
+      if (remaining > 0) {
+        deadlineTimer = setTimeout(abortAtDeadline, remaining);
+        return;
+      }
+      controller.abort(deadlineReason());
+    };
     const check = (step = false) => {
       if (Date.now() >= deadline) {
         throw error(expiresAt <= Date.now() ? 'DM_WALKER_EXPIRED' : 'DM_WALKER_TIMEOUT', 'The message pass expired.');
@@ -2692,7 +2709,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     signal?.addEventListener('abort', abortExternal, { once: true });
     try {
       unwatch = watchThread(controller, threadId);
-      deadlineTimer = setTimeout(() => controller.abort('DM_WALKER_TIMEOUT'), Math.max(0, deadline - Date.now()));
+      deadlineTimer = setTimeout(abortAtDeadline, Math.max(0, deadline - Date.now()));
       check();
     } catch (failure) {
       finish('error', failure.code || 'DM_WALKER_INTERRUPTED');
