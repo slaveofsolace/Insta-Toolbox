@@ -119,7 +119,9 @@ export async function acceptUserscriptPresence({
     assert.ok(facts.text.includes(`@${OWNER}`));
     assert.equal(facts.confirm, 'Start Presence');
     await trustedClick(webContents, `${rootExpression}.querySelector('[data-action="confirm-accept"]')`, 'Presence confirmation');
-    await waitForPageValue(webContents, `globalThis.fixturePresenceClicks.includes(${JSON.stringify(expectedAction)})`, `Presence ${expectedAction}`);
+    await waitForPageValue(webContents,
+      `globalThis.fixturePresenceClicks.length > ${before} && globalThis.fixturePresenceClicks.at(-1) === ${JSON.stringify(expectedAction)}`,
+      `Presence ${expectedAction}`);
     await waitForPageValue(webContents, `${rootExpression}.querySelector('.presence-status strong')?.textContent === 'Presence finished'`, 'Presence completion');
   };
   try {
