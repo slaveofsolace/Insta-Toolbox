@@ -24,7 +24,7 @@ tokens, or private Instagram screenshots in the repository.
 ## 1. Install and prove the safe default
 
 1. Follow [Installation](./INSTALLATION.md) and update the companion.
-2. In Tampermonkey, confirm **Insta Toolbox 4.0.0**. If
+2. In Tampermonkey, confirm **Insta Toolbox 4.1.0**. If
    Chrome is used, open Tampermonkey's extension details and enable
    **Allow User Scripts**.
 3. Reload `https://www.instagram.com/`, then press **Alt + Shift + I**.
@@ -32,7 +32,7 @@ tokens, or private Instagram screenshots in the repository.
    `https://github.com/slaveofsolace`.
 5. Confirm there is no global unlock, arm button, or typed authorization phrase.
    Cancel any action-specific destructive confirmation during sections 1–4.
-6. Move the panel, resize it from the lower-right corner, and change its
+6. Move the panel, resize it from either lower corner, and change its
    translucency. Confirm Instagram remains visible beneath it and every control
    remains reachable.
 7. Reload once and confirm the intended position, size, translucency, and
@@ -152,4 +152,4 @@ requirements pass. Issue #12 can close only after the human screen-reader
 findings are recorded and the corrected persistent-profile UI is accepted.
 
 Use [acceptance/TEMPLATE.md](./acceptance/TEMPLATE.md) for later releases. Record
-the sanitized 4.0.0 result in [acceptance/4.0.0.md](./acceptance/4.0.0.md).
+the sanitized 4.1.0 result in [acceptance/4.1.0.md](./acceptance/4.1.0.md).
