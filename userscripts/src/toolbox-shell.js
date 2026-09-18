@@ -3333,7 +3333,7 @@
   window.addEventListener('pointermove', moveInteraction, { passive: false });
   window.addEventListener('pointerup', endInteraction);
   window.addEventListener('pointercancel', endInteraction);
-  window.addEventListener('resize', () => {
+  function clampLayoutToViewport() {
     const patch = {};
     if (preferences.position) patch.position = constrainedPosition(preferences.position);
     if (preferences.launcherPosition) {
@@ -3344,7 +3344,9 @@
     }
     if (Object.keys(patch).length) savePreferences(patch);
     else applyLayout();
-  });
+  }
+  window.addEventListener('resize', clampLayoutToViewport);
+  globalThis.visualViewport?.addEventListener?.('resize', clampLayoutToViewport);
 
   function toggleToolboxShortcut(event) {
     if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey || event.key.toLowerCase() !== 'i') return;
@@ -3379,6 +3381,8 @@
     if (!document.getElementById(EXTENSION_ROOT_ID)) return;
     duplicateObserver.disconnect();
     window.removeEventListener('keydown', toggleToolboxShortcut, true);
+    window.removeEventListener('resize', clampLayoutToViewport);
+    globalThis.visualViewport?.removeEventListener?.('resize', clampLayoutToViewport);
     confirmationController?.destroy();
     inboxPanel?.dispose();
     presencePanel?.dispose();

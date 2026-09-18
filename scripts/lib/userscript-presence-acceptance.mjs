@@ -199,6 +199,10 @@ export async function acceptUserscriptPresence({
         theme.value=${JSON.stringify(viewport.theme)}; theme.dispatchEvent(new Event('change',{bubbles:true}));
         return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
       })()`);
+      await waitForPageValue(webContents, `(() => {
+        const root=${rootExpression}, box=root.querySelector('.panel').getBoundingClientRect();
+        return box.left>=-1&&box.top>=-1&&box.right<=innerWidth+1&&box.bottom<=innerHeight+1;
+      })()`, `${viewport.label} Presence viewport clamp`);
       const metrics = await evaluate(`(() => {
         const root=${rootExpression}, panel=root.querySelector('.panel'), session=root.querySelector('.presence-session'), scroll=root.querySelector('.scroll');
         const box=panel.getBoundingClientRect();
@@ -213,7 +217,10 @@ export async function acceptUserscriptPresence({
       assert.ok(metrics.controls.every(control=>control.width>=44&&control.height>=44), `${viewport.label}: undersized Presence control`);
       assert.ok(metrics.controls.every(control=>control.left>=metrics.panel.left-1&&control.right<=metrics.panel.right+1), `${viewport.label}: horizontal overflow`);
       assert.ok(metrics.overflow<=1&&metrics.scrollOverflow<=1, `${viewport.label}: unexpected overflow`);
-      assert.ok(metrics.panel.left>=-1&&metrics.panel.top>=-1&&metrics.panel.right<=metrics.viewport.width+1&&metrics.panel.bottom<=metrics.viewport.height+1);
+      assert.ok(
+        metrics.panel.left>=-1&&metrics.panel.top>=-1&&metrics.panel.right<=metrics.viewport.width+1&&metrics.panel.bottom<=metrics.viewport.height+1,
+        `${viewport.label}: panel outside viewport ${JSON.stringify(metrics)}`,
+      );
       await withTimeout(new Promise(resolve => { webContents.once('paint', resolve); webContents.invalidate(); }), 'Presence screenshot paint');
       const filename=`${viewport.label}.png`;
       await writeFile(path.join(screenshotRoot, filename), (await webContents.capturePage()).toPNG());
