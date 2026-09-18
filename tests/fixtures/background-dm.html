@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Background DM acceptance</title>
+  <style>
+    body { margin: 0; color: #222; background: #fff; font: 16px system-ui, sans-serif; }
+    main { margin: 24px; width: 640px; }
+    [data-pagelet] { height: 480px; overflow: auto; border: 1px solid #bbb; }
+    [role="row"] { display: flex; align-items: center; gap: 12px; padding: 12px; }
+    [data-sent-by-me="true"] { justify-content: flex-end; }
+    [data-sent-by-me="false"] { justify-content: flex-start; }
+    [dir="auto"] { padding: 8px 12px; border-radius: 8px; background: #eee; }
+    button { min-height: 44px; padding: 8px 12px; }
+    .native-surface { position: fixed; inset: 40px auto auto 40px; padding: 20px; background: white; border: 1px solid #888; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Disposable conversation</h1>
+    <div data-pagelet="IGDMessagesList"></div>
+  </main>
+  <script>
+    const fixtureRoot = document.querySelector('[data-pagelet]');
+    const fixture = {
+      dispatches: 0, verifiedDomRemovals: 0, inFlight: 0, maxInFlight: 0,
+      focusEvents: 0, freezeEvents: 0, resumeEvents: 0,
+      dispatchTimes: [], visibilitySamples: [], events: [], ledger: [],
+      mutationDelayMs: 0, stopAfter: 0, result: null, runPromise: null, plan: null,
+    };
+    globalThis.backgroundFixture = fixture;
+    const sample = (phase) => {
+      fixture.visibilitySamples.push({ phase, state: document.visibilityState, focused: document.hasFocus(), at: Date.now() });
+    };
+    window.addEventListener('focus', () => { fixture.focusEvents += 1; });
+    document.addEventListener('freeze', () => { fixture.freezeEvents += 1; fixture.events.push('freeze'); });
+    document.addEventListener('resume', () => { fixture.resumeEvents += 1; fixture.events.push('resume'); });
+    document.addEventListener('visibilitychange', () => sample('visibilitychange'));
+    const surface = (role) => {
+      const element = document.createElement('section');
+      element.className = 'native-surface';
+      element.setAttribute('role', role);
+      return element;
+    };
+    for (let index = 0; index < 6; index += 1) {
+      const mine = index % 2 === 1;
+      const row = document.createElement('div');
+      row.setAttribute('role', 'row');
+      row.setAttribute('data-message-id', `disposable-${index}`);
+      row.setAttribute('data-timestamp-ms', String(Date.now() - 60_000 - index * 1_000));
+      row.setAttribute('data-sent-by-me', String(mine));
+      const bubble = document.createElement('div');
+      bubble.setAttribute('dir', 'auto');
+      bubble.textContent = mine ? `Disposable sent message ${index}` : `Received message ${index}`;
+      row.append(bubble);
+      if (mine) {
+        const options = document.createElement('button');
+        options.textContent = 'More';
+        options.setAttribute('aria-label', 'See more options for message');
+        options.setAttribute('aria-haspopup', 'menu');
+        options.addEventListener('click', () => {
+          sample('menu');
+          const menu = surface('menu');
+          const choice = document.createElement('button');
+          choice.textContent = 'Unsend';
+          choice.addEventListener('click', () => {
+            menu.remove();
+            const dialog = surface('dialog');
+            const confirm = document.createElement('button');
+            confirm.textContent = 'Unsend';
+            confirm.addEventListener('click', () => {
+              dialog.remove();
+              fixture.dispatches += 1;
+              fixture.inFlight += 1;
+              fixture.maxInFlight = Math.max(fixture.maxInFlight, fixture.inFlight);
+              fixture.dispatchTimes.push(Date.now());
+              sample('dispatch');
+              const settle = () => {
+                row.remove();
+                fixture.inFlight -= 1;
+                fixture.verifiedDomRemovals += 1;
+                sample('dom-removal');
+              };
+              if (fixture.mutationDelayMs) setTimeout(settle, fixture.mutationDelayMs);
+              else settle();
+              if (fixture.stopAfter && fixture.dispatches >= fixture.stopAfter) InstaToolboxDmThreadUnsender.stop();
+            }, { once: true });
+            dialog.append(confirm);
+            document.body.append(dialog);
+          }, { once: true });
+          menu.append(choice);
+          document.body.append(menu);
+        });
+        row.append(options);
+      }
+      fixtureRoot.append(row);
+    }
+    fixture.start = async ({ speed = 'standard', ttlMs = 60_000, stopAfter = 0, mutationDelayMs = 0, worker = false } = {}) => {
+      fixture.stopAfter = stopAfter;
+      fixture.mutationDelayMs = mutationDelayMs;
+      fixture.plan = InstaToolboxDmThreadUnsender.createPlan({
+        threadId: 'background-fixture', scope: 'newest', limit: 3, speed,
+        expiresAt: Date.now() + ttlMs,
+      });
+      sample('start');
+      if (worker) {
+        const { createInboxCoordinator, createInboxReview, inboxReviewKey } = await import('/extension/inbox-coordinator.js');
+        const { createInboxWorker } = await import('/extension/inbox-worker.js');
+        const review = createInboxReview({ accountId: 'disposable_account', threadIds: ['background-fixture'],
+          scope: 'newest', limit: 3, speed, expiresAt: fixture.plan.expiresAt });
+        fixture.workerCheckpoints = [];
+        const coordinator = createInboxCoordinator({ review,
+          save: async (value) => { fixture.workerCheckpoints.push(structuredClone(value)); } });
+        await coordinator.approve(inboxReviewKey(review), review.accountId);
+        const lease = await coordinator.claim(0, review.accountId);
+        const handle = { threadId: 'background-fixture', workerIndex: 0, documentId: 'disposable-document' };
+        const context = { accountId: review.accountId, accountVerified: true, threadId: handle.threadId,
+          documentId: handle.documentId, usable: true };
+        let action = 0;
+        fixture.coordinator = coordinator;
+        fixture.worker = createInboxWorker({ review, lease, handle, coordinator,
+          // Browser-runtime identity and tab admission are supplied fixture boundaries.
+          managedTabs: { check: async () => ({ ready: true }) },
+          runner: InstaToolboxDmThreadUnsender, inspectContext: async () => context,
+          inspectCurrent: () => context, nonce: () => `disposable_action_${++action}` });
+        fixture.runPromise = fixture.worker.run().then((result) => {
+          fixture.result = result; sample('finished'); return result;
+        });
+        return { started: true, visibility: document.visibilityState, expiresAt: fixture.plan.expiresAt };
+      }
+      fixture.runPromise = InstaToolboxDmThreadUnsender.start({
+        plan: fixture.plan,
+        onVerifiedRemoval(result) { fixture.ledger.push({ processed: result.processed, at: Date.now() }); },
+      }).then((result) => { fixture.result = result; sample('finished'); return result; });
+      return { started: true, visibility: document.visibilityState, expiresAt: fixture.plan.expiresAt };
+    };
+    fixture.snapshot = () => ({
+      dispatches: fixture.dispatches, verifiedDomRemovals: fixture.verifiedDomRemovals,
+      inFlight: fixture.inFlight, maxInFlight: fixture.maxInFlight,
+      focusEvents: fixture.focusEvents, freezeEvents: fixture.freezeEvents,
+      resumeEvents: fixture.resumeEvents, events: [...fixture.events],
+      dispatchTimes: [...fixture.dispatchTimes], visibilitySamples: [...fixture.visibilitySamples],
+      ledger: [...fixture.ledger], result: fixture.result,
+      expiresAt: fixture.plan?.expiresAt,
+      remainingReceived: document.querySelectorAll('[data-sent-by-me="false"]').length,
+      current: InstaToolboxDmThreadUnsender.snapshot(),
+      workerCheckpoint: fixture.coordinator?.snapshot() || null,
+      workerCheckpointCount: fixture.workerCheckpoints?.length || 0,
+    });
+  </script>
+  <script src="/extension/action-labels.js"></script>
+</body>
+</html>

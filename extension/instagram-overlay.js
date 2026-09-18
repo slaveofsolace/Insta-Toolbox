@@ -55,6 +55,8 @@
     openShadow: globalThis.__instaToolboxOverlayTestOpenShadow === true,
   });
   const storage = preferences.createStorage(chromeApi);
+  const cleanupSettings = globalThis.InstaToolboxCleanupSettings;
+  let cleanupPreferences = cleanupSettings?.defaults();
   const downloadManager = downloadsModule.create({ Blob, URL });
 
   let active = true;
@@ -215,11 +217,15 @@
     host.dataset.launcherSize = model.preferences.launcherSize;
     for (const control of queryAll('[data-insta-toolbox-preference]')) {
       const value = model.preferences[control.dataset.instaToolboxPreference];
-      if (value !== undefined) control.value = value;
+      if (value !== undefined && shadow.activeElement !== control) control.value = value;
     }
     const opacityControl = query('[data-insta-toolbox-preference="opacity"]');
-    if (opacityControl) opacityControl.value = String(Math.round(model.preferences.opacity * 100));
+    if (opacityControl && shadow.activeElement !== opacityControl) opacityControl.value = String(Math.round(model.preferences.opacity * 100));
     setText('opacity-output', `${Math.round(model.preferences.opacity * 100)}%`);
+    const presetWidth = { compact: 380, standard: 460, wide: 560 }[model.preferences.width];
+    setText('layout-size', model.preferences.panelWidth
+      ? `Custom · ${model.preferences.panelWidth} × ${model.preferences.panelHeight || 'auto'}`
+      : `${model.preferences.width} · ${presetWidth}px`);
     layoutController?.apply(model.preferences);
     themeController?.setPreference(model.preferences.theme);
   }
@@ -252,11 +258,73 @@
     const shouldOpen = Boolean(open);
     button.setAttribute('aria-expanded', String(shouldOpen));
     if (shouldOpen && !dialog.open) {
+      const template = dialog.querySelector('[data-insta-toolbox-template="settings"]');
+      if (template) {
+        dialog.append(template.content.cloneNode(true));
+        template.remove();
+        applyPreferences(model.preferences);
+        applyCleanupPreferences(cleanupPreferences);
+      }
+      void refreshSettingsData();
       dialog.showModal();
-      requestAnimationFrame(() => query('#insta-toolbox-pref-dock')?.focus({ preventScroll: true }));
+      requestAnimationFrame(() => query('[data-insta-toolbox-preference="theme"]')?.focus({ preventScroll: true }));
     } else if (!shouldOpen && dialog.open) {
       dialog.close();
     }
+  }
+
+  function applyCleanupPreferences(value, { initializeDraft = false } = {}) {
+    if (!cleanupSettings) return;
+    cleanupPreferences = cleanupSettings.normalize(value);
+    model.cleanupPreferences = cleanupSettings.effective(cleanupPreferences, 'extension');
+    for (const control of queryAll('[data-insta-toolbox-cleanup-preference]')) {
+      const field = control.dataset.instaToolboxCleanupPreference;
+      if (control.type === 'checkbox') control.checked = Boolean(model.cleanupPreferences[field]);
+      else control.value = String(model.cleanupPreferences[field] ?? '');
+    }
+    const limitField = query('[data-insta-toolbox-role="default-message-limit-field"]');
+    if (limitField) limitField.hidden = model.cleanupPreferences.messageScope === 'all';
+    if (initializeDraft) {
+      const scope = query('[data-insta-toolbox-role="unsend-scope"]');
+      const count = query('[data-insta-toolbox-role="unsend-count"]');
+      if (scope) scope.value = model.cleanupPreferences.messageScope;
+      if (count) count.value = String(model.cleanupPreferences.messageLimit);
+    }
+  }
+
+  async function refreshSettingsData() {
+    setText('settings-version', extensionVersion);
+    try {
+      const stored = await storage.get(null);
+      setText('storage-usage', `${new Blob([JSON.stringify(stored)]).size.toLocaleString()} bytes stored locally`);
+    } catch {
+      setText('storage-usage', 'Storage usage is unavailable.');
+    }
+    try { await exportLocalSettings(); exportDiagnostics(); }
+    catch { status('Local export is unavailable.', 'error'); }
+  }
+
+  async function exportLocalSettings() {
+    const keys = [shared.STORAGE_KEYS.preferencesV3, shared.STORAGE_KEYS.captureV2,
+      shared.STORAGE_KEYS.manualQueue, cleanupSettings.STORAGE_KEY];
+    const stored = await storage.get(keys);
+    downloadManager.update('local-data', query('[data-insta-toolbox-role="backup-local"]'), {
+      filename: 'insta-toolbox-local-data.json', payload: {
+      kind: 'insta-toolbox-local-data', schemaVersion: 1, surface: 'extension',
+      exportedAt: new Date().toISOString(), data: stored,
+      },
+    });
+  }
+
+  function exportDiagnostics() {
+    downloadManager.update('diagnostics', query('[data-insta-toolbox-role="export-diagnostics"]'), {
+      filename: 'insta-toolbox-diagnostics.json', payload: {
+      kind: 'insta-toolbox-diagnostics', schemaVersion: 1, version: extensionVersion,
+      surface: 'extension', preferences: cleanupSettings.effective(cleanupPreferences, 'extension'),
+      capabilities: cleanupSettings.capabilities('extension'),
+      // Deliberately excludes captures, accounts, threads, message bodies and authority.
+      },
+    });
   }
 
   function onSettingsDialogClick(event) {
@@ -520,6 +588,7 @@
   };
 
   const actionHandlers = Object.freeze({
+    'reset-appearance': () => savePreference({ ...cleanupSettings.normalizeAppearance({}) }),
     'batch-stop': () => batchController.abort(runtime),
     'bot-review': () => queueView.botReview(runtime),
     'bot-start': () => queueView.botStart(runtime),
@@ -550,7 +619,6 @@
     'refresh-context': () => refreshContext(),
     'reset-capture': () => captureView.reset(runtime),
     'reset-layout': () => savePreference({
-      opacity: preferences.defaults().opacity,
       panelHeight: null,
       panelWidth: null,
       position: null,
@@ -585,6 +653,17 @@
   }
 
   function onShadowChange(event) {
+    const cleanupField = event.target.dataset?.instaToolboxCleanupPreference;
+    if (cleanupField && cleanupSettings && !event.target.disabled) {
+      const previous = cleanupPreferences;
+      const raw = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+      const next = cleanupSettings.normalize({ ...previous, [cleanupField]: raw });
+      void storage.set({ [cleanupSettings.STORAGE_KEY]: next }).then(() => {
+        applyCleanupPreferences(next);
+        status('Cleanup defaults saved. Current review unchanged.');
+      }).catch((error) => { applyCleanupPreferences(previous); status(`Settings were not saved: ${error.message}`, 'error'); });
+      return;
+    }
     if (['bot-source', 'bot-action', 'bot-count'].includes(event.target.dataset?.instaToolboxRole)) {
       queueView.invalidateBotReview(runtime);
     }
@@ -663,6 +742,9 @@
 
   function onStorageChanged(changes, areaName) {
     if (!active || areaName !== 'local') return;
+    if (cleanupSettings && changes[cleanupSettings.STORAGE_KEY]) {
+      applyCleanupPreferences(changes[cleanupSettings.STORAGE_KEY].newValue);
+    }
     const preferenceChange = changes[shared.STORAGE_KEYS.preferencesV3];
     if (preferenceChange?.newValue) {
       applyPreferences(preferenceChange.newValue);
@@ -757,6 +839,15 @@
       status(`Preferences could not be loaded; safe defaults are active: ${error.message}`, 'error');
     }
     applyPreferences(loadedPreferences);
+    if (cleanupSettings) {
+      try {
+        const stored = await storage.get([cleanupSettings.STORAGE_KEY]);
+        applyCleanupPreferences(stored[cleanupSettings.STORAGE_KEY], { initializeDraft: true });
+      } catch {
+        applyCleanupPreferences(cleanupSettings.defaults(), { initializeDraft: true });
+        status('Cleanup defaults could not be loaded; Standard is active.', 'error');
+      }
+    }
 
     try {
       const stored = await storage.get([

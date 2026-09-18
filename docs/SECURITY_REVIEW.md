@@ -1,6 +1,6 @@
 # Security review
 
-Last reviewed: 2026-09-07
+Last reviewed: 2026-09-16
 
 ## Boundaries
 
@@ -37,7 +37,7 @@ The userscript may retain the original run expiry across navigation through tab-
 
 ## DM Unsend
 
-Thread-wide Unsend binds a versioned plan to the exact open thread, scope (`all`, `newest`, or `oldest`), optional finite limit, digest, and expiry. After one confirmation it performs one streaming traversal; a read-only mounted-row count is not authorization.
+Thread-wide Unsend binds a versioned plan to the exact open thread, scope (`all`, `newest`, or `oldest`), optional finite limit, digest, and expiry. After one confirmation it performs one streaming traversal; a read-only mounted-row count is not authorization. Version 3 and compatible version 2 plans use the restored Standard pacing only. Fast preferences normalize to Standard; stale Fast plans are rejected.
 
 Before each removal the runner rechecks:
 
@@ -49,6 +49,12 @@ Before each removal the runner rechecks:
 - verified message removal in the same thread.
 
 The traversal handles virtualized rows, normal and reversed layouts, scroller replacement, DOM shrinkage, bounded retries, and stable-empty exhaustion. Successful actions use adaptive one-to-two-second pacing. The runner records only verified removals and never reports the mounted DOM window as the conversation total.
+
+The restored runner retains bounded menu readiness and adaptive 1–2 second successful-action pacing. Nested right-aligned controls cannot establish message ownership; contradictory ownership evidence stops preflight. Changed preview text, temporary loading states, recycled row identities, and optimistic removals that revert are not success evidence. Removal must remain proven through the bounded settlement window.
+
+Page freeze and page exit revoke current action authority. Already-dispatched removals settle as verified or uncertain; the next mutation is not dispatched. Resuming the page does not restore authority. Ordinary focus changes do not themselves revoke a run, but reliable inactive-tab execution still needs separate acceptance. Waits release listeners, observers, and timers on settlement.
+
+Managed-tab inbox coordination modules are not registered for live execution. Their fixtures cover frozen inventories, serial scheduling, worker fencing, persistence failures, and uncertain acknowledgments. Those results do not establish crash-safe external execution. The userscript's serial Ghost path and optional own-reaction follow-up are connected: both require exact account/thread context, action-specific confirmation, bounded traversal, and verified outcomes. Generated-browser acceptance is not authenticated Instagram compatibility, so extension reaction execution and managed workers remain disabled.
 
 Visible DM evidence is scoped to the exact open thread. Navigating to the inbox, feed, a profile, or a different thread hides and clears previously exposed candidates.
 
@@ -65,11 +71,11 @@ The client uses browser-managed credentials without reading them, a fixed applic
 
 Results replace Followers and Following atomically and are not sent through the extension bridge. Instagram can change these unsupported web routes without notice.
 
-Comparisons, comparison downloads, and non-mutual action sources require both lists to be verified and complete. Partial rows remain available as separate raw captures, not inferred non-mutuals. The dialog fallback accumulates overlapping windows rather than jumping past recycled rows. It requires an exact profile count; a quiet or motionless list is not enough. Schema 6 retains earlier rows but clears unproven completion from older dialog captures. Existing count-verified authenticated captures remain usable.
+Provenance-verified partial comparisons remain visible and downloadable with uncertainty and “Not found” wording. They may supply reviewed Follow / Unfollow targets under the existing 3.1.12 contract, with uncertainty bound into review and confirmation; missing records are not presented as confirmed relationship facts. A quiet or motionless list does not establish completion. Schema 6 retains earlier rows but clears unproven completion from older dialog captures. Existing count-verified authenticated captures remain usable.
 
 ## Local app and web delivery
 
-The PWA service worker uses network-first same-origin GET handling, caches only successful same-origin responses, bypasses the HTTP cache for service-worker update checks, and removes earlier cache generations. Version 3.1 uses `insta-toolbox-v3112`.
+The PWA service worker uses network-first same-origin GET handling, caches only successful same-origin responses, bypasses the HTTP cache for service-worker update checks, and removes earlier cache generations. Version 4.0.1 uses `insta-toolbox-v401`; persisted workspace and settings keys are unchanged.
 
 The loopback development server accepts only loopback Host headers and serves an explicit asset allowlist. Repository metadata, tests, documentation, and Git internals are not served. Framing protection is sent as HTTP headers because `frame-ancestors` is ineffective in a meta policy.
 
@@ -95,7 +101,7 @@ Runtime application code has no third-party production dependencies. The lockfil
 
 CI actions are pinned to full commit SHAs. Pull requests receive dependency review; CodeQL runs on pull requests, `main`, and weekly. Dependabot proposes npm and action updates. Release promotion accepts only artifacts from the successful current `main` CI run, rechecks versions and checksums, generates an SBOM, and requests GitHub provenance attestation without rebuilding.
 
-The 3.1 account-free matrix contains 415 tests, 45 overlay states, and 11 PWA states. Final pass links and hashes belong in [the 3.1.12 acceptance record](./acceptance/3.1.12.md). Fixtures do not prove current authenticated Instagram behavior.
+The 4.0.1 development matrix contains 972 tests. The 45 overlay states and 11 PWA states remain recorded in the 4.0.0 visual evidence until the 4.0.1 release candidate is recaptured. Current results are tracked in [the 4.0.1 acceptance record](./acceptance/4.0.1.md). Fixtures do not prove current authenticated Instagram behavior.
 
 Partial mutual comparisons are available for display, export, and Follow / Unfollow target review. Target reviews and their existing confirmation show an uncertainty notice; missing records are not proof of a non-mutual relationship. Captures must belong to the signed-in account, and each profile's current relationship is checked before acting. Schema-1 comparison exports preserve existing fields and add `partial`, `labels`, and `warning`; completeness flags are not promoted by downloading.
 

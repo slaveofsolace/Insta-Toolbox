@@ -94,10 +94,11 @@ test('each mutation uses one exact transient capability without a global unlock'
   assert.match(confirmation, /cancelButton\.focus\(\)/);
   assert.match(confirmation, /current\.binding/);
   assert.match(shell, /normalizeResumableAccountRun\(tabState\?\.\[TAB_RUN_FIELD\]\)/);
-  assert.match(shell, /GM_setValue\(STATE_KEY, \{ \.\.\.state, run: null \}\)/);
+  assert.match(shell, /const \{ capture, \.\.\.sharedState \} = state/);
+  assert.match(shell, /GM_setValue\(STATE_KEY, \{[^\n]+\.\.\.sharedState, run: null \}\)/);
   assert.match(shell, /if \(!runCapabilityValid\(run\)\)/);
   assert.match(shell, /This run expired\. No further Instagram action was made/);
-  assert.match(source, /const PLAN_VERSION = 2/);
+  assert.match(source, /const PLAN_VERSION = 3/);
   assert.match(source, /plan\.limit === null \? MAX_PLAN_MESSAGES : plan\.limit/);
   assert.doesNotMatch(source, /currentEligibleCount !== plan\.eligibleCount/);
   assert.doesNotMatch(shell, /live actions enabled|global unlock/i);

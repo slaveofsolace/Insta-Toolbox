@@ -9,18 +9,31 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { bundleLocalModules } from './lib/bundle-local-modules.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const checkOnly = process.argv.includes('--check');
 const output = path.join(repositoryRoot, 'userscripts', 'insta-toolbox.user.js');
 const licenseFile = path.join(repositoryRoot, 'LICENSE');
+const moduleFiles = [
+  ...['inbox-discovery', 'inbox-native-navigation', 'inbox-coordinator', 'inbox-userscript-discovery',
+    'inbox-single-tab', 'inbox-userscript-panel', 'inbox-checkpoint-store',
+    'presence-native-inputs',
+    'presence-native-actions', 'presence-session', 'presence-session-panel']
+    .map(name => `extension/${name}.js`),
+  'src/core/presence.js',
+];
 
 const parts = [
   path.join(repositoryRoot, 'userscripts', 'src', 'metadata.txt'),
   path.join(repositoryRoot, 'extension', 'overlay', 'tokens.js'),
+  path.join(repositoryRoot, 'extension', 'cleanup-settings.js'),
   path.join(repositoryRoot, 'extension', 'action-confirmation.js'),
+  path.join(repositoryRoot, 'extension', 'own-reactions.js'),
   path.join(repositoryRoot, 'extension', 'action-labels.js'),
   path.join(repositoryRoot, 'extension', 'content-instagram.js'),
+  path.join(repositoryRoot, 'extension', 'instagram-viewer.js'),
+  path.join(repositoryRoot, 'extension', 'reaction-cleanup.js'),
   path.join(repositoryRoot, 'userscripts', 'src', 'toolbox-shell.js'),
 ];
 
@@ -66,7 +79,18 @@ const singletonGuardEnd = `
 })();
 `;
 
-const engine = sources.join('\n');
+const localSources = Object.fromEntries(await Promise.all(moduleFiles.map(async file => [file, await readFile(path.join(repositoryRoot, file), 'utf8')])));
+const inboxModules = bundleLocalModules(localSources, ['extension/inbox-userscript-panel.js', 'extension/inbox-checkpoint-store.js',
+  'extension/presence-native-inputs.js',
+  'extension/presence-native-actions.js', 'extension/presence-session.js', 'extension/presence-session-panel.js']);
+const inboxExport = `globalThis.InstaToolboxInboxDiscovery = Object.freeze({ create: localModules['extension/inbox-userscript-discovery.js'].createUserscriptInboxDiscovery });
+globalThis.InstaToolboxInboxPanel = Object.freeze({ mount: localModules['extension/inbox-userscript-panel.js'].mountUserscriptInboxPanel });
+globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['extension/inbox-checkpoint-store.js'].createInboxCheckpointStore });
+globalThis.InstaToolboxPresenceInputs = Object.freeze({ create: localModules['extension/presence-native-inputs.js'].createPresenceNativeInputs });
+globalThis.InstaToolboxPresenceNativeActions = Object.freeze({ create: localModules['extension/presence-native-actions.js'].createPresenceNativeActions });
+globalThis.InstaToolboxPresenceSession = Object.freeze({ create: localModules['extension/presence-session.js'].createPresenceSession });
+globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModules['extension/presence-session-panel.js'].mountPresenceSessionPanel });`;
+const engine = [...sources.slice(0, -1), inboxModules, inboxExport, sources.at(-1)].join('\n');
 if (!engine.includes('performReviewedProfileAction')
   || !engine.includes('performReviewedDmUnsend')
   || !engine.includes('InstaToolboxDmThreadUnsender')) {
@@ -108,4 +132,4 @@ if (checkOnly) {
 }
 
 await writeFile(output, assembled);
-console.log(`Built ${path.relative(repositoryRoot, output)} from ${parts.length} sources.`);
+console.log(`Built ${path.relative(repositoryRoot, output)} from ${parts.length + moduleFiles.length} sources.`);

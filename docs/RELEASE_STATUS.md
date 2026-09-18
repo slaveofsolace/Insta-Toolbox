@@ -1,32 +1,58 @@
 # Release status
 
-Current candidate: **3.1.12**
+Current candidate: **4.0.1**
+
+Development candidate only. The published release remains **3.1.12**; the
+stable update URL is unchanged. The userscript contains reviewed serial inbox
+cleanup and the compact Presence session. Authenticated acceptance remains
+separate from the fixture results. See [DM restoration](./DM_RESTORATION_4.0.1.md)
+for the native selection and removal-reporting history.
 
 ## Release files
 
 | Surface | File |
 | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` |
-| Chrome extension | `Insta-Toolbox-Extension-3.1.12.zip` |
-| Web/PWA | `insta-toolbox-web-3.1.12.zip` |
-| Windows | `Insta-Toolbox-Setup-3.1.12.exe` |
-| macOS | `Insta-Toolbox-3.1.12-universal.dmg` and `.zip` |
+| Chrome extension | `Insta-Toolbox-Extension-4.0.1.zip` |
+| Web/PWA | `insta-toolbox-web-4.0.1.zip` |
+| Windows | `Insta-Toolbox-Setup-4.0.1.exe` |
+| macOS | `Insta-Toolbox-4.0.1-universal.dmg` and `.zip` |
 | Integrity | `SHA256SUMS.txt`, SBOM, and GitHub provenance attestation |
 
 The stable userscript channel is:
 
 `https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js`
 
-Version 3 keeps the userscript identity introduced in 3.0. Tampermonkey updates 3.0 in place. Remove a 2.x script before installing 3.1.
+Version 4 keeps the userscript identity and local data introduced in 3.0. Tampermonkey updates an existing 3.x installation in place. Remove a 2.x script before installing the current release.
 
 ## Candidate gates
 
-The 3.1 account-free matrix contains:
+The development matrix contains:
 
-- 415 automated tests;
-- 45 overlay screenshot states;
-- 11 PWA screenshot states;
-- service-worker cache generation `insta-toolbox-v3112`.
+- 973 automated tests at the shared Presence/Ghost integration checkpoint;
+- complete generated-userscript and extension fixture acceptance;
+- 45 historical 4.0.0 overlay screenshot states awaiting 4.0.1 recapture;
+- 11 historical 4.0.0 PWA screenshot states awaiting 4.0.1 recapture;
+- service-worker cache generation `insta-toolbox-v401`.
+
+The native DM regression matrix also covers restored pre-Fast handling of sent
+replies and story replies through the generated userscript's primary action.
+Read-only native selection passed; post-removal authenticated acceptance is
+still pending for the repaired candidate.
+
+The optional userscript reaction pass is enabled in this branch candidate. Its
+generated-browser acceptance verifies confirmation, cancellation, exact
+signed-in-account ownership, one reaction removal, message preservation,
+dialog closure, and an independent verified count. This does not establish
+current authenticated Instagram reaction compatibility; a disposable live
+reaction remains a separate gate.
+
+The current source passes the complete local extension/userscript acceptance,
+including responsive and true 200% zoom states. Earlier Chrome pairing, Windows
+and macOS packaging, archive inspection, and checksum results do not certify a
+new commit until exact-commit CI completes. Authenticated acceptance remains a
+separate gate. Desktop/PWA expansion is deferred while the Tampermonkey workflow
+is being completed. See the acceptance record for each check's exact scope.
 
 Before a release is promoted, the exact `main` commit must pass assembly, tests, repository hygiene, dependency audit, generated-userscript parity, extension and userscript acceptance, Chrome pairing, browser QA, overlay/PWA visual checks, Windows packaging, macOS packaging, archive inspection, checksum generation, and `git diff --check`.
 
@@ -50,11 +76,12 @@ The macOS application is ad-hoc signed for bundle integrity but is not Developer
 
 ## Evidence and nonclaims
 
-The candidate record is [acceptance/3.1.12.md](./acceptance/3.1.12.md). Compatibility is tracked in [compatibility/3.1.12.md](./compatibility/3.1.12.md).
+The candidate record is [acceptance/4.0.1.md](./acceptance/4.0.1.md).
+Compatibility is tracked in [compatibility/4.0.1.md](./compatibility/4.0.1.md).
 
 Automated fixtures do not prove current authenticated Instagram selectors, human screen-reader use, persistent-profile behavior, SmartScreen trust, Gatekeeper trust, or notarization. Record those checks separately without committing usernames, messages, thread IDs, cookies, tokens, or private screenshots.
 
-Historical evidence directories keep the version and filenames they were produced with. They are not renamed or presented as 3.1 evidence.
+Historical evidence directories keep the version and filenames they were produced with. They are not renamed or presented as current evidence.
 
 ## Related documents
 

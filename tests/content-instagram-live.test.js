@@ -118,6 +118,7 @@ function createHarness(mode, { secureCrypto = webcrypto } = {}) {
       pathname: '/demo_creator/',
     },
     setTimeout,
+    clearTimeout,
   });
   vm.runInContext(actionLabelsSource, context);
   vm.runInContext(source, context);

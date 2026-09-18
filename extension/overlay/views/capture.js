@@ -567,6 +567,7 @@
       const nextCapture = shared.normalizeCaptureWorkspace({
         ...shared.captureWorkspaceDefaults(),
         subjectUsername: result.username,
+        subjectInstagramId: result.subjectInstagramId,
         followers: result.followers,
         following: result.following,
         capturedAt: {

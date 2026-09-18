@@ -5,6 +5,7 @@
 // Keeping one list here stops the build, the packager, and the acceptance
 // harnesses from drifting apart when a module is added.
 export const instagramScriptOrder = Object.freeze([
+  'cleanup-settings.js',
   'action-confirmation.js',
   'action-labels.js',
   'content-instagram.js',

@@ -9,6 +9,8 @@ import { app, BrowserWindow, session } from 'electron';
 
 import { createAppServer } from './serve.mjs';
 import { instagramScriptOrder } from './instagram-script-order.mjs';
+import { acceptUserscriptPresence } from './lib/userscript-presence-acceptance.mjs';
+import { acceptUserscriptInboxReview } from './lib/userscript-inbox-review-acceptance.mjs';
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(moduleDirectory, '..');
@@ -132,7 +134,7 @@ function createIsolatedWindow(partition) {
   window.webContents.on('console-message', (event) => {
     const level = event.level;
     if (level === 'warning' || level === 'error' || Number(level) >= 2) {
-      problems.push(`${String(level)}: ${event.message || ''}`);
+      problems.push(`${String(level)}: ${event.message || ''} (${event.sourceId || 'renderer'}:${event.lineNumber || 0})`);
     }
   });
   window.webContents.on('render-process-gone', (_event, details) => {
@@ -392,8 +394,23 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
     'Resize Insta Toolbox from the lower-left corner; use arrow keys for precise sizing',
     'Resize Insta Toolbox from the lower-right corner; use arrow keys for precise sizing',
   ]);
-  assert.equal(metrics.opacity, '88');
+  assert.equal(metrics.opacity, undefined, 'settings controls mount only when first opened');
   assert.match(metrics.panelBackground, /(rgba\(|color\()/);
+
+  const settingsOpening = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+    const status = shadow.querySelector('[data-insta-toolbox-role="status"]');
+    const before = status?.textContent;
+    shadow.querySelector('[data-insta-toolbox-action="open-settings"]').click();
+    const dialog = shadow.querySelector('[data-insta-toolbox-role="settings-dialog"]');
+    const result = { open: dialog.open, before, after: status?.textContent,
+      opacity: shadow.querySelector('[data-insta-toolbox-preference="opacity"]').value };
+    shadow.querySelector('[data-insta-toolbox-action="close-settings"]').click();
+    return result;
+  })()`, true);
+  assert.equal(settingsOpening.open, true, 'settings opens without a data action');
+  assert.equal(settingsOpening.opacity, '88', 'first settings mount restores current appearance');
+  assert.equal(settingsOpening.after, settingsOpening.before, 'opening settings does not report an export failure');
 
   await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
@@ -419,6 +436,61 @@ async function acceptOverlayAccessibility(webContents, baseUrl) {
   assert.equal(savedLayout.schemaVersion, 3);
   assert.ok(savedLayout.position.x >= 0);
   assert.ok(savedLayout.panelWidth >= 320);
+
+  const reopenedSettings = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+    const opacity = shadow.querySelector('[data-insta-toolbox-preference="opacity"]');
+    const scope = shadow.querySelector('[data-insta-toolbox-cleanup-preference="messageScope"]');
+    scope.value = 'newest'; scope.dispatchEvent(new Event('change', { bubbles: true }));
+    shadow.querySelector('[data-insta-toolbox-action="open-settings"]').click();
+    shadow.querySelector('[data-insta-toolbox-action="close-settings"]').click();
+    shadow.querySelector('[data-insta-toolbox-action="open-settings"]').click();
+    const result = { opacity: opacity.value, scope: scope.value,
+      sameOpacity: opacity === shadow.querySelector('[data-insta-toolbox-preference="opacity"]'),
+      sameScope: scope === shadow.querySelector('[data-insta-toolbox-cleanup-preference="messageScope"]') };
+    scope.value = 'all'; scope.dispatchEvent(new Event('change', { bubbles: true }));
+    shadow.querySelector('[data-insta-toolbox-action="close-settings"]').click();
+    return result;
+  })()`, true);
+  assert.deepEqual(reopenedSettings, { opacity: '76', scope: 'newest', sameOpacity: true, sameScope: true },
+    'settings reopen preserves nodes, appearance, and cleanup choices');
+
+  for (const [blur, pixels] of [['none', 0], ['soft', 10], ['strong', 18]]) {
+    await webContents.executeJavaScript(`(() => {
+      const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+      const control = shadow.querySelector('[data-insta-toolbox-preference="blur"]');
+      control.value = ${JSON.stringify(blur)};
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`, true);
+    await waitForPageValue(webContents,
+      `globalThis.fixtureStorage.instaToolboxOverlayPreferencesV3?.blur === ${JSON.stringify(blur)}`,
+      `persisted ${blur} blur`,
+    );
+    for (const section of ['now', 'messages', 'capture', 'queue']) {
+      const filter = await webContents.executeJavaScript(`(() => {
+        const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+        shadow.querySelector('[data-insta-toolbox-section="${section}"]').click();
+        const computed = getComputedStyle(shadow.querySelector('.insta-toolbox-panel'));
+        return { standard: computed.backdropFilter, webkit: computed.webkitBackdropFilter };
+      })()`, true);
+      assert.match(filter.standard, new RegExp('blur\\(' + pixels + 'px\\)'), `${section}: ${blur} blur is effective`);
+      if (filter.webkit !== undefined) {
+        assert.equal(filter.webkit, filter.standard, `${section}: prefixed blur is consistent`);
+      }
+    }
+  }
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
+    shadow.querySelector('[data-insta-toolbox-action="reset-layout"]').click();
+    shadow.querySelector('[data-insta-toolbox-section="now"]').click();
+  })()`, true);
+  const resetLayout = await waitForPageValue(webContents, `(() => {
+    const value = globalThis.fixtureStorage.instaToolboxOverlayPreferencesV3;
+    return value && value.position === null && value.panelWidth === null ? value : null;
+  })()`, 'geometry-only layout reset');
+  assert.equal(resetLayout.opacity, 0.76, 'reset layout preserves opacity');
+  assert.equal(resetLayout.blur, 'strong', 'reset layout preserves blur');
+  console.log('Accepted computed blur across tools and geometry-only layout reset in isolated Chromium.');
 
   await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-toolbox-sidecar-root').shadowRoot;
@@ -651,7 +723,7 @@ async function acceptOverlayDmConfirmation(webContents, baseUrl) {
     facts: [
       ['Action', 'Permanently unsend messages'],
       ['Conversation', 'Thread 123'],
-      ['Scope', 'All messages you sent'],
+      ['Messages', 'All messages you sent'],
     ],
     focusedRole: 'confirm-cancel',
     scope: 'all',
@@ -959,6 +1031,155 @@ async function acceptThreadUnsendScopes(webContents, baseUrl) {
   console.log('Accepted newest and oldest finite Unsend ordering across virtualized rows.');
 }
 
+async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
+  surfaces = ['extension', 'userscript'], media = false, groupStyle = false, uncertain = false,
+  nativeLayout = false, newestKind = 'reply', shortThread = null,
+} = {}) {
+  const measurements = [];
+  const expectedRemovals = uncertain ? 0 : shortThread ? shortThread.count : media ? 2 : 1;
+  const fixtureLabel = shortThread ? `native-short-${shortThread.peer}-${shortThread.count}${shortThread.received ? '-received' : ''}${uncertain ? '-uncertain' : ''}`
+    : nativeLayout ? `native-${newestKind}-backfill`
+    : media ? `idless-reels-${groupStyle ? 'group' : 'direct'}${uncertain ? '-uncertain' : ''}` : 'primary';
+  for (const surface of surfaces) {
+    for (const speed of ['standard']) {
+      const extension = surface === 'extension';
+      if (extension) await loadFixture(webContents, baseUrl, 'messages-live');
+      else {
+        await withTimeout(webContents.loadURL(`${baseUrl}/userscript-fixture.html`), 'speed userscript fixture load');
+        await waitForPageValue(webContents, `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'speed userscript ready');
+        await webContents.executeJavaScript(shortThread
+          ? `globalThis.fixtureSetNativeReplyMessages({shortThread:${JSON.stringify({ ...shortThread, uncertain })}})`
+          : nativeLayout
+          ? `globalThis.fixtureSetNativeReplyMessages({newestKind:${JSON.stringify(newestKind)}})`
+          : media
+            ? `globalThis.fixtureSetMediaMessages({groupStyle:${groupStyle},uncertain:${uncertain}})`
+            : 'globalThis.fixtureSetMessages()', true);
+        await waitForPageValue(webContents, `(() => {
+          const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+          return !shadow.querySelector('[data-role="unsend-primary"]').disabled;
+        })()`, 'speed userscript conversation ready');
+      }
+      const host = extension ? '#insta-toolbox-sidecar-root' : '#insta-toolbox-userscript-root';
+      const role = extension ? 'data-insta-toolbox-role' : 'data-role';
+      const action = extension ? 'data-insta-toolbox-action' : 'data-action';
+      await webContents.executeJavaScript(`(() => {
+        const shadow = document.querySelector(${JSON.stringify(host)}).shadowRoot;
+        if (${uncertain}) {
+          const preference = shadow.querySelector('[data-cleanup-preference="showSummary"]');
+          preference.checked = false;
+          preference.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (shadow.querySelector(${JSON.stringify(extension ? '.insta-toolbox-panel' : '.panel')}).hidden)
+          shadow.querySelector(${JSON.stringify(extension ? '.insta-toolbox-launcher' : '.launcher')}).click();
+        shadow.querySelector(${JSON.stringify(extension ? '[data-insta-toolbox-section="messages"]' : '[data-view="messages"]')}).click();
+        const scope = shadow.querySelector('[${role}="unsend-scope"]');
+        scope.value = '${media || shortThread ? 'all' : 'newest'}'; scope.dispatchEvent(new Event('change', { bubbles: true }));
+        shadow.querySelector('[${role}="unsend-count"]').value = '${expectedRemovals}';
+        if (shadow.querySelector('[${role}="unsend-speed"]'))
+          throw new Error('Unsend must not expose a removed speed choice.');
+        globalThis.fixtureSpeedStartedAt = performance.now();
+        shadow.querySelector('[${action}="${extension ? 'mass-unsend' : 'run-unsend'}"]').click();
+      })()`, true);
+      const review = await waitForPageValue(webContents, `(() => {
+        const shadow = document.querySelector(${JSON.stringify(host)}).shadowRoot;
+        if (!shadow.querySelector('[${role}="action-confirmation"]').open) return null;
+        return [...shadow.querySelectorAll('[${role}="confirm-facts"] dt')].map(term => [term.textContent, term.nextElementSibling?.textContent]);
+      })()`, `${surface} ${speed} primary review`);
+      assert.equal(review.some(([label]) => label === 'Speed'), false);
+      if (nativeLayout) assert.ok(review.some(([label, value]) => label === 'Messages' && value === 'newest 1'));
+      assert.equal(await webContents.executeJavaScript('globalThis.fixtureUnsentCount'), 0);
+      await trustedClick(webContents, `document.querySelector(${JSON.stringify(host)}).shadowRoot.querySelector('[${action}="confirm-accept"]')`, `${surface} ${speed} reviewed fixture start`);
+      const outcome = await waitForPageValue(webContents, `(() => {
+        const result = globalThis.InstaToolboxDmThreadUnsender.snapshot();
+        if (['idle','preparing','running','waiting','stopping'].includes(result.status)) return null;
+        const shadow = document.querySelector(${JSON.stringify(host)}).shadowRoot;
+        return { ...result, actualRemovals: globalThis.fixtureUnsentCount,
+          receivedRetained: Boolean(document.querySelector('${media || nativeLayout || shortThread ? '[data-fixture-received]' : '[data-message-id="received-1"]'}')),
+          nativeEvidence: ${nativeLayout} ? globalThis.fixtureNativeEvidence() : null,
+          remainingSent: document.querySelectorAll('[data-fixture-sent]').length,
+          remainingSentRows: [...document.querySelectorAll('[data-fixture-sent]')].map(row => row.outerHTML),
+          messageContainerChildren: [...document.querySelector('[data-pagelet="IGDMessagesList"]')?.children || []]
+            .map(node => ({ tag: node.tagName, role: node.getAttribute('role'), childCount: node.children.length })),
+          summaryVisible: !shadow.querySelector('[data-role="dm-summary"]')?.hidden,
+          summaryText: shadow.querySelector('[data-role="dm-summary"]')?.textContent || '',
+          fixtureClicks: globalThis.fixtureDmClickCount,
+          menuControl: document.querySelector('#fixture-dm-action')?.outerHTML,
+          surfacedMenus: [...document.querySelectorAll('[role="menu"]')].map(menu => menu.outerHTML),
+          elapsedMs: performance.now() - globalThis.fixtureSpeedStartedAt };
+      })()`, `${surface} ${speed} complete`, 60_000).catch(async error => {
+        const diagnostic = await webContents.executeJavaScript(`(() => {
+          const shadow = document.querySelector(${JSON.stringify(host)}).shadowRoot;
+          return { snapshot: globalThis.InstaToolboxDmThreadUnsender.snapshot(),
+            confirmationOpen: shadow.querySelector('[${role}="action-confirmation"]').open,
+            status: shadow.querySelector('[${role}="status-text"]')?.textContent,
+            detail: shadow.querySelector('[${role}="unsend-detail"]')?.textContent,
+            requests: globalThis.fixtureBridgeRequests,
+            actualRemovals: globalThis.fixtureUnsentCount };
+        })()`);
+        throw new Error(`${error.message} ${JSON.stringify(diagnostic)}`);
+      });
+      assert.equal(outcome.status, uncertain ? 'error' : 'completed', JSON.stringify(outcome));
+      assert.equal(outcome.processed, expectedRemovals, JSON.stringify(outcome));
+      assert.equal(outcome.failed, 0, JSON.stringify(outcome));
+      assert.equal(outcome.uncertain || 0, uncertain ? 1 : 0, JSON.stringify(outcome));
+      assert.equal(outcome.actualRemovals, expectedRemovals, JSON.stringify(outcome));
+      assert.equal(outcome.receivedRetained, shortThread ? Boolean(shortThread.received) : true, JSON.stringify(outcome));
+      if (media || shortThread) {
+        assert.equal(outcome.remainingSent, uncertain ? shortThread?.count || 2 : 0);
+        assert.equal(outcome.fixtureClicks, uncertain ? 3 : expectedRemovals * 3, 'each exact native control is activated once');
+      }
+      if (shortThread) {
+        assert.equal(outcome.summaryVisible, true);
+        assert.match(outcome.summaryText, new RegExp(`${expectedRemovals} unsent`));
+        await writeFile(path.join(resultsRoot, `${surface}-${speed}-${fixtureLabel}.png`),
+          (await webContents.capturePage()).toPNG());
+      }
+      if (nativeLayout) {
+        assert.deepEqual(outcome.nativeEvidence.openedIds, ['newest-sent'], 'reply/story headers must not hide the newest sent target');
+        assert.deepEqual(outcome.nativeEvidence.removedIds, ['newest-sent']);
+        assert.equal(outcome.nativeEvidence.timestampRemoved, true, 'native timestamp and message disappear together');
+        assert.equal(outcome.nativeEvidence.backfillCount, 1, 'older history backfills outside the retained neighborhood');
+        assert.equal(outcome.nativeEvidence.receivedRetained, true);
+        assert.equal(outcome.nativeEvidence.retainedNeighborGroups, true);
+        assert.equal(outcome.nativeEvidence.olderSentRetained, true, 'an older simple message is not a fallback for Newest 1');
+        assert.equal(outcome.nativeEvidence.newestSentRetained, false);
+        assert.equal(outcome.remainingSent, 2);
+        assert.equal(outcome.fixtureClicks, 3, 'one menu, one Unsend choice, and one native confirmation');
+        assert.equal(outcome.summaryVisible, true);
+        assert.match(outcome.summaryText, /1 unsent/);
+        assert.doesNotMatch(outcome.summaryText, /uncertain/i);
+        await writeFile(path.join(resultsRoot, `${surface}-${speed}-${fixtureLabel}.png`),
+          (await webContents.capturePage()).toPNG());
+      }
+      if (uncertain) {
+        assert.equal(outcome.summaryVisible, true, 'uncertain primary run is visible without a preliminary scan');
+        assert.match(outcome.summaryText, /0 unsent/);
+        assert.match(outcome.summaryText, /uncertain/i);
+      }
+      measurements.push({ surface, fixture: fixtureLabel, speed, processed: outcome.processed, failed: outcome.failed,
+        uncertain: outcome.uncertain || 0, elapsedMs: outcome.elapsedMs, phaseTimings: outcome.phaseTimings });
+      console.log(`Accepted ${surface} ${speed} ${fixtureLabel} fixture in ${Math.round(outcome.elapsedMs)}ms.`);
+    }
+  }
+  await writeFile(path.join(resultsRoot, `speed-${fixtureLabel}-fixture.json`), `${JSON.stringify({ fixtureOnly: true, measurements }, null, 2)}\n`);
+  console.log(`Accepted restored Unsend ${fixtureLabel} flow: ${expectedRemovals} verified removals, received messages unchanged${uncertain ? ', uncertain outcome visible without retry' : ', no failures or uncertain outcomes'}.`);
+}
+
+async function acceptShortNativeConversations(webContents, baseUrl) {
+  for (const shortThread of [
+    { peer: 'direct', count: 1 },
+    { peer: 'group', count: 2, kind: 'reel' },
+    { peer: 'unavailable', count: 2, kind: 'reel' },
+    { peer: 'group', count: 2, received: true },
+    { peer: 'unavailable', count: 1, uncertain: true },
+  ]) {
+    await acceptPrimarySpeedEquivalence(webContents, baseUrl, {
+      surfaces: ['userscript'], shortThread, uncertain: Boolean(shortThread.uncertain),
+    });
+  }
+  console.log('Accepted five short native-shaped thread fixtures; no authenticated account-state claim.');
+}
+
 async function acceptThreadUnsendStop(webContents, baseUrl) {
   await withTimeout(
     webContents.loadURL(`${baseUrl}/direct/t/17800000000000001/`),
@@ -1120,7 +1341,7 @@ function assertUserscriptConfirmationLayout(review, label) {
     facts: [
       ['Action', 'Permanently unsend messages'],
       ['Conversation', 'Thread 123'],
-      ['Scope', 'All messages you sent'],
+      ['Messages', 'All messages you sent'],
     ],
     focusedRole: 'confirm-cancel',
     message: 'Permanently unsend every message you sent in this conversation?',
@@ -1151,12 +1372,501 @@ function assertUserscriptConfirmationLayout(review, label) {
   }, `${label}: opening the confirmation started destructive work`);
 }
 
+async function acceptUserscriptSettings(webContents) {
+  const result = await webContents.executeJavaScript(`(async () => {
+    const host = document.querySelector('#insta-toolbox-userscript-root');
+    const shadow = host.shadowRoot;
+    const appearanceSnapshot = () => ({
+      storedTheme: globalThis.fixtureGmStore.instaToolboxUserscriptPreferencesV1?.theme,
+      storedDensity: globalThis.fixtureGmStore.instaToolboxUserscriptPreferencesV1?.density,
+      themeAttribute: host.dataset.themePreference,
+      densityAttribute: host.dataset.density,
+      themeControl: shadow.querySelector('[data-preference="theme"]').value,
+      textToken: getComputedStyle(host).getPropertyValue('--insta-toolbox-text').trim(),
+      panelColor: getComputedStyle(shadow.querySelector('.panel')).color,
+      panelHidden: shadow.querySelector('.panel').hidden,
+      cardPadding: getComputedStyle(shadow.querySelector('.card')).paddingTop,
+    });
+    const waitForAppearance = async (preference, value) => {
+      const deadline = performance.now() + 1500;
+      let snapshot;
+      while (true) {
+        snapshot = appearanceSnapshot();
+        const ready = preference === 'theme'
+          ? snapshot.storedTheme === value && snapshot.themeAttribute === value
+            && snapshot.themeControl === value
+            && snapshot.textToken === (value === 'dark' ? '#f3f3f3' : '#171717')
+            && snapshot.panelColor === (value === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)')
+          : snapshot.storedDensity === value && snapshot.densityAttribute === value
+            && snapshot.cardPadding === (value === 'comfortable' ? '16px' : '12px');
+        if (ready) return snapshot;
+        if (performance.now() >= deadline) {
+          throw new Error('Settings appearance did not settle: ' + JSON.stringify({ preference, value, ...snapshot }));
+        }
+        // Yield to the renderer; microtasks alone do not advance a render cycle.
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    };
+    const change = async (selector, value) => {
+      const control = shadow.querySelector(selector);
+      if (control.type === 'checkbox') control.checked = value;
+      else control.value = value;
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve(); await Promise.resolve();
+      if (control.dataset.preference === 'theme' || control.dataset.preference === 'density') {
+        await waitForAppearance(control.dataset.preference, value);
+      }
+    };
+    const preferences = () => structuredClone(globalThis.fixtureGmStore.instaToolboxUserscriptPreferencesV1);
+    const cleanup = () => structuredClone(globalThis.fixtureGmStore.instaToolboxCleanupPreferencesV1);
+    const stateBefore = JSON.stringify(globalThis.fixtureGmStore.instaToolboxUserscriptStateV2);
+    shadow.querySelector('[data-action="open-settings"]').click();
+    await change('[data-preference="theme"]', 'dark');
+    const darkText = getComputedStyle(shadow.querySelector('.panel')).color;
+    await change('[data-preference="theme"]', 'light');
+    const lightText = getComputedStyle(shadow.querySelector('.panel')).color;
+    await change('[data-preference="theme"]', 'dark');
+    const repeatedDark = appearanceSnapshot();
+    await change('[data-preference="theme"]', 'light');
+    const repeatedLight = appearanceSnapshot();
+    await change('[data-preference="density"]', 'comfortable');
+    const comfortable = getComputedStyle(shadow.querySelector('.card')).paddingTop;
+    await change('[data-preference="density"]', 'compact');
+    const compact = getComputedStyle(shadow.querySelector('.card')).paddingTop;
+    await change('[data-preference="blur"]', 'none');
+    await change('[data-preference="opacity"]', '70');
+    const draftBefore = shadow.querySelector('[data-role="unsend-scope"]').value;
+    await change('[data-cleanup-preference="messageScope"]', 'newest');
+    await change('[data-cleanup-preference="messageLimit"]', '7');
+    await change('[data-cleanup-preference="showSummary"]', false);
+    const savedCleanup = cleanup();
+    const draftAfter = shadow.querySelector('[data-role="unsend-scope"]').value;
+    shadow.querySelector('[data-action="layout-wide"]').click();
+    shadow.querySelector('[data-action="reset-layout"]').click();
+    const resetLayout = preferences();
+    shadow.querySelector('[data-action="layout-wide"]').click();
+    shadow.querySelector('[data-action="reset-appearance"]').click();
+    const resetAppearance = preferences();
+    const retainedCleanup = cleanup();
+    const dataUntouched = JSON.stringify(globalThis.fixtureGmStore.instaToolboxUserscriptStateV2) === stateBefore;
+    await change('[data-cleanup-preference="messageScope"]', 'all');
+    await change('[data-cleanup-preference="messageLimit"]', '1');
+    await change('[data-cleanup-preference="showSummary"]', true);
+    shadow.querySelector('[data-action="reset-layout"]').click();
+    shadow.querySelector('[data-action="close-settings"]').click();
+    return { darkText, lightText, repeatedDark, repeatedLight, comfortable, compact, draftBefore, draftAfter,
+      savedCleanup, retainedCleanup, resetLayout, resetAppearance, dataUntouched };
+  })()`, true);
+  assert.equal(result.darkText, 'rgb(243, 243, 243)', 'explicit dark theme affects rendered text');
+  assert.equal(result.lightText, 'rgb(23, 23, 23)', 'explicit light theme affects rendered text');
+  assert.equal(result.repeatedDark.panelColor, 'rgb(243, 243, 243)', JSON.stringify(result.repeatedDark));
+  assert.equal(result.repeatedLight.panelColor, 'rgb(23, 23, 23)', JSON.stringify(result.repeatedLight));
+  assert.equal(result.comfortable, '16px');
+  assert.equal(result.compact, '12px');
+  assert.equal(result.savedCleanup.messageScope, 'newest');
+  assert.equal(result.savedCleanup.messageLimit, 7);
+  assert.equal(result.savedCleanup.showSummary, false);
+  assert.equal(result.draftAfter, result.draftBefore, 'saved defaults do not rewrite the current draft');
+  assert.equal(result.resetLayout.opacity, .7);
+  assert.equal(result.resetLayout.blur, 'none');
+  assert.equal(result.resetLayout.density, 'compact');
+  assert.equal(result.resetLayout.width, 390);
+  assert.equal(result.resetAppearance.opacity, .88);
+  assert.equal(result.resetAppearance.theme, 'auto');
+  assert.equal(result.resetAppearance.width, 560, 'appearance reset preserves manual geometry');
+  assert.equal(result.resetAppearance.height, 680);
+  assert.deepEqual(result.retainedCleanup, result.savedCleanup, 'appearance reset preserves cleanup defaults');
+  assert.equal(result.dataUntouched, true, 'settings resets do not erase checker or queue data');
+  const settingsScreenshots = path.join(resultsRoot, 'settings');
+  await mkdir(settingsScreenshots, { recursive: true });
+  for (const theme of ['light', 'dark']) {
+    await webContents.executeJavaScript(`(() => {
+      const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+      const control = shadow.querySelector('[data-preference="theme"]');
+      control.value = '${theme}';
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+      shadow.querySelector('[data-action="open-settings"]').click();
+    })()`, true);
+    await withTimeout(webContents.executeJavaScript(
+      'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))', true),
+    `userscript ${theme} settings paint`);
+    const capture = await withTimeout(webContents.capturePage(), `userscript ${theme} settings screenshot`);
+    const expectedSize = BrowserWindow.fromWebContents(webContents).getContentSize();
+    assert.deepEqual(capture.getSize(), { width: expectedSize[0], height: expectedSize[1] },
+      `userscript ${theme} settings screenshot dimensions`);
+    await writeFile(path.join(settingsScreenshots, `userscript-${theme}.png`), capture.toPNG());
+  }
+  await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const control = shadow.querySelector('[data-preference="theme"]');
+    control.value = 'auto';
+    control.dispatchEvent(new Event('change', { bubbles: true }));
+    shadow.querySelector('[data-action="close-settings"]').click();
+  })()`, true);
+  console.log('Accepted userscript computed theme/density, additive defaults, and separate layout/appearance resets.');
+}
+
+async function acceptUserscriptFieldSpacing(webContents, baseUrl) {
+  await withTimeout(webContents.loadURL(`${baseUrl}/userscript-fixture.html`), 'field-spacing fixture');
+  await waitForPageValue(webContents,
+    `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'field-spacing shell');
+  await webContents.executeJavaScript('globalThis.fixtureSetMessages()', true);
+  await waitForPageValue(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="unsend-primary"]')?.disabled === false`,
+    'field-spacing conversation ready');
+  const screenshotRoot = path.join(resultsRoot, 'userscript-spacing');
+  await mkdir(screenshotRoot, { recursive: true });
+  const evidence = [];
+  const viewports = [
+    { label: 'desktop-dark', width: 1200, height: 800, zoom: 1, theme: 'dark' },
+    { label: 'desktop-light', width: 1200, height: 800, zoom: 1, theme: 'light' },
+    { label: 'narrow', width: 320, height: 720, zoom: 1, theme: 'dark' },
+    { label: 'short', width: 900, height: 500, zoom: 1, theme: 'dark' },
+    { label: 'zoom-200', width: 1280, height: 900, zoom: 2, theme: 'dark' },
+    { label: 'forced-colors', width: 900, height: 700, zoom: 1, theme: 'dark', forcedColors: true },
+  ];
+  webContents.debugger.attach('1.3');
+  try {
+    for (const viewport of viewports) {
+      webContents.setZoomFactor(1);
+      await resizeViewport(webContents, viewport);
+      webContents.setZoomFactor(viewport.zoom);
+      await webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+        features: [
+          { name: 'forced-colors', value: viewport.forcedColors ? 'active' : 'none' },
+          { name: 'prefers-reduced-motion', value: 'reduce' },
+        ],
+      });
+      for (const state of ['messages', 'account', 'settings']) {
+        await webContents.executeJavaScript(`(() => {
+          const s = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+          s.querySelector('[data-action="close-settings"]').click();
+          const theme = s.querySelector('[data-preference="theme"]');
+          theme.value = ${JSON.stringify(viewport.theme)};
+          theme.dispatchEvent(new Event('change', { bubbles: true }));
+          if (${JSON.stringify(state)} === 'settings') {
+            s.querySelector('[data-action="open-settings"]').click();
+            s.querySelector('[data-cleanup-preference="messageScope"]').closest('details').open = true;
+            const limit = s.querySelector('[data-cleanup-preference="messageScope"]');
+            limit.value = 'newest'; limit.dispatchEvent(new Event('change', { bubbles: true }));
+            s.querySelector('.settings-dialog').scrollTop = s.querySelector('[data-cleanup-preference="messageScope"]').offsetTop - 80;
+          } else {
+            s.querySelector('[data-view="' + ${JSON.stringify(state)} + '"]').click();
+            if (${JSON.stringify(state)} === 'messages') {
+              s.querySelector('[data-role="unsend-plan"]').closest('details').open = true;
+              const selection = s.querySelector('[data-role="unsend-scope"]');
+              selection.value = 'newest'; selection.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            s.querySelector('.scroll').scrollTop = 0;
+          }
+          return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        })()`, true);
+        await waitForPageValue(webContents, `(() => {
+          const host = document.querySelector('#insta-toolbox-userscript-root');
+          const expected = ${JSON.stringify(viewport.theme === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)')};
+          return host.dataset.themePreference === ${JSON.stringify(viewport.theme)}
+            && (${Boolean(viewport.forcedColors)} || getComputedStyle(host.shadowRoot.querySelector('.panel')).color === expected);
+        })()`, `${viewport.label}/${state}: saved theme rendered`);
+        const metrics = await webContents.executeJavaScript(`(() => {
+          const s = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+          const area = ${JSON.stringify(state)} === 'settings' ? s.querySelector('.settings-dialog')
+            : s.querySelector('[data-panel="' + ${JSON.stringify(state)} + '"]');
+          const fields = [...area.querySelectorAll('.field')].flatMap(field => {
+            const label = field.querySelector('label[for]');
+            const control = label && s.getElementById(label.htmlFor);
+            if (!control || !control.getClientRects().length || !label.getClientRects().length) return [];
+            const lr = label.getBoundingClientRect(), cr = control.getBoundingClientRect();
+            if (control.type === 'range') return [];
+            return [{ name: label.textContent.trim(), gap: cr.top - lr.bottom, height: cr.height }];
+          });
+          const scopedFields = ${JSON.stringify(state)} === 'settings'
+            ? [...s.querySelector('[data-cleanup-preference="messageScope"]').closest('details').querySelectorAll('.field')]
+            : ${JSON.stringify(state)} === 'messages' ? [...s.querySelector('[data-role="unsend-plan"]').querySelectorAll('.field')] : [];
+          const fieldGaps = scopedFields.slice(1).map((field, index) => field.getBoundingClientRect().top - scopedFields[index].getBoundingClientRect().bottom);
+          const reaction = s.querySelector('[data-cleanup-preference="removeOwnReactions"]');
+          const rect = area.getBoundingClientRect();
+          const systemColor = document.createElement('span');
+          systemColor.style.color = 'LinkText';
+          document.body.append(systemColor);
+          const linkText = getComputedStyle(systemColor).color;
+          systemColor.remove();
+          return { fields, fieldGaps, overflow: area.scrollWidth - area.clientWidth,
+            width: innerWidth, right: rect.right, left: rect.left,
+            reactionDisabled: reaction.disabled, reactionLabel: reaction.closest('label').textContent.trim(),
+            textColor: getComputedStyle(area).color, linkText,
+            summaries: [...area.querySelectorAll('summary')].filter(e => e.getClientRects().length)
+              .map(e => ({ text: e.textContent.trim(), color: getComputedStyle(e).color,
+                textFill: getComputedStyle(e).webkitTextFillColor })),
+            reducedMotion: getComputedStyle(s.querySelector('.panel')).animationName,
+            liveRegions: s.querySelectorAll('[aria-live]').length };
+        })()`, true);
+        assert.ok(metrics.fields.length > 0, `${state}: no visible fields`);
+        assert.ok(metrics.fields.every(field => field.gap >= 4 && field.gap <= 8.1), `${state}: label gap ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.fields.every(field => field.height >= 44), `${state}: undersized control ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.fieldGaps.every(gap => gap >= 12 && gap <= 24), `${state}: stacked field gaps ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.overflow <= 1 && metrics.left >= -1 && metrics.right <= metrics.width + 1,
+          `${viewport.label}/${state}: horizontal overflow ${JSON.stringify(metrics)}`);
+        assert.equal(metrics.reactionDisabled, false);
+        assert.equal(metrics.reactionLabel, 'Remove my reactions afterward');
+        const expectedSummaryColor = viewport.theme === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)';
+        assert.ok(metrics.summaries.every(summary => viewport.forcedColors
+          ? summary.color === metrics.textColor || summary.color === metrics.linkText
+          : summary.color === expectedSummaryColor),
+          `${viewport.label}/${state}: disclosure text color ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.summaries.every(summary => summary.textFill === summary.color),
+          `${viewport.label}/${state}: disclosure text fill ${JSON.stringify(metrics)}`);
+        assert.equal(metrics.liveRegions, 1);
+        assert.equal(metrics.reducedMotion, 'none');
+        assert.ok(metrics.fields.every(field => !/scope|default n/i.test(field.name)), 'technical field labels remain');
+        const filename = `${viewport.label}-${state}.png`;
+        await withTimeout(new Promise(resolve => {
+          webContents.once('paint', resolve);
+          webContents.invalidate();
+        }), `${viewport.label}/${state}: fresh paint`);
+        await writeFile(path.join(screenshotRoot, filename), (await webContents.capturePage()).toPNG());
+        evidence.push({ viewport, state, filename, metrics });
+      }
+    }
+  } finally {
+    webContents.setZoomFactor(1);
+    if (webContents.debugger.isAttached()) webContents.debugger.detach();
+  }
+  await writeFile(path.join(screenshotRoot, 'metrics.json'), `${JSON.stringify(evidence, null, 2)}\n`);
+  console.log(`Accepted userscript field spacing and plain labels in ${evidence.length} rendered states.`);
+}
+
+async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
+  await withTimeout(webContents.loadURL(`${baseUrl}/userscript-fixture.html`), 'inbox panel fixture');
+  await waitForPageValue(webContents,
+    `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'inbox panel shell');
+  await webContents.executeJavaScript('globalThis.fixtureSetMessages()', true);
+  await waitForPageValue(webContents, `(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    return root.querySelector('[data-role="inbox-cleanup"] button')?.disabled === false
+      && root.querySelector('[data-role="unsend-primary"]')?.disabled === false;
+  })()`, 'inbox panel mounted and checkpoint loaded');
+  const screenshotRoot = path.join(resultsRoot, 'userscript-inbox-layout');
+  await mkdir(screenshotRoot, { recursive: true });
+  const evidence = [];
+  const viewports = [
+    { label: 'desktop-dark', width: 1200, height: 800, zoom: 1, theme: 'dark' },
+    { label: 'desktop-light', width: 1200, height: 800, zoom: 1, theme: 'light' },
+    { label: 'narrow', width: 320, height: 720, zoom: 1, theme: 'dark' },
+    { label: 'short', width: 900, height: 500, zoom: 1, theme: 'dark' },
+    { label: 'zoom-200', width: 1280, height: 900, zoom: 2, theme: 'dark' },
+  ];
+  try {
+    for (const viewport of viewports) {
+      webContents.setZoomFactor(1);
+      await resizeViewport(webContents, viewport);
+      webContents.setZoomFactor(viewport.zoom);
+      await webContents.executeJavaScript(`(() => {
+        const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+        root.querySelector('[data-action="close-settings"]').click();
+        const theme = root.querySelector('[data-preference="theme"]');
+        theme.value = ${JSON.stringify(viewport.theme)};
+        theme.dispatchEvent(new Event('change', { bubbles: true }));
+        if (root.querySelector('.panel').hidden) root.querySelector('.launcher').click();
+        root.querySelector('[data-view="messages"]').click();
+        for (const details of root.querySelectorAll('[data-panel="messages"] details')) details.open = false;
+        root.querySelector('[data-role="inbox-cleanup"]').closest('details').open = true;
+        return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      })()`, true);
+      await waitForPageValue(webContents, `(() => {
+        const host = document.querySelector('#insta-toolbox-userscript-root');
+        return host.dataset.themePreference === ${JSON.stringify(viewport.theme)}
+          && getComputedStyle(host.shadowRoot.querySelector('.panel')).color
+            === ${JSON.stringify(viewport.theme === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)')};
+      })()`, `${viewport.label}: inbox theme rendered`);
+      assert.equal(webContents.getZoomFactor(), viewport.zoom, 'use actual Chromium zoom');
+      const metrics = await webContents.executeJavaScript(`(async () => {
+        const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+        const panel = root.querySelector('.panel');
+        const scroll = root.querySelector('.scroll');
+        const inbox = root.querySelector('[data-role="inbox-cleanup"]');
+        const details = inbox.closest('details');
+        const summary = details.querySelector('summary');
+        const visible = node => node.getClientRects().length && !node.closest('[hidden]')
+          && getComputedStyle(node).visibility !== 'hidden';
+        const targets = [summary, ...inbox.querySelectorAll('button, select, a, input')]
+          .filter(visible).map(node => node.matches('input[type="checkbox"]') ? node.closest('label') : node);
+        const controls = [];
+        for (const target of targets) {
+          target.scrollIntoView({ block: 'center', inline: 'nearest' });
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const bounds = target.getBoundingClientRect(), clip = scroll.getBoundingClientRect();
+          const x = bounds.left + bounds.width / 2, y = bounds.top + bounds.height / 2;
+          const hit = root.elementFromPoint(x, y);
+          controls.push({ name: target.getAttribute('aria-label') || target.textContent.trim(),
+            width: bounds.width, height: bounds.height,
+            reachable: bounds.top >= clip.top - 1 && bounds.bottom <= clip.bottom + 1,
+            receivesPointer: hit === target || target.contains(hit),
+            left: bounds.left, right: bounds.right });
+        }
+        const bounds = panel.getBoundingClientRect(), area = inbox.getBoundingClientRect();
+        return { controls, viewport: { width: innerWidth, height: innerHeight },
+          panel: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
+          inbox: { left: area.left, right: area.right, overflow: inbox.scrollWidth - inbox.clientWidth },
+          scrollOverflow: scroll.scrollWidth - scroll.clientWidth,
+          summary: summary.textContent.trim(), disclosureOpen: details.open,
+          sectionOptions: [...inbox.querySelector('select').options].map(option => option.textContent),
+          reviewHidden: [...inbox.querySelectorAll('button')].find(button => /^Review /.test(button.textContent)).hidden,
+          liveRegions: root.querySelectorAll('[aria-live]').length,
+          fastControls: root.querySelectorAll('[data-role="unsend-speed"], [data-cleanup-preference="speed"]').length,
+          fastLabels: [...root.querySelectorAll('[data-panel="messages"] button, [data-panel="messages"] label, [data-panel="messages"] option')]
+            .filter(node => /\\bFast\\b/.test(node.textContent)).map(node => node.textContent),
+          removals: globalThis.fixtureUnsentCount,
+          confirmationOpen: root.querySelector('[data-role="action-confirmation"]').open };
+      })()`, true);
+      assert.deepEqual(metrics.controls.map(control => control.name), [
+        'Ghost mode', 'Inbox section', 'Opening conversations may mark them read.', 'Find conversations', 'Open inbox',
+      ], `${viewport.label}: initial inbox controls`);
+      assert.ok(metrics.controls.every(control => control.height >= 44 && control.width >= 44),
+        `${viewport.label}: inbox targets below 44px ${JSON.stringify(metrics.controls)}`);
+      assert.ok(metrics.controls.every(control => control.reachable && control.receivesPointer),
+        `${viewport.label}: inbox controls obscured or unreachable ${JSON.stringify(metrics.controls)}`);
+      assert.ok(metrics.controls.every(control => control.left >= metrics.panel.left - 1 && control.right <= metrics.panel.right + 1),
+        `${viewport.label}: control escapes panel ${JSON.stringify(metrics)}`);
+      assert.ok(metrics.panel.left >= -1 && metrics.panel.top >= -1
+        && metrics.panel.right <= metrics.viewport.width + 1 && metrics.panel.bottom <= metrics.viewport.height + 1,
+      `${viewport.label}: panel escapes viewport ${JSON.stringify(metrics)}`);
+      assert.ok(metrics.inbox.overflow <= 1 && metrics.scrollOverflow <= 1,
+        `${viewport.label}: horizontal overflow ${JSON.stringify(metrics)}`);
+      assert.equal(metrics.disclosureOpen, true);
+      assert.deepEqual(metrics.sectionOptions, ['All available', 'Primary', 'General', 'Requests']);
+      assert.equal(metrics.reviewHidden, true, 'no enabled-looking review before discovery');
+      assert.equal(metrics.liveRegions, 1);
+      assert.equal(metrics.fastControls, 0);
+      assert.deepEqual(metrics.fastLabels, []);
+      assert.equal(metrics.removals, 0, 'layout check never dispatches Unsend');
+      assert.equal(metrics.confirmationOpen, false);
+      if (viewport.zoom === 2) assert.ok(metrics.viewport.width <= 650, '200% zoom shrinks the layout viewport');
+      const screenshots = [];
+      for (const position of ['heading', 'actions']) {
+        await webContents.executeJavaScript(`(() => {
+          const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+          const inbox = root.querySelector('[data-role="inbox-cleanup"]');
+          const target = ${JSON.stringify(position)} === 'heading' ? inbox.closest('details').querySelector('summary')
+            : [...inbox.querySelectorAll('button')].find(button => button.textContent === 'Find conversations');
+          target.scrollIntoView({ block: ${JSON.stringify(position === 'heading' ? 'start' : 'center')}, inline: 'nearest' });
+          return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        })()`, true);
+        await withTimeout(new Promise(resolve => {
+          webContents.once('paint', resolve); webContents.invalidate();
+        }), `${viewport.label}/${position}: inbox paint`);
+        const filename = `${viewport.label}-${position}.png`;
+        await writeFile(path.join(screenshotRoot, filename), (await webContents.capturePage()).toPNG());
+        screenshots.push(filename);
+      }
+      evidence.push({ viewport, metrics, screenshots });
+    }
+  } finally {
+    webContents.setZoomFactor(1);
+  }
+  await writeFile(path.join(screenshotRoot, 'metrics.json'),
+    `${JSON.stringify({ fixtureOnly: true, version: releaseVersion, states: evidence }, null, 2)}\n`);
+  console.log(`Accepted userscript Ghost mode layout in ${evidence.length} rendered states: 44px targets, reachable controls, actual 200% zoom, no Fast controls, zero removals.`);
+}
+
+async function acceptUserscriptReactionCleanup({ window, isolatedSession, fixtureAssets }) {
+  const webContents = window.webContents;
+  await isolatedSession.protocol.handle('http', () => new Response('', { status: 403 }));
+  await isolatedSession.protocol.handle('https', async request => {
+    const url = new URL(request.url);
+    if (url.origin !== 'https://www.instagram.com') return new Response('', { status: 403 });
+    const file = fixtureAssets.get(url.pathname);
+    if (!file) return new Response('', { status: 404 });
+    return new Response(await readFile(file), { headers: {
+      'Content-Type': file.endsWith('.html') ? 'text/html' : 'text/javascript',
+      'Content-Security-Policy': "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+    } });
+  });
+  try {
+  await withTimeout(webContents.loadURL('https://www.instagram.com/userscript-fixture.html'), 'reaction cleanup fixture');
+  await waitForPageValue(webContents,
+    `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'reaction cleanup shell');
+  await webContents.executeJavaScript(`(() => {
+    globalThis.fixtureSetReactionMessages();
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    if (root.querySelector('.panel').hidden) root.querySelector('.launcher').click();
+    root.querySelector('[data-view="messages"]').click();
+    return true;
+  })()`, true);
+  await waitForPageValue(webContents, `(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const option = root.querySelector('[data-role="unsend-reactions-option"]');
+    const checkbox = root.querySelector('[data-role="unsend-reactions"]');
+    return !option.hidden && !checkbox.disabled && !root.querySelector('[data-role="unsend-primary"]').disabled;
+  })()`, 'reaction cleanup option');
+  const viewer = await webContents.executeJavaScript('globalThis.InstaToolboxInstagramViewer.inspect()', true);
+  assert.equal(viewer.accountVerified, true, `reaction fixture viewer proof: ${JSON.stringify(viewer)}`);
+  await webContents.executeJavaScript(`(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const checkbox = root.querySelector('[data-role="unsend-reactions"]');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    root.querySelector('[data-role="unsend-primary"]').click();
+  })()`, true);
+  const gate = await waitForPageValue(webContents, `(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const dialog = root.querySelector('[data-role="action-confirmation"]');
+    const context = root.querySelector('[data-role="context"]')?.textContent?.trim() || '';
+    return dialog.open ? { open: true, context } : /could not|stopped|failed|unavailable/i.test(context)
+      ? { open: false, context } : null;
+  })()`, 'reaction cleanup review');
+  assert.equal(gate.open, true, `reaction cleanup did not reach review: ${JSON.stringify(gate)}`);
+  const review = await webContents.executeJavaScript(`(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    return root.querySelector('[data-role="action-confirmation"]').textContent;
+  })()`, true);
+  assert.match(review, /Remove reactions added by @demo_creator/);
+  await trustedClick(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="confirm-cancel"]')`,
+    'reaction cleanup cancel');
+  assert.equal(await webContents.executeJavaScript('globalThis.fixtureReactionRemoved', true), 0,
+    'Cancel removes no reaction');
+  await webContents.executeJavaScript(`(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    root.querySelector('[data-role="unsend-primary"]').click();
+  })()`, true);
+  await waitForPageValue(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="action-confirmation"]').open`,
+    'reaction cleanup second review');
+  await trustedClick(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="confirm-accept"]')`,
+    'reaction cleanup confirmed start');
+  await waitForPageValue(webContents, `globalThis.fixtureReactionRemoved === 1`,
+    'verified reaction removal', 20_000);
+  const result = await waitForPageValue(webContents, `(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const title = root.querySelector('[data-role="dm-summary-title"]')?.textContent || '';
+    if (!title.includes('1 reaction removed')) return null;
+    return {
+      title,
+      messageRetained: Boolean(document.querySelector('#fixture-reaction-row')),
+      badgeRemoved: !document.querySelector('#fixture-reaction-badge'),
+      badgeClicks: globalThis.fixtureReactionBadgeClicks,
+      openDialogs: document.querySelectorAll('[role="dialog"][aria-modal="true"]').length,
+    };
+  })()`, 'reaction cleanup verified summary', 20_000);
+  assert.equal(result.messageRetained, true);
+  assert.equal(result.badgeRemoved, true);
+  assert.equal(result.badgeClicks, 1);
+  assert.equal(result.openDialogs, 0);
+  console.log('Accepted generated userscript reaction cleanup: Cancel stayed safe, one exact owned reaction was removed, and the received message remained.');
+  } finally {
+    isolatedSession.protocol.unhandle('https');
+    isolatedSession.protocol.unhandle('http');
+  }
+}
+
 async function acceptToolboxLayout(webContents, baseUrl) {
   console.log('Checking userscript responsive layout matrix.');
   await withTimeout(webContents.loadURL(baseUrl + "/userscript-fixture.html"), "audit load");
   await waitForPageValue(webContents, "Boolean(document.querySelector(\"#insta-toolbox-userscript-root\")?.shadowRoot)", "audit shell");
   webContents.setZoomFactor(1);
   await resizeViewport(webContents, { label: 'userscript audit default', width: 1200, height: 800 });
+  await acceptUserscriptSettings(webContents);
   await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
     for (const details of shadow.querySelectorAll('details')) details.open = false;
@@ -1282,7 +1992,7 @@ async function acceptToolboxLayout(webContents, baseUrl) {
       assert.ok(settingsBounds.settings.top >= -1, `${viewport.label}: settings escape top ${settingsGeometry}`);
       assert.ok(settingsBounds.settings.right <= settingsBounds.cssViewport.width + 1, `${viewport.label}: settings escape right ${settingsGeometry}`);
       assert.ok(settingsBounds.settings.bottom <= settingsBounds.cssViewport.height + 1, `${viewport.label}: settings escape bottom ${settingsGeometry}`);
-      assert.equal(settingsBounds.title, 'Customize Insta Toolbox', `${viewport.label}: settings title`);
+      assert.equal(settingsBounds.title, 'Settings', `${viewport.label}: settings title`);
       assert.equal(settingsBounds.closedAfterOutsideClick, true, `${viewport.label}: settings outside click`);
       if (viewport.zoom === 2) {
         assert.ok(settingsBounds.cssViewport.width <= 650, `${viewport.label}: layout viewport did not shrink at 200% zoom`);
@@ -1500,7 +2210,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     };
   })()`, true);
   // Exactly the three tools, with no landing tab in front of them.
-  assert.deepEqual(initial.labels, ['Mutual Checker', 'Follow / Unfollow', 'DM Unsend']);
+  assert.deepEqual(initial.labels, ['Mutual Checker', 'Presence', 'DM Unsend']);
   assert.deepEqual(initial.tabs, [
     { controls: 'insta-toolbox-panel-checker', selected: 'true', tabIndex: 0 },
     { controls: 'insta-toolbox-panel-account', selected: 'false', tabIndex: -1 },
@@ -1734,11 +2444,20 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
         .querySelector('[data-action="scan-${listType}"]').click();
     })()`, true);
     await waitForPageValue(webContents,
-      `globalThis.fixtureGmStore.instaToolboxUserscriptStateV2.capture.complete[${JSON.stringify(listType)}] === true`,
+      `globalThis.fixtureManagerTab?.instaToolboxCheckerDraftV1?.capture?.complete?.[${JSON.stringify(listType)}] === true`,
       `complete ${listType} scan`);
   };
   await scanFixtureList('following');
   await scanFixtureList('followers');
+  const captureStorage = await webContents.executeJavaScript(`({
+    sharedFollowers: globalThis.fixtureGmStore.instaToolboxUserscriptStateV2.capture.followers.length,
+    sharedFollowing: globalThis.fixtureGmStore.instaToolboxUserscriptStateV2.capture.following.length,
+    tabFollowers: globalThis.fixtureManagerTab.instaToolboxCheckerDraftV1.capture.followers.length,
+    tabFollowing: globalThis.fixtureManagerTab.instaToolboxCheckerDraftV1.capture.following.length,
+  })`, true);
+  assert.deepEqual(captureStorage, {
+    sharedFollowers: 0, sharedFollowing: 0, tabFollowers: 2, tabFollowing: 2,
+  }, 'native list scans update this tab without rewriting legacy shared captures');
   const checker = await waitForPageValue(
     webContents,
     `(() => {
@@ -2024,7 +2743,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     facts: [
       ['Action', 'Permanently unsend messages'],
       ['Conversation', 'Thread 123'],
-      ['Scope', 'All messages you sent'],
+      ['Messages', 'All messages you sent'],
     ],
     focusedRole: 'confirm-cancel',
     scope: 'all',
@@ -2117,6 +2836,13 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     unsent: 0,
     clicks: 0,
   });
+  await webContents.executeJavaScript(`(async () => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const control = shadow.querySelector('[data-cleanup-preference="showSummary"]');
+    control.checked = false;
+    control.dispatchEvent(new Event('change', { bubbles: true }));
+    await Promise.resolve(); await Promise.resolve();
+  })()`, true);
   await trustedClick(
     webContents,
     `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-action="confirm-accept"]')`,
@@ -2145,6 +2871,14 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   assert.equal(confirmedUnsend.failed, 0);
   assert.equal(confirmedUnsend.confirmationTrusted, true);
   assert.equal(confirmedUnsend.status, 'Done. 1 message unsent.');
+  const completedSummary = await webContents.executeJavaScript(`(() => {
+    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    return { hidden: shadow.querySelector('[data-role="dm-summary"]').hidden,
+      title: shadow.querySelector('[data-role="dm-summary-title"]').textContent,
+      detail: shadow.querySelector('[data-role="dm-summary-detail"]').textContent };
+  })()`, true);
+  assert.deepEqual(completedSummary, { hidden: false, title: '1 unsent', detail: '' },
+    'summary preference hides optional detail, not verified removal count');
 
   await webContents.executeJavaScript(`(() => {
     history.replaceState({}, '', '/direct/inbox/');
@@ -2381,6 +3115,69 @@ async function run() {
     const pwaAddress = await listen(pwaServer);
     const overlayBaseUrl = `http://127.0.0.1:${overlayAddress.port}`;
     const pwaBaseUrl = `http://127.0.0.1:${pwaAddress.port}/`;
+    const presenceOptions = { window: overlay.window, isolatedSession: overlay.isolatedSession,
+      fixtureAssets, resultsRoot, releaseVersion, withTimeout, waitForPageValue, resizeViewport };
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_SHORT_DM_ONLY === '1') {
+      await acceptShortNativeConversations(overlay.window.webContents, overlayBaseUrl);
+      assert.deepEqual(overlay.problems, [], 'userscript short native conversation browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_INBOX_REVIEW_ONLY === '1') {
+      await acceptUserscriptInboxReview(presenceOptions);
+      assert.deepEqual(overlay.problems, [], 'userscript Ghost review browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_REACTION_ONLY === '1') {
+      await acceptUserscriptReactionCleanup(presenceOptions);
+      assert.deepEqual(overlay.problems, [], 'userscript reaction cleanup browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_PRESENCE_ONLY === '1') {
+      await acceptUserscriptPresence(presenceOptions);
+      assert.deepEqual(overlay.problems, [], 'userscript Presence browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_TOOLS_ONLY === '1') {
+      await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
+      await acceptUserscriptPartialAccountReview(overlay.window.webContents, overlayBaseUrl);
+      assert.deepEqual(overlay.problems, [], 'userscript tool browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_SPACING_ONLY === '1') {
+      await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
+      assert.deepEqual(overlay.problems, [], 'userscript field-spacing browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_LAYOUT_ONLY === '1') {
+      await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);
+      await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
+      assert.deepEqual(overlay.problems, [], 'userscript layout fixture browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_MEDIA_ONLY === '1') {
+      for (const groupStyle of [false, true]) {
+        await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+          { surfaces: ['userscript'], media: true, groupStyle });
+      }
+      await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+        { surfaces: ['userscript'], media: true, uncertain: true });
+      assert.deepEqual(overlay.problems, [], 'userscript media fixture browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_NATIVE_DM_ONLY === '1') {
+      for (const newestKind of ['reply', 'story']) {
+        await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+          { surfaces: ['userscript'], nativeLayout: true, newestKind });
+      }
+      await acceptUserscriptInboxPanelLayout(overlay.window.webContents, overlayBaseUrl);
+      assert.deepEqual(overlay.problems, [], 'userscript native message fixture browser problems');
+      return;
+    }
+    if (process.env.INSTA_TOOLBOX_QA_SPEED_ONLY === '1') {
+      await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl);
+      assert.deepEqual(overlay.problems, [], 'primary-speed fixture browser problems');
+      return;
+    }
     await acceptProfileAction(overlay.window.webContents, overlayBaseUrl, {
       action: 'follow', before: 'not-following', after: 'following', clicks: 1,
     });
@@ -2392,11 +3189,28 @@ async function run() {
     await acceptIncompleteComparison(overlay.window.webContents, overlayBaseUrl);
     await acceptOverlayDmConfirmation(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsendScopes(overlay.window.webContents, overlayBaseUrl);
+    await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl);
+    for (const groupStyle of [false, true]) {
+      await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+        { surfaces: ['userscript'], media: true, groupStyle });
+    }
+    await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+      { surfaces: ['userscript'], media: true, uncertain: true });
+    await acceptShortNativeConversations(overlay.window.webContents, overlayBaseUrl);
+    for (const newestKind of ['reply', 'story']) {
+      await acceptPrimarySpeedEquivalence(overlay.window.webContents, overlayBaseUrl,
+        { surfaces: ['userscript'], nativeLayout: true, newestKind });
+    }
+    await acceptUserscriptInboxPanelLayout(overlay.window.webContents, overlayBaseUrl);
+    await acceptUserscriptReactionCleanup(presenceOptions);
     await acceptThreadUnsendStop(overlay.window.webContents, overlayBaseUrl);
     await acceptThreadUnsend(overlay.window.webContents, overlayBaseUrl);
     await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);
+    await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptPartialAccountReview(overlay.window.webContents, overlayBaseUrl);
+    await acceptUserscriptInboxReview(presenceOptions);
+    await acceptUserscriptPresence(presenceOptions);
     await acceptBackgroundComparison(background);
     await acceptPwaInstallability(pwa.window.webContents, pwaBaseUrl);
     assert.deepEqual(overlay.problems, [], 'extension fixture browser problems');

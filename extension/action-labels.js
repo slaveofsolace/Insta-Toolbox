@@ -95,12 +95,15 @@
   const OLDEST_BOUNDARY_POLL_MS = 120;
   const OLDEST_BOUNDARY_STABLE_MS = 2_000;
   const STABLE_EMPTY_PASSES = 3;
-  const PLAN_VERSION = 2;
+  const PLAN_VERSION = 3;
   const PLAN_SCOPES = new Set(['all', 'newest', 'oldest']);
   const listeners = new Set();
   const consumedPlanDigests = new Map();
 
   let activeController = null;
+  let activeMessageWalker = null;
+  const readOnlyTraversals = new WeakMap();
+  let activeExecution = null;
   let currentState = Object.freeze({
     status: 'idle',
     operation: null,
@@ -113,14 +116,21 @@
     startedAt: null,
     finishedAt: null,
     canStop: false,
+    needsAttention: false,
+    interruptionReason: null,
+    uncertain: 0,
   });
 
   function snapshot() {
-    return { ...currentState };
+    return { ...currentState, phaseTimings: { ...(activeExecution?.phaseTimings || currentState.phaseTimings || {}) } };
   }
 
   function publish(patch) {
-    currentState = Object.freeze({ ...currentState, ...patch });
+    currentState = Object.freeze({
+      ...currentState,
+      ...patch,
+      phaseTimings: Object.freeze({ ...(activeExecution?.phaseTimings || currentState.phaseTimings || {}) }),
+    });
     for (const listener of listeners) {
       try {
         listener(snapshot());
@@ -138,17 +148,47 @@
     return () => listeners.delete(listener);
   }
 
+  function phaseClock() {
+    return typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
+  }
+
+  function recordPhase(phase, startedAt, excludedMs = 0) {
+    if (!activeExecution) return;
+    const durationMs = Math.max(0, phaseClock() - startedAt - excludedMs);
+    activeExecution.phaseTimings[phase] = (activeExecution.phaseTimings[phase] || 0) + durationMs;
+    try { activeExecution.onPhaseTiming?.(Object.freeze({ phase, durationMs })); } catch {}
+  }
+
+  async function measurePhase(phase, operation) {
+    const startedAt = phaseClock();
+    const resolutionBefore = activeExecution?.phaseTimings.messageResolution || 0;
+    try { return await operation(); } finally {
+      const excludedMs = phase === 'historyLoading'
+        ? (activeExecution?.phaseTimings.messageResolution || 0) - resolutionBefore : 0;
+      recordPhase(phase, startedAt, excludedMs);
+    }
+  }
+
   function delay(ms, signal) {
     return new Promise((resolve, reject) => {
+      let timer;
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener?.('abort', onAbort);
+        if (error) reject(error);
+        else resolve();
+      };
+      const onAbort = () => finish(new DOMException('The operation was stopped.', 'AbortError'));
       if (signal?.aborted) {
-        reject(new DOMException('The operation was stopped.', 'AbortError'));
+        onAbort();
         return;
       }
-      const timer = setTimeout(resolve, Math.max(0, ms));
-      signal?.addEventListener('abort', () => {
-        clearTimeout(timer);
-        reject(new DOMException('The operation was stopped.', 'AbortError'));
-      }, { once: true });
+      timer = setTimeout(() => finish(), Math.max(0, ms));
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) onAbort();
     });
   }
 
@@ -168,7 +208,7 @@
     return (hash >>> 0).toString(16).padStart(8, '0');
   }
 
-  function planDigest({ version, threadId, scope, limit, detectedCount, expiresAt }) {
+  function planDigest({ version, threadId, scope, limit, detectedCount, expiresAt, speed }) {
     return digestText(JSON.stringify({
       version: Number(version),
       threadId: String(threadId || ''),
@@ -176,6 +216,7 @@
       limit: limit === null ? null : Number(limit),
       detectedCount: detectedCount === null ? null : Number(detectedCount),
       expiresAt: Number(expiresAt),
+      ...(Number(version) >= 3 ? { speed: String(speed || 'standard') } : {}),
     }));
   }
 
@@ -186,6 +227,8 @@
       : String(value.scope);
     if (!PLAN_SCOPES.has(requestedScope)) return null;
     const scope = requestedScope;
+    const speed = value.speed === undefined ? 'standard' : String(value.speed);
+    if (speed !== 'standard') return null;
     const requestedLimit = Math.floor(Number(value.limit));
     const limit = scope === 'all'
       ? null
@@ -208,16 +251,21 @@
       limit,
       detectedCount,
       expiresAt,
+      speed,
     };
     return Object.freeze({ ...plan, reviewedDigest: planDigest(plan) });
   }
 
   function validatePlan(value) {
-    if (Number(value?.version) !== PLAN_VERSION) return null;
+    const version = Number(value?.version);
+    if (![2, PLAN_VERSION].includes(version)) return null;
+    if (version === 2 && value.speed !== undefined && value.speed !== 'standard') return null;
     const normalized = createPlan(value);
-    return normalized && normalized.reviewedDigest === String(value?.reviewedDigest || '')
-      ? normalized
-      : null;
+    if (!normalized) return null;
+    const compatible = version === 2 ? { ...normalized, version: 2 } : normalized;
+    const reviewedDigest = planDigest(compatible);
+    return reviewedDigest === String(value?.reviewedDigest || '')
+      ? Object.freeze({ ...compatible, reviewedDigest }) : null;
   }
 
   function visibleText(element) {
@@ -326,6 +374,28 @@
     return null;
   }
 
+  function lifecycleReason(signal) {
+    return signal?.reason?.code === 'DM_LIFECYCLE_INTERRUPTED' ? signal.reason.reason : null;
+  }
+
+  function interruptionState(signal, processed, failed, uncertain = false) {
+    const reason = lifecycleReason(signal);
+    return {
+      status: reason ? 'needs-attention' : 'stopped',
+      needsAttention: Boolean(reason),
+      interruptionReason: reason,
+      uncertain: uncertain ? 1 : 0,
+      message: reason
+        ? `${reason === 'page-frozen' ? 'Tab suspended' : 'Page interrupted'}. ${uncertain ? 'The last Unsend outcome is uncertain. ' : ''}Review the conversation before starting again. ${processed} message${processed === 1 ? '' : 's'} unsent.`
+        : `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
+      processed,
+      failed,
+      current: null,
+      canStop: false,
+      finishedAt: new Date().toISOString(),
+    };
+  }
+
   function watchThread(controller, expectedThreadId) {
     let timer;
     let observer;
@@ -338,11 +408,24 @@
       check();
       if (!controller.signal.aborted) timer = setTimeout(poll, 200);
     };
+    const interrupt = (reason) => {
+      if (controller.signal.aborted) return;
+      if (activeController === controller) publish({
+        status: 'stopping', canStop: false, needsAttention: true,
+        interruptionReason: reason,
+        message: 'Page interrupted. Settling the current action…',
+      });
+      controller.abort(Object.freeze({ code: 'DM_LIFECYCLE_INTERRUPTED', reason }));
+    };
+    const onFreeze = () => interrupt('page-frozen');
+    const onPageHide = (event) => interrupt(event?.persisted ? 'page-cached' : 'page-left');
     const cleanup = () => {
       clearTimeout(timer);
       observer?.disconnect();
       globalThis.removeEventListener?.('popstate', check);
       globalThis.navigation?.removeEventListener?.('currententrychange', check);
+      document.removeEventListener?.('freeze', onFreeze);
+      globalThis.removeEventListener?.('pagehide', onPageHide);
       controller.signal.removeEventListener('abort', cleanup);
     };
     if (globalThis.MutationObserver && document.documentElement) {
@@ -351,7 +434,10 @@
     }
     globalThis.addEventListener?.('popstate', check);
     globalThis.navigation?.addEventListener?.('currententrychange', check);
+    document.addEventListener?.('freeze', onFreeze);
+    globalThis.addEventListener?.('pagehide', onPageHide);
     controller.signal.addEventListener('abort', cleanup, { once: true });
+    if (controller.signal.aborted) { cleanup(); return cleanup; }
     poll();
     return cleanup;
   }
@@ -394,18 +480,31 @@
   function deepestMessageContainer(scroller) {
     let best = scroller;
     let bestCount = scroller?.children?.length || 0;
+    let messageContainer = null;
+    let messageCount = 0;
+    const isMessageRow = (element) => ['row', 'listitem'].includes(element?.getAttribute?.('role'))
+      || Boolean(element?.getAttribute?.('data-message-id') || element?.getAttribute?.('data-item-id'));
     const queue = [{ element: scroller, depth: 0 }];
     while (queue.length) {
       const { element, depth } = queue.shift();
       if (depth > 4) continue;
       const count = element?.children?.length || 0;
+      const directMessages = [...element?.children || []].filter(isMessageRow).length;
+      if (directMessages > messageCount) {
+        messageContainer = element;
+        messageCount = directMessages;
+      }
       if (count > bestCount) {
         best = element;
         bestCount = count;
       }
-      for (const child of element?.children || []) queue.push({ element: child, depth: depth + 1 });
+      for (const child of element?.children || []) {
+        if (!isMessageRow(child)) queue.push({ element: child, depth: depth + 1 });
+      }
     }
-    return best;
+    // Real rows outrank header/card child counts, including after a removal
+    // leaves fewer rows than the surrounding layout has children.
+    return messageContainer || best;
   }
 
   function hasMessageContent(row) {
@@ -416,17 +515,69 @@
 
   function sentByCurrentUser(row, view = globalThis) {
     const explicit = String(row?.getAttribute?.('data-sent-by-me') || '').toLowerCase();
-    if (explicit === 'true') return true;
     if (explicit === 'false') return false;
-    const queue = [{ element: row, depth: 0 }];
-    while (queue.length) {
-      const { element, depth } = queue.shift();
-      if (view.getComputedStyle?.(element)?.justifyContent === 'flex-end') return true;
-      if (depth < MAX_HOVER_DEPTH) {
-        for (const child of element.children || []) queue.push({ element: child, depth: depth + 1 });
+    if ([...row?.querySelectorAll?.('[data-sent-by-me]') || []].some((element) => (
+      String(element.getAttribute?.('data-sent-by-me')).toLowerCase() === 'false'
+    ))) return false;
+    // Alignment belongs to the horizontal message wrapper, never a nested
+    // reaction/menu or a column's vertical placement. Empty hidden spacers do
+    // not split that wrapper chain; real content branches still do.
+    // Native message groups keep their body and action controls together even
+    // when a timestamp or reply heading is a sibling outside that group.
+    // Accept only one outer message group; never search arbitrary descendants
+    // for a right-aligned control or combine evidence from multiple messages.
+    const groups = [...row?.querySelectorAll?.('[role="group"]') || []]
+      .filter((group) => group.getAttribute?.('aria-label') !== 'Message actions'
+        && group.querySelectorAll?.('[aria-label="Message actions"]').length === 1);
+    const outerGroups = groups.filter((group) => !groups.some((other) => (
+      other !== group && other.contains?.(group)
+    )));
+    if (outerGroups.length > 1) return false;
+    if (outerGroups.length === 1) {
+      for (let ancestor = outerGroups[0].parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const style = view.getComputedStyle?.(ancestor);
+        if (['flex', 'inline-flex'].includes(style?.display)
+          && style.flexDirection === 'row' && style.justifyContent === 'flex-start') return false;
+        if (ancestor === row) break;
       }
+      const group = outerGroups[0];
+      const actions = group.querySelectorAll('[aria-label="Message actions"]')[0];
+      let nativeAligned = false;
+      // Replies and story shares add siblings above the message body. Follow
+      // the one native action group's ancestry instead of treating those
+      // siblings as the end of the message's ownership evidence.
+      for (let lane = actions.parentElement; lane; lane = lane.parentElement) {
+        const style = view.getComputedStyle?.(lane);
+        const payload = [...lane.querySelectorAll?.('[dir="auto"], img, video, audio') || []]
+          .some((element) => !actions.contains?.(element));
+        if (payload && ['flex', 'inline-flex'].includes(style?.display)
+          && style.flexDirection === 'row' && style.direction !== 'rtl') {
+          if (style.justifyContent === 'flex-start') return false;
+          if (style.justifyContent === 'flex-end') nativeAligned = true;
+        }
+        if (lane === group) break;
+      }
+      if (nativeAligned) return true;
     }
-    return false;
+    let element = outerGroups.length === 1 ? outerGroups[0] : row;
+    let aligned = false;
+    for (let depth = 0; element && depth <= MAX_HOVER_DEPTH; depth += 1) {
+      if (depth > 0 && element.matches?.('[dir="auto"], img, video, audio, button, [role="button"]')) break;
+      const style = view.getComputedStyle?.(element);
+      const horizontal = !style?.flexDirection || style.flexDirection === 'row';
+      const flexLayout = !style?.display || ['flex', 'inline-flex'].includes(style.display);
+      if (horizontal && flexLayout && style?.direction !== 'rtl') {
+        if (style?.justifyContent === 'flex-start') return false;
+        if (style?.justifyContent === 'flex-end') aligned = true;
+      }
+      const children = [...element.children || []].filter((child) => !(
+        child.getAttribute?.('aria-hidden') === 'true'
+        && !hasMessageContent(child) && !visibleText(child)
+      ));
+      if (children.length !== 1) break;
+      element = children[0];
+    }
+    return explicit === 'true' || aligned;
   }
 
   function stableMessageKey(row) {
@@ -497,16 +648,25 @@
   }
 
   function candidateRows(scroller, traversal = null) {
+    const startedAt = phaseClock();
     const container = deepestMessageContainer(scroller);
     let rows = [...(container?.children || [])];
     if (!rows.length) {
       rows = [...(scroller?.querySelectorAll?.('[role="row"], [role="listitem"]') || [])];
     }
-    return rows
-      .filter((row) => !processedMarkerMatches(row, traversal))
+    const reader = traversal && readOnlyTraversals.get(traversal);
+    const candidates = rows
+      .filter((row) => reader ? !reader.visited(row, scroller) : !processedMarkerMatches(row, traversal))
       .filter((row) => !row.hasAttribute?.(ACTIVE_ATTRIBUTE))
       .filter(hasMessageContent)
-      .filter((row) => sentByCurrentUser(row, row.ownerDocument.defaultView));
+      .filter((row) => reader
+        ? Boolean(stableMessageKey(row)
+          || ['row', 'listitem'].includes(row.getAttribute?.('role'))
+          || ['true', 'false'].includes(row.getAttribute?.('data-sent-by-me'))
+          || row.querySelectorAll?.('[aria-label="Message actions"]').length === 1)
+        : sentByCurrentUser(row, row.ownerDocument.defaultView));
+    recordPhase('messageResolution', startedAt);
+    return candidates;
   }
 
   function orderedCandidates(scroller, order = 'oldest', traversal = null) {
@@ -548,32 +708,51 @@
   }
 
   async function waitForElement(target, getter, signal, timeoutMs = 3_000) {
-    if (signal?.aborted) throw new DOMException('The operation was stopped.', 'AbortError');
-    const immediate = getter();
-    if (immediate) return immediate;
     return new Promise((resolve, reject) => {
+      const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
       let timer;
-      const observer = new MutationObserver(() => {
-        const value = getter();
-        if (!value) return;
-        cleanup();
-        resolve(value);
-      });
-      const onAbort = () => {
-        cleanup();
-        reject(new DOMException('The operation was stopped.', 'AbortError'));
-      };
+      let observer;
+      let settled = false;
       const cleanup = () => {
-        observer.disconnect();
+        observer?.disconnect();
         clearTimeout(timer);
-        signal?.removeEventListener('abort', onAbort);
+        signal?.removeEventListener?.('abort', onAbort);
       };
-      observer.observe(target, { childList: true, subtree: true, attributes: true });
-      timer = setTimeout(() => {
+      const finish = (value, error) => {
+        if (settled) return;
+        settled = true;
         cleanup();
-        resolve(null);
-      }, timeoutMs);
-      signal?.addEventListener('abort', onAbort, { once: true });
+        if (error) reject(error);
+        else resolve(value);
+      };
+      const onAbort = () => finish(null, new DOMException('The operation was stopped.', 'AbortError'));
+      const check = () => {
+        if (settled) return;
+        if (signal?.aborted) { onAbort(); return; }
+        if (Date.now() >= deadline) { finish(null); return; }
+        try {
+          const value = getter();
+          if (signal?.aborted) onAbort();
+          else if (Date.now() >= deadline) finish(null);
+          else if (value) finish(value);
+        } catch (error) { finish(null, error); }
+      };
+      const expire = () => {
+        if (settled) return;
+        const remaining = deadline - Date.now();
+        if (remaining > 0) timer = setTimeout(expire, remaining);
+        else finish(null);
+      };
+      signal?.addEventListener?.('abort', onAbort, { once: true });
+      check();
+      if (settled) return;
+      try {
+        observer = new MutationObserver(check);
+        observer.observe(target, { childList: true, subtree: true, attributes: true, characterData: true });
+        if (settled) return;
+        timer = setTimeout(expire, Math.max(0, deadline - Date.now()));
+        check();
+      } catch (error) { finish(null, error); }
     });
   }
 
@@ -634,9 +813,17 @@
   }
 
   function isDmMessageOptionsControl(control) {
-    if (actionLabels.isDmMessageOptionsLabel(visibleText(control))) return true;
-    return [...control?.querySelectorAll?.('[aria-label]') || []]
-      .some((element) => actionLabels.isDmMessageOptionsLabel(visibleText(element)));
+    const ownLabel = actionLabels.normalizeActionLabel(control?.getAttribute?.('aria-label'));
+    const text = actionLabels.normalizeActionLabel(visibleText(control));
+    const iconLabels = [...control?.querySelectorAll?.('[aria-label]') || []]
+      .map((element) => actionLabels.normalizeActionLabel(element.getAttribute?.('aria-label')))
+      .filter(Boolean);
+    // An explicit accessible name is authoritative. A generic "More" caption
+    // or decorative ellipsis cannot override Reply, Share, or another action.
+    if (ownLabel && !actionLabels.isDmMessageOptionsLabel(ownLabel)) return false;
+    if (text && !actionLabels.isDmMessageOptionsLabel(text) && !/^[.\u2026\u22ef\u22ee]+$/u.test(text)) return false;
+    if (iconLabels.some((label) => !actionLabels.isDmMessageOptionsLabel(label))) return false;
+    return Boolean(ownLabel || actionLabels.isDmMessageOptionsLabel(text) || iconLabels.length);
   }
 
   function actionButton(row) {
@@ -647,9 +834,10 @@
         if (control) matches.push(control);
       }
     }
-    return [...new Set(matches)]
+    const controls = [...new Set(matches)]
       .filter(isDmMessageOptionsControl)
-      .find(isVisible) || null;
+      .filter(isVisible);
+    return controls.length === 1 ? controls[0] : null;
   }
 
   function activateControl(control) {
@@ -707,12 +895,42 @@
     return sessionStop(expectedThreadId);
   }
 
-  function requireAuthorization(expectedThreadId, authorizationExpiresAt) {
+  function requireAuthorization(expectedThreadId, authorizationExpiresAt, actionGrant = false) {
     if (activeController?.signal.aborted) {
       throw new DOMException('The operation was stopped.', 'AbortError');
     }
     const reason = authorizationFailure(expectedThreadId, authorizationExpiresAt);
     if (reason) throw new Error(reason);
+    const adapter = activeExecution?.workerAdapter;
+    const authorized = !adapter || (actionGrant
+      ? adapter.assertAction({ threadId: expectedThreadId, candidate: workerCandidate(activeExecution.workerRow) })
+      : adapter.assertContext({ threadId: expectedThreadId })) === true;
+    if (!authorized) {
+      const error = new Error('The reviewed worker no longer owns this action.');
+      error.code = 'DM_WORKER_STOP';
+      throw error;
+    }
+  }
+
+  function workerCandidate(row) {
+    const timestamps = new Set();
+    const nodes = [row, ...row?.querySelectorAll?.('[data-timestamp-ms], [data-timestamp], time[datetime]') || []];
+    for (const element of nodes) {
+      for (const attribute of ['data-timestamp-ms', 'data-timestamp', 'datetime']) {
+        const raw = element?.getAttribute?.(attribute);
+        if (!raw) continue;
+        const numeric = Number(raw);
+        const timestamp = Number.isFinite(numeric)
+          ? (attribute === 'data-timestamp' && numeric < 100_000_000_000 ? numeric * 1_000 : numeric)
+          : Date.parse(raw);
+        if (Number.isFinite(timestamp) && timestamp > 0) timestamps.add(timestamp);
+      }
+    }
+    return Object.freeze({
+      key: stableMessageKey(row),
+      timestamp: timestamps.size === 1 ? [...timestamps][0] : null,
+      ownershipVerified: Boolean(row?.isConnected && sentByCurrentUser(row)),
+    });
   }
 
   async function openUnsendMenu(control, signal, expectedThreadId, authorizationExpiresAt) {
@@ -723,10 +941,10 @@
       return candidates.length === 1 ? { control: candidates[0] } : null;
     }, signal, 3_000);
     pending.catch(() => {});
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     activateControl(control);
-    const result = await pending;
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    const result = await measurePhase('menuReadiness', () => pending);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend option.');
     return result;
   }
@@ -768,47 +986,64 @@
       3_000,
     );
     pending.catch(() => {});
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     activateControl(menuControl);
-    const result = await pending;
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
+    const result = await measurePhase('confirmationReadiness', () => pending);
+    requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
     if (result?.ambiguous) throw new Error('Instagram showed more than one new Unsend confirmation.');
     const dialogButton = result?.control;
     if (!dialogButton) return false;
 
     const before = removalEvidence(row);
+    const settlement = new AbortController();
+    const deadline = Date.now() + 5_000;
+    // Observe both native transitions before clicking, as in the original
+    // runner. The separate settlement signal lets Stop prevent the next
+    // action without abandoning the outcome of this dispatched action.
     const closed = waitForElement(
       document.body,
       () => (!dialogButton.isConnected || !isVisible(dialogButton) ? true : null),
-      signal,
+      settlement.signal,
       5_000,
     );
     const removed = waitForElement(
       document.body,
-      () => (removalProven(row, before) ? true : null),
-      signal,
+      () => (currentThreadId() === expectedThreadId && removalProven(row, before) ? true : null),
+      settlement.signal,
       5_000,
-    );
+    ).then((ready) => ready === true && waitForRemoval(row, before, {
+      dialogButton,
+      contextValid: () => currentThreadId() === expectedThreadId,
+      timeoutMs: Math.max(0, deadline - Date.now()),
+      signal: settlement.signal,
+    }));
     closed.catch(() => {});
     removed.catch(() => {});
-    requireAuthorization(expectedThreadId, authorizationExpiresAt);
-    activateControl(dialogButton);
-    // Parenthesised deliberately: `await closed !== true` binds as
-    // `await (closed !== true)`, which is always true for a promise and made
-    // every successful removal report as a failure.
-    if ((await closed) !== true) return false;
-
-    // Instagram may remove the row or replace it with an "unsent" placeholder.
-    // A hidden hover control is not proof: require the reviewed row or its
-    // message content to disappear or change.
-    return (await removed) === true;
+    let dispatched = false;
+    try {
+      requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
+      dispatched = true;
+      activateControl(dialogButton);
+      const verified = await measurePhase('verification', async () => (
+        (await closed) === true && (await removed) === true
+      ));
+      if (!verified) throw new Error('Removal could not be verified.');
+      return true;
+    } catch (cause) {
+      if (!dispatched) throw cause;
+      const error = new Error('The last Unsend outcome is uncertain. Check the conversation before starting again.');
+      error.code = 'DM_OUTCOME_UNCERTAIN';
+      throw error;
+    } finally {
+      settlement.abort();
+    }
   }
 
   async function unsendRow(row, signal, expectedThreadId, authorizationExpiresAt) {
     row.setAttribute(ACTIVE_ATTRIBUTE, '');
     let success = false;
     try {
-      const control = await revealActionButton(row, signal);
+      const control = await measurePhase('menuReadiness', () => revealActionButton(row, signal));
       if (!control) throw new Error('The message menu did not appear.');
       const menu = await openUnsendMenu(
         control,
@@ -960,11 +1195,13 @@
       || rowRect.bottom > scrollerRect.bottom - inset;
   }
 
-  async function exposeRow(row, scroller, signal) {
+  async function exposeRow(row, scroller, signal, traversal = null) {
     if (!rowNeedsReposition(row, scroller)) return isVisible(row);
+    traversal && readOnlyTraversals.get(traversal)?.check(true);
     row.scrollIntoView({ block: 'center', inline: 'nearest' });
     dispatch(scroller, new Event('scroll', { bubbles: true }));
     await delay(60, signal);
+    traversal && readOnlyTraversals.get(traversal)?.check();
     return isVisible(row);
   }
 
@@ -983,6 +1220,7 @@
   }
 
   function traversalContext(context, traversal) {
+    readOnlyTraversals.get(traversal)?.check();
     let current = context;
     if (context?.threadId) {
       current = threadContext();
@@ -1045,14 +1283,17 @@
     let stableSince = 0;
 
     while (Date.now() - startedAt < MAX_HISTORY_CHECK_MS) {
-      requireAuthorization(context.threadId, authorizationExpiresAt);
+      const reader = readOnlyTraversals.get(traversal);
+      if (reader) reader.check(true);
+      else requireAuthorization(context.threadId, authorizationExpiresAt);
       const current = traversalContext(context, traversal);
       const before = oldestBoundarySnapshot(current);
       current.scroller.scrollTop = before.oldest;
       dispatch(current.scroller, new Event('scroll', { bubbles: true }));
       await delay(OLDEST_BOUNDARY_POLL_MS, signal);
 
-      requireAuthorization(context.threadId, authorizationExpiresAt);
+      if (reader) reader.check();
+      else requireAuthorization(context.threadId, authorizationExpiresAt);
       const refreshed = traversalContext(context, traversal);
       const after = oldestBoundarySnapshot(refreshed);
       const atOldest = Math.abs(Number(after.scroller?.scrollTop) - after.oldest) <= 1;
@@ -1128,6 +1369,7 @@
       const scroller = current.scroller;
       const previousHeight = Number(traversal.lastScrollHeight) || 0;
       const { start } = traversalBounds(scroller, traversal.order);
+      readOnlyTraversals.get(traversal)?.check(true);
       scroller.scrollTop = start;
       dispatch(scroller, new Event('scroll', { bubbles: true }));
       await delay(5, signal);
@@ -1202,12 +1444,21 @@
       scroller = current.scroller;
     }
 
-    // Leave a comfortably visible row in place. This handles short threads and
-    // the next mounted message after Instagram replaces a virtualized window.
-    const visible = firstVisibleCandidate(scroller, traversal.order, traversal);
-    if (visible && await exposeRow(visible, scroller, signal)) return visible;
+    // Whole-conversation cleanup keeps the original visible-first streaming
+    // path. Finite scopes must not substitute an older visible message for
+    // the reviewed newest target merely because that target is clipped.
+    if (traversal.preferVisible) {
+      const visible = firstVisibleCandidate(scroller, traversal.order, traversal);
+      if (visible && await exposeRow(visible, scroller, signal, traversal)) return visible;
+    }
     const [mounted] = orderedCandidates(scroller, traversal.order, traversal);
-    if (mounted && await exposeRow(mounted, scroller, signal)) return mounted;
+    if (mounted && await exposeRow(mounted, scroller, signal, traversal)) return mounted;
+    if (mounted && readOnlyTraversals.has(traversal)
+      && (!mounted.isConnected || traversalContext(context, traversal).scroller !== scroller)) {
+      traversal.lastSearchIncomplete = true;
+      return null;
+    }
+    if (mounted && !traversal.preferVisible) throw new Error('The next message could not be brought into view. Nothing else was selected.');
 
     for (let pass = 0; pass < MAX_SCAN_PASSES; pass += 1) {
       if (signal.aborted) return null;
@@ -1229,6 +1480,7 @@
 
       while (traversal.lastSearchSteps < MAX_SCROLL_STEPS_PER_SEARCH) {
         if (signal.aborted) return null;
+        readOnlyTraversals.get(traversal)?.check(true);
         const stepStop = context.threadId ? sessionStop(context.threadId) : null;
         if (stepStop) throw new Error(stepStop);
         traversal.lastScrollTop = position;
@@ -1237,11 +1489,27 @@
         traversal.lastSearchSteps += 1;
         await delay(5, signal);
 
-        const row = firstVisibleCandidate(scroller, traversal.order, traversal);
-        if (row && await exposeRow(row, scroller, signal)) {
+        if (readOnlyTraversals.has(traversal)) {
+          const refreshed = traversalContext(context, traversal);
+          if (refreshed.scroller !== scroller) {
+            traversal.lastSearchIncomplete = true;
+            return null;
+          }
+        }
+
+        const row = traversal.preferVisible
+          ? firstVisibleCandidate(scroller, traversal.order, traversal)
+          : orderedCandidates(scroller, traversal.order, traversal)[0];
+        if (row && await exposeRow(row, scroller, signal, traversal)) {
           traversal.lastScrollHeight = Number(scroller?.scrollHeight) || heightBeforePass;
           return row;
         }
+        if (row && readOnlyTraversals.has(traversal)
+          && (!row.isConnected || traversalContext(context, traversal).scroller !== scroller)) {
+          traversal.lastSearchIncomplete = true;
+          return null;
+        }
+        if (row && !traversal.preferVisible) throw new Error('The next message could not be brought into view. Nothing else was selected.');
         if (position === end) break;
         position = direction > 0
           ? Math.min(end, position + step)
@@ -1277,21 +1545,391 @@
     return (text || 'Sent message').slice(0, 90);
   }
 
+  function retainedMessageSignature(row) {
+    const content = [...row?.querySelectorAll?.(
+      '[dir="auto"], img, video, audio, a[href], time[datetime], [data-timestamp]',
+    ) || []].map((element) => [
+      element.tagName || '',
+      element.matches?.('[dir="auto"]') ? visibleText(element) : '',
+      ...['href', 'src', 'datetime', 'data-timestamp'].map((name) => element.getAttribute?.(name) || ''),
+    ]);
+    return JSON.stringify([stableMessageKey(row), preview(row), content]);
+  }
+
+  function nativeMessageGroups(root) {
+    const groups = [...root?.querySelectorAll?.('[role="group"]') || []]
+      .filter((group) => group.getAttribute?.('aria-label') !== 'Message actions'
+        && group.querySelectorAll?.('[aria-label="Message actions"]').length === 1);
+    return groups.filter((group) => !groups.some((other) => (
+      other !== group && other.contains?.(group)
+    )));
+  }
+
+  function nativeRemovalNeighborhood(row, root) {
+    const groups = nativeMessageGroups(root);
+    const targets = groups.filter((group) => group === row || row?.contains?.(group));
+    if (targets.length !== 1) return null;
+    return {
+      target: targets[0],
+      row,
+      entries: groups.map((element) => ({ element, parent: element.parentElement, signature: retainedMessageSignature(element) })),
+    };
+  }
+
+  function removalScrollStayed(before) {
+    return before.scrollers.every(({ element, top, height, client }) => {
+      if (!element.isConnected) return false;
+      const afterTop = Number(element.scrollTop) || 0;
+      if (Math.abs(afterTop - top) <= 2) return true;
+      // At the bottom of a normal list, native scroll anchoring follows a
+      // shrinking range. This is not navigation to a different virtual window.
+      const afterEnd = Math.max(0, Number(element.scrollHeight) - Number(element.clientHeight));
+      const beforeEnd = Math.max(0, height - client);
+      return beforeEnd > 0 && Math.abs(top - beforeEnd) <= 2
+        && Math.abs(afterTop - afterEnd) <= 2 && afterEnd < beforeEnd;
+    });
+  }
+
+  function nativeRemovalProven(before) {
+    const native = before.native;
+    if (!native || native.row.isConnected || native.target.isConnected
+      || !before.parent?.isConnected || !removalScrollStayed(before)) return false;
+    const targetIndex = native.entries.findIndex(({ element }) => element === native.target);
+    const left = native.entries.slice(Math.max(0, targetIndex - 2), targetIndex);
+    const right = native.entries.slice(targetIndex + 1, targetIndex + 3);
+    const retained = [...left, ...right];
+    if (retained.length < 2) return shortNativeRemovalProven(before);
+    const after = nativeMessageGroups(before.root);
+    let previous = -1;
+    for (const { element, signature } of retained) {
+      const index = after.indexOf(element);
+      if (index <= previous || !element.isConnected
+        || retainedMessageSignature(element) !== signature) return false;
+      // Backfill may append older history outside this anchored neighborhood,
+      // but an inserted/recycled message inside it is not removal evidence.
+      if (previous >= 0 && index !== previous + 1) return false;
+      previous = index;
+    }
+    const signature = native.entries[targetIndex].signature;
+    // A remount of the same payload inside the anchors is not a removal.
+    const first = after.indexOf(retained[0].element);
+    const last = after.indexOf(retained[retained.length - 1].element);
+    const bounded = after.slice(first, last + 1);
+    const countBefore = retained.filter((entry) => entry.signature === signature).length;
+    return bounded.filter((element) => retainedMessageSignature(element) === signature).length === countBefore
+      && !after.some((element) => !native.entries.some((entry) => entry.element === element)
+        && retainedMessageSignature(element) === signature);
+  }
+
+  function shortNativeRemovalProven(before) {
+    const native = before.native, layout = before.shortLayout;
+    if (!native || native.entries.length > 2 || !layout || before.scrollers.length
+      || before.root?.getAttribute?.('data-pagelet') !== 'IGDMessagesList'
+      || !isVisible(before.root) || before.root.closest?.('[hidden], [aria-hidden="true"]')
+      || before.root.querySelector?.('[aria-busy="true"]')
+      || layout.frames.at(-1)?.element !== before.root) return false;
+    const panes = [...before.root.ownerDocument?.querySelectorAll?.('[data-pagelet="IGDMessagesList"]') || []].filter(isVisible);
+    if (panes.length && (panes.length !== 1 || panes[0] !== before.root)) return false;
+    // This path is only for a fully mounted short list, not the last visible
+    // window of a scrollable history. At least one measured viewport must stay
+    // fixed while its inner content may shrink after the removal.
+    if (!layout.frames.some(({ element, client }) => client > 0
+      && Math.abs(Number(element.clientHeight) - client) <= 1)) return false;
+    if (layout.frames.some(({ element, parent, top, height, client }) => (
+      !element.isConnected || (element.parentElement || null) !== parent
+      || !Number.isFinite(height) || !Number.isFinite(client) || height < 0 || client < 0 || height > client + 1
+      || !Number.isFinite(Number(element.scrollHeight)) || !Number.isFinite(Number(element.clientHeight))
+      || Number(element.scrollHeight) > Number(element.clientHeight) + 1
+      || Number(element.scrollHeight) > height + 1 || Number(element.clientHeight) > client + 1
+      || Math.abs((Number(element.scrollTop) || 0) - top) > 1
+      || element.getAttribute?.('aria-busy') === 'true'
+    ))) return false;
+    const retained = native.entries.filter(({ element }) => element !== native.target);
+    const after = nativeMessageGroups(before.root);
+    if (after.length !== retained.length || retained.some(({ element, parent, signature }, index) => (
+      after[index] !== element || !element.isConnected || element.parentElement !== parent
+      || retainedMessageSignature(element) !== signature
+    ))) return false;
+    const remaining = [...before.parent.children || []];
+    const siblings = layout.siblings.filter(({ element }) => element.isConnected && element.parentElement === before.parent);
+    // A removed timestamp is harmless. A new/recycled slot, changed metadata
+    // or missing neighboring message is not evidence of a successful Unsend.
+    return remaining.length === siblings.length
+      && siblings.every(({ element, signature, text }, index) => remaining[index] === element
+        && retainedMessageSignature(element) === signature && String(element.textContent || '') === text)
+      && layout.siblings.every((entry) => !entry.hasMessage || siblings.includes(entry));
+  }
+
   function removalEvidence(row) {
-    if (!row?.isConnected) return 'row-removed';
-    if (!hasMessageContent(row)) return 'content-removed';
-    return preview(row);
+    const parent = row?.parentElement || null;
+    const root = row?.closest?.("[data-pagelet='IGDMessagesList']") || parent;
+    const scrollers = [], frames = [];
+    for (let element = parent; element; element = element.parentElement) {
+      frames.push({ element, parent: element.parentElement || null, top: Number(element.scrollTop) || 0,
+        height: Number(element.scrollHeight), client: Number(element.clientHeight) });
+      if (Number(element.scrollHeight) > Number(element.clientHeight)) {
+        scrollers.push({ element, top: Number(element.scrollTop) || 0,
+          height: Number(element.scrollHeight), client: Number(element.clientHeight) });
+      }
+      if (element === root) break;
+    }
+    const siblings = [...parent?.children || []].filter((element) => element !== row);
+    const native = nativeRemovalNeighborhood(row, root);
+    return {
+      key: stableMessageKey(row),
+      text: preview(row),
+      connected: Boolean(row?.isConnected),
+      parent,
+      root,
+      scrollers,
+      siblings,
+      siblingSignatures: siblings.map(retainedMessageSignature),
+      native,
+      shortLayout: native && native.entries.length <= 2 && !visibleLoader(root)
+        && !root?.querySelector?.('[aria-busy="true"]')
+        && root?.getAttribute?.('aria-busy') !== 'true' ? {
+          frames,
+          siblings: siblings.map((element) => ({ element, signature: retainedMessageSignature(element),
+            text: String(element.textContent || ''),
+            hasMessage: element.matches?.('[aria-label="Message actions"]')
+              || Boolean(element.querySelector?.('[aria-label="Message actions"]')) })),
+        } : null,
+    };
   }
 
   function removalProven(row, before) {
-    const after = removalEvidence(row);
-    return after === 'row-removed'
-      || after === 'content-removed'
-      || (before && after && after !== before);
+    if (!before?.connected) return false;
+    const root = before.root;
+    if (root && (!root.isConnected || visibleLoader(root) || root.getAttribute?.('aria-busy') === 'true')) return false;
+    // Instagram may remove the message and its timestamp together, backfill
+    // older rows, and unmount far-off content. Use the exact detached message
+    // row and its retained native neighbors, not every layout child.
+    const isPlaceholder = (candidate) => {
+      const text = normalizePlaceholder(preview(candidate));
+      if (normalizePlaceholder(before.text) === text) return false;
+      return ['you unsent a message', 'you unsent this message', 'message unsent'].includes(text)
+        && !candidate.querySelector?.('img, video, audio, [aria-haspopup="menu"]')
+        && !actionButton(candidate);
+    };
+    if (row?.isConnected) {
+      if (stableMessageKey(row) !== before.key) return false;
+      return isPlaceholder(row);
+    }
+    if (!before.key && before.native) return nativeRemovalProven(before);
+    if (before.key) {
+      const matches = [...root?.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
+        .filter((candidate) => stableMessageKey(candidate) === before.key);
+      if (matches.length) return matches.length === 1 && isPlaceholder(matches[0]);
+    }
+    if (!before.parent?.isConnected) return false;
+    if (before.scrollers.some(({ element, top }) => (
+      !element.isConnected || Math.abs((Number(element.scrollTop) || 0) - top) > 2
+    ))) return false;
+    if (before.key) return true;
+    // Without a logical ID, prove the exact row disappeared while every
+    // neighboring message stayed unchanged and in order. Duplicate text and
+    // media-only previews do not make a surviving neighbor the removed row.
+    const remaining = [...before.parent.children || []];
+    return remaining.length === before.siblings.length
+      && before.siblings.every((element, index) => element === remaining[index]
+        && element.isConnected && element.parentElement === before.parent
+        && retainedMessageSignature(element) === before.siblingSignatures?.[index]);
+  }
+
+  function normalizePlaceholder(text) {
+    return actionLabels.normalizeActionLabel(text).replace(/[.!]$/u, '');
+  }
+
+  async function waitForRemoval(row, before, {
+    dialogButton = null,
+    contextValid = () => true,
+    timeoutMs = 5_000,
+    stableMs = 350,
+    signal = null,
+  } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    let stableSince = null;
+    while (Date.now() < deadline) {
+      if (!contextValid()) return false;
+      const dialogClosed = !dialogButton || !dialogButton.isConnected || !isVisible(dialogButton);
+      if (dialogClosed && removalProven(row, before)) {
+        if (stableSince === null) stableSince = Date.now();
+        if (Date.now() - stableSince >= stableMs) return true;
+      } else stableSince = null;
+      await delay(Math.min(75, Math.max(0, deadline - Date.now())), signal);
+    }
+    return false;
+  }
+
+  function createMessageWalker({
+    threadId,
+    expiresAt,
+    signal = null,
+    order = 'newest',
+    maxSteps = 18_000,
+    timeoutMs = 20 * 60_000,
+    holdUntilClosed = false,
+  } = {}) {
+    const error = (code, message) => Object.assign(new Error(message), { code });
+    if (activeController || activeMessageWalker) {
+      throw error('DM_WALKER_BUSY', 'Another conversation operation is already active.');
+    }
+    const startedAt = Date.now();
+    if (typeof threadId !== 'string' || !threadId || !['newest', 'oldest'].includes(order)
+      || !Number.isFinite(expiresAt) || expiresAt <= startedAt
+      || !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 250_000
+      || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 20 * 60_000
+      || typeof holdUntilClosed !== 'boolean'
+      || (signal && (typeof signal.aborted !== 'boolean'
+        || typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function'))) {
+      throw error('DM_WALKER_INVALID', 'A bounded, exact-conversation message pass is required.');
+    }
+    if (signal?.aborted) throw error('DM_WALKER_ABORTED', 'The message pass was stopped.');
+    const initial = threadContext();
+    if (!initial.ok || initial.threadId !== threadId) {
+      throw error('DM_WALKER_CONTEXT', initial.reason || 'The conversation changed.');
+    }
+    const deadline = Math.min(expiresAt, startedAt + timeoutMs);
+    const controller = new AbortController();
+    const traversal = createTraversal(order);
+    const seenKeys = new Set();
+    const seenPositions = new Map();
+    const seenNodes = new WeakMap();
+    let steps = 0, visited = 0, emptyPasses = 0, changingPasses = 0;
+    let status = 'ready', reason = null, closed = false, pending = false;
+    let deadlineTimer = null, unwatch = () => {};
+    const state = () => ({ status, reason, visited, steps,
+      coverage: status === 'completed' ? 'exhausted' : visited ? 'partial' : 'unknown' });
+    const done = () => ({ done: true, value: undefined, ...state() });
+    const finish = (nextStatus, nextReason) => {
+      if (closed) return false;
+      closed = true; status = nextStatus; reason = nextReason;
+      clearTimeout(deadlineTimer);
+      signal?.removeEventListener('abort', abortExternal);
+      controller.signal.removeEventListener('abort', abortInternal);
+      unwatch();
+      if (!controller.signal.aborted) controller.abort(nextReason);
+      if (activeMessageWalker === api && (!holdUntilClosed || nextStatus === 'completed')) activeMessageWalker = null;
+      return true;
+    };
+    const abortExternal = () => controller.abort('DM_WALKER_ABORTED');
+    const abortInternal = () => finish('stopped', Date.now() >= deadline
+      ? (expiresAt <= Date.now() ? 'DM_WALKER_EXPIRED' : 'DM_WALKER_TIMEOUT')
+      : currentThreadId() !== threadId ? 'DM_WALKER_CONTEXT'
+        : lifecycleReason(controller.signal) || 'DM_WALKER_ABORTED');
+    const check = (step = false) => {
+      if (Date.now() >= deadline) {
+        throw error(expiresAt <= Date.now() ? 'DM_WALKER_EXPIRED' : 'DM_WALKER_TIMEOUT', 'The message pass expired.');
+      }
+      const restriction = sessionStop(threadId);
+      if (restriction) throw error('DM_WALKER_CONTEXT', restriction);
+      if (closed || controller.signal.aborted || signal?.aborted) {
+        throw error(reason || 'DM_WALKER_ABORTED', 'The message pass was stopped.');
+      }
+      if (step && ++steps > maxSteps) throw error('DM_WALKER_LIMIT', 'The bounded message pass reached its traversal limit.');
+    };
+    const position = (row, scroller) => {
+      const top = Number(row.getBoundingClientRect?.()?.top);
+      const origin = Number(scroller.getBoundingClientRect?.()?.top);
+      const scroll = Number(scroller.scrollTop);
+      return Number.isFinite(top) && Number.isFinite(origin) && Number.isFinite(scroll)
+        ? Math.round(top - origin + scroll) : null;
+    };
+    const wasVisited = (row, scroller) => {
+      const key = stableMessageKey(row);
+      if (key) return seenKeys.has(key);
+      const signature = retainedMessageSignature(row);
+      const offset = position(row, scroller);
+      return offset === null ? seenNodes.get(row) === signature
+        : [...seenPositions.get(signature) || []].some((known) => Math.abs(known - offset) <= 2);
+    };
+    const remember = (row, scroller) => {
+      const key = stableMessageKey(row);
+      if (key) seenKeys.add(key);
+      else {
+        const signature = retainedMessageSignature(row), offset = position(row, scroller);
+        seenNodes.set(row, signature);
+        if (offset !== null) {
+          if (!seenPositions.has(signature)) seenPositions.set(signature, new Set());
+          seenPositions.get(signature).add(offset);
+        }
+      }
+      visited += 1;
+      return key;
+    };
+    readOnlyTraversals.set(traversal, { check, visited: wasVisited });
+    const api = Object.freeze({
+      snapshot: state,
+      signal: controller.signal,
+      assertCurrent: () => { check(); return true; },
+      stop: () => {
+        if (closed) return false;
+        controller.abort('DM_WALKER_ABORTED');
+        return true;
+      },
+      close: () => {
+        const held = activeMessageWalker === api;
+        const changed = finish('stopped', 'closed');
+        if (held) activeMessageWalker = null;
+        return held || changed;
+      },
+      async next() {
+        if (pending) throw error('DM_WALKER_BUSY', 'The preceding message read has not settled.');
+        if (closed) return done();
+        pending = true; status = 'walking';
+        try {
+          for (;;) {
+            check(true);
+            const context = threadContext();
+            if (!context.ok || context.threadId !== threadId) {
+              throw error('DM_WALKER_CONTEXT', context.reason || 'The conversation changed.');
+            }
+            const row = await nextSentRow(context, controller.signal, order, traversal, deadline);
+            check();
+            const current = traversalContext(context, traversal);
+            if (row && row.isConnected && current.scroller.contains?.(row)) {
+              emptyPasses = 0; changingPasses = 0;
+              if (wasVisited(row, current.scroller)) continue;
+              const key = remember(row, current.scroller);
+              status = 'ready';
+              return { done: false, value: Object.freeze({ row, key, threadId }) };
+            }
+            if (row || traversal.lastSearchGrew || traversal.lastSearchIncomplete || visibleLoader(current.root)) {
+              emptyPasses = 0;
+              if (++changingPasses > MAX_EMPTY_GROWTH_ROUNDS) {
+                throw error('DM_WALKER_UNSTABLE', 'The conversation did not reach a stable end.');
+              }
+            } else if (++emptyPasses >= STABLE_EMPTY_PASSES) {
+              finish('completed', 'stable-exhaustion');
+              return done();
+            }
+            await delay(160, controller.signal);
+          }
+        } catch (failure) {
+          finish('error', failure.code || 'DM_WALKER_INTERRUPTED');
+          throw failure;
+        } finally {
+          pending = false;
+        }
+      },
+    });
+    activeMessageWalker = api;
+    controller.signal.addEventListener('abort', abortInternal, { once: true });
+    signal?.addEventListener('abort', abortExternal, { once: true });
+    try {
+      unwatch = watchThread(controller, threadId);
+      deadlineTimer = setTimeout(() => controller.abort('DM_WALKER_TIMEOUT'), Math.max(0, deadline - Date.now()));
+      check();
+    } catch (failure) {
+      finish('error', failure.code || 'DM_WALKER_INTERRUPTED');
+      api.close();
+      throw failure;
+    }
+    return api;
   }
 
   async function inspectAll() {
-    if (activeController) {
+    if (activeController || activeMessageWalker) {
       return { ready: false, reason: 'Another message check or run is already active.' };
     }
     const context = threadContext();
@@ -1302,6 +1940,9 @@
     publish({
       status: 'preparing',
       operation: 'check',
+      needsAttention: false,
+      interruptionReason: null,
+      uncertain: 0,
       processed: 0,
       failed: 0,
       message: 'Checking the full conversation without opening a message menu…',
@@ -1333,11 +1974,16 @@
       });
       return result;
     } catch (error) {
-      const reason = error?.name === 'AbortError' || controller.signal.aborted
+      const interrupted = lifecycleReason(controller.signal);
+      const reason = interrupted
+        ? 'Page interrupted. Run Check conversation again when the tab is ready.'
+        : error?.name === 'AbortError' || controller.signal.aborted
         ? 'Conversation check stopped.'
         : error.message || 'The conversation could not be checked.';
       publish({
-        status: error?.name === 'AbortError' || controller.signal.aborted ? 'stopped' : 'error',
+        status: interrupted ? 'needs-attention' : error?.name === 'AbortError' || controller.signal.aborted ? 'stopped' : 'error',
+        needsAttention: Boolean(interrupted),
+        interruptionReason: interrupted,
         message: reason,
         current: null,
         canStop: false,
@@ -1351,7 +1997,18 @@
   }
 
   async function start(options = {}) {
+    if (activeMessageWalker) throw Object.assign(new Error('A read-only message pass is already active.'), { code: 'DM_WALKER_BUSY' });
     if (activeController) return snapshot();
+    const workerAdapter = options.workerAdapter;
+    if (workerAdapter !== undefined && (!workerAdapter
+      || typeof workerAdapter.execute !== 'function' || typeof workerAdapter.assertAction !== 'function'
+      || typeof workerAdapter.assertContext !== 'function'
+      || !workerAdapter.signal || typeof workerAdapter.signal.aborted !== 'boolean'
+      || typeof workerAdapter.signal.addEventListener !== 'function'
+      || typeof workerAdapter.signal.removeEventListener !== 'function')) {
+      publish({ status: 'error', message: 'The reviewed worker adapter is unavailable.', canStop: false });
+      return snapshot();
+    }
     const plan = validatePlan(options.plan);
     if (!plan) {
       publish({
@@ -1360,6 +2017,10 @@
         canStop: false,
         finishedAt: new Date().toISOString(),
       });
+      return snapshot();
+    }
+    if (options.speed !== undefined && options.speed !== plan.speed) {
+      publish({ status: 'error', message: 'Refresh the review before changing speed.', canStop: false });
       return snapshot();
     }
     const context = threadContext();
@@ -1398,7 +2059,19 @@
 
     const controller = new AbortController();
     activeController = controller;
+    activeExecution = {
+      workerAdapter,
+      workerRow: null,
+      onPhaseTiming: typeof options.onPhaseTiming === 'function' ? options.onPhaseTiming : null,
+      phaseTimings: {
+        historyLoading: 0, messageResolution: 0, menuReadiness: 0,
+        confirmationReadiness: 0, verification: 0, pacing: 0, checkpoint: 0,
+      },
+    };
     const signal = controller.signal;
+    const abortWorker = () => controller.abort(workerAdapter.signal.reason || 'Worker stopped');
+    workerAdapter?.signal.addEventListener('abort', abortWorker, { once: true });
+    if (workerAdapter?.signal.aborted) abortWorker();
     const unwatch = watchThread(controller, expectedThreadId);
     const maxFailures = Math.max(1, Math.min(10, Number(options.maxConsecutiveFailures) || DEFAULT_MAX_FAILURES));
     const authorizationExpiresAt = plan.expiresAt;
@@ -1407,6 +2080,7 @@
     const maxMessages = plan.limit === null ? MAX_PLAN_MESSAGES : plan.limit;
     const order = plan.scope === 'oldest' ? 'oldest' : 'newest';
     const traversal = createTraversal(order);
+    traversal.preferVisible = plan.scope === 'all';
     let processed = 0;
     let failed = 0;
     let retryAttempts = 0;
@@ -1419,6 +2093,9 @@
     publish({
       status: 'preparing',
       operation: 'unsend',
+      needsAttention: false,
+      interruptionReason: null,
+      uncertain: 0,
       processed: 0,
       failed: 0,
       retryAttempts: 0,
@@ -1464,13 +2141,13 @@
         if (!currentContext.ok || currentContext.threadId !== expectedThreadId) {
           throw new Error(currentContext.reason || 'The reviewed conversation changed.');
         }
-        const row = await nextSentRow(
+        const row = await measurePhase('historyLoading', () => nextSentRow(
           currentContext,
           signal,
           order,
           traversal,
           authorizationExpiresAt,
-        );
+        ));
         if (!row) {
           if (traversal.lastSearchGrew || traversal.lastSearchIncomplete) {
             emptyGrowthRounds += 1;
@@ -1517,7 +2194,7 @@
             current: label,
             message: `Waiting ${(wait / 1_000).toFixed(1)}s before the next message…`,
           });
-          await delay(wait, signal);
+          await measurePhase('pacing', () => delay(wait, signal));
         }
         if (authorizationExpiresAt <= Date.now()) {
           throw new Error('Live authorization expired before the next message.');
@@ -1525,14 +2202,36 @@
 
         publish({ status: 'running', current: label, message: `Unsending message ${processed + 1}…` });
         let removalVerified = false;
+        let workerStopReason = null;
         try {
           // unsendRow already proves the removal: the confirmation dialog
           // closed and the row either went away or lost its content and menu.
           // Re-checking isConnected here rejected every success, because
           // Instagram leaves an "unsent" placeholder row in the thread.
-          await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+          if (workerAdapter) {
+            activeExecution.workerRow = row;
+            const result = await workerAdapter.execute({
+              candidate: workerCandidate(row),
+              threadId: expectedThreadId,
+              signal,
+              execute: async () => {
+                await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+                return { verified: true };
+              },
+            });
+            if (result?.verified !== true) {
+              const error = new Error('The worker removal outcome is uncertain. Review this conversation.');
+              error.code = 'DM_OUTCOME_UNCERTAIN';
+              throw error;
+            }
+            workerStopReason = result.stopReason || null;
+          } else {
+            await unsendRow(row, signal, expectedThreadId, authorizationExpiresAt);
+          }
           removalVerified = true;
         } catch (error) {
+          if (workerAdapter || error?.code === 'DM_WORKER_STOP') throw error;
+          if (error?.code === 'DM_OUTCOME_UNCERTAIN') throw error;
           if (signal.aborted) throw error;
           retryAttempts += 1;
           consecutiveFailures += 1;
@@ -1563,16 +2262,16 @@
           }
           resetTraversalAfterRemoval(traversal, afterRemovalContext.scroller, traversalBeforeRemoval);
           if (typeof options.onVerifiedRemoval === 'function') {
-            await options.onVerifiedRemoval(Object.freeze({
+            await measurePhase('checkpoint', () => options.onVerifiedRemoval(Object.freeze({
               processed,
               failed,
               retryAttempts,
               threadId: expectedThreadId,
               reviewedDigest: plan.reviewedDigest,
-            }));
+            })));
           }
           publish({
-            status: 'running',
+            status: signal.aborted ? 'stopping' : 'running',
             processed,
             failed,
             retryAttempts,
@@ -1580,19 +2279,12 @@
             current: null,
             message: `${processed} message${processed === 1 ? '' : 's'} unsent`,
           });
+          if (workerStopReason) controller.abort(workerStopReason);
         }
       }
 
       if (signal.aborted) {
-        publish({
-          status: 'stopped',
-          message: `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
-          processed,
-          failed,
-          current: null,
-          canStop: false,
-          finishedAt: new Date().toISOString(),
-        });
+        publish(interruptionState(signal, processed, failed));
       } else if (consecutiveFailures >= maxFailures) {
         publish({
           status: 'error',
@@ -1628,19 +2320,14 @@
         });
       }
     } catch (error) {
-      if (error?.name === 'AbortError' || signal.aborted) {
-        publish({
-          status: 'stopped',
-          message: `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
-          processed,
-          failed,
-          current: null,
-          canStop: false,
-          finishedAt: new Date().toISOString(),
-        });
+      if (lifecycleReason(signal)) {
+        publish(interruptionState(signal, processed, failed, error?.code === 'DM_OUTCOME_UNCERTAIN'));
+      } else if (error?.code !== 'DM_OUTCOME_UNCERTAIN' && (error?.name === 'AbortError' || signal.aborted)) {
+        publish(interruptionState(signal, processed, failed));
       } else {
         publish({
           status: 'error',
+          uncertain: error?.code === 'DM_OUTCOME_UNCERTAIN' ? 1 : 0,
           message: `${error.message || 'The conversation changed unexpectedly.'} ${processed} message${processed === 1 ? '' : 's'} unsent.`,
           processed,
           failed,
@@ -1650,14 +2337,17 @@
         });
       }
     } finally {
+      workerAdapter?.signal.removeEventListener('abort', abortWorker);
       unwatch();
       if (activeController === controller) activeController = null;
+      activeExecution = null;
       for (const row of document.querySelectorAll(`[${ACTIVE_ATTRIBUTE}]`)) row.removeAttribute(ACTIVE_ATTRIBUTE);
     }
     return snapshot();
   }
 
   function stop() {
+    if (activeMessageWalker) return activeMessageWalker.stop();
     if (!activeController || activeController.signal.aborted) return false;
     publish({ status: 'stopping', message: 'Stopping after the current step…', canStop: false });
     activeController.abort('Stopped by user');
@@ -1676,7 +2366,8 @@
     };
   }
 
-  const publicApi = { createPlan, inspect, inspectAll, snapshot, start, stop, subscribe };
+  const messageProof = Object.freeze({ sentByCurrentUser, removalEvidence, removalProven, waitForRemoval });
+  const publicApi = { createPlan, createMessageWalker, inspect, inspectAll, snapshot, start, stop, subscribe, messageProof };
   if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
       candidateRows,
@@ -1684,6 +2375,7 @@
       deepestMessageContainer,
       advanceHistoryProgress,
       actionButton,
+      isDmMessageOptionsControl,
       currentThreadId,
       hasMessageContent,
       isVisible,
@@ -1695,6 +2387,9 @@
       proveStableOldestBoundary,
       removalEvidence,
       removalProven,
+      waitForRemoval,
+      waitForElement,
+      delay,
       reversedLayout,
       rowNeedsReposition,
       resetTraversalAfterRemoval,
@@ -1705,6 +2400,7 @@
       validatePlan,
       watchThread,
       requireAuthorization,
+      workerCandidate,
     });
   }
   Object.defineProperty(globalThis, 'InstaToolboxDmThreadUnsender', {

@@ -113,15 +113,48 @@ Rejected:
 - Treating visual alignment as durable sender identity
 - Generic first-button confirmation
 - Broad retry loops after blocks or uncertain outcomes
-- Mass execution without exact message IDs, checkpoints, batch review, or two-stage confirmation
+- Mass execution without an exact conversation, reviewed choices, cancellation
+  and verified outcomes
 
 The source has no durable job state that can be migrated. `src/migrations/instagram-dm-unsender.js` therefore records a stateless migration report and requires manual creation of reviewed jobs from imported message data.
 
-The shipped extension independently uses only the source's read-only
-conversation-container and sent-layout observations during reviewed dry runs.
-It additionally requires a stable rendered message ID, exact timestamp and
-content digest, matching thread ID, and unique ownership result. It does not
-reuse the source's hover events, menu clicks, confirmation clicks, or mass loop.
+The original exact-message adapter requires a stable rendered message ID,
+timestamp and content digest. The later thread runner also supports native
+messages without export-style IDs. It resolves the open thread, checks the
+outgoing message layout, opens a newly surfaced Unsend control and verifies
+removal. The userscript and same-tab inbox cleanup share that runner.
+
+### 4.0.1 reliability review
+
+Reviewed upstream revision: `08b8874964c6edfec828056bafb84c96d94f0a27`.
+The MIT license remains unchanged; its SHA-256 is
+`eaceaf5c94a0e02de450666b222e3e6e5589d1704ad6f568169434c5729a851e`.
+The review covered `src/ui/default/dom-lookup.js`, `ui-message.js`,
+`unsend-strategy.js`, `default-ui.js`, `ui-messages-wrapper.js`,
+`src/uipi/uipi-message.js`, and their related tests and documentation.
+No upstream source was imported or executed in this review.
+
+The existing hover/retry behavior already covers the upstream pointer and
+mouse-event sequence. Replacing the complete engine would reintroduce broader
+ownership matching and first-button dialog selection. Upstream also marks a
+message as unsent after its dialog closes, before verifying the row disappeared;
+that marker can suppress its later retained-row failure check. Dialog closure
+alone is not reliable removal evidence.
+
+A local defect was found instead: every native ID-less removal required two
+surviving message neighbors. Short conversations could therefore remove a
+message but stop with an uncertain result. The repair uses exact remaining
+native message identities for a short, non-scrollable list while retaining
+the existing anchored proof for virtualized lists. It does not accept edited
+text, recycled slots, loading transitions or an optimistic removal that returns
+during settlement.
+
+Thread identity comes from the exact conversation route, not its display name.
+An absent profile link, a group title or the label “Instagram user” is not a
+reason to reject an otherwise proven outgoing message. That label alone does
+not establish whether an account blocked someone or was deactivated. Neither
+the inspected upstream tests nor the local fixtures prove current authenticated
+compatibility for those account states.
 
 ## License boundary
 

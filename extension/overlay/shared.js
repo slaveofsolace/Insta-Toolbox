@@ -125,6 +125,7 @@
       if (!username) continue;
       accounts.set(username, {
         username,
+        ...captureIdentityMetadata(candidate, accounts.get(username)),
         profileUrl: `https://www.instagram.com/${username}/`,
         displayName: safeText(candidate?.displayName),
         source: 'extension-visible-dom',
@@ -166,6 +167,21 @@
     };
   }
 
+  function normalizeObservedInstagramId(value) {
+    if (typeof value === 'number' && (!Number.isSafeInteger(value) || value <= 0)) return '';
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    const id = String(value).trim();
+    return /^[1-9]\d{0,29}$/.test(id) ? id : '';
+  }
+
+  function captureIdentityMetadata(candidate, previous) {
+    const observed = normalizeObservedInstagramId(candidate?.instagramId);
+    const prior = normalizeObservedInstagramId(previous?.instagramId);
+    if (candidate?.instagramIdAmbiguous === true || previous?.instagramIdAmbiguous === true
+      || (observed && prior && observed !== prior)) return { instagramIdAmbiguous: true };
+    return observed || prior ? { instagramId: observed || prior } : {};
+  }
+
   function normalizeCaptureAccounts(value, normalizeUsername) {
     const accounts = new Map();
     for (const candidate of (Array.isArray(value) ? value : []).slice(0, MAX_CAPTURE_ACCOUNTS)) {
@@ -173,6 +189,7 @@
       if (!username) continue;
       accounts.set(username, {
         username,
+        ...captureIdentityMetadata(candidate, accounts.get(username)),
         profileUrl: `https://www.instagram.com/${username}/`,
         displayName: safeText(candidate?.displayName),
         source: CAPTURE_ACCOUNT_SOURCES.has(candidate?.source)
@@ -198,6 +215,8 @@
       schemaVersion: 6,
       kind: 'insta-toolbox-visible-checker-workspace',
       subjectUsername: normalizeUsername(source.subjectUsername),
+      ...(normalizeObservedInstagramId(source.subjectInstagramId)
+        ? { subjectInstagramId: normalizeObservedInstagramId(source.subjectInstagramId) } : {}),
       followers: normalizeCaptureAccounts(source.followers, normalizeUsername),
       following: normalizeCaptureAccounts(source.following, normalizeUsername),
       capturedAt: {
@@ -260,6 +279,8 @@
       capturedAt: safeText(source.capturedAt?.[normalizedType]) || now(),
       [normalizedType]: Array.isArray(source[normalizedType]) ? source[normalizedType] : [],
       subjectUsername: safeText(source.subjectUsername),
+      ...(normalizeObservedInstagramId(source.subjectInstagramId)
+        ? { subjectInstagramId: normalizeObservedInstagramId(source.subjectInstagramId) } : {}),
       verificationMethod: method,
       complete: source.complete?.[normalizedType] === true,
       verifiedDialog: source.verified?.[normalizedType] === true && method !== 'authenticated-web',

@@ -122,7 +122,8 @@ test('extension uses Manifest V3 without cookie or request interception permissi
   assert.equal(permissions.includes('webRequest'), false);
   assert.equal(permissions.includes('webRequestBlocking'), false);
   assert.deepEqual(manifest.host_permissions, ['https://www.instagram.com/*']);
-  assert.deepEqual(instagramEntry.js.slice(0, 3), [
+  assert.deepEqual(instagramEntry.js.slice(0, 4), [
+    'cleanup-settings.js',
     'action-confirmation.js',
     'action-labels.js',
     'content-instagram.js',

@@ -129,16 +129,17 @@ test('read-only pairings reject action messages before signing', async () => {
 });
 
 test('bridge payloads reject credentials, cookies, and authorization material', async () => {
+  const invalidValue = 'not-allowed';
   const { pairing } = createBridgePairing({
     origin: 'https://example.test',
     permissions: ['read', 'action'],
   });
   for (const payload of [
-    { password: 'not-allowed' },
-    { nested: { cookies: ['not-allowed'] } },
-    { authorization: 'not-allowed' },
-    { accessToken: 'not-allowed' },
-    { nested: { Secret: 'not-allowed' } },
+    { password: invalidValue },
+    { nested: { cookies: [invalidValue] } },
+    { authorization: invalidValue },
+    { accessToken: invalidValue },
+    { nested: { Secret: invalidValue } },
   ]) {
     await assert.rejects(
       createSignedBridgeMessage(pairing, 'action.reviewed-job', payload),

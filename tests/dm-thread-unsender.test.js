@@ -412,7 +412,7 @@ test('thread runner resolves one compact-drawer thread and gives the exact route
   assert.equal(ambiguousRunner.__test.currentThreadId(), '');
 });
 
-test('sent-message ownership requires the message row or its descendants to align right', () => {
+test('sent-message ownership excludes branched descendant alignment', () => {
   const runner = loadRunner();
   const right = { children: [], style: { justifyContent: 'flex-end' } };
   const left = { children: [], style: { justifyContent: 'flex-start' } };
@@ -422,7 +422,8 @@ test('sent-message ownership requires the message row or its descendants to alig
     style: { justifyContent: 'normal' },
   };
   const view = { getComputedStyle: (element) => element.style };
-  assert.equal(runner.__test.sentByCurrentUser(row, view), true);
+  assert.equal(runner.__test.sentByCurrentUser(row, view), false);
+  assert.equal(runner.__test.sentByCurrentUser({ ...row, children: [right] }, view), true);
   assert.equal(runner.__test.sentByCurrentUser({ ...row, children: [left] }, view), false);
   assert.equal(runner.__test.sentByCurrentUser({ ...row, getAttribute: () => 'false' }, view), false);
   assert.equal(runner.__test.sentByCurrentUser({ ...row, getAttribute: () => 'true' }, view), true);
@@ -1117,6 +1118,42 @@ test('a clipped sent-message row is centered once before hover', async () => {
   assert.equal(scrollCalls, 1);
 });
 
+test('All keeps visible-first streaming while Newest reveals its exact clipped target', async () => {
+  const runner = loadRunner();
+  const documentElement = { parentElement: null };
+  const ownerDocument = { documentElement, defaultView: {
+    getComputedStyle: (element) => element.style || {}, innerHeight: 800, innerWidth: 1280,
+  } };
+  const scroller = Object.assign(new EventTarget(), {
+    clientHeight: 200, scrollHeight: 200, scrollTop: 0, children: [],
+    ownerDocument, parentElement: documentElement,
+    style: { overflowX: 'hidden', overflowY: 'auto' },
+    getBoundingClientRect: () => ({ top: 100, bottom: 300, left: 0, right: 600, height: 200, width: 600 }),
+  });
+  let exposed = false;
+  const makeRow = (newest) => ({
+    children: [], ownerDocument, parentElement: scroller, isConnected: true,
+    getAttribute: (name) => name === 'data-sent-by-me' ? 'true' : '',
+    hasAttribute: () => false, querySelector: () => ({}),
+    getBoundingClientRect: () => {
+      const top = newest && !exposed ? 340 : newest ? 220 : 150;
+      return { top, bottom: top + 40, height: 40, left: 20, right: 300, width: 280 };
+    },
+    scrollIntoView: () => { assert.equal(newest, true); exposed = true; },
+  });
+  const older = makeRow(false);
+  const newest = makeRow(true);
+  scroller.children.push(older, newest);
+  const allTraversal = runner.__test.createTraversal('newest');
+  allTraversal.preferVisible = true;
+  const first = await runner.__test.nextSentRow({ scroller }, new AbortController().signal, 'newest', allTraversal);
+  assert.equal(first, older, 'All starts with the comfortably visible candidate');
+  assert.equal(exposed, false, 'All does not scroll away from a ready message');
+  const selected = await runner.__test.nextSentRow({ scroller }, new AbortController().signal, 'newest');
+  assert.equal(selected, newest);
+  assert.equal(exposed, true);
+});
+
 test('whole-scroll streaming finds sent rows beyond replaced virtual windows', async () => {
   const runner = loadRunner();
 
@@ -1211,11 +1248,13 @@ test('whole-scroll streaming finds sent rows beyond replaced virtual windows', a
     scroller.addEventListener('scroll', renderWindow);
     renderWindow();
 
+    const traversal = runner.__test.createTraversal('newest');
+    traversal.preferVisible = true;
     const selected = await runner.__test.nextSentRow(
       { scroller },
       { aborted: false, addEventListener: () => {} },
       'newest',
-      runner.__test.createTraversal('newest'),
+      traversal,
     );
     assert.ok(selected, `${reversed ? 'reversed' : 'normal'} virtual scroller should yield a sent row`);
     assert.equal(sentIndexes.has(Number(selected.getAttribute('data-message-id').split('-')[1])), true);
@@ -1227,7 +1266,7 @@ test('whole-scroll streaming finds sent rows beyond replaced virtual windows', a
   await exercise(true);
 });
 
-test('Unsend requires message-row change instead of treating a hidden hover control as success', () => {
+test('Unsend requires a recognized placeholder or removal, not merely changed text', () => {
   const runner = loadRunner();
   const view = { getComputedStyle: () => ({}) };
   const leaf = (text) => ({
@@ -1238,20 +1277,26 @@ test('Unsend requires message-row change instead of treating a hidden hover cont
     textContent: text,
   });
   let text = 'Disposable message';
+  const parent = { isConnected: true, children: [], querySelectorAll: () => [] };
   const row = {
     isConnected: true,
-    querySelector: () => ({}),
-    querySelectorAll: () => [leaf(text)],
+    parentElement: parent,
+    querySelector: (selector) => selector.includes('[role="none"]') ? ({}) : null,
+    querySelectorAll: (selector) => selector === '[dir="auto"]' ? [leaf(text)] : [],
   };
+  parent.children = [row];
   const before = runner.__test.removalEvidence(row);
+  assert.equal(runner.__test.removalProven(row, before), false);
+  text = 'Edited disposable message';
   assert.equal(runner.__test.removalProven(row, before), false);
   text = 'You unsent a message';
   assert.equal(runner.__test.removalProven(row, before), true);
   row.isConnected = false;
+  parent.children = [];
   assert.equal(runner.__test.removalProven(row, before), true);
 });
 
-test('thread-wide Unsend requires an untampered v2 thread-specific reviewed plan', async () => {
+test('thread-wide Unsend requires an untampered v3 thread-specific reviewed plan', async () => {
   const runner = loadRunner();
   const result = await runner.start();
   assert.equal(result.status, 'error');
@@ -1263,7 +1308,8 @@ test('thread-wide Unsend requires an untampered v2 thread-specific reviewed plan
     detectedCount: 7,
     expiresAt: Date.now() + 60_000,
   });
-  assert.equal(all.version, 2);
+  assert.equal(all.version, 3);
+  assert.equal(all.speed, 'standard');
   assert.equal(all.limit, null);
   assert.equal(all.scope, 'all');
   assert.equal(all.detectedCount, 7);
@@ -1315,7 +1361,7 @@ test('thread-wide Unsend requires an untampered v2 thread-specific reviewed plan
   const tampered = await runner.start({ plan: { ...all, detectedCount: 6 } });
   assert.equal(tampered.status, 'error');
   assert.match(tampered.message, /thread-specific reviewed plan is required/);
-  const wrongVersion = await runner.start({ plan: { ...all, version: 3 } });
+  const wrongVersion = await runner.start({ plan: { ...all, version: 4 } });
   assert.equal(wrongVersion.status, 'error');
 });
 
@@ -1351,7 +1397,7 @@ test('extension message view uses the shared runner and Instagram design tokens'
   assert.match(labelsSource, /authorizationExpiresAt <= Date\.now\(\)/);
   assert.match(labelsSource, /context\.threadId !== expectedThreadId/);
   assert.doesNotMatch(labelsSource, /currentEligibleCount|plan\.eligibleCount/);
-  assert.match(labelsSource, /PLAN_VERSION = 2/);
+  assert.match(labelsSource, /PLAN_VERSION = 3/);
   assert.match(labelsSource, /const currentContext = threadContext\(\)/);
   assert.match(labelsSource, /STABLE_EMPTY_PASSES = 3/);
   assert.match(labelsSource, /complete: quietRounds >= 10/);
@@ -1419,7 +1465,7 @@ test('finite oldest scope proves a stable boundary before the first destructive 
   assert.match(boundaryBody, /after\.loaderVisible/);
   assert.match(boundaryBody, /OLDEST_BOUNDARY_STABLE_MS/);
   assert.ok(
-    startBody.indexOf('await proveStableOldestBoundary(') < startBody.indexOf('await nextSentRow('),
+    startBody.indexOf('await proveStableOldestBoundary(') < startBody.indexOf('() => nextSentRow('),
     'oldest-boundary proof must complete before any row can expose a message menu',
   );
 });

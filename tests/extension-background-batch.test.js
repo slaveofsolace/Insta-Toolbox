@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-async function loadBackground({ profileResponses, performResponses, stored }) {
+async function loadBackground({ profileResponses, performResponses, dmResponses = {}, dmPerformResponses = {}, stored }) {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'insta-toolbox-batch-'));
   const libraryRoot = path.join(temporaryRoot, 'lib');
   await mkdir(libraryRoot, { recursive: true });
@@ -24,6 +24,8 @@ async function loadBackground({ profileResponses, performResponses, stored }) {
   let runtimeListener = null;
   const navigations = [];
   const performed = [];
+  const dmInspected = [];
+  const dmPerformed = [];
   let currentUrl = 'https://www.instagram.com/';
 
   globalThis.chrome = {
@@ -69,6 +71,18 @@ async function loadBackground({ profileResponses, performResponses, stored }) {
           const response = performResponses[message.item.username];
           return response || { result: 'unfollowed', relationship: 'not-following' };
         }
+        if (message.kind === 'insta-toolbox-inspect-reviewed-dm-item') {
+          dmInspected.push(message.item);
+          const response = dmResponses[message.item.messageId];
+          if (!response) throw new Error(`No DM inspection fixture for ${message.item.messageId}`);
+          return response;
+        }
+        if (message.kind === 'insta-toolbox-perform-reviewed-dm-unsend') {
+          dmPerformed.push(message.item);
+          const response = dmPerformResponses[message.item.messageId];
+          if (!response) throw new Error(`No DM result fixture for ${message.item.messageId}`);
+          return response;
+        }
         throw new Error(`Unexpected tab message: ${message.kind}`);
       },
     },
@@ -90,6 +104,8 @@ async function loadBackground({ profileResponses, performResponses, stored }) {
     deliver,
     navigations,
     performed,
+    dmInspected,
+    dmPerformed,
   };
 }
 
@@ -145,6 +161,36 @@ function confirmedAccountBatch(action, items) {
       count: items.length,
       targetDigest: batchTargetDigest('account', action, items),
     },
+  };
+}
+
+function confirmedDmBatch(items) {
+  return {
+    kind: 'insta-toolbox-start-batch', batchKind: 'dm', items, confirmed: true,
+    confirmation: { action: null, count: items.length, targetDigest: batchTargetDigest('dm', null, items) },
+  };
+}
+
+function dmFixtureItem(index) {
+  return {
+    id: `dm-item-${index}`, messageId: `message-${index}`, conversationId: '123', threadId: '123',
+    timestamp: 1_700_000_000_000 + index, contentDigest: '1234abcd', sentByMe: true,
+  };
+}
+
+function dmInspection(item) {
+  return { ...item, exactIdentityAvailable: true, ownershipAvailable: true, resolutionToken: `resolved-${item.messageId}` };
+}
+
+function dmVerifiedRemoval(item, extra = {}) {
+  return {
+    result: 'unsent', conversationId: item.conversationId, messageId: item.messageId,
+    postcondition: {
+      exactThread: true, expectedThreadId: item.threadId, observedThreadId: item.threadId,
+      retainedRowDisconnected: true, retainedIdentityNodeDisconnected: true,
+      exactCandidateAbsent: true, observationReason: 'exact-message-not-found',
+    },
+    ...extra,
   };
 }
 
@@ -268,6 +314,24 @@ test('thread-wide Unsend has no arbitrary daily quota and still rejects duplicat
   }
 });
 
+test('thread reservations accept restored pacing and reject obsolete Fast plans', async () => {
+  const stored = baseStored();
+  const { cleanup, deliver } = await loadBackground({ profileResponses: {}, performResponses: {}, stored });
+  const threadSender = { url: 'https://www.instagram.com/direct/t/123/', tab: { id: 7, url: 'https://www.instagram.com/direct/t/123/' } };
+  const plan = { version: 3, threadId: '123', scope: 'all', limit: null, detectedCount: null,
+    reviewedDigest: 'a1b2c3d4', speed: 'standard', expiresAt: Date.now() + 60_000 };
+  try {
+    const response = await deliver({ kind: 'insta-toolbox-reserve-thread-unsend', plan }, threadSender);
+    assert.equal(response.reservation.speed, 'standard');
+    assert.deepEqual(response.pacing, { minDelayMs: 1_000, maxDelayMs: 2_000 });
+    for (const invalid of [{ ...plan, speed: 'turbo' }, { ...plan, speed: 'fast' }, { ...plan, version: 2, speed: 'fast' }, { ...plan, speed: undefined }]) {
+      const result = await deliver({ kind: 'insta-toolbox-reserve-thread-unsend', plan: invalid }, threadSender);
+      assert.equal(result.error, 'thread-unsend-plan-invalid');
+    }
+    assert.equal(stored.instaToolboxThreadUnsendLedger.length, 0);
+  } finally { await cleanup(); }
+});
+
 test('a service-worker restart can record verified removals without restoring action authority', async () => {
   const stored = baseStored();
   const threadSender = {
@@ -336,6 +400,61 @@ async function waitForRun(deliver, predicate, timeoutMs = 15_000) {
   }
   throw new Error('Batch did not reach the expected state in time.');
 }
+
+test('DM batch records a verified first removal but stops before the next item after lifecycle interruption', async () => {
+  const stored = baseStored();
+  const items = [dmFixtureItem(1), dmFixtureItem(2)];
+  const fixture = await loadBackground({
+    profileResponses: {}, performResponses: {}, stored,
+    dmResponses: Object.fromEntries(items.map((item) => [item.messageId, dmInspection(item)])),
+    dmPerformResponses: {
+      [items[0].messageId]: dmVerifiedRemoval(items[0], { needsAttention: true, interruptionReason: 'page-frozen' }),
+      [items[1].messageId]: dmVerifiedRemoval(items[1]),
+    },
+  });
+  try {
+    const started = await fixture.deliver(confirmedDmBatch(items), sender);
+    assert.equal(started.error, undefined);
+    const run = await waitForRun(fixture.deliver, (value) => value?.status === 'stopped');
+    assert.equal(run.stopReason, 'page-frozen');
+    assert.equal(run.completed, 1);
+    assert.equal(run.failed, 0);
+    assert.equal(Number(run.uncertain || 0), 0);
+    assert.deepEqual(fixture.dmInspected.map((item) => item.messageId), [items[0].messageId]);
+    assert.deepEqual(fixture.dmPerformed.map((item) => item.messageId), [items[0].messageId]);
+    assert.equal(fixture.dmPerformed[0].resolutionToken, `resolved-${items[0].messageId}`);
+    assert.equal(stored.instaToolboxDmActionLedger.length, 1);
+    assert.equal(stored.instaToolboxDmActionLedger[0].status, 'succeeded');
+    assert.equal(run.results[0].status, 'completed');
+  } finally { await fixture.cleanup(); }
+});
+
+test('DM batch preserves an uncertain first outcome and never attempts a second message', async () => {
+  const stored = baseStored();
+  const items = [dmFixtureItem(1), dmFixtureItem(2)];
+  const fixture = await loadBackground({
+    profileResponses: {}, performResponses: {}, stored,
+    dmResponses: Object.fromEntries(items.map((item) => [item.messageId, dmInspection(item)])),
+    dmPerformResponses: {
+      [items[0].messageId]: { uncertain: true, needsAttention: true, reason: 'removal-not-proven', interruptionReason: 'page-frozen' },
+      [items[1].messageId]: dmVerifiedRemoval(items[1]),
+    },
+  });
+  try {
+    const started = await fixture.deliver(confirmedDmBatch(items), sender);
+    assert.equal(started.error, undefined);
+    const run = await waitForRun(fixture.deliver, (value) => value?.status === 'stopped');
+    assert.equal(run.stopReason, 'page-frozen');
+    assert.equal(run.completed, 0);
+    assert.equal(run.uncertain, 1);
+    assert.equal(run.failed, 1);
+    assert.deepEqual(fixture.dmInspected.map((item) => item.messageId), [items[0].messageId]);
+    assert.deepEqual(fixture.dmPerformed.map((item) => item.messageId), [items[0].messageId]);
+    assert.equal(stored.instaToolboxDmActionLedger.length, 1);
+    assert.equal(stored.instaToolboxDmActionLedger[0].status, 'uncertain');
+    assert.equal(run.results[0].status, 'failed');
+  } finally { await fixture.cleanup(); }
+});
 
 test('batch start requires an exact finite confirmation from the active Instagram tab', async () => {
   const stored = baseStored();

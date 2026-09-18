@@ -1,11 +1,12 @@
 # Overlay QA
 
-Last updated: 2026-09-12
+Last updated: 2026-09-16
 
 ## Current status
 
-The production-script overlay matrix is green on Windows. The 3.1.12 update
-generated and reviewed 45 baselines, including the movable collapsed launcher,
+The 4.0 development matrix passes 45 semantic, geometry, and screenshot scenarios on Windows.
+Rendered changes were reviewed, version-refreshed baselines were generated, and
+the independent non-updating check passed. Coverage includes the movable collapsed launcher,
 two-corner resizing, named settings dialog, compact header, and credit,
 the immediate thread-bound Unsend action, authenticated Mutual Checker state,
 visible partial comparisons, disclosure arrows, floating translucency, mobile layouts, forced
@@ -15,8 +16,8 @@ accessibility-tree, performance, and screenshot expectation. Ordinary CI runs
 `qa:overlay:check` on `windows-latest`; CI never updates baselines.
 
 The baseline set lives under
-`docs/evidence/overlay-ui-3.1.12-2026-09-12/after/win32`. The reviewed manifest
-SHA-256 is recorded in [the 3.1.12 acceptance record](./acceptance/3.1.12.md).
+`docs/evidence/overlay-ui-4.0.0-2026-09-16/after/win32`. The checked manifest
+SHA-256 is recorded in [the 4.0.0 acceptance record](./acceptance/4.0.0.md).
 This establishes synthetic-fixture and Windows-rendering evidence only. It does
 not establish human visual or screen-reader acceptance, cross-platform pixel
 parity, persistent-profile acceptance, or authenticated Instagram selector
@@ -162,7 +163,7 @@ test-results/overlay-qa/
 An explicit update copies candidate evidence to:
 
 ```text
-docs/evidence/overlay-ui-3.1.12-2026-09-12/after/<platform>/
+docs/evidence/overlay-ui-4.0.0-2026-09-16/after/<platform>/
 ├── <scenario>.png
 ├── manifest.json
 └── fidelity-ledger.json

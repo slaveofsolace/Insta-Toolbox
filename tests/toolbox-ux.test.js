@@ -289,7 +289,7 @@ test('the userscript migrates the old opaque default while preserving explicit c
 
 test('customization is a named modal that dims the toolbox and dismisses outside', () => {
   assert.match(generated, /data-role="settings-dialog"[^>]*aria-labelledby="insta-toolbox-settings-title"/);
-  assert.match(generated, /<h2 id="insta-toolbox-settings-title">Customize Insta Toolbox<\/h2>/);
+  assert.match(generated, /<h2 id="insta-toolbox-settings-title">Settings<\/h2>/);
   assert.match(shell, /\.settings-dialog::backdrop \{[^}]*grayscale\(\.65\) blur\(1px\)/);
   assert.match(shell, /dialog\.showModal\(\)/);
   assert.match(shell, /event\.target === event\.currentTarget\) setSettingsOpen\(false\)/);
@@ -469,7 +469,7 @@ test('finite run confirmation replaces global unlock controls and phrases', () =
   assert.match(shell, /approvedTargets: \[\.\.\.queue\]/);
   assert.match(shell, /capabilityExpiresAt: Date\.now\(\) \+ RUN_CAPABILITY_MS/);
   assert.doesNotMatch(labels, /currentEligibleCount !== plan\.eligibleCount/);
-  assert.match(labels, /Number\(value\?\.version\) !== PLAN_VERSION/);
+  assert.match(labels, /\[2, PLAN_VERSION\]\.includes\(version\)/);
   assert.doesNotMatch(labels, /liveAuthority\?\.enable|ARM UNSEND/);
 });
 
@@ -660,6 +660,7 @@ test('failed manual scans replace the visible scanning message', async () => {
   const fill = { style: {} };
   const select = { value: '' };
   const scanInto = loadShellFunction('scanInto', {
+    inboxPanel: null,
     actions: { 'scan-list': async () => outcome },
     query(selector) {
       if (selector === '[data-role="list-type"]') return select;
@@ -686,6 +687,13 @@ test('failed manual scans replace the visible scanning message', async () => {
     assert.equal(fill.style.width, '0%');
   }
   assert.equal((shell.match(/return \{ applied: false, detail \};/g) || []).length, 3);
+});
+
+test('inbox cleanup owns the conversation while ordinary read scans are requested', async () => {
+  for (const name of ['scanInto', 'scanSentConversation']) {
+    const action = loadShellFunction(name, { inboxPanel: { busy: () => true } });
+    await assert.rejects(action('followers'), /Stop inbox cleanup/);
+  }
 });
 
 test('verified empty extension lists are rendered as scanned', () => {

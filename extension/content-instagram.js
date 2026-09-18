@@ -377,6 +377,13 @@
     throw relationshipError('request-timeout', 'Instagram follower data did not finish.');
   }
 
+  function normalizeObservedInstagramId(value) {
+    if (typeof value === 'number' && (!Number.isSafeInteger(value) || value <= 0)) return '';
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    const id = String(value).trim();
+    return /^[1-9]\d{0,29}$/.test(id) ? id : '';
+  }
+
   async function resolveRelationshipUserId(username, options) {
     const url = new URL('/api/v1/web/search/topsearch/', INSTAGRAM_WEB_ORIGIN);
     url.searchParams.set('context', 'blended');
@@ -392,6 +399,8 @@
     }
     return {
       userId,
+      ...(normalizeObservedInstagramId(exact?.pk)
+        ? { subjectInstagramId: normalizeObservedInstagramId(exact.pk) } : {}),
     };
   }
 
@@ -562,6 +571,8 @@
         }
         accounts.set(accountKey, {
           username: accountUsername,
+          ...(normalizeObservedInstagramId(rawAccountId)
+            ? { instagramId: normalizeObservedInstagramId(rawAccountId) } : {}),
           profileUrl: `${INSTAGRAM_WEB_ORIGIN}/${accountUsername}/`,
           displayName: String(user?.full_name || '').trim().slice(0, 160),
           source: 'authenticated-instagram-web',
@@ -774,6 +785,7 @@
         reasons: Object.freeze({ followers: followers.reason, following: following.reason }),
         source: 'authenticated-instagram-web',
         userId,
+        ...(resolution.subjectInstagramId ? { subjectInstagramId: resolution.subjectInstagramId } : {}),
         username,
       });
       onProgress?.(Object.freeze({
@@ -794,6 +806,41 @@
     }
   }
 
+  function normalizeFollowerDiagnostics(value) {
+    const reasons = new Set(['pagination-complete', 'instagram-limited-list', 'cursor-missing',
+      'count-mismatch', 'count-unverified', 'count-changed', 'profile-count-disagreement', 'account-limit', 'page-limit']);
+    const count = (number) => Number.isSafeInteger(number) && number >= 0 ? number : null;
+    return {
+      expectedCounts: Object.fromEntries(['followers', 'following'].map((type) => [type, count(value?.expectedCounts?.[type])])),
+      pages: Object.fromEntries(['followers', 'following'].map((type) => [type, count(value?.pages?.[type])])),
+      reasons: Object.fromEntries(['followers', 'following'].map((type) => [type, reasons.has(value?.reasons?.[type]) ? value.reasons[type] : ''])),
+    };
+  }
+
+  function followerComparisonDetails(workspace) {
+    const diagnostics = normalizeFollowerDiagnostics(workspace);
+    return ['followers', 'following'].flatMap((type) => {
+      const reason = diagnostics.reasons[type];
+      if (!reason) return [];
+      const found = Array.isArray(workspace?.[type]) ? workspace[type].length : 0;
+      const expected = diagnostics.expectedCounts[type];
+      const label = type === 'followers' ? 'Followers' : 'Following';
+      const count = expected === null ? `${found.toLocaleString('en-US')} read` : `${found.toLocaleString('en-US')} of ${expected.toLocaleString('en-US')} read`;
+      const explanations = {
+        'pagination-complete': 'Pagination finished and totals matched.',
+        'instagram-limited-list': 'Instagram marked this list as limited.',
+        'cursor-missing': 'Instagram reported more results but supplied no next page.',
+        'count-mismatch': 'The returned accounts did not match the profile total; the cause is unknown.',
+        'count-unverified': 'No exact profile total was available.',
+        'count-changed': 'The profile total changed during this check.',
+        'profile-count-disagreement': 'Instagram profile counters disagreed.',
+        'account-limit': 'The bounded account read limit was reached.',
+        'page-limit': 'The bounded page read limit was reached.',
+      };
+      return [`${label}: ${count}. ${explanations[reason]}`];
+    });
+  }
+
   function followerComparisonSummary(workspace) {
     const completeList = (type) => workspace?.verified?.[type] === true && workspace?.complete?.[type] === true;
     const complete = completeList('followers') && completeList('following');
@@ -803,15 +850,21 @@
     const verifiedPartial = !complete && ['followers', 'following'].some((type) => (
       workspace?.verified?.[type] === true && workspace?.complete?.[type] !== true
     ));
+    const knownReason = ['followers', 'following'].some((type) => [
+      'instagram-limited-list', 'cursor-missing', 'count-changed', 'profile-count-disagreement', 'account-limit', 'page-limit',
+    ].includes(workspace?.reasons?.[type]));
     return {
       available,
       complete,
+      details: followerComparisonDetails(workspace),
       labels: {
         mutuals: 'Mutuals',
         notFollowingMeBack: complete ? "Don't follow you back" : 'Not found in followers',
         iDoNotFollowBack: complete ? "You don't follow back" : 'Not found in following',
       },
-      warning: complete ? '' : 'Partial comparison — captured accounts only. Someone missing from a list may still be a mutual. The missing accounts and the reason are unknown; check profiles before acting.',
+      warning: complete ? '' : knownReason
+        ? 'Partial comparison — captured accounts only. Someone missing from a list may still be a mutual. Check profiles before acting.'
+        : 'Partial comparison — captured accounts only. Someone missing from a list may still be a mutual. The missing accounts and the reason are unknown; check profiles before acting.',
       ageFilterGuidance: verifiedPartial
         ? 'Possible viewer-age filtering: Instagram may hide age-restricted accounts if the signed-in account has no birthday. Check Accounts Center, reload, and retry. Other causes are possible.'
         : '',
@@ -836,6 +889,7 @@
       warning: summary.warning,
       ageFilterGuidance: summary.ageFilterGuidance,
       accountsCenterUrl: summary.accountsCenterUrl,
+      ...normalizeFollowerDiagnostics(workspace),
       mutuals: Array.isArray(comparison?.mutuals) ? comparison.mutuals : [],
       notFollowingMeBack: Array.isArray(comparison?.notFollowingMeBack)
         ? comparison.notFollowingMeBack
@@ -870,6 +924,7 @@
       ...(record.warning ? [record.warning] : []),
       ...(record.ageFilterGuidance ? [record.ageFilterGuidance] : []),
       ...(record.accountsCenterUrl ? [`Accounts Center: ${record.accountsCenterUrl}`] : []),
+      ...followerComparisonDetails(workspace),
       '',
       'SUMMARY',
       '-------',
@@ -993,24 +1048,10 @@
 
   function dmOwnership(row, identityNode) {
     const explicit = String(row?.getAttribute?.('data-sent-by-me') || '').toLowerCase();
-    if (explicit === 'true') return { sentByMe: true, basis: 'data-sent-by-me' };
     if (explicit === 'false') return { sentByMe: false, basis: 'data-sent-by-me' };
-
-    // The source script used flex-end as sent-message evidence. Keep that evidence
-    // only on the exact identity-to-row ancestor chain; unrelated descendant
-    // toolbars must never confer ownership on a received message.
-    const ownershipChain = [];
-    let element = identityNode;
-    while (element && row?.contains?.(element)) {
-      ownershipChain.push(element);
-      if (element === row) break;
-      element = element.parentElement || element.parentNode || element.parent || null;
-    }
-    if (ownershipChain.at(-1) !== row) return { sentByMe: null, basis: null };
-    for (const element of ownershipChain) {
-      if (getComputedStyle(element).justifyContent === 'flex-end') {
-        return { sentByMe: true, basis: 'identity-ancestor-flex-end-layout' };
-      }
+    const proof = globalThis.InstaToolboxDmThreadUnsender?.messageProof;
+    if (row?.contains?.(identityNode) && proof?.sentByCurrentUser(row, globalThis)) {
+      return { sentByMe: true, basis: explicit === 'true' ? 'data-sent-by-me' : 'identity-ancestor-flex-end-layout' };
     }
     return { sentByMe: null, basis: null };
   }
@@ -1398,17 +1439,31 @@
     };
   }
 
-  function waitFor(check, timeoutMs) {
-    const startedAt = Date.now();
-    return new Promise((resolve) => {
-      const inspect = () => {
-        const value = check();
-        if (value || Date.now() - startedAt >= timeoutMs) {
-          resolve(value || null);
-          return;
-        }
-        setTimeout(inspect, 100);
+  function waitFor(check, timeoutMs, signal = null) {
+    const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+    return new Promise((resolve, reject) => {
+      let timer;
+      let settled = false;
+      const finish = (value, error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener?.('abort', onAbort);
+        if (error) reject(error);
+        else resolve(value);
       };
+      const onAbort = () => finish(null);
+      const inspect = () => {
+        if (settled) return;
+        if (signal?.aborted || Date.now() >= deadline) { finish(null); return; }
+        try {
+          const value = check();
+          if (signal?.aborted || Date.now() >= deadline) finish(null);
+          else if (value) finish(value);
+          else timer = setTimeout(inspect, Math.min(100, deadline - Date.now()));
+        } catch (error) { finish(null, error); }
+      };
+      signal?.addEventListener?.('abort', onAbort, { once: true });
       inspect();
     });
   }
@@ -1566,6 +1621,35 @@
     if (!dmResolutionMatches(resolution, item)) {
       return { ambiguous: true, reason: 'dm-resolution-expired-or-changed' };
     }
+    const controller = new AbortController();
+    let interrupted = null;
+    const interrupt = (reason) => {
+      if (interrupted) return;
+      interrupted = reason;
+      dmResolutions.clear();
+      controller.abort(reason);
+    };
+    const onFreeze = () => interrupt('page-frozen');
+    const onPageHide = (event) => interrupt(event?.persisted ? 'page-cached' : 'page-left');
+    document.addEventListener?.('freeze', onFreeze);
+    globalThis.addEventListener?.('pagehide', onPageHide);
+    const lifecycle = {
+      signal: controller.signal,
+      interrupted: () => interrupted,
+      outcome: (uncertain = false) => ({
+        unexpectedUi: true, reason: 'dm-page-interrupted', needsAttention: true,
+        interruptionReason: interrupted, uncertain,
+      }),
+    };
+    try {
+      return await performResolvedDmUnsend(item, resolution, lifecycle);
+    } finally {
+      document.removeEventListener?.('freeze', onFreeze);
+      globalThis.removeEventListener?.('pagehide', onPageHide);
+    }
+  }
+
+  async function performResolvedDmUnsend(item, resolution, lifecycle) {
     if (visibleDialogs().length || visibleMenus().length) {
       return { unexpectedUi: true, reason: 'preexisting-surface-before-live-unsend' };
     }
@@ -1574,7 +1658,8 @@
     const actionControl = await waitFor(() => {
       const controls = exactDmActionControls(resolution.row);
       return controls.length === 1 ? controls[0] : null;
-    }, 1_500);
+    }, 1_500, lifecycle.signal);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     if (!actionControl) {
       return { ambiguous: true, reason: 'dm-action-control-not-exact' };
     }
@@ -1587,6 +1672,7 @@
     }
 
     const menusBeforeAction = new Set(visibleMenus());
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     activateLiveControl(actionControl);
     const menuResult = await waitFor(() => {
       const newMenus = visibleMenus().filter((menu) => !menusBeforeAction.has(menu));
@@ -1597,7 +1683,8 @@
       return controls.length === 1
         ? { menu, control: controls[0] }
         : { invalid: true };
-    }, 3_000);
+    }, 3_000, lifecycle.signal);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     if (!menuResult?.menu) {
       return { unexpectedUi: true, reason: 'dm-unsend-menu-not-exact' };
     }
@@ -1606,6 +1693,7 @@
     }
 
     const dialogsBeforeChoice = new Set(visibleDialogs());
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     activateLiveControl(menuResult.control);
     const confirmation = await waitFor(() => {
       const newDialogs = visibleDialogs().filter((dialog) => !dialogsBeforeChoice.has(dialog));
@@ -1617,7 +1705,8 @@
       if (!dialog) return { invalid: true };
       const controls = exactDmUnsendControls(dialog);
       return controls.length === 1 ? { control: controls[0] } : { invalid: true };
-    }, 3_000);
+    }, 3_000, lifecycle.signal);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     if (!confirmation?.control) {
       return { unexpectedUi: true, reason: 'dm-unsend-confirmation-not-exact' };
     }
@@ -1625,7 +1714,23 @@
       return { ambiguous: true, reason: 'dm-message-changed-before-final-confirmation' };
     }
 
+    const proof = globalThis.InstaToolboxDmThreadUnsender?.messageProof;
+    if (!proof) return { unexpectedUi: true, reason: 'dm-removal-verifier-unavailable' };
+    const beforeRemoval = proof.removalEvidence(resolution.row);
+    if (lifecycle.interrupted()) return lifecycle.outcome();
     activateLiveControl(confirmation.control);
+    const settled = await proof.waitForRemoval(resolution.row, beforeRemoval, {
+      contextValid: () => {
+        const currentSession = inspectSession();
+        return !currentSession.sessionExpired && !currentSession.challenge
+          && !currentSession.actionBlocked && !currentSession.rateLimited
+          && directThreadId(item.conversationId) === directThreadId(location.pathname);
+      },
+    });
+    if (!settled) {
+      if (lifecycle.interrupted()) return lifecycle.outcome(true);
+      return { unexpectedUi: true, reason: 'dm-unsend-not-confirmed', uncertain: true };
+    }
     const completion = await waitFor(() => {
       const currentSession = inspectSession();
       if (
@@ -1679,6 +1784,7 @@
     }, 5_000);
     if (completion?.sessionStop) return completion.sessionStop;
     if (!completion?.confirmed) {
+      if (lifecycle.interrupted()) return lifecycle.outcome(true);
       return {
         unexpectedUi: true,
         reason: 'dm-unsend-not-confirmed',
@@ -1690,11 +1796,17 @@
       conversationId: String(item.conversationId),
       messageId: String(item.messageId),
       postcondition: completion.postcondition,
+      ...(lifecycle.interrupted() ? {
+        needsAttention: true, interruptionReason: lifecycle.interrupted(),
+        reason: 'dm-page-interrupted', uncertain: false,
+      } : {}),
     };
   }
 
-  async function waitForRelationship(expectedRelationships, username, timeoutMs = 5_000) {
+  async function waitForRelationship(expectedRelationships, username, timeoutMs = 5_000, checkContext = null) {
     return waitFor(() => {
+      const contextStop = checkContext?.();
+      if (contextStop) return { contextStop };
       const session = inspectSession();
       if (session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited) {
         return { sessionStop: session };
@@ -1707,7 +1819,7 @@
     }, timeoutMs);
   }
 
-  async function performReviewedProfileAction(item) {
+  async function performReviewedProfileAction(item, runtime = {}) {
     const username = normalizeUsername(item?.username);
     const action = String(item?.action || '');
     const token = String(item?.resolutionToken || '');
@@ -1715,9 +1827,59 @@
       return { unexpectedUi: true, reason: 'invalid-live-action-request' };
     }
 
+    // Only an isolated caller can supply these dependencies. The message
+    // router deliberately passes the item alone, never options from a payload.
+    const { assertAuthorized, assertContext, signal } = runtime || {};
+    const guarded = assertAuthorized !== undefined || assertContext !== undefined || signal !== undefined;
+    if ((runtime !== null && typeof runtime !== 'object')
+      || (assertAuthorized !== undefined && typeof assertAuthorized !== 'function')
+      || (assertContext !== undefined && typeof assertContext !== 'function')
+      || (signal !== undefined && (!signal || typeof signal.aborted !== 'boolean'
+        || typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function'))) {
+      return { unexpectedUi: true, reason: 'profile-runtime-invalid', dispatched: false, uncertain: false };
+    }
+    let dispatched = false;
+    function permits(callback, phase) {
+      if (!callback) return true;
+      try {
+        const result = callback(Object.freeze({ action, username, phase }));
+        // An async answer is not a synchronous dispatch grant. Handle rejected
+        // promises without allowing them to become unhandled runtime errors.
+        if (result && typeof result.then === 'function') Promise.resolve(result).catch(() => {});
+        return result === true;
+      } catch { return false; }
+    }
+    function contextProblem(phase = 'settlement') {
+      if (guarded && normalizeUsername(location.pathname) !== username) return 'profile-context-changed';
+      return permits(assertContext, phase) ? null : 'profile-context-changed';
+    }
+    function dispatchProblem(phase) {
+      if (signal?.aborted) return 'profile-action-cancelled';
+      const problem = contextProblem(phase)
+        || (permits(assertAuthorized, phase) ? null : 'profile-approval-revoked');
+      return problem || (signal?.aborted ? 'profile-action-cancelled' : null);
+    }
+    function stopped(reason, detail = {}) {
+      return { unexpectedUi: true, reason, ...detail,
+        ...(guarded ? { dispatched, uncertain: dispatched, needsAttention: true } : {}) };
+    }
+    function preflight(result) {
+      return { ...result, ...(guarded ? { dispatched: false, uncertain: false } : {}) };
+    }
+    async function settleRelationship(expected) {
+      try { return await waitForRelationship(expected, username, 5_000, contextProblem); }
+      catch { return { contextStop: 'profile-outcome-unavailable' }; }
+    }
+    function completed(result) {
+      const problem = contextProblem();
+      if (problem) return stopped(problem);
+      return { ...result, ...(guarded ? { dispatched, uncertain: false,
+        ...(signal?.aborted ? { needsAttention: true, interruptionReason: 'profile-action-cancelled' } : {}) } : {}) };
+    }
+
     const session = inspectSession();
     if (session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited) {
-      return session;
+      return preflight(session);
     }
 
     pruneProfileResolutions();
@@ -1730,7 +1892,7 @@
       || resolution.relationship !== item.expectedRelationship
       || !resolution.control?.isConnected
     ) {
-      return { ambiguous: true, reason: 'profile-resolution-expired-or-changed' };
+      return preflight({ ambiguous: true, reason: 'profile-resolution-expired-or-changed' });
     }
 
     const current = relationshipFromButtons(username);
@@ -1743,38 +1905,58 @@
       || current.control !== resolution.control
       || normalizeUsername(location.pathname) !== username
     ) {
-      return { ambiguous: true, reason: 'profile-control-changed-before-action' };
+      return preflight({ ambiguous: true, reason: 'profile-control-changed-before-action' });
     }
 
     const dialogsBeforeAction = visibleDialogs();
     if (dialogsBeforeAction.length) {
-      return { unexpectedUi: true, reason: 'preexisting-dialog-before-live-action' };
+      return preflight({ unexpectedUi: true, reason: 'preexisting-dialog-before-live-action' });
     }
 
-    activateLiveControl(current.control);
+    const initialStop = dispatchProblem('profile-control');
+    if (initialStop) return stopped(initialStop);
+    // Opening Following's menu is not the account mutation. Follow and the
+    // final Unfollow control are; once dispatched, settle without another click.
+    dispatched = action === 'follow';
+    try { activateLiveControl(current.control); }
+    catch { return stopped('profile-action-dispatch-error'); }
     if (action === 'follow') {
-      const completion = await waitForRelationship(['following', 'requested'], username);
-      if (completion?.sessionStop) return completion.sessionStop;
-      if (!completion) return { unexpectedUi: true, reason: 'follow-not-confirmed' };
-      return {
+      const completion = await settleRelationship(['following', 'requested']);
+      if (completion?.contextStop) return stopped(completion.contextStop);
+      if (completion?.sessionStop) return guarded ? stopped('profile-session-changed', completion.sessionStop) : completion.sessionStop;
+      if (!completion) return stopped('follow-not-confirmed');
+      return completed({
         result: completion.relationship === 'requested' ? 'follow-requested' : 'followed',
         relationship: completion.relationship,
-      };
+      });
     }
 
     const excludedDialogs = new Set(dialogsBeforeAction);
-    const confirmation = await waitFor(
-      () => exactUnfollowConfirmation(username, excludedDialogs),
-      3_000,
-    );
-    if (!confirmation) {
-      return { unexpectedUi: true, reason: 'unfollow-confirmation-not-exact' };
+    let ready;
+    try {
+      ready = await waitFor(() => {
+        const problem = dispatchProblem('unfollow-confirmation-wait');
+        if (problem) return { stopped: problem };
+        const control = exactUnfollowConfirmation(username, excludedDialogs);
+        return control ? { control } : null;
+      }, 3_000, signal);
+    } catch { return stopped('unfollow-confirmation-unavailable'); }
+    const confirmationStop = ready?.stopped || dispatchProblem('unfollow-confirmation');
+    if (confirmationStop) return stopped(confirmationStop);
+    if (!ready?.control) {
+      return stopped('unfollow-confirmation-not-exact');
     }
-    activateLiveControl(confirmation);
-    const completion = await waitForRelationship(['not-following'], username);
-    if (completion?.sessionStop) return completion.sessionStop;
-    if (!completion) return { unexpectedUi: true, reason: 'unfollow-not-confirmed' };
-    return { result: 'unfollowed', relationship: completion.relationship };
+    if (!ready.control.isConnected || exactUnfollowConfirmation(username, excludedDialogs) !== ready.control) {
+      return stopped('unfollow-confirmation-not-exact');
+    }
+    dispatched = true;
+    try { activateLiveControl(ready.control); }
+    catch { return stopped('profile-action-dispatch-error'); }
+    const completion = await settleRelationship(['not-following']);
+    if (completion?.contextStop) return stopped(completion.contextStop);
+    if (completion?.sessionStop) return guarded ? stopped('profile-session-changed', completion.sessionStop) : completion.sessionStop;
+    if (!completion) return stopped('unfollow-not-confirmed');
+    return completed({ result: 'unfollowed', relationship: completion.relationship });
   }
 
   function captureVisibleAccounts(expectedListType = '') {
@@ -2269,6 +2451,7 @@
     followerComparisonRecord,
     followerComparisonReport,
     followerComparisonSummary,
+    normalizeFollowerDiagnostics,
     inspectPageContext,
     inspectProfile,
     inspectReviewedDmItem,
