@@ -1695,17 +1695,31 @@ async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
         const targets = [summary, ...inbox.querySelectorAll('button, select, a, input')]
           .filter(visible).map(node => node.matches('input[type="checkbox"]') ? node.closest('label') : node);
         const controls = [];
-        for (const target of targets) {
-          target.scrollIntoView({ block: 'center', inline: 'nearest' });
-          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const settleScroll = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const measureControl = target => {
           const bounds = target.getBoundingClientRect(), clip = scroll.getBoundingClientRect();
           const x = bounds.left + bounds.width / 2, y = bounds.top + bounds.height / 2;
           const hit = root.elementFromPoint(x, y);
-          controls.push({ name: target.getAttribute('aria-label') || target.textContent.trim(),
+          return { name: target.getAttribute('aria-label') || target.textContent.trim(),
             width: bounds.width, height: bounds.height,
             reachable: bounds.top >= clip.top - 1 && bounds.bottom <= clip.bottom + 1,
             receivesPointer: hit === target || target.contains(hit),
-            left: bounds.left, right: bounds.right });
+            left: bounds.left, right: bounds.right };
+        };
+        for (const target of targets) {
+          let control = null;
+          for (const block of ['center', 'start', 'end']) {
+            target.scrollIntoView({ block, inline: 'nearest' });
+            await settleScroll();
+            control = measureControl(target);
+            if (control.reachable && control.receivesPointer) break;
+          }
+          if (!control.reachable || !control.receivesPointer) {
+            target.focus?.({ preventScroll: false });
+            await settleScroll();
+            control = measureControl(target);
+          }
+          controls.push(control);
         }
         const bounds = panel.getBoundingClientRect(), area = inbox.getBoundingClientRect();
         return { controls, viewport: { width: innerWidth, height: innerHeight },
