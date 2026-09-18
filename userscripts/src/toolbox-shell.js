@@ -846,6 +846,9 @@
       .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
       .confirm-dialog .toolbar { justify-content: flex-end; }
       [data-role="inbox-cleanup"] { display:grid; gap:12px; margin-top:12px; }
+      [data-role="inbox-cleanup"] > .field { margin:0; gap:6px; }
+      [data-role="inbox-cleanup"] > .lead { margin:0; }
+      [data-role="inbox-cleanup"] select { width:100%; padding-right:34px; }
       .inbox-selection { display:grid; gap:4px; max-height:240px; overflow:auto; }
       .inbox-choice { position:relative; display:flex; flex:none; align-items:center; gap:12px; width:100%; min-height:44px; padding:4px 8px; line-height:20px; scroll-margin-block:12px; }
       .inbox-choice > input[type="checkbox"] { flex:0 0 auto; min-width:20px; min-height:20px; }
@@ -869,7 +872,7 @@
       .settings-section .settings-inline { margin:0; padding:0; }
       .settings-section.settings-inline { margin:0; padding:0; row-gap:0; }
       .settings-section.settings-inline[open] { padding-bottom:12px; }
-      .settings-section.settings-inline > :not(summary), .settings-section .settings-inline > :not(summary) { margin-top:16px; }
+      .settings-section.settings-inline > :not(summary), .settings-section .settings-inline > :not(summary) { margin-top:12px; }
       .settings-appearance-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr)); gap:16px 12px; }
       .settings-appearance-wide { grid-column:1 / -1; }
       .setting-note { margin:0; font-size:12px; line-height:18px; color:var(--insta-toolbox-text-muted); }
@@ -904,14 +907,7 @@
           <div class="card" data-role="comparison"></div>
           <section class="card comparison-browser" data-role="comparison-browser" aria-labelledby="insta-toolbox-comparison-browser-title" hidden><h2 id="insta-toolbox-comparison-browser-title">Comparison list</h2><div class="comparison-controls"><div class="field"><label for="insta-toolbox-comparison-category">Show accounts</label><select id="insta-toolbox-comparison-category" data-role="comparison-category" aria-controls="insta-toolbox-comparison-list"><option value="not-following-me-back">Don't follow you back</option><option value="i-do-not-follow-back">You don't follow back</option><option value="mutuals">Mutuals</option></select></div><div class="field"><label for="insta-toolbox-filter">Find a username</label><input id="insta-toolbox-filter" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-role="result-filter" aria-controls="insta-toolbox-comparison-list"></div></div><p id="insta-toolbox-comparison-count" class="comparison-count" data-role="comparison-count" tabindex="-1"></p><ul id="insta-toolbox-comparison-list" class="list comparison-list" data-role="comparison-list" aria-describedby="insta-toolbox-comparison-count"></ul><button class="button quiet comparison-more" type="button" data-action="show-more-comparison" data-role="comparison-more" hidden>Show more</button></section>
           <details class="settings-inline"><summary>Capture lists and export</summary><p class="lead">If the account check fails, open Followers or Following and scan that list.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="insta-toolbox-list-type">Raw list</label><select id="insta-toolbox-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
-        <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><div class="card" data-role="presence-routine"></div>
-          <details class="settings-inline" data-role="manual-account-disclosure"><summary>Manual Follow / Unfollow</summary><p class="lead">Review exact accounts before changing them.</p><div class="card" data-role="queue-current"></div>
-            <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Refresh profile status</button><button class="button quiet" type="button" data-action="open-profile">Open profile</button></div><details class="settings-inline"><summary>Queue and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
-            <div class="field"><label for="insta-toolbox-bot-action">Action</label><select id="insta-toolbox-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
-            <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
-            <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
-            <p class="lead" data-role="account-run-summary">Choose accounts, then review them.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          </details></section>
+        <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><div class="card" data-role="presence-routine"></div></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions afterward</label></div>
@@ -944,8 +940,8 @@
         <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="removeOwnReactions" aria-describedby="insta-toolbox-reactions-note"> Remove my reactions afterward</label><p class="setting-note" id="insta-toolbox-reactions-note" hidden></p></div>
         <label><input type="checkbox" data-cleanup-preference="showSummary"> Show completed run details</label></details>
         <details class="settings-inline settings-section"><summary>Execution</summary>
-        <div class="field"><label for="insta-toolbox-execution-mode">Run in</label><select id="insta-toolbox-execution-mode" data-cleanup-preference="execution"><option value="foreground">Foreground</option><option value="background" disabled>Background — not available yet</option></select><p class="setting-note">Keep this Instagram tab active.</p></div>
-        <div class="field"><label for="insta-toolbox-workers">Managed tabs</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount" disabled><option value="1">1</option><option value="2">2</option></select><p class="setting-note">Multiple tabs are not available yet.</p></div>
+        <div class="field"><label for="insta-toolbox-execution-mode">Worker tabs</label><select id="insta-toolbox-execution-mode" data-cleanup-preference="execution"><option value="foreground">Keep in front</option><option value="background">Open in background</option></select><p class="setting-note">Tabs must stay open and loaded. Sleep, tab discard, or closing Chrome pauses the job.</p></div>
+        <div class="field"><label for="insta-toolbox-workers">Tabs to prepare</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select><p class="setting-note">Ghost mode prepares tabs together, then removes messages one conversation at a time.</p></div>
         <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="notifications" disabled> Completion notifications</label><p class="setting-note">Not available yet</p></div></details>
         <details class="settings-inline settings-section"><summary>Data and troubleshooting</summary><p class="setting-note" data-role="settings-version"></p><p class="setting-note" data-role="storage-usage"></p>
         <div class="toolbar"><button class="button quiet" type="button" data-action="backup-local">Export local data</button><button class="button quiet" type="button" data-action="export-diagnostics">Export diagnostics</button></div>
@@ -1313,6 +1309,8 @@
   function renderAccount() {
     const item = currentQueueItem();
     const current = query('[data-role="queue-current"]');
+    const result = query('[data-role="account-result"]');
+    if (!current || !result) return;
     current.replaceChildren();
     const title = document.createElement('h2');
     title.textContent = item ? `@${item.account.username}` : 'No queue item loaded';
@@ -1321,7 +1319,6 @@
       ? `${item.action} · ${item.status} · ${item.reason}`
       : 'Import an insta-toolbox-manual-queue JSON file.';
     current.append(title, detail);
-    const result = query('[data-role="account-result"]');
     result.replaceChildren();
     const resultTitle = document.createElement('h3');
     resultTitle.textContent = 'Profile status';
@@ -3411,12 +3408,23 @@
       onUpdate: next => presencePanel?.render(next),
     });
     presencePanel = globalThis.InstaToolboxPresenceSessionPanel.mount({
-      container: query('[data-role="presence-routine"]'), document,
+      container: query('[data-role="presence-routine"]'), document, window,
       session: presenceSession,
       inspectAccount: inspectPresenceAccount,
       confirmAction: confirmRun,
       readPreferences: () => GM_getValue('instaToolboxPresenceSessionV1', null),
       writePreferences: value => GM_setValue('instaToolboxPresenceSessionV1', value),
+      readLog: () => {
+        const account = inspectPresenceAccount();
+        return account.accountKey
+          ? GM_getValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, null)
+          : null;
+      },
+      writeLog: value => {
+        const account = inspectPresenceAccount();
+        if (!account.accountKey) throw new Error('presence-log-account-unverified');
+        return GM_setValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, value);
+      },
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
         || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()),
       onStatus: status,
@@ -3446,6 +3454,22 @@
       cancelConfirmation: () => confirmationController?.cancel(),
       load: () => inspectInboxAccount().accountVerified ? inboxCheckpoints.load() : null,
       save: checkpoint => inboxCheckpoints.save(checkpoint),
+      workerTransport: typeof GM_openInTab === 'function'
+        && typeof GM_addValueChangeListener === 'function'
+        && typeof GM_removeValueChangeListener === 'function' ? {
+          storage: {
+            get: key => GM_getValue(key, null),
+            set: (key, value) => GM_setValue(key, value),
+            listen: (key, listener) => GM_addValueChangeListener(
+              key,
+              (_name, _before, value) => listener(value),
+            ),
+            unlisten: id => GM_removeValueChangeListener(id),
+          },
+          openTab: (url, options) => GM_openInTab(url, options),
+        } : null,
+      defaultWorkerCount: cleanupSettings.effective(cleanupPreferences, 'userscript').workerCount,
+      openWorkersInBackground: cleanupSettings.effective(cleanupPreferences, 'userscript').execution === 'background',
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
         || relationshipController || state.run?.status === 'running' || presencePanel?.busy()),
       onStatus: status,
@@ -3453,13 +3477,10 @@
   }
   renderAll();
 
-  // Pick a paused account run back up after the navigation that advanced it.
+  // Presence replaces the old persisted manual account runner. Never resume a
+  // hidden legacy queue after an update or navigation.
   if (resumableAccountRun()) {
-    const pending = state.run.queue.length;
-    status(`Resuming run: ${pending} account${pending === 1 ? '' : 's'} left. Use Stop to end it.`);
-    void continueAccountRun().catch((error) => {
-      setRun({ status: 'stopped', stopReason: error.message, current: '' });
-      status(`Run stopped: ${error.message}`);
-    });
+    setRun({ status: 'stopped', stopReason: 'legacy account run retired', current: '', queue: [] });
+    status('An older manual account run was stopped. Presence does not resume past approvals.');
   }
 })();

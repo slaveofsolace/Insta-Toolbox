@@ -17,9 +17,9 @@ const output = path.join(repositoryRoot, 'userscripts', 'insta-toolbox.user.js')
 const licenseFile = path.join(repositoryRoot, 'LICENSE');
 const moduleFiles = [
   ...['inbox-discovery', 'inbox-native-navigation', 'inbox-coordinator', 'inbox-userscript-discovery',
-    'inbox-single-tab', 'inbox-userscript-panel', 'inbox-checkpoint-store',
+    'inbox-single-tab', 'inbox-userscript-workers', 'inbox-userscript-panel', 'inbox-checkpoint-store',
     'presence-native-inputs',
-    'presence-native-actions', 'presence-session', 'presence-session-panel']
+    'presence-native-actions', 'presence-session', 'presence-activity-log', 'presence-session-panel']
     .map(name => `extension/${name}.js`),
   'src/core/presence.js',
 ];
@@ -110,7 +110,10 @@ if (/@require|@resource/.test(metadata)) {
 if (!/^\/\/ @sandbox\s+DOM\s*$/m.test(metadata)) {
   throw new Error('The Tampermonkey bundle must explicitly require an isolated DOM sandbox.');
 }
-for (const grant of ['GM_getTab', 'GM_getValue', 'GM_saveTab', 'GM_setValue']) {
+for (const grant of [
+  'GM_getTab', 'GM_getValue', 'GM_addValueChangeListener', 'GM_openInTab',
+  'GM_removeValueChangeListener', 'GM_saveTab', 'GM_setValue',
+]) {
   if (!new RegExp(`^// @grant\\s+${grant}\\s*$`, 'm').test(metadata)) {
     throw new Error(`Userscript metadata is missing the required ${grant} grant.`);
   }

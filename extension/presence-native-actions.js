@@ -36,6 +36,10 @@ export function createPresenceNativeActions({
   const exactButtons = (root, names) => [...root.querySelectorAll('button')]
     .filter(visible)
     .filter((node) => names.has(lower(controlName(node))));
+  const exactControls = (root, names) => [...root.querySelectorAll('a[href],button,[role="button"]')]
+    .filter(visible)
+    .filter((node, index, all) => all.indexOf(node) === index)
+    .filter((node) => names.has(lower(controlName(node))));
   const url = (node) => {
     try { return new URL(node?.getAttribute?.('href') || '', location.origin); }
     catch { return null; }
@@ -107,6 +111,43 @@ export function createPresenceNativeActions({
     check();
   });
 
+  const routeControl = (pathnames, names) => {
+    const matches = exactControls(document, names).filter((node) => {
+      const candidate = url(node);
+      return candidate?.origin === location.origin && pathnames.has(candidate.pathname);
+    });
+    return matches.length === 1 ? matches[0] : null;
+  };
+  const openSurface = async (action, signal) => {
+    let control = null;
+    let ready = null;
+    if (['viewStories', 'likePosts'].includes(action) && location.pathname !== '/') {
+      control = routeControl(new Set(['/']), new Set(['home']));
+      ready = () => location.pathname === '/';
+    } else if (action === 'followPeople' && !String(location.pathname).startsWith('/explore')) {
+      control = routeControl(new Set(['/explore/', '/explore']), new Set(['explore']));
+      ready = () => String(location.pathname).startsWith('/explore');
+    } else if (action === 'acceptRequests') {
+      const controls = exactControls(document, new Set(['notifications']));
+      if (controls.length === 1 && controls[0].getAttribute?.('aria-expanded') !== 'true') {
+        control = controls[0];
+        ready = () => candidates('acceptRequests').length > 0
+          || control.getAttribute?.('aria-expanded') === 'true';
+      }
+    }
+    if (!control || typeof control.click !== 'function') return false;
+    control.click();
+    return waitFor(ready, signal);
+  };
+  const advanceSurface = async (action, seen, signal) => {
+    if (!['likePosts', 'followPeople'].includes(action)) return false;
+    const surface = document.scrollingElement || document.documentElement;
+    if (typeof surface?.scrollBy !== 'function') return false;
+    surface.scrollBy({ top: Math.max(320, Math.round(Number(globalThis.innerHeight || 800) * .75)),
+      left: 0, behavior: 'auto' });
+    return waitFor(() => candidates(action).some(candidate => !seen.has(candidate.id)), signal);
+  };
+
   function candidates(action) {
     if (action === 'likePosts') {
       return [...document.querySelectorAll('article')].filter(visible).flatMap((article) => {
@@ -131,7 +172,13 @@ export function createPresenceNativeActions({
     }
     if (action === 'viewStories') {
       const current = String(location.pathname || '').match(STORY_PATH);
-      if (current && storyLoaded({ username: current[1].toLocaleLowerCase(), storyId: current[2] })) return [];
+      if (current && storyLoaded({ username: current[1].toLocaleLowerCase(), storyId: current[2] })) {
+        const controls = exactButtons(document, new Set(['next']));
+        if (controls.length !== 1) return [];
+        return [{ action, id: `story-next:${current[1].toLocaleLowerCase()}:${current[2]}`,
+          label: 'Next story', target: { fromPath: String(location.pathname) },
+          root: document, control: controls[0] }];
+      }
       const unique = new Map();
       for (const link of [...document.querySelectorAll('a[href]')].filter(visible)) {
         const target = story(link);
@@ -175,7 +222,13 @@ export function createPresenceNativeActions({
     },
     async find(action, { seen = new Set(), signal } = {}) {
       if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
-      const available = candidates(action).filter((candidate) => !seen.has(candidate.id));
+      let available = candidates(action).filter((candidate) => !seen.has(candidate.id));
+      if (!available.length && await openSurface(action, signal)) {
+        available = candidates(action).filter((candidate) => !seen.has(candidate.id));
+      }
+      if (!available.length && await advanceSurface(action, seen, signal)) {
+        available = candidates(action).filter((candidate) => !seen.has(candidate.id));
+      }
       return available.length ? Object.freeze(available[0]) : null;
     },
     async execute(action, candidate, { signal, assertCurrent } = {}) {
@@ -189,9 +242,15 @@ export function createPresenceNativeActions({
       }
       if (action === 'viewStories') {
         current.control.click();
-        const verified = await waitFor(() => storyLoaded(current.target), signal);
+        const verified = await waitFor(() => {
+          if (!current.target.fromPath) return storyLoaded(current.target);
+          if (String(location.pathname) === current.target.fromPath) return false;
+          const next = String(location.pathname).match(STORY_PATH);
+          return Boolean(next) && storyLoaded({ username: next[1].toLocaleLowerCase(), storyId: next[2] });
+        }, signal);
         return verified
-          ? { verified: true, label: current.label, reason: 'Story opened' }
+          ? { verified: true, label: current.label,
+            reason: current.target.fromPath ? 'Next story opened' : 'Story opened' }
           : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
       }
       current.control.click();

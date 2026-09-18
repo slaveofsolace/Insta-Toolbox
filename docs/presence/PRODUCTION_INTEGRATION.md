@@ -11,10 +11,10 @@ direct choices:
 - Follow people
 - Accept incoming requests
 
-The only numeric choice is a finite maximum from 1 to 50. Start opens one
-review naming the verified signed-in account, selected activities, and maximum.
-Pause, Resume, and Stop operate on the same in-memory session. Manual Follow /
-Unfollow remains available in one secondary disclosure.
+One session has a finite maximum from 1 to 50. **Live like me** has a reviewed
+30-minute to 12-hour window, a finite 500-action ceiling, and selected burst and
+rest lengths. Start opens one review naming the verified signed-in account and
+exact choices. Pause, Resume, and Stop operate on the same in-memory session.
 
 The session controller processes one candidate at a time. Before each click it
 rechecks the signed-in account, Instagram restriction signals, expiry, the
@@ -27,7 +27,8 @@ operation settles. Starting the other tool while the lane is occupied is
 rejected without a click. Each tool still requires its own review and action
 authority.
 
-The current native adapter supports exact visible controls for post likes,
+The current native adapter supports exact visible controls for Instagram
+navigation, post likes,
 profile follows, incoming request confirmation, story links, and story likes.
 A private-profile Follow may verify as Requested. Story reaction automatically
 includes story viewing. This adapter does not collect credentials, call private
@@ -35,8 +36,11 @@ endpoints, bypass restrictions, or restore authority after a reload.
 
 ## Data boundary
 
-- Selected activities and the maximum are stored locally in
+- Selected activities and finite run choices are stored locally in
   `instaToolboxPresenceSessionV1`.
+- Verified and non-success outcomes are copied to a bounded per-account local
+  log. The separate log window is read-only except for Download and Clear and
+  contains no action controls.
 - Reviews and action authority exist only in the current runtime, are one-use,
   are account-bound, and expire within 15 minutes.
 - Imported files, saved comparisons, and old Presence planner preferences
@@ -48,17 +52,18 @@ endpoints, bypass restrictions, or restore authority after a reload.
 
 ## Evidence and remaining work
 
-Eight focused controller tests cover finite scope, account binding, expiry,
+Focused controller and log tests cover finite scope, account binding, expiry,
 replay rejection, uncertainty, Pause/Resume, Stop, and restrictions. Generated
-userscript acceptance covers all five visible choices, trusted confirmation
+userscript acceptance covers all five visible choices, Live like me controls,
+native navigation, trusted confirmation
 before the first click, exact post/follow/request/story postconditions,
-cancellation, narrow and short layouts, light and dark themes, and true 200%
-zoom.
+cancellation, the separate log window, narrow and short layouts, light and dark
+themes, and true 200% zoom.
 
 Those checks use deterministic Instagram-shaped fixtures. They do not establish
 current authenticated compatibility. Before release, verify each enabled
 adapter against a specifically approved disposable target. The same-tab
-account lane is implemented and fixture-tested; a private cross-tab broker,
-restart reconciliation, managed background workers, and browser-closed
-operation are not available. Frozen, discarded, closed, or signed-out tabs
-must stop or require attention.
+account lane is implemented and fixture-tested. Ghost has a separate reviewed
+userscript worker-tab coordinator, but Presence remains in its loaded tab.
+Frozen, discarded, closed, or signed-out tabs must stop or require attention;
+browser-closed operation is not available.

@@ -34,7 +34,7 @@ test('userscript fields group labels tightly without shrinking controls or crowd
   assert.match(userscript, /\.field label \{ display: block; line-height: 20px; \}/);
   assert.match(userscript, /input:not\(\[type="range"\]\):not\(\[type="checkbox"\]\), select, textarea \{ min-height: 44px/);
   assert.match(userscript, /\.view > \.settings-inline \{ margin-bottom: 16px; \}/);
-  assert.match(userscript, /\.settings-section \.settings-inline > :not\(summary\) \{ margin-top:16px; \}/);
+  assert.match(userscript, /\.settings-section \.settings-inline > :not\(summary\) \{ margin-top:12px; \}/);
   assert.match(userscript, /\.setting-option \{ display:grid; gap:4px; \}/);
 });
 
@@ -47,6 +47,9 @@ test('userscript cleanup copy stays concise and reaction cleanup is selectable',
   assert.match(userscript, /label: 'Messages', value: scope/);
   assert.match(userscript, /conversation or message selection changed after review/);
   assert.doesNotMatch(userscript, /Own-reaction removal has not been verified|<strong>DM Unsend\.<\/strong>|>Scope<\/label>|>Default N<\/label>/);
+  assert.match(userscript, />Open in background<\/option>/);
+  assert.match(userscript, />Tabs to prepare<\/label>/);
+  assert.doesNotMatch(userscript, /Multiple tabs are not available yet|Background — not available yet/);
 });
 
 test('userscript disclosure text paints with its selected theme and system contrast colors', () => {

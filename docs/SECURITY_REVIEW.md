@@ -54,7 +54,14 @@ The restored runner retains bounded menu readiness and adaptive 1–2 second suc
 
 Page freeze and page exit revoke current action authority. Already-dispatched removals settle as verified or uncertain; the next mutation is not dispatched. Resuming the page does not restore authority. Ordinary focus changes do not themselves revoke a run, but reliable inactive-tab execution still needs separate acceptance. Waits release listeners, observers, and timers on settlement.
 
-Managed-tab inbox coordination modules are not registered for live execution. Their fixtures cover frozen inventories, serial scheduling, worker fencing, persistence failures, and uncertain acknowledgments. Those results do not establish crash-safe external execution. The userscript's serial Ghost path and optional own-reaction follow-up are connected: both require exact account/thread context, action-specific confirmation, bounded traversal, and verified outcomes. Generated-browser acceptance is not authenticated Instagram compatibility, so extension reaction execution and managed workers remain disabled.
+Extension managed-tab modules are not registered for live execution. The
+userscript's reviewed Ghost adapter can open one to five exact worker tabs. Tabs
+prepare concurrently, but mutations remain serialized through one account lane
+and one pacing clock. Worker messages cannot restore action authority; manager
+loss, wrong context, expiry, restrictions, storage failure, or uncertainty stop
+new work. Fixture results do not establish crash-safe external execution or
+current authenticated Instagram compatibility. The optional own-reaction
+follow-up remains separately scoped and requires verified outcomes.
 
 Visible DM evidence is scoped to the exact open thread. Navigating to the inbox, feed, a profile, or a different thread hides and clears previously exposed candidates.
 
@@ -75,7 +82,7 @@ Provenance-verified partial comparisons remain visible and downloadable with unc
 
 ## Local app and web delivery
 
-The PWA service worker uses network-first same-origin GET handling, caches only successful same-origin responses, bypasses the HTTP cache for service-worker update checks, and removes earlier cache generations. Version 4.0.1 uses `insta-toolbox-v401`; persisted workspace and settings keys are unchanged.
+The PWA service worker uses network-first same-origin GET handling, caches only successful same-origin responses, bypasses the HTTP cache for service-worker update checks, and removes earlier cache generations. Version 4.1.0 uses `insta-toolbox-v410`; persisted workspace and settings keys are unchanged.
 
 The loopback development server accepts only loopback Host headers and serves an explicit asset allowlist. Repository metadata, tests, documentation, and Git internals are not served. Framing protection is sent as HTTP headers because `frame-ancestors` is ineffective in a meta policy.
 
@@ -101,7 +108,11 @@ Runtime application code has no third-party production dependencies. The lockfil
 
 CI actions are pinned to full commit SHAs. Pull requests receive dependency review; CodeQL runs on pull requests, `main`, and weekly. Dependabot proposes npm and action updates. Release promotion accepts only artifacts from the successful current `main` CI run, rechecks versions and checksums, generates an SBOM, and requests GitHub provenance attestation without rebuilding.
 
-The 4.0.1 development matrix contains 972 tests. The 45 overlay states and 11 PWA states remain recorded in the 4.0.0 visual evidence until the 4.0.1 release candidate is recaptured. Current results are tracked in [the 4.0.1 acceptance record](./acceptance/4.0.1.md). Fixtures do not prove current authenticated Instagram behavior.
+The 4.1.0 development matrix contains 989 tests. The 45 overlay states and 11
+PWA states retain their reviewed visual baselines because those surfaces did
+not change in this userscript-first patch. Current userscript results are
+tracked in [the 4.1.0 acceptance record](./acceptance/4.1.0.md). Fixtures do not
+prove current authenticated Instagram behavior.
 
 Partial mutual comparisons are available for display, export, and Follow / Unfollow target review. Target reviews and their existing confirmation show an uncertainty notice; missing records are not proof of a non-mutual relationship. Captures must belong to the signed-in account, and each profile's current relationship is checked before acting. Schema-1 comparison exports preserve existing fields and add `partial`, `labels`, and `warning`; completeness flags are not promoted by downloading.
 

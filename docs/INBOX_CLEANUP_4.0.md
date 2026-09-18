@@ -4,7 +4,12 @@
 
 The userscript now connects native conversation discovery, selection, exact confirmation, and a serial same-tab controller to the existing Unsend engine. Pause, reviewed Resume, Skip, Stop, interruption recovery, and recent-job storage have deterministic coverage. This development path still needs authenticated inbox acceptance; a fixture pass is not proof of current Instagram compatibility. See [Serial inbox cleanup](INBOX_SINGLE_TAB_4.0.md).
 
-The extension tab-pool and metadata runtime remain unregistered in `background.js`; managed tabs are unavailable. The userscript adds no grants and does not open worker tabs or collect sessions. Discovery opens selected native conversation controls and may mark conversations read; its acknowledgment is separate from Unsend approval.
+The extension tab-pool and metadata runtime remain unregistered in
+`background.js`. The userscript now has a separate reviewed worker adapter using
+`GM_openInTab` and private value-change listeners. It opens only the exact frozen
+thread inventory, supports one to five owned tabs, and closes only job-created
+tabs on Stop. Discovery opens selected native conversation controls and may mark
+conversations read; its acknowledgment remains separate from Unsend approval.
 
 `extension/inbox-worker.js` now connects coordinator admission to the existing
 runner through an optional per-message adapter. It verifies the reviewed cutoff
@@ -20,7 +25,7 @@ extension runtime.
 | Surface | Existing runtime | Missing integration |
 | --- | --- | --- |
 | Extension | Manifest V3 service worker, Instagram content scripts, `storage`, `tabs`, and `scripting` permissions. Single-thread reservations live in memory; verified ledger checkpoints survive worker restart without restoring authority. | Inbox discovery/review, exact-tab authenticated message routing, exclusive coordinator ownership, managed-tab lifecycle, runner mutation adapter, and lifecycle acceptance. |
-| Tampermonkey | DOM sandbox, `GM_getTab`, `GM_saveTab`, `GM_getValue`, and `GM_setValue`. Single-thread runner in the Instagram tab. | No granted tab-opening or cross-tab change-listener APIs. No accepted authenticated worker protocol or atomic cross-tab coordinator election. |
+| Tampermonkey | DOM sandbox, tab-scoped manager state, private value storage/listeners, `GM_openInTab`, and the existing single-thread runner. | Reviewed manager/worker protocol is connected for one to five owned tabs. Current authenticated lifecycle acceptance remains pending. |
 | Desktop | Sandboxed local `insta-toolbox://app/` workspace; external links open in the system browser. Its content policy restricts connections to itself. | No authenticated Instagram worker runtime. Desktop packaging is not browser automation. A separate session/isolation design is required. |
 
 Reviewed files: `extension/manifest.json`, `extension/background.js`, `extension/action-labels.js`, `extension/content-instagram.js`, `userscripts/src/metadata.txt`, `userscripts/src/toolbox-shell.js`, and `desktop/main.mjs`.
@@ -29,10 +34,21 @@ Chrome service workers can terminate, so durable state must not depend on global
 Chrome exposes distinct frozen and discarded tab states; a frozen tab cannot execute handlers or timers. [Tabs API](https://developer.chrome.com/docs/extensions/reference/api/tabs).
 Tampermonkey documents tab-opening and storage-listener APIs, but their existence does not establish permission, isolation, atomicity, or compatibility in this build. [Tampermonkey API](https://www.tampermonkey.net/documentation.php).
 
+The 4.1.0 userscript uses those APIs only through
+`extension/inbox-userscript-workers.js`. Reviews, manager ownership, worker
+assignments, account/thread checks, expiry, and mutation admission are
+revalidated at runtime. Persisted messages coordinate work but cannot recreate
+action authority. Prepared tabs may be inactive, but frozen, discarded, closed,
+wrong-thread, restricted, or coordinator-less workers cannot begin another
+mutation.
+
 ## Implemented coordinator contract
 
 - A review freezes the account ID, deduplicated ordered thread IDs, message scope/limit, speed, own-reaction choice, worker count, reviewed time, expiry, discovery sections, and discovery completeness. Unknown settings are not copied into state. Prototype-backed records are rejected.
-- One to five workers receive stable thread assignments. Contiguous groups remain the default; optional fixed batches wait for the current wave to settle. The native tab-pool adapter still supports only one or two tabs. Additional workers are not enabled in the product.
+- One to five workers receive stable thread assignments. Contiguous groups
+  remain the default; optional fixed batches wait for the current wave to
+  settle. The userscript product exposes one to five prepared worker tabs while
+  preserving one serialized account mutation lane.
 - Claims are serialized within one coordinator instance. A worker holds one thread lease. Lease identity and generation are memory-only; copied or stale leases fail.
 - Mutation admission shares one serial queue and account-level next-action deadline. Execution remains serial by default. Optional overlapping execution requires a separately reviewed concurrency setting and a trusted, expiring runtime capability; no production runtime provides that capability yet. See [Batching](INBOX_BATCHING_4.0.md).
 - The adapter must prove the current account, exact thread, exact target, ownership, and reviewed message boundary before dispatch. Received-message ownership cannot be inferred from a reaction. Reactions require their own proof and approved scope.
@@ -136,9 +152,9 @@ These are account-free state-machine fixtures. They do not open two real browser
 | Reviewed serial runner / browser integration + runner | Connected controller uses the existing engine with explicit during-run scope. Historical ID-less cutoff is not claimed. | Verify two disposable threads, Stop, Skip, reviewed Resume, new arrivals and uncertainty against the installed candidate. | Implemented and fixture-tested; authenticated acceptance pending. |
 | Metadata runtime / browser integration | Service exists but no accepted native account/discovery context provider or background installation. | Register only the metadata namespace after review; implement isolated read-only context inspection and prove forged page inputs, account switching, stale documents, restart, and interrupted storage cannot produce authority. | Service fixture-tested; not registered; mutations unavailable. |
 | Extension worker pool / browser integration | Tab readiness/ownership adapter exists; no runtime registration, accepted isolated inspector, complete per-click fencing, or verified retirement. | Integrate one coordinator and exact sender/tab/document protocol; test one then two real workers, restart, duplicate assignment, closure, freeze, discard, lost acknowledgment, and storage failure. Close only job-created tabs. | Pool adapter fixture-tested; runtime integration absent and disabled. |
-| Tampermonkey workers / browser integration | Existing grants cannot open/manage the required tab pool; cross-tab atomicity/isolation is not established. | Review least-privilege API additions and private messaging/election design; prove unauthorized page messages cannot mint authority and suspended workers cannot resume after reassignment. | Proposed; disabled; no new grants. |
+| Tampermonkey workers / browser integration | One-to-five owned-tab review and serialized mutation flow is connected. Persisted messages cannot mint authority, and coordinator loss stops workers. | Verify exact installed-build discovery, inactive tabs, Stop, closure, account drift, restrictions, and uncertain outcomes against disposable conversations. | Implemented and fixture-tested; authenticated acceptance pending. |
 | Own reactions / runner + QA | Adapter, traversal, userscript follow-up, and generated-browser removal acceptance are connected. Extension wiring is absent. | Specifically approved disposable removal must preserve the message and other reactions, including grouped emoji, recycling, idempotence and Stop. | Enabled in the userscript candidate; authenticated acceptance pending. |
 | Background lifecycle / browser integration + QA | Hidden Chromium coverage proves fixture behavior, not authenticated inactive-tab compatibility. | Verify the installed userscript while inactive, throttled and interrupted; no focus stealing or claims after browser closure/sleep. | Seven Chromium fixture cases passed; native support claim pending. |
 | Desktop workers / browser integration | No authenticated Instagram renderer/session exists. Keep the local workspace and browser handoff. | Separate isolation/session threat model and permission design before any browser-controller implementation. | Proposed; unavailable. |
 
-No live Instagram mutation is authorized by the development brief. Disposable-message/reaction acceptance requires specific targets and scope before execution.
+Authenticated action checks require exact disposable targets and a bounded scope before execution.

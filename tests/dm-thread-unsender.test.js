@@ -692,7 +692,7 @@ test('generic slot IDs and duplicate id-less text cannot alias processed message
   );
 });
 
-test('streaming traversal keeps its position unless the scroller shrinks or is replaced', () => {
+test('streaming traversal restarts from a fresh edge after every verified removal', () => {
   const runner = loadRunner();
   const traversal = runner.__test.createTraversal('newest');
   const scroller = { scrollHeight: 1_000, scrollTop: 420 };
@@ -700,7 +700,7 @@ test('streaming traversal keeps its position unless the scroller shrinks or is r
   traversal.lastScrollTop = 400;
 
   runner.__test.resetTraversalAfterRemoval(traversal, scroller, { scroller, scrollHeight: 1_000 });
-  assert.equal(traversal.lastScrollTop, 420, 'persistent placeholders must not force a return to the edge');
+  assert.equal(traversal.lastScrollTop, null, 'an unchanged virtual range can still recycle its mounted slots');
 
   scroller.scrollHeight = 800;
   runner.__test.resetTraversalAfterRemoval(traversal, scroller, { scroller, scrollHeight: 1_000 });

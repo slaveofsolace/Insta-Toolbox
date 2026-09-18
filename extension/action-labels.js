@@ -1351,11 +1351,13 @@
     if (traversal.order === 'oldest' && (scrollerChanged || shrank)) {
       traversal.oldestBoundaryProven = false;
     }
-    traversal.lastScrollTop = scrollerChanged || shrank
-      ? null
-      : Number.isFinite(Number(scroller?.scrollTop))
-        ? Number(scroller.scrollTop)
-        : traversal.lastScrollTop;
+    // Instagram recycles and reorders the mounted message window after a
+    // confirmed Unsend even when scrollHeight happens to stay unchanged. A
+    // retained offset can therefore point at a stale virtual slot and make a
+    // multi-message run stop after its first success. Re-enter from the
+    // requested edge after every verified removal; processed logical IDs and
+    // postcondition markers still prevent selecting the removed message.
+    traversal.lastScrollTop = null;
     traversal.lastScrollHeight = height;
     traversal.lastSearchGrew = false;
     traversal.lastSearchIncomplete = false;

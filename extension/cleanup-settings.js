@@ -26,7 +26,9 @@
       removeOwnReactions: boolean(source, 'removeOwnReactions', false),
       showSummary: boolean(source, 'showSummary', true),
       execution: choice(source.execution, ['foreground', 'background'], 'foreground'),
-      workerCount: Number(source.workerCount) === 2 ? 2 : 1,
+      workerCount: Number.isSafeInteger(Number(source.workerCount))
+        && Number(source.workerCount) >= 1 && Number(source.workerCount) <= 5
+        ? Number(source.workerCount) : 1,
       scheduling: 'serial',
       notifications: boolean(source, 'notifications', false),
     };
@@ -54,14 +56,16 @@
       singleConversation: inPage,
       fast: false,
       reactions: userscript,
-      background: false,
-      managedWorkers: false,
+      background: userscript,
+      managedWorkers: userscript,
       notifications: false,
       reasons: Object.freeze({
         fast: 'Unsend uses one pacing mode.',
         reactions: userscript ? null : 'Own-reaction removal is available in the Instagram userscript.',
-        background: inPage ? 'Background execution is awaiting suspension and resume checks.' : 'This app does not control an authenticated Instagram tab.',
-        managedWorkers: 'Managed tabs are awaiting browser integration and collision checks.',
+        background: userscript ? null : (inPage
+          ? 'Background execution is available in the Instagram userscript.'
+          : 'This app does not control an authenticated Instagram tab.'),
+        managedWorkers: userscript ? null : 'Managed tabs are available in the Instagram userscript.',
         notifications: 'Completion notifications are not connected on this surface.',
       }),
     });
