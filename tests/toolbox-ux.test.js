@@ -8,6 +8,8 @@ const extensionShell = await readFile(new URL('../extension/overlay/shell.js', i
 const extensionCapture = await readFile(new URL('../extension/overlay/views/capture.js', import.meta.url), 'utf8');
 const labels = await readFile(new URL('../extension/action-labels.js', import.meta.url), 'utf8');
 const confirmation = await readFile(new URL('../extension/action-confirmation.js', import.meta.url), 'utf8');
+const presencePanel = await readFile(new URL('../extension/presence-session-panel.js', import.meta.url), 'utf8');
+const presenceActions = await readFile(new URL('../extension/presence-native-actions.js', import.meta.url), 'utf8');
 const generated = await readFile(new URL('../userscripts/insta-toolbox.user.js', import.meta.url), 'utf8');
 const pwaOverview = await readFile(new URL('../src/app.parts/part-01.jsfrag', import.meta.url), 'utf8');
 const pwaTools = await readFile(new URL('../src/app.parts/part-02.jsfrag', import.meta.url), 'utf8');
@@ -27,7 +29,7 @@ function loadShellFunction(name, globals = {}) {
 test('first use opens directly on the three tools without an onboarding card', () => {
   assert.doesNotMatch(generated, /data-role="intro"/);
   assert.match(generated, /Mutual Checker/);
-  assert.match(generated, /Follow \/ Unfollow/);
+  assert.match(generated, />Presence<\/button>/);
   assert.match(generated, /DM Unsend/);
   assert.doesNotMatch(generated, /Start with Mutual Checker|Open Mutual Checker/);
   assert.match(shell, /introDone: value\.introDone === true/);
@@ -356,21 +358,14 @@ test('userscript distinguishes complete comparisons from explicitly requested pa
   assert.match(extensionCapture, /const comparisonReady = summary\.available/);
 });
 
-test('a run shows its targets and skip reasons before it starts', () => {
-  assert.match(shell, /function renderRunReview\(items, \{ omitted = 0, removed = 0, skippedReasons = \[\], partial = false \} = \{\}\)/);
-  assert.match(generated, /data-role="run-review"/);
-  assert.match(shell, /function reviewAccountRun\(\)/);
-  assert.match(shell, /renderRunReview\(plan\.items, plan\)/);
-  assert.match(shell, /data-action="review-accounts"/);
-  assert.match(shell, /Duplicates or already-correct targets removed/);
-  // Review is read-only. The action-specific confirmation happens before the
-  // finite capability is minted.
-  const runBody = shell.slice(shell.indexOf("'run-accounts': async"), shell.indexOf("'run-unsend': ()"));
-  assert.ok(runBody.indexOf('accountRunDraft.signature !== current.signature') < runBody.indexOf('await confirmRun({'));
-  assert.ok(runBody.indexOf('await confirmRun({') < runBody.indexOf('startAccountRun('));
-  const startBody = shell.slice(shell.indexOf('async function startAccountRun'), shell.indexOf('// --- Section 2:'));
-  assert.ok(startBody.indexOf('const capabilityId') < startBody.indexOf("status: 'running'"));
-  assert.ok(startBody.indexOf('approvedTargets: [...queue]') < startBody.indexOf('await continueAccountRun()'));
+test('Presence reviews a bounded action set before it starts', () => {
+  assert.match(generated, /data-role="presence-routine"/);
+  assert.match(presencePanel, /const reviewedSignature = signature\(options\)/);
+  const beginBody = presencePanel.slice(presencePanel.indexOf('async function begin()'));
+  assert.ok(beginBody.indexOf('await confirmAction({') < beginBody.indexOf('session.createReview({'));
+  assert.ok(beginBody.indexOf('session.createReview({') < beginBody.indexOf('await session.start(review)'));
+  assert.match(presencePanel, /Presence stops on Instagram restrictions/);
+  assert.doesNotMatch(generated, /data-role="manual-account-disclosure"|Manual Follow \/ Unfollow/);
 });
 
 test('extension run review keeps the action name explicit in its primary label', async () => {
@@ -379,14 +374,23 @@ test('extension run review keeps the action name explicit in its primary label',
   assert.doesNotMatch(queueView, /label\.toLocaleLowerCase\(\)/);
 });
 
-test('the open exact profile is the direct bounded Follow or Unfollow source', () => {
-  assert.match(generated, /<option value="current-profile">Current profile<\/option>/);
-  assert.match(shell, /const source = query\('\[data-role="bot-source"\]'\)\?\.value \|\| 'current-profile'/);
-  assert.match(shell, /const count = source === 'current-profile' \? 1 : requestedCount/);
-  assert.match(shell, /'current-profile': \(\) => \{/);
-  assert.match(shell, /source !== 'current-profile' && action === 'follow'/);
-  assert.match(shell, /Check both lists without opening them\./);
-  assert.match(shell, /Open one Instagram profile first\. No target was reviewed\./);
+test('Presence resolves Follow from an exact observed Instagram control', () => {
+  assert.match(presenceActions, /exactButtons\(document, new Set\(\['follow'\]\)\)/);
+  assert.match(presenceActions, /logicalContainer\(control, 'follow'\)/);
+  assert.match(presenceActions, /id: `profile:\$\{resolved\.profile\.username\}`/);
+  assert.match(presenceActions, /current\.control !== candidate\.control \|\| current\.root !== candidate\.root/);
+  assert.match(presenceActions, /new Set\(\['following', 'requested'\]\)/);
+  assert.doesNotMatch(presenceActions, /location\.href\s*=|history\.pushState/);
+});
+
+test('Presence keeps a local activity log with an optional separate window', () => {
+  assert.match(presencePanel, /Activity log/);
+  assert.match(presencePanel, /Open log window/);
+  assert.match(presencePanel, /Download log/);
+  assert.match(presencePanel, /Clear log/);
+  assert.match(presencePanel, /window\?\.open\?\.\('', 'insta-toolbox-presence-log'/);
+  assert.match(presencePanel, /Stored only in this browser\./);
+  assert.doesNotMatch(presencePanel, /messageBody|document\.cookie|sessionToken/);
 });
 
 test('the primary Unsend action requires an explicit in-overlay second click without a history prescan', () => {

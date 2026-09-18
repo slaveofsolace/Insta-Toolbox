@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag:
-        description: Release tag, for example v4.0.1
+        description: Release tag, for example v4.1.0
         required: true
         type: string
 
@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           test "$RELEASE_TAG" = "v$version"
-          test "$version" = "4.0.1"
+          test "$version" = "4.1.0"
           mkdir -p release
           copy_exact() {
             local name="$1"
@@ -171,9 +171,9 @@ jobs:
             exit 1
           fi
           release_notes="$(cat <<'EOF'
-          Version 4.0.1 restores the proven single-conversation Unsend flow, adds optional verified removal of your own reactions, and introduces reviewed serial Ghost cleanup for selected or available conversations. Ghost includes Pause, Skip, Stop, durable local progress, and exact conversation checks.
+          Version 4.1.0 restores multi-message Unsend traversal after Instagram recycles its virtual message rows. Ghost can open a bounded pool of reviewed conversation tabs in front or in the background, while account-level pacing keeps destructive actions serialized.
 
-          Presence now offers five direct activities: view stories, react to stories, like posts, follow people, and accept follow requests. Presence and Ghost share one account-scoped activity lane so they cannot click at the same time in the same browser profile.
+          Presence offers five direct activities: view stories, react to stories, like posts, follow people, and accept follow requests. **Live like me** runs for a reviewed finite period with quiet breaks, and the local activity log can be opened in its own resizable window. Presence and Ghost share one account-scoped activity lane so they cannot click at the same time in the same browser profile.
 
           Mutual Checker and manual Follow / Unfollow remain available. Instagram restrictions, incomplete server responses, changed layouts, and ambiguous outcomes still stop the relevant workflow instead of guessing.
 
@@ -181,8 +181,8 @@ jobs:
 
           - The Windows installer is unsigned and may show a Microsoft SmartScreen warning.
           - The macOS packages are ad-hoc signed and are not Apple-notarized.
-          - Ghost runs serially in the active Instagram tab. Managed worker tabs and operation after the browser closes are not included.
-          - Automated CI does not prove current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 4.0.1 acceptance record for separately recorded manual evidence.
+          - Ghost worker tabs must remain open and loaded. Tab discard, computer sleep, browser shutdown, or lost account evidence stops or pauses the job.
+          - Automated CI does not prove current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 4.1.0 acceptance record for separately recorded manual evidence.
           EOF
           )"
           gh release create "$RELEASE_TAG" release/* \

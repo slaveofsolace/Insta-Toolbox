@@ -23,7 +23,9 @@ test('userscript reaction cleanup is supported without enabling unfinished adapt
   for (const surface of ['userscript', 'extension', 'desktop', 'pwa']) {
     const effective = settings.effective({ speed: 'fast', removeOwnReactions: true, execution: 'background', workerCount: 2, notifications: true }, surface);
     assert.deepEqual(plain(effective), { ...plain(settings.defaults()), speed: 'standard', showSummary: true,
-      removeOwnReactions: surface === 'userscript' });
+      removeOwnReactions: surface === 'userscript',
+      execution: surface === 'userscript' ? 'background' : 'foreground',
+      workerCount: surface === 'userscript' ? 2 : 1 });
     assert.equal(settings.capabilities(surface).fast, false);
     assert.equal(settings.capabilities(surface).reactions, surface === 'userscript');
     if (surface !== 'userscript') assert.ok(settings.capabilities(surface).reasons.reactions);
@@ -33,6 +35,8 @@ test('userscript reaction cleanup is supported without enabling unfinished adapt
 test('finite scopes, workers and enum values are normalized without mutating input', () => {
   for (const limit of [0, -1, 251, Infinity, NaN, 1.5, null]) assert.equal(settings.normalize({ messageLimit: limit }).messageLimit, 1);
   assert.equal(settings.normalize({ messageLimit: 250, messageScope: 'oldest', workerCount: 2 }).messageLimit, 250);
+  assert.equal(settings.normalize({ workerCount: 5 }).workerCount, 5);
+  assert.equal(settings.normalize({ workerCount: 6 }).workerCount, 1);
   assert.equal(settings.normalize({ scheduling: 'parallel', speed: 'turbo' }).scheduling, 'serial');
   assert.deepEqual(plain(settings.normalize([])), plain(settings.defaults()));
 });

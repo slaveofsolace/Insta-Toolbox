@@ -2,6 +2,15 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.1.0 - 2026-09-18
+
+- Restore multi-message Unsend traversal after Instagram recycles a virtual message row, while retaining exact ownership and removal checks.
+- Add reviewed Ghost worker tabs for selected conversations. Tabs may open in front or in the background; destructive actions remain account-paced and run one conversation at a time.
+- Replace Presence's manual queue panel with direct activities and a finite **Live like me** session that uses Instagram's visible controls, scheduled quiet periods, Pause, Resume, and Stop.
+- Add a bounded per-account Presence activity log with recent results in the toolbox, a separate resizable log window, JSON download, and clear control.
+- Keep Presence and Ghost mutually exclusive in the same browser profile, and stop on changed account, conversation, restrictions, lost worker state, or uncertain results.
+- Tighten tool spacing, dropdown geometry, responsive layouts, and storage-failure reporting without changing Mutual Checker data contracts.
+
 ## 4.0.1 - 2026-09-18
 
 - Recognize sent story and quoted replies when selecting the newest message.

@@ -1,4 +1,4 @@
-# Codex continuation — Presence
+# Presence engineering notes
 
 Continue the work in `slaveofsolace/Insta-Toolbox` on `feat/live-like-me-scaffold`.
 
@@ -31,7 +31,7 @@ Branch point:
 - Stable main at scaffold start: `7ffbcf8a95253f37fec09fbd6c2351e0fca6fc68`, release 3.1.12.
 - Parent package version 4.0.0 is a candidate, not a release completed by this work.
 
-Fetch current refs and inspect both branches before doing anything else. The user is actively developing Ghost. Do not reset, force-push, overwrite, delete or duplicate that work. If PR #52 has advanced, integrate its changes deliberately. If it was squash-merged, compare patch ancestry and port only the Presence commits rather than replaying all parent work. Keep the new PR draft and stacked on the parent until integration is agreed.
+Fetch current refs and inspect both branches before doing anything else. Ghost work may be active on a separate branch; do not reset, force-push, overwrite, delete or duplicate it. If PR #52 has advanced, integrate its changes deliberately. If it was squash-merged, compare patch ancestry and port only the Presence commits rather than replaying all parent work. Keep the new PR draft stacked on the parent until integration is agreed.
 
 Read:
 
@@ -242,7 +242,7 @@ pnpm run verify:repo-hygiene
 
 Before release also verify generated userscript parity, extension/web archive contents, Windows and macOS package lifecycle, checksums and release promotion against the exact final commit. Do not loosen tests or screenshot tolerances just to get a green check. Do not replace the parent visual baseline with screenshots from the standalone concept.
 
-No live Instagram action is authorized merely by this development brief. Obtain fresh approval for exact disposable targets and scope. Never use a real inbox-wide wipe or broad follow campaign as a development test. Keep private screenshots, account identifiers, message content and session data out of Git and diagnostics.
+Authenticated action checks must use exact disposable targets and a bounded scope. Never use a real inbox-wide wipe or broad follow campaign as a development test. Keep private screenshots, account identifiers, message content and session data out of Git and diagnostics.
 
 ## 14. Release and handoff rules
 
@@ -250,7 +250,7 @@ Do not bump or publish a release just for this scaffold. The stable Tampermonkey
 
 New runtime capabilities must be enabled individually after acceptance. Keep unsupported native discovery, reactions, background and desktop execution false until implemented. “No critical failures in fixtures” is not “works on every Instagram layout.”
 
-For every unfinished item add a **Codex-Handoff** entry with: current behavior; exact missing capability; relevant files; attempted evidence; proposed next change; owner; acceptance tests; whether it is disabled, experimental or supported. Do not say simply “finish automation.”
+For every unfinished item add an **engineering note** with: current behavior; exact missing capability; relevant files; attempted evidence; proposed next change; responsible area; acceptance tests; and whether it is disabled, experimental or supported.
 
 Final report must include branch SHA, parent/main relationship, changed-file inventory, implemented/scaffolded/proposed feature matrix by surface, migration decisions, screenshots, exact commands/results, actual native evidence versus fixtures, known risks, untouched Ghost work, release status and remaining handoff entries.
 

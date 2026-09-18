@@ -14,8 +14,10 @@ export const PRESENCE_ACTION_LABELS = Object.freeze({
   acceptRequests: 'Accept incoming requests',
 });
 
-const REVIEW_TTL_MS = 15 * 60_000;
+const SESSION_REVIEW_TTL_MS = 15 * 60_000;
+const LIVE_REVIEW_TTL_MS = 12 * 60 * 60_000;
 const MAX_ACTIONS = 50;
+const MAX_LIVE_ACTIONS = 500;
 const MIN_ACTIONS = 1;
 const reviews = new WeakSet();
 const consumed = new WeakSet();
@@ -26,6 +28,10 @@ const count = (value, fallback = 10) => {
   const number = Number(value);
   return Number.isInteger(number) && number >= MIN_ACTIONS && number <= MAX_ACTIONS
     ? number : fallback;
+};
+const boundedInteger = (value, { min, max, fallback }) => {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= min && number <= max ? number : fallback;
 };
 const digest = (value) => {
   const source = JSON.stringify(value);
@@ -42,9 +48,19 @@ export function normalizePresenceSessionOptions(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   const actions = Object.fromEntries(ACTION_ORDER.map((action) => [action, source.actions?.[action] === true]));
   if (actions.reactStories) actions.viewStories = true;
+  const mode = source.mode === 'live' ? 'live' : 'session';
   return Object.freeze({
     actions: Object.freeze(actions),
-    maxActions: count(source.maxActions),
+    mode,
+    maxActions: mode === 'live'
+      ? boundedInteger(source.maxActions, { min: 1, max: MAX_LIVE_ACTIONS, fallback: 200 })
+      : count(source.maxActions),
+    liveDurationMinutes: boundedInteger(source.liveDurationMinutes,
+      { min: 30, max: 720, fallback: 120 }),
+    liveBurstActions: boundedInteger(source.liveBurstActions,
+      { min: 1, max: 20, fallback: 5 }),
+    quietMinutes: boundedInteger(source.quietMinutes,
+      { min: 1, max: 120, fallback: 10 }),
   });
 }
 
@@ -73,10 +89,12 @@ export function createPresenceSession({
 
   let controller = null;
   let pauseGate = null;
+  let runSequence = 0;
   let state = Object.freeze({
     status: 'idle', reason: null, accountId: null, current: null,
     completed: 0, skipped: 0, uncertain: 0, maxActions: 0,
-    enabledActions: Object.freeze([]), results: Object.freeze([]), canPause: false,
+    mode: 'session', runId: null, enabledActions: Object.freeze([]),
+    results: Object.freeze([]), canPause: false,
     canResume: false, canStop: false,
   });
 
@@ -87,7 +105,7 @@ export function createPresenceSession({
     return state;
   };
   const snapshot = () => clone(state);
-  const active = () => controller && ['running', 'waiting', 'paused', 'stopping'].includes(state.status);
+  const active = () => controller && ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(state.status);
   const context = (accountId) => {
     const value = nativeActions.inspectContext();
     if (value?.accountVerified !== true || value.usable !== true || value.accountId !== accountId
@@ -97,14 +115,17 @@ export function createPresenceSession({
   };
   const sleep = async (ms, signal) => {
     if (wait) return wait(ms, signal);
-    await new Promise((resolve, reject) => {
-      let timer = null;
-      const done = () => { signal?.removeEventListener?.('abort', abort); if (timer !== null) clearTimeout(timer); resolve(); };
-      const abort = () => { if (timer !== null) clearTimeout(timer); reject(new DOMException('Stopped', 'AbortError')); };
-      if (signal?.aborted) return abort();
-      signal?.addEventListener?.('abort', abort, { once: true });
-      timer = setTimeout(done, ms);
-    });
+    const deadline = now() + ms;
+    while (now() < deadline && state.status !== 'paused') {
+      await new Promise((resolve, reject) => {
+        let timer = null;
+        const done = () => { signal?.removeEventListener?.('abort', abort); if (timer !== null) clearTimeout(timer); resolve(); };
+        const abort = () => { if (timer !== null) clearTimeout(timer); reject(new DOMException('Stopped', 'AbortError')); };
+        if (signal?.aborted) return abort();
+        signal?.addEventListener?.('abort', abort, { once: true });
+        timer = setTimeout(done, Math.min(1_000, Math.max(0, deadline - now())));
+      });
+    }
   };
   const awaitResume = async (signal) => {
     while (state.status === 'paused') {
@@ -117,12 +138,15 @@ export function createPresenceSession({
     }
   };
 
-  function createReview({ accountId, options, expiresAt = now() + REVIEW_TTL_MS } = {}) {
+  function createReview({ accountId, options, expiresAt } = {}) {
     const normalized = normalizePresenceSessionOptions(options);
     const enabledActions = ACTION_ORDER.filter((action) => normalized.actions[action]);
     if (!/^[A-Za-z0-9_.-]{1,128}$/.test(text(accountId))) fail('presence-account-required');
     if (!enabledActions.length) fail('presence-action-required');
-    const expiry = Math.min(Number(expiresAt) || 0, now() + REVIEW_TTL_MS);
+    const ttl = normalized.mode === 'live'
+      ? Math.min(LIVE_REVIEW_TTL_MS, normalized.liveDurationMinutes * 60_000)
+      : SESSION_REVIEW_TTL_MS;
+    const expiry = Math.min(Number(expiresAt) || (now() + ttl), now() + ttl);
     if (expiry <= now()) fail('presence-review-expired');
     const payload = Object.freeze({ accountId: text(accountId), options: normalized,
       enabledActions: Object.freeze(enabledActions), expiresAt: expiry });
@@ -150,11 +174,14 @@ export function createPresenceSession({
       const results = [];
       const seen = new Set();
       const empty = new Set();
+      const runId = `${now()}:${++runSequence}`;
+      let resultSequence = 0;
       let cursor = 0;
       publish({
         status: 'running', reason: null, accountId: review.accountId, current: null,
         completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
-        enabledActions: review.enabledActions, results, canPause: true, canResume: false, canStop: true,
+        mode: review.options.mode, runId, enabledActions: review.enabledActions,
+        results, canPause: true, canResume: false, canStop: true,
       });
       try {
         while (!signal.aborted && state.completed < review.options.maxActions && now() < review.expiresAt) {
@@ -172,7 +199,14 @@ export function createPresenceSession({
           }
           if (!candidate) {
             empty.add(action);
-            if (empty.size === review.enabledActions.length) break;
+            if (empty.size === review.enabledActions.length) {
+              if (review.options.mode !== 'live') break;
+              empty.clear();
+              publish({ status: 'quiet', current: null });
+              await sleep(review.options.quietMinutes * 60_000, signal);
+              await awaitResume(signal);
+              if (!signal.aborted && now() < review.expiresAt) publish({ status: 'running' });
+            }
             continue;
           }
           if (!text(candidate.id) || candidate.action !== action || seen.has(candidate.id)) {
@@ -200,21 +234,32 @@ export function createPresenceSession({
           seen.add(candidate.id);
           if (outcome?.verified === true) {
             results.unshift({ action, id: candidate.id, label: text(outcome.label) || text(candidate.label),
-              status: 'completed', reason: text(outcome.reason) });
+              status: 'completed', reason: text(outcome.reason), at: now(),
+              eventId: `${runId}:${++resultSequence}` });
             publish({ completed: state.completed + 1, current: null, results });
           } else if (outcome?.skipped === true && outcome?.uncertain !== true) {
             results.unshift({ action, id: candidate.id, label: text(candidate.label),
-              status: 'skipped', reason: text(outcome.reason) || 'No longer available' });
+              status: 'skipped', reason: text(outcome.reason) || 'No longer available', at: now(),
+              eventId: `${runId}:${++resultSequence}` });
             publish({ skipped: state.skipped + 1, current: null, results });
           } else {
             results.unshift({ action, id: candidate.id, label: text(candidate.label),
-              status: 'uncertain', reason: text(outcome?.reason) || 'Check Instagram before continuing' });
+              status: 'uncertain', reason: text(outcome?.reason) || 'Check Instagram before continuing',
+              at: now(), eventId: `${runId}:${++resultSequence}` });
             publish({ status: 'needs-attention', reason: text(outcome?.reason) || 'presence-outcome-uncertain',
               uncertain: state.uncertain + 1, current: null, results,
               canPause: false, canResume: false, canStop: false });
             return snapshot();
           }
           if (state.completed >= review.options.maxActions) break;
+          if (review.options.mode === 'live' && state.completed > 0
+            && state.completed % review.options.liveBurstActions === 0) {
+            publish({ status: 'quiet', current: null });
+            await sleep(review.options.quietMinutes * 60_000, signal);
+            await awaitResume(signal);
+            if (!signal.aborted) publish({ status: 'running' });
+            continue;
+          }
           const delay = Math.round(minDelayMs + random() * (maxDelayMs - minDelayMs));
           publish({ status: 'waiting', current: null });
           await sleep(delay, signal);
@@ -247,7 +292,7 @@ export function createPresenceSession({
     start,
     snapshot,
     pause() {
-      if (!controller || !['running', 'waiting'].includes(state.status)) return false;
+      if (!controller || !['running', 'waiting', 'quiet'].includes(state.status)) return false;
       publish({ status: 'paused', canPause: false, canResume: true, canStop: true });
       return true;
     },

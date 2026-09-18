@@ -1,12 +1,16 @@
 import { createUserscriptInboxDiscovery } from './inbox-userscript-discovery.js';
 import { inboxReviewKey } from './inbox-coordinator.js';
 import { createSingleTabInboxController, createSingleTabInboxReview } from './inbox-single-tab.js';
+import { createUserscriptGhostBridge, userscriptGhostReviewKey } from './inbox-userscript-workers.js';
 
 export function mountUserscriptInboxPanel({
   container, document = globalThis.document, window = globalThis.window,
   viewer = globalThis.InstaToolboxInstagramViewer,
   runner = globalThis.InstaToolboxDmThreadUnsender,
   confirmAction, cancelConfirmation = () => {}, save, load = async () => null,
+  workerTransport = null,
+  defaultWorkerCount = 2,
+  openWorkersInBackground = true,
   busy = () => false, onStatus = () => {},
 }) {
   if (!container || typeof confirmAction !== 'function' || typeof save !== 'function') throw new Error('inbox-panel-unavailable');
@@ -33,6 +37,28 @@ export function mountUserscriptInboxPanel({
   const acknowledged = create('input'); acknowledged.type = 'checkbox';
   acknowledgment.append(acknowledged, document.createTextNode(' Opening conversations may mark them read.'));
   const note = create('p', 'Open your inbox to find conversations. Nothing is removed during this step.', 'lead');
+  const workersLabel = create('label', 'Worker tabs', 'field');
+  const workers = create('select');
+  workers.setAttribute('aria-label', 'Managed worker tabs');
+  for (let value = 1; value <= 5; value += 1) {
+    const option = create('option', `${value}`); option.value = String(value); workers.append(option);
+  }
+  workers.value = String(Number.isInteger(Number(defaultWorkerCount))
+    && Number(defaultWorkerCount) >= 1 && Number(defaultWorkerCount) <= 5
+    ? Number(defaultWorkerCount) : 2);
+  workersLabel.append(workers);
+  const workerModeLabel = create('label', 'Open worker tabs', 'field');
+  const workerMode = create('select');
+  workerMode.setAttribute('aria-label', 'Worker tab opening');
+  const backgroundOption = create('option', 'In the background'); backgroundOption.value = 'background';
+  const foregroundOption = create('option', 'In front'); foregroundOption.value = 'foreground';
+  workerMode.append(backgroundOption, foregroundOption);
+  workerMode.value = openWorkersInBackground === false ? 'foreground' : 'background';
+  workerModeLabel.append(workerMode);
+  const workerNote = create('p', workerTransport
+    ? 'Worker tabs prepare conversations together. Removals run one conversation at a time.'
+    : 'Multiple worker tabs are unavailable in this userscript manager.', 'lead');
+  workers.disabled = !workerTransport; workerMode.disabled = !workerTransport;
   const inbox = create('a', 'Open inbox', 'button quiet');
   inbox.href = 'https://www.instagram.com/direct/inbox/';
   const inventoryStatus = create('p', '', 'lead');
@@ -60,15 +86,28 @@ export function mountUserscriptInboxPanel({
   supportNote.hidden = !supportNote.textContent;
   controls.append(find, inbox);
   const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, resume, pause, skip, stop);
-  container.append(note, section, acknowledgment, controls, inventoryStatus, filterLabel, filterStatus, list, supportNote, recovery, actions, storageNote, results);
+  container.append(note, section, acknowledgment, controls, inventoryStatus, filterLabel, filterStatus,
+    list, workersLabel, workerModeLabel, workerNote, supportNote, recovery, actions, storageNote, results);
 
   function context() {
     const value = viewer.inspect({ document, location: window.location });
-    return { ...value, accountId: value.accountKey, documentId,
+    return { ...value, accountId: value.accountKey, accountLabel: value.accountId, documentId,
       usable: value.accountVerified === true && !value.restriction
         && (value.usable === true || /^\/direct\/inbox\/?$/.test(window.location.pathname)),
       challenge: Boolean(value.restriction), rateLimited: false, actionBlocked: false, sessionExpired: false };
   }
+  const ghostBridge = workerTransport ? createUserscriptGhostBridge({
+    storage: workerTransport.storage,
+    locks: window.navigator?.locks,
+    openTab: workerTransport.openTab,
+    runner,
+    inspectContext: context,
+    location: window.location,
+  }) : null;
+  const workerStartup = ghostBridge?.attachWorker().catch((error) => {
+    announce(friendlyReason(error?.message || 'worker-start-failed'));
+    return null;
+  });
   function announce(text) { onStatus(text); }
   function remainingThreads() {
     if (!checkpoint || !['paused', 'stopped'].includes(checkpoint.status)) return [];
@@ -99,6 +138,7 @@ export function mountUserscriptInboxPanel({
     storageNote.hidden = !storageNote.textContent;
     find.disabled = active || loading || loadFailed;
     section.disabled = active; acknowledged.disabled = active;
+    workers.disabled = active || !workerTransport; workerMode.disabled = active || !workerTransport;
     selectAll.hidden = !inventory?.conversations.length; selectAll.disabled = active || !shown;
     selectAll.textContent = query ? 'Select visible matches' : 'Select all found';
     review.hidden = !inventory?.conversations.length;
@@ -106,11 +146,14 @@ export function mountUserscriptInboxPanel({
       || (needsReconciliation && !reconciled.checked);
     review.textContent = `Review ${selected.size} conversation${selected.size === 1 ? '' : 's'}`;
     const remaining = remainingThreads();
-    resume.hidden = active || !remaining.length;
+    resume.hidden = Boolean(ghostBridge) || active || !remaining.length;
     resume.disabled = loading || loadFailed || !window.navigator?.locks?.request
       || (needsReconciliation && !reconciled.checked);
     resume.textContent = `Review ${remaining.length} remaining to resume`;
-    stop.hidden = !active; pause.hidden = !active || !controller; skip.hidden = !active || !controller;
+    const multiTab = controller?.kind === 'multi-tab';
+    stop.hidden = !active;
+    pause.hidden = !active || !controller || multiTab;
+    skip.hidden = !active || !controller || multiTab;
     for (const row of rows.values()) row.input.disabled = active;
   }
   function showInventory(value) {
@@ -158,6 +201,12 @@ export function mountUserscriptInboxPanel({
       'inbox-account-changed': 'The signed-in account changed. Find conversations again.',
       'account-activity-busy': 'Another cleanup is already running.',
       'account-pacing': 'Waiting before the next removal.',
+      'ghost-job-active': 'Another Ghost mode job is already running.',
+      'ghost-coordinator-lost': 'The Ghost mode manager closed. No new removal will begin.',
+      'worker-lost': 'A worker tab stopped responding. Review the conversation before continuing.',
+      'tab-open-failed': 'A worker tab could not be opened. Check the userscript pop-up permission.',
+      'removal-not-proven': 'Instagram did not confirm the last removal. Review the conversation before continuing.',
+      'approval-expired': 'This cleanup approval expired. Review the conversations again.',
       cancelled: 'Stopped.', 'end-unverified': '', 'repeated-window-unverified': '',
     };
     return labels[reason] ?? String(reason || '').replaceAll('-', ' ');
@@ -236,6 +285,43 @@ export function mountUserscriptInboxPanel({
     let threadNavigator = null;
     try {
       const captured = discovery.review({ threadIds, scope: 'all' });
+      if (ghostBridge) {
+        const account = context();
+        const plan = ghostBridge.createReview({
+          accountId: account.accountId,
+          threadIds: captured.threadIds,
+          workerCount: Number(workers.value),
+          openInBackground: workerMode.value === 'background',
+          expiresAt: Date.now() + 12 * 60 * 60_000,
+        });
+        const key = userscriptGhostReviewKey(plan);
+        const confirmed = await confirmAction({
+          title: `Clean up ${plan.threadIds.length} conversation${plan.threadIds.length === 1 ? '' : 's'}?`,
+          message: 'Permanently unsend your messages in the selected conversations.',
+          detail: 'Keep the inbox tab and worker tabs open. Worker tabs prepare conversations in parallel; removals stay account-paced and stop together.',
+          confirmLabel: 'Start Ghost mode',
+          facts: [{ label: 'Account', value: account.accountLabel ? `@${account.accountLabel}` : 'Current signed-in account' },
+            { label: 'Conversations', value: String(plan.threadIds.length) },
+            { label: 'Worker tabs', value: String(plan.workerCount) },
+            { label: 'Open tabs', value: plan.openInBackground ? 'In the background' : 'In front' },
+            { label: 'Messages', value: 'All messages you sent' }],
+          binding: { action: 'inbox-unsend-workers', reviewKey: key },
+        });
+        if (!confirmed || epoch !== operationEpoch) { announce('Canceled. Nothing was removed.'); return; }
+        if (confirmed.action !== 'inbox-unsend-workers' || confirmed.reviewKey !== key || busy()) {
+          throw new Error('inbox-review-changed');
+        }
+        controller = ghostBridge.createManager(plan);
+        needsReconciliation = false; recovery.hidden = true; reconciled.checked = false;
+        unsubscribe = controller.subscribe(value => {
+          if (value) renderCheckpoint(value);
+        });
+        updateControls();
+        const state = await controller.start();
+        if (state) renderCheckpoint(state);
+        announce(state?.reason ? friendlyReason(state.reason) : 'Selected conversations finished.');
+        return;
+      }
       const { version, arrivalPolicy, ...base } = captured;
       const plan = createSingleTabInboxReview({ ...base, version: 2, messageWindow: 'during-run' });
       const key = inboxReviewKey(plan);
@@ -292,7 +378,7 @@ export function mountUserscriptInboxPanel({
   document.addEventListener('freeze', stopAll);
   window.addEventListener('pagehide', stopAll);
   updateControls();
-  return Object.freeze({ ready, busy: () => active, stop: stopAll, snapshot: () => checkpoint && structuredClone(checkpoint),
+  return Object.freeze({ ready: Promise.all([ready, workerStartup]), busy: () => active, stop: stopAll, snapshot: () => checkpoint && structuredClone(checkpoint),
     dispose() { stopAll(); unsubscribe?.(); document.removeEventListener('freeze', stopAll); window.removeEventListener('pagehide', stopAll); },
   });
 }

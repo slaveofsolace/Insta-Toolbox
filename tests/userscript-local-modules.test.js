@@ -24,7 +24,7 @@ test('unsupported, missing, circular, and external imports fail the build', () =
 });
 
 test('native inbox modules bundle without network loaders or leaked private bindings', async () => {
-  const ids = ['inbox-discovery', 'inbox-native-navigation', 'inbox-coordinator', 'inbox-userscript-discovery', 'inbox-single-tab', 'inbox-userscript-panel', 'inbox-checkpoint-store'];
+  const ids = ['inbox-discovery', 'inbox-native-navigation', 'inbox-coordinator', 'inbox-userscript-discovery', 'inbox-single-tab', 'inbox-userscript-workers', 'inbox-userscript-panel', 'inbox-checkpoint-store'];
   const sources = Object.fromEntries(await Promise.all(ids.map(async id => {
     const path = `extension/${id}.js`;
     return [path, await readFile(new URL(`../${path}`, import.meta.url), 'utf8')];
@@ -34,6 +34,7 @@ test('native inbox modules bundle without network loaders or leaked private bind
   vm.runInContext(code, context);
   assert.equal(vm.runInContext("typeof localModules['extension/inbox-userscript-discovery.js'].createUserscriptInboxDiscovery", context), 'function');
   assert.equal(vm.runInContext("typeof localModules['extension/inbox-userscript-panel.js'].mountUserscriptInboxPanel", context), 'function');
+  assert.equal(vm.runInContext("typeof localModules['extension/inbox-userscript-workers.js'].createUserscriptGhostBridge", context), 'function');
   assert.equal(vm.runInContext("typeof localModules['extension/inbox-checkpoint-store.js'].createInboxCheckpointStore", context), 'function');
   assert.equal(vm.runInContext('typeof ORIGIN', context), 'undefined');
   assert.doesNotMatch(code, /import\s*\(/);

@@ -4,7 +4,7 @@ Presence runs a small, reviewed Instagram session from the userscript.
 
 ## Development status
 
-The 4.0.1 candidate exposes five choices:
+The 4.1.0 candidate exposes five choices:
 
 - View stories
 - React to stories
@@ -12,10 +12,12 @@ The 4.0.1 candidate exposes five choices:
 - Follow people
 - Accept incoming requests
 
-Choose the allowed activities, set a finite maximum from 1 to 50, and press
-**Start Presence**. One confirmation names the signed-in account, the selected
-activities, and the maximum. Pause, Resume, and Stop remain available while the
-session runs. Manual Follow / Unfollow stays in a secondary disclosure.
+Choose the allowed activities and either run one session of 1 to 50 actions or
+select **Live like me** for a reviewed 30-minute to 12-hour window. Live runs
+remain finite, stop after at most 500 verified actions, and insert the selected
+rest period after each bounded burst. One confirmation names the signed-in
+account and exact choices. Pause, Resume, and Stop remain available while the
+session runs.
 
 This is a userscript-first development build. Deterministic browser fixtures
 pass, but current authenticated Instagram compatibility still requires
@@ -43,13 +45,16 @@ skipped or stops the session; it is never guessed.
 
 ## Local data and authority
 
-The selected activities and maximum are stored under
+The selected activities, mode, and finite run choices are stored under
 `instaToolboxPresenceSessionV1`. The confirmation and action authority are kept
 only in the current runtime, are bound to the verified account and exact choice
 set, and expire within 15 minutes. Reloading does not restore action authority.
 
 Saved comparisons, imported files, old Presence preferences, screenshots, and
-page messages cannot authorize a session.
+page messages cannot authorize a session. Verified results are copied into a
+bounded per-account local activity log. The latest five appear in Presence;
+**Open log window** opens a read-only resizable view with Download and Clear.
+The log stores no message bodies, cookies, session data, or reusable authority.
 
 ## Implementation
 
@@ -58,6 +63,7 @@ page messages cannot authorize a session.
 | `extension/presence-session.js` | Finite session, runtime review, pacing, Pause/Resume/Stop, and verified results. |
 | `extension/presence-native-actions.js` | Exact visible-DOM candidates and postconditions for the five activities. |
 | `extension/presence-session-panel.js` | Compact choices, confirmation, progress, and controls. |
+| `extension/presence-activity-log.js` | Bounded sanitized activity history and the separate read-only log window. |
 | `userscripts/src/toolbox-shell.js` | Userscript integration and overlap prevention with other tools. |
 | `tests/presence-session.test.js` | Controller, authority, interruption, and restriction coverage. |
 | `scripts/lib/userscript-presence-acceptance.mjs` | Generated-userscript interaction and responsive browser acceptance. |
@@ -75,10 +81,11 @@ node scripts\run-extension-acceptance.mjs
 pnpm test
 ```
 
-Focused checks cover runtime-only authority, finite scope, account binding,
+Focused checks cover runtime-only authority, finite scope, Live like me bounds and rest periods, account binding,
 expiry, replay rejection, Pause/Resume/Stop, restrictions, trusted confirmation
-before the first click, all five activity paths, cancellation, narrow and short
-layouts, light and dark themes, and true 200% zoom.
+before the first click, all five activity paths, native navigation, local-log
+sanitization and recovery, separate-window rendering, cancellation, narrow and
+short layouts, light and dark themes, and true 200% zoom.
 
 See [Production integration](PRODUCTION_INTEGRATION.md) for the exact acceptance
 boundary and [Continuation brief](CODEX_HANDOFF.md) for the remaining work.
@@ -91,5 +98,5 @@ the existing account-level owner shared with Ghost, and prove that account
 changes, restrictions, stale documents, background throttling, and uncertain
 outcomes cannot start another action.
 
-Presence does not promise follower growth, stealth, human impersonation, or
+Presence does not promise follower growth, stealth, restriction avoidance, or
 operation after the browser closes or the computer sleeps.

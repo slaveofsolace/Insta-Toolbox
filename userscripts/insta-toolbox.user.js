@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.0.1
+// @version      4.1.0
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -14,6 +14,9 @@
 // @sandbox      DOM
 // @grant        GM_getTab
 // @grant        GM_getValue
+// @grant        GM_addValueChangeListener
+// @grant        GM_openInTab
+// @grant        GM_removeValueChangeListener
 // @grant        GM_saveTab
 // @grant        GM_setValue
 // @run-at       document-idle
@@ -251,7 +254,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       removeOwnReactions: boolean(source, 'removeOwnReactions', false),
       showSummary: boolean(source, 'showSummary', true),
       execution: choice(source.execution, ['foreground', 'background'], 'foreground'),
-      workerCount: Number(source.workerCount) === 2 ? 2 : 1,
+      workerCount: Number.isSafeInteger(Number(source.workerCount))
+        && Number(source.workerCount) >= 1 && Number(source.workerCount) <= 5
+        ? Number(source.workerCount) : 1,
       scheduling: 'serial',
       notifications: boolean(source, 'notifications', false),
     };
@@ -279,14 +284,16 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       singleConversation: inPage,
       fast: false,
       reactions: userscript,
-      background: false,
-      managedWorkers: false,
+      background: userscript,
+      managedWorkers: userscript,
       notifications: false,
       reasons: Object.freeze({
         fast: 'Unsend uses one pacing mode.',
         reactions: userscript ? null : 'Own-reaction removal is available in the Instagram userscript.',
-        background: inPage ? 'Background execution is awaiting suspension and resume checks.' : 'This app does not control an authenticated Instagram tab.',
-        managedWorkers: 'Managed tabs are awaiting browser integration and collision checks.',
+        background: userscript ? null : (inPage
+          ? 'Background execution is available in the Instagram userscript.'
+          : 'This app does not control an authenticated Instagram tab.'),
+        managedWorkers: userscript ? null : 'Managed tabs are available in the Instagram userscript.',
         notifications: 'Completion notifications are not connected on this surface.',
       }),
     });
@@ -2125,11 +2132,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (traversal.order === 'oldest' && (scrollerChanged || shrank)) {
       traversal.oldestBoundaryProven = false;
     }
-    traversal.lastScrollTop = scrollerChanged || shrank
-      ? null
-      : Number.isFinite(Number(scroller?.scrollTop))
-        ? Number(scroller.scrollTop)
-        : traversal.lastScrollTop;
+    // Instagram recycles and reorders the mounted message window after a
+    // confirmed Unsend even when scrollHeight happens to stay unchanged. A
+    // retained offset can therefore point at a stale virtual slot and make a
+    // multi-message run stop after its first success. Re-enter from the
+    // requested edge after every verified removal; processed logical IDs and
+    // postcondition markers still prevent selecting the removed message.
+    traversal.lastScrollTop = null;
     traversal.lastScrollHeight = height;
     traversal.lastSearchGrew = false;
     traversal.lastSearchIncomplete = false;
@@ -7342,10 +7351,420 @@ function createSingleTabInboxController({
 
 return Object.freeze({ createSingleTabInboxReview, createSingleTabInboxController });
 })();
+localModules["extension/inbox-userscript-workers.js"] = (() => {
+
+const JOB_KEY = 'instaToolboxGhostJobV1';
+const VERSION = 1;
+const MAX_THREADS = 1_000;
+const MAX_WORKERS = 5;
+const MAX_TTL_MS = 12 * 60 * 60_000;
+const HEARTBEAT_MS = 3_000;
+const STALE_MS = 90_000;
+const TERMINAL = new Set(['completed', 'partial', 'skipped', 'failed', 'uncertain', 'stopped']);
+const reviews = new WeakSet();
+const consumed = new WeakSet();
+
+const clone = value => structuredClone(value);
+const fail = reason => { throw new Error(reason); };
+const identity = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value);
+const digest = (value) => {
+  const source = JSON.stringify(value);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+};
+
+function createUserscriptGhostReview({
+  accountId,
+  threadIds,
+  workerCount = 2,
+  openInBackground = true,
+  expiresAt,
+} = {}, now = Date.now()) {
+  if (!identity(accountId) || !Array.isArray(threadIds) || !threadIds.length
+    || threadIds.length > MAX_THREADS || !threadIds.every(identity)) fail('ghost-review-invalid');
+  const unique = [...new Set(threadIds)];
+  if (!Number.isInteger(workerCount) || workerCount < 1 || workerCount > MAX_WORKERS) {
+    fail('ghost-worker-count-invalid');
+  }
+  const expiry = Math.min(Number(expiresAt) || (now + MAX_TTL_MS), now + MAX_TTL_MS);
+  if (!Number.isFinite(expiry) || expiry <= now) fail('ghost-review-expired');
+  const review = Object.freeze({
+    version: VERSION,
+    accountId,
+    threadIds: Object.freeze(unique),
+    workerCount: Math.min(workerCount, unique.length),
+    openInBackground: openInBackground !== false,
+    scope: 'all',
+    reviewedAt: now,
+    expiresAt: expiry,
+  });
+  reviews.add(review);
+  return review;
+}
+
+const userscriptGhostReviewKey = review => JSON.stringify(review);
+
+function createUserscriptGhostBridge({
+  storage,
+  locks,
+  openTab,
+  runner,
+  inspectContext,
+  location = globalThis.location,
+  now = Date.now,
+  random = Math.random,
+  randomId = () => crypto.randomUUID(),
+  setIntervalFn = globalThis.setInterval,
+  clearIntervalFn = globalThis.clearInterval,
+  setTimeoutFn = globalThis.setTimeout,
+  clearTimeoutFn = globalThis.clearTimeout,
+} = {}) {
+  if (typeof storage?.get !== 'function' || typeof storage?.set !== 'function'
+    || typeof storage?.listen !== 'function' || typeof storage?.unlisten !== 'function'
+    || typeof locks?.request !== 'function' || typeof openTab !== 'function'
+    || typeof runner?.createPlan !== 'function' || typeof runner?.start !== 'function'
+    || typeof runner?.stop !== 'function' || typeof inspectContext !== 'function'
+    || typeof now !== 'function' || typeof random !== 'function' || typeof randomId !== 'function'
+    || typeof setIntervalFn !== 'function' || typeof clearIntervalFn !== 'function'
+    || typeof setTimeoutFn !== 'function' || typeof clearTimeoutFn !== 'function') {
+    fail('ghost-bridge-adapter-required');
+  }
+
+  const jobLock = () => 'insta-toolbox:ghost-job';
+  const mutationLock = accountId => `insta-toolbox:ghost-mutation:${accountId}`;
+  const coordinatorLock = jobId => `insta-toolbox:ghost-coordinator:${jobId}`;
+  const read = async () => clone(await storage.get(JOB_KEY));
+  const write = async value => storage.set(JOB_KEY, clone(value));
+  const update = mutator => locks.request(jobLock(), { mode: 'exclusive' }, async () => {
+    const current = await read();
+    const next = await mutator(current);
+    if (next) await write(next);
+    return next ? clone(next) : current;
+  });
+  const validJob = (job) => job?.version === VERSION && identity(job.jobId)
+    && identity(job.accountId) && Array.isArray(job.tasks)
+    && job.tasks.every(task => identity(task.threadId) && typeof task.status === 'string');
+  const activeJob = (job) => validJob(job) && job.status === 'running'
+    && Number(job.expiresAt) > now();
+  const coordinatorPresent = job => locks.request(
+    coordinatorLock(job.jobId),
+    { mode: 'exclusive', ifAvailable: true },
+    async lock => !lock,
+  );
+  const threadFromLocation = () => String(location?.pathname || '').match(/^\/direct\/t\/([^/?#]+)\/?$/)?.[1] || null;
+  const sleep = (ms, signal) => new Promise((resolve, reject) => {
+    let timer = null;
+    const finish = (error) => {
+      clearTimeoutFn(timer);
+      signal?.removeEventListener?.('abort', abort);
+      error ? reject(error) : resolve();
+    };
+    const abort = () => finish(new DOMException('Stopped', 'AbortError'));
+    if (signal?.aborted) return abort();
+    signal?.addEventListener?.('abort', abort, { once: true });
+    timer = setTimeoutFn(() => finish(), ms);
+  });
+
+  function createManager(review) {
+    if (!review || !reviews.has(review) || consumed.has(review)) fail('ghost-review-required');
+    const coordinatorId = randomId();
+    const listeners = new Set();
+    const handles = new Map();
+    let storageListener = null;
+    let heartbeat = null;
+    let current = null;
+    let finishing = null;
+    let releaseCoordinatorLock = null;
+    let coordinatorLockPromise = null;
+    let resolveFinished = null;
+    const finished = new Promise(resolve => { resolveFinished = resolve; });
+    const snapshot = () => current ? clone(current) : null;
+    const publish = (job) => {
+      current = job ? clone(job) : null;
+      const value = snapshot();
+      for (const listener of listeners) listener(value);
+      if (value && value.status !== 'running') settle();
+    };
+    const settle = () => {
+      if (finishing) return finishing;
+      finishing = Promise.resolve().then(async () => {
+        if (heartbeat !== null) clearIntervalFn(heartbeat);
+        heartbeat = null;
+        if (storageListener !== null) storage.unlisten(storageListener);
+        storageListener = null;
+        releaseCoordinatorLock?.();
+        releaseCoordinatorLock = null;
+        await Promise.resolve(coordinatorLockPromise).catch(() => {});
+        for (const handle of handles.values()) {
+          try { await handle?.close?.(); } catch {}
+        }
+        handles.clear();
+        resolveFinished(snapshot());
+        return snapshot();
+      });
+      return finishing;
+    };
+    const tick = async () => {
+      const launches = [];
+      const job = await update((value) => {
+        if (!validJob(value) || value.jobId !== current?.jobId
+          || value.coordinatorId !== coordinatorId || value.status !== 'running') return value;
+        if (now() >= value.expiresAt) {
+          value.status = 'expired'; value.reason = 'approval-expired';
+          for (const task of value.tasks) if (!TERMINAL.has(task.status)) task.status = 'stopped';
+          return value;
+        }
+        value.coordinatorHeartbeatAt = now();
+        const stale = value.tasks.find(task => task.status === 'running'
+          && now() - Number(task.workerHeartbeatAt) > STALE_MS);
+        if (stale) {
+          stale.status = 'uncertain'; stale.reason = 'worker-lost';
+          value.status = 'paused'; value.reason = 'worker-lost';
+          return value;
+        }
+        const active = value.tasks.filter(task => ['opening', 'running'].includes(task.status)).length;
+        for (const task of value.tasks.filter(task => task.status === 'pending').slice(0, value.workerCount - active)) {
+          task.status = 'opening';
+          task.launchId = randomId();
+          launches.push({ threadId: task.threadId, launchId: task.launchId });
+        }
+        if (value.tasks.every(task => TERMINAL.has(task.status))) {
+          value.status = value.tasks.every(task => task.status === 'completed') ? 'completed' : 'partial';
+        }
+        value.updatedAt = now();
+        return value;
+      });
+      publish(job);
+      for (const launch of launches) {
+        try {
+          const handle = await openTab(`https://www.instagram.com/direct/t/${encodeURIComponent(launch.threadId)}/`, {
+            active: !review.openInBackground, insert: true, setParent: true,
+          });
+          handles.set(launch.threadId, handle);
+        } catch {
+          const failed = await update((value) => {
+            if (!validJob(value) || value.jobId !== current?.jobId) return value;
+            const task = value.tasks.find(item => item.threadId === launch.threadId
+              && item.launchId === launch.launchId && item.status === 'opening');
+            if (task) { task.status = 'failed'; task.reason = 'tab-open-failed'; }
+            value.status = 'paused'; value.reason = 'tab-open-failed'; value.updatedAt = now();
+            return value;
+          });
+          publish(failed);
+        }
+      }
+      return snapshot();
+    };
+    return Object.freeze({
+      kind: 'multi-tab',
+      snapshot,
+      subscribe(listener) {
+        if (typeof listener !== 'function') fail('ghost-listener-required');
+        listeners.add(listener); if (current) listener(snapshot());
+        return () => listeners.delete(listener);
+      },
+      async start() {
+        if (current) fail('ghost-manager-started');
+        consumed.add(review);
+        const jobId = randomId();
+        current = {
+          version: VERSION, jobId, coordinatorId, accountId: review.accountId,
+          status: 'running', reason: null, workerCount: review.workerCount,
+          openInBackground: review.openInBackground,
+          expiresAt: review.expiresAt, reviewedAt: review.reviewedAt,
+          reviewKey: userscriptGhostReviewKey(review), coordinatorHeartbeatAt: now(),
+          nextActionAt: 0, pendingMutation: null, updatedAt: now(),
+          tasks: review.threadIds.map((threadId, index) => ({
+            threadId, index, status: 'pending', messageRemovals: 0, reason: null,
+          })),
+        };
+        let announceCoordinatorLock;
+        const coordinatorReady = new Promise(resolve => { announceCoordinatorLock = resolve; });
+        coordinatorLockPromise = locks.request(
+          coordinatorLock(jobId),
+          { mode: 'exclusive', ifAvailable: true },
+          async (lock) => {
+            announceCoordinatorLock(Boolean(lock));
+            if (!lock) return;
+            await new Promise(resolve => { releaseCoordinatorLock = resolve; });
+          },
+        );
+        if (!await coordinatorReady) fail('ghost-coordinator-active');
+        try {
+          await locks.request(jobLock(), { mode: 'exclusive' }, async () => {
+            const existing = await read();
+            if (activeJob(existing)) fail('ghost-job-active');
+            await write(current);
+          });
+          storageListener = storage.listen(JOB_KEY, value => {
+            if (!validJob(value) || value.jobId !== current?.jobId) return;
+            publish(value);
+          });
+          heartbeat = setIntervalFn(() => { void tick().catch(() => {}); }, HEARTBEAT_MS);
+          await tick();
+          return finished;
+        } catch (error) {
+          current.status = 'failed'; current.reason = error?.message || 'ghost-start-failed';
+          await settle();
+          throw error;
+        }
+      },
+      async stop() {
+        if (!current || current.status !== 'running') return snapshot();
+        const stopped = await update((value) => {
+          if (!validJob(value) || value.jobId !== current.jobId) return value;
+          value.status = 'stopped'; value.reason = 'stopped'; value.updatedAt = now();
+          for (const task of value.tasks) if (!TERMINAL.has(task.status)) {
+            task.status = 'stopped'; task.reason = 'stopped';
+          }
+          return value;
+        });
+        publish(stopped);
+        await settle();
+        return snapshot();
+      },
+    });
+  }
+
+  async function attachWorker() {
+    const threadId = threadFromLocation();
+    if (!threadId) return null;
+    const workerId = randomId();
+    let latest = await read();
+    const context = inspectContext();
+    if (!activeJob(latest) || !await coordinatorPresent(latest)
+      || context?.accountId !== latest.accountId
+      || context?.threadId !== threadId || context?.usable !== true) return null;
+    latest = await update((value) => {
+      if (!activeJob(value) || value.accountId !== context.accountId) return value;
+      const task = value.tasks.find(item => item.threadId === threadId && item.status === 'opening');
+      if (!task) return value;
+      task.status = 'running'; task.workerId = workerId; task.workerHeartbeatAt = now();
+      value.updatedAt = now();
+      return value;
+    });
+    let task = latest?.tasks?.find(item => item.threadId === threadId);
+    if (!task || task.workerId !== workerId || task.status !== 'running') return null;
+    const controller = new AbortController();
+    const storageListener = storage.listen(JOB_KEY, value => {
+      if (!validJob(value) || value.jobId !== latest.jobId) {
+        controller.abort('ghost-worker-revoked'); runner.stop(); return;
+      }
+      latest = clone(value);
+      const row = latest.tasks.find(item => item.threadId === threadId);
+      if (latest.status !== 'running' || row?.workerId !== workerId || row.status !== 'running') {
+        controller.abort(latest.reason || 'ghost-worker-revoked'); runner.stop();
+      }
+    });
+    const heartbeat = setIntervalFn(() => { void update((value) => {
+      if (!validJob(value) || value.jobId !== latest.jobId || value.status !== 'running') return value;
+      const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
+      if (row?.status === 'running') row.workerHeartbeatAt = now();
+      value.updatedAt = now();
+      return value;
+    }).catch(() => { controller.abort('ghost-worker-storage-failed'); runner.stop(); }); }, HEARTBEAT_MS);
+    const valid = (candidate = null) => {
+      const currentContext = inspectContext();
+      const row = latest?.tasks?.find(item => item.threadId === threadId);
+      if (controller.signal.aborted || !activeJob(latest) || row?.workerId !== workerId
+        || row?.status !== 'running' || currentContext?.accountId !== latest.accountId
+        || currentContext?.threadId !== threadId || currentContext?.usable !== true
+        || currentContext?.restriction) fail('ghost-worker-context-changed');
+      if (candidate && candidate.ownershipVerified !== true) fail('ghost-worker-target-unproven');
+      return true;
+    };
+    let grant = null;
+    const adapter = Object.freeze({
+      signal: controller.signal,
+      assertContext: ({ threadId: expected }) => expected === threadId && valid(),
+      assertAction: ({ threadId: expected, candidate }) => expected === threadId && grant
+        && candidate?.key === grant.key && candidate?.timestamp === grant.timestamp && valid(candidate),
+      execute: ({ candidate, threadId: expected, signal, execute }) => locks.request(
+        mutationLock(latest.accountId), { mode: 'exclusive' }, async () => {
+          if (expected !== threadId || signal.aborted || typeof execute !== 'function') fail('ghost-worker-target-unproven');
+          latest = await read(); valid(candidate);
+          if (!await coordinatorPresent(latest)) fail('ghost-coordinator-lost');
+          while (Number(latest.nextActionAt) > now()) {
+            await sleep(Math.min(500, latest.nextActionAt - now()), controller.signal);
+            latest = await read(); valid(candidate);
+            if (!await coordinatorPresent(latest)) fail('ghost-coordinator-lost');
+          }
+          grant = { key: candidate.key, timestamp: candidate.timestamp };
+          latest = await update((value) => {
+            if (!activeJob(value) || value.jobId !== latest.jobId || value.pendingMutation) fail('ghost-job-changed');
+            const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
+            if (row?.status !== 'running') fail('ghost-worker-revoked');
+            value.pendingMutation = { threadId, workerId, phase: 'dispatched' };
+            value.nextActionAt = now() + 1_000 + Math.floor(Math.max(0, Math.min(1, random())) * 1_000);
+            value.updatedAt = now();
+            return value;
+          });
+          let result;
+          try { result = await execute(); }
+          catch { result = { verified: false }; }
+          latest = await update((value) => {
+            if (!validJob(value) || value.jobId !== latest.jobId) return value;
+            const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
+            if (result?.verified === true && row) {
+              row.messageRemovals += 1; value.pendingMutation = null;
+            } else {
+              if (row) { row.status = 'uncertain'; row.reason = 'removal-not-proven'; }
+              if (value.pendingMutation?.workerId === workerId) value.pendingMutation.phase = 'uncertain';
+              value.status = 'paused'; value.reason = 'removal-not-proven';
+            }
+            value.updatedAt = now();
+            return value;
+          });
+          grant = null;
+          if (result?.verified !== true) controller.abort('removal-not-proven');
+          return { verified: result?.verified === true };
+        }),
+    });
+    try {
+      const plan = runner.createPlan({ threadId, scope: 'all', expiresAt: latest.expiresAt });
+      if (!plan) fail('ghost-thread-plan-invalid');
+      const outcome = await runner.start({ plan, workerAdapter: adapter });
+      latest = await update((value) => {
+        if (!validJob(value) || value.jobId !== latest.jobId) return value;
+        const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
+        if (!row || row.status !== 'running') return value;
+        row.status = outcome?.status === 'completed' ? 'completed'
+          : outcome?.uncertain ? 'uncertain' : outcome?.processed > 0 ? 'partial' : 'failed';
+        row.reason = outcome?.status === 'completed' ? null : outcome?.message || 'conversation-incomplete';
+        if (row.status === 'uncertain') { value.status = 'paused'; value.reason = 'removal-not-proven'; }
+        value.updatedAt = now();
+        return value;
+      });
+      return clone(latest.tasks.find(item => item.threadId === threadId));
+    } finally {
+      clearIntervalFn(heartbeat);
+      storage.unlisten(storageListener);
+      grant = null;
+    }
+  }
+
+  return Object.freeze({
+    createReview: value => createUserscriptGhostReview(value, now()),
+    createManager,
+    attachWorker,
+    readJob: read,
+  });
+}
+
+const USERSCRIPT_GHOST_LIMITS = Object.freeze({ maxWorkers: MAX_WORKERS, maxThreads: MAX_THREADS });
+
+return Object.freeze({ createUserscriptGhostReview, userscriptGhostReviewKey, createUserscriptGhostBridge, USERSCRIPT_GHOST_LIMITS });
+})();
 localModules["extension/inbox-userscript-panel.js"] = (() => {
 const { createUserscriptInboxDiscovery } = localModules["extension/inbox-userscript-discovery.js"];
 const { inboxReviewKey } = localModules["extension/inbox-coordinator.js"];
 const { createSingleTabInboxController, createSingleTabInboxReview } = localModules["extension/inbox-single-tab.js"];
+const { createUserscriptGhostBridge, userscriptGhostReviewKey } = localModules["extension/inbox-userscript-workers.js"];
+
 
 
 
@@ -7354,6 +7773,9 @@ function mountUserscriptInboxPanel({
   viewer = globalThis.InstaToolboxInstagramViewer,
   runner = globalThis.InstaToolboxDmThreadUnsender,
   confirmAction, cancelConfirmation = () => {}, save, load = async () => null,
+  workerTransport = null,
+  defaultWorkerCount = 2,
+  openWorkersInBackground = true,
   busy = () => false, onStatus = () => {},
 }) {
   if (!container || typeof confirmAction !== 'function' || typeof save !== 'function') throw new Error('inbox-panel-unavailable');
@@ -7380,6 +7802,28 @@ function mountUserscriptInboxPanel({
   const acknowledged = create('input'); acknowledged.type = 'checkbox';
   acknowledgment.append(acknowledged, document.createTextNode(' Opening conversations may mark them read.'));
   const note = create('p', 'Open your inbox to find conversations. Nothing is removed during this step.', 'lead');
+  const workersLabel = create('label', 'Worker tabs', 'field');
+  const workers = create('select');
+  workers.setAttribute('aria-label', 'Managed worker tabs');
+  for (let value = 1; value <= 5; value += 1) {
+    const option = create('option', `${value}`); option.value = String(value); workers.append(option);
+  }
+  workers.value = String(Number.isInteger(Number(defaultWorkerCount))
+    && Number(defaultWorkerCount) >= 1 && Number(defaultWorkerCount) <= 5
+    ? Number(defaultWorkerCount) : 2);
+  workersLabel.append(workers);
+  const workerModeLabel = create('label', 'Open worker tabs', 'field');
+  const workerMode = create('select');
+  workerMode.setAttribute('aria-label', 'Worker tab opening');
+  const backgroundOption = create('option', 'In the background'); backgroundOption.value = 'background';
+  const foregroundOption = create('option', 'In front'); foregroundOption.value = 'foreground';
+  workerMode.append(backgroundOption, foregroundOption);
+  workerMode.value = openWorkersInBackground === false ? 'foreground' : 'background';
+  workerModeLabel.append(workerMode);
+  const workerNote = create('p', workerTransport
+    ? 'Worker tabs prepare conversations together. Removals run one conversation at a time.'
+    : 'Multiple worker tabs are unavailable in this userscript manager.', 'lead');
+  workers.disabled = !workerTransport; workerMode.disabled = !workerTransport;
   const inbox = create('a', 'Open inbox', 'button quiet');
   inbox.href = 'https://www.instagram.com/direct/inbox/';
   const inventoryStatus = create('p', '', 'lead');
@@ -7407,15 +7851,28 @@ function mountUserscriptInboxPanel({
   supportNote.hidden = !supportNote.textContent;
   controls.append(find, inbox);
   const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, resume, pause, skip, stop);
-  container.append(note, section, acknowledgment, controls, inventoryStatus, filterLabel, filterStatus, list, supportNote, recovery, actions, storageNote, results);
+  container.append(note, section, acknowledgment, controls, inventoryStatus, filterLabel, filterStatus,
+    list, workersLabel, workerModeLabel, workerNote, supportNote, recovery, actions, storageNote, results);
 
   function context() {
     const value = viewer.inspect({ document, location: window.location });
-    return { ...value, accountId: value.accountKey, documentId,
+    return { ...value, accountId: value.accountKey, accountLabel: value.accountId, documentId,
       usable: value.accountVerified === true && !value.restriction
         && (value.usable === true || /^\/direct\/inbox\/?$/.test(window.location.pathname)),
       challenge: Boolean(value.restriction), rateLimited: false, actionBlocked: false, sessionExpired: false };
   }
+  const ghostBridge = workerTransport ? createUserscriptGhostBridge({
+    storage: workerTransport.storage,
+    locks: window.navigator?.locks,
+    openTab: workerTransport.openTab,
+    runner,
+    inspectContext: context,
+    location: window.location,
+  }) : null;
+  const workerStartup = ghostBridge?.attachWorker().catch((error) => {
+    announce(friendlyReason(error?.message || 'worker-start-failed'));
+    return null;
+  });
   function announce(text) { onStatus(text); }
   function remainingThreads() {
     if (!checkpoint || !['paused', 'stopped'].includes(checkpoint.status)) return [];
@@ -7446,6 +7903,7 @@ function mountUserscriptInboxPanel({
     storageNote.hidden = !storageNote.textContent;
     find.disabled = active || loading || loadFailed;
     section.disabled = active; acknowledged.disabled = active;
+    workers.disabled = active || !workerTransport; workerMode.disabled = active || !workerTransport;
     selectAll.hidden = !inventory?.conversations.length; selectAll.disabled = active || !shown;
     selectAll.textContent = query ? 'Select visible matches' : 'Select all found';
     review.hidden = !inventory?.conversations.length;
@@ -7453,11 +7911,14 @@ function mountUserscriptInboxPanel({
       || (needsReconciliation && !reconciled.checked);
     review.textContent = `Review ${selected.size} conversation${selected.size === 1 ? '' : 's'}`;
     const remaining = remainingThreads();
-    resume.hidden = active || !remaining.length;
+    resume.hidden = Boolean(ghostBridge) || active || !remaining.length;
     resume.disabled = loading || loadFailed || !window.navigator?.locks?.request
       || (needsReconciliation && !reconciled.checked);
     resume.textContent = `Review ${remaining.length} remaining to resume`;
-    stop.hidden = !active; pause.hidden = !active || !controller; skip.hidden = !active || !controller;
+    const multiTab = controller?.kind === 'multi-tab';
+    stop.hidden = !active;
+    pause.hidden = !active || !controller || multiTab;
+    skip.hidden = !active || !controller || multiTab;
     for (const row of rows.values()) row.input.disabled = active;
   }
   function showInventory(value) {
@@ -7505,6 +7966,12 @@ function mountUserscriptInboxPanel({
       'inbox-account-changed': 'The signed-in account changed. Find conversations again.',
       'account-activity-busy': 'Another cleanup is already running.',
       'account-pacing': 'Waiting before the next removal.',
+      'ghost-job-active': 'Another Ghost mode job is already running.',
+      'ghost-coordinator-lost': 'The Ghost mode manager closed. No new removal will begin.',
+      'worker-lost': 'A worker tab stopped responding. Review the conversation before continuing.',
+      'tab-open-failed': 'A worker tab could not be opened. Check the userscript pop-up permission.',
+      'removal-not-proven': 'Instagram did not confirm the last removal. Review the conversation before continuing.',
+      'approval-expired': 'This cleanup approval expired. Review the conversations again.',
       cancelled: 'Stopped.', 'end-unverified': '', 'repeated-window-unverified': '',
     };
     return labels[reason] ?? String(reason || '').replaceAll('-', ' ');
@@ -7583,6 +8050,43 @@ function mountUserscriptInboxPanel({
     let threadNavigator = null;
     try {
       const captured = discovery.review({ threadIds, scope: 'all' });
+      if (ghostBridge) {
+        const account = context();
+        const plan = ghostBridge.createReview({
+          accountId: account.accountId,
+          threadIds: captured.threadIds,
+          workerCount: Number(workers.value),
+          openInBackground: workerMode.value === 'background',
+          expiresAt: Date.now() + 12 * 60 * 60_000,
+        });
+        const key = userscriptGhostReviewKey(plan);
+        const confirmed = await confirmAction({
+          title: `Clean up ${plan.threadIds.length} conversation${plan.threadIds.length === 1 ? '' : 's'}?`,
+          message: 'Permanently unsend your messages in the selected conversations.',
+          detail: 'Keep the inbox tab and worker tabs open. Worker tabs prepare conversations in parallel; removals stay account-paced and stop together.',
+          confirmLabel: 'Start Ghost mode',
+          facts: [{ label: 'Account', value: account.accountLabel ? `@${account.accountLabel}` : 'Current signed-in account' },
+            { label: 'Conversations', value: String(plan.threadIds.length) },
+            { label: 'Worker tabs', value: String(plan.workerCount) },
+            { label: 'Open tabs', value: plan.openInBackground ? 'In the background' : 'In front' },
+            { label: 'Messages', value: 'All messages you sent' }],
+          binding: { action: 'inbox-unsend-workers', reviewKey: key },
+        });
+        if (!confirmed || epoch !== operationEpoch) { announce('Canceled. Nothing was removed.'); return; }
+        if (confirmed.action !== 'inbox-unsend-workers' || confirmed.reviewKey !== key || busy()) {
+          throw new Error('inbox-review-changed');
+        }
+        controller = ghostBridge.createManager(plan);
+        needsReconciliation = false; recovery.hidden = true; reconciled.checked = false;
+        unsubscribe = controller.subscribe(value => {
+          if (value) renderCheckpoint(value);
+        });
+        updateControls();
+        const state = await controller.start();
+        if (state) renderCheckpoint(state);
+        announce(state?.reason ? friendlyReason(state.reason) : 'Selected conversations finished.');
+        return;
+      }
       const { version, arrivalPolicy, ...base } = captured;
       const plan = createSingleTabInboxReview({ ...base, version: 2, messageWindow: 'during-run' });
       const key = inboxReviewKey(plan);
@@ -7639,7 +8143,7 @@ function mountUserscriptInboxPanel({
   document.addEventListener('freeze', stopAll);
   window.addEventListener('pagehide', stopAll);
   updateControls();
-  return Object.freeze({ ready, busy: () => active, stop: stopAll, snapshot: () => checkpoint && structuredClone(checkpoint),
+  return Object.freeze({ ready: Promise.all([ready, workerStartup]), busy: () => active, stop: stopAll, snapshot: () => checkpoint && structuredClone(checkpoint),
     dispose() { stopAll(); unsubscribe?.(); document.removeEventListener('freeze', stopAll); window.removeEventListener('pagehide', stopAll); },
   });
 }
@@ -8313,6 +8817,10 @@ function createPresenceNativeActions({
   const exactButtons = (root, names) => [...root.querySelectorAll('button')]
     .filter(visible)
     .filter((node) => names.has(lower(controlName(node))));
+  const exactControls = (root, names) => [...root.querySelectorAll('a[href],button,[role="button"]')]
+    .filter(visible)
+    .filter((node, index, all) => all.indexOf(node) === index)
+    .filter((node) => names.has(lower(controlName(node))));
   const url = (node) => {
     try { return new URL(node?.getAttribute?.('href') || '', location.origin); }
     catch { return null; }
@@ -8384,6 +8892,43 @@ function createPresenceNativeActions({
     check();
   });
 
+  const routeControl = (pathnames, names) => {
+    const matches = exactControls(document, names).filter((node) => {
+      const candidate = url(node);
+      return candidate?.origin === location.origin && pathnames.has(candidate.pathname);
+    });
+    return matches.length === 1 ? matches[0] : null;
+  };
+  const openSurface = async (action, signal) => {
+    let control = null;
+    let ready = null;
+    if (['viewStories', 'likePosts'].includes(action) && location.pathname !== '/') {
+      control = routeControl(new Set(['/']), new Set(['home']));
+      ready = () => location.pathname === '/';
+    } else if (action === 'followPeople' && !String(location.pathname).startsWith('/explore')) {
+      control = routeControl(new Set(['/explore/', '/explore']), new Set(['explore']));
+      ready = () => String(location.pathname).startsWith('/explore');
+    } else if (action === 'acceptRequests') {
+      const controls = exactControls(document, new Set(['notifications']));
+      if (controls.length === 1 && controls[0].getAttribute?.('aria-expanded') !== 'true') {
+        control = controls[0];
+        ready = () => candidates('acceptRequests').length > 0
+          || control.getAttribute?.('aria-expanded') === 'true';
+      }
+    }
+    if (!control || typeof control.click !== 'function') return false;
+    control.click();
+    return waitFor(ready, signal);
+  };
+  const advanceSurface = async (action, seen, signal) => {
+    if (!['likePosts', 'followPeople'].includes(action)) return false;
+    const surface = document.scrollingElement || document.documentElement;
+    if (typeof surface?.scrollBy !== 'function') return false;
+    surface.scrollBy({ top: Math.max(320, Math.round(Number(globalThis.innerHeight || 800) * .75)),
+      left: 0, behavior: 'auto' });
+    return waitFor(() => candidates(action).some(candidate => !seen.has(candidate.id)), signal);
+  };
+
   function candidates(action) {
     if (action === 'likePosts') {
       return [...document.querySelectorAll('article')].filter(visible).flatMap((article) => {
@@ -8408,7 +8953,13 @@ function createPresenceNativeActions({
     }
     if (action === 'viewStories') {
       const current = String(location.pathname || '').match(STORY_PATH);
-      if (current && storyLoaded({ username: current[1].toLocaleLowerCase(), storyId: current[2] })) return [];
+      if (current && storyLoaded({ username: current[1].toLocaleLowerCase(), storyId: current[2] })) {
+        const controls = exactButtons(document, new Set(['next']));
+        if (controls.length !== 1) return [];
+        return [{ action, id: `story-next:${current[1].toLocaleLowerCase()}:${current[2]}`,
+          label: 'Next story', target: { fromPath: String(location.pathname) },
+          root: document, control: controls[0] }];
+      }
       const unique = new Map();
       for (const link of [...document.querySelectorAll('a[href]')].filter(visible)) {
         const target = story(link);
@@ -8452,7 +9003,13 @@ function createPresenceNativeActions({
     },
     async find(action, { seen = new Set(), signal } = {}) {
       if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
-      const available = candidates(action).filter((candidate) => !seen.has(candidate.id));
+      let available = candidates(action).filter((candidate) => !seen.has(candidate.id));
+      if (!available.length && await openSurface(action, signal)) {
+        available = candidates(action).filter((candidate) => !seen.has(candidate.id));
+      }
+      if (!available.length && await advanceSurface(action, seen, signal)) {
+        available = candidates(action).filter((candidate) => !seen.has(candidate.id));
+      }
       return available.length ? Object.freeze(available[0]) : null;
     },
     async execute(action, candidate, { signal, assertCurrent } = {}) {
@@ -8466,9 +9023,15 @@ function createPresenceNativeActions({
       }
       if (action === 'viewStories') {
         current.control.click();
-        const verified = await waitFor(() => storyLoaded(current.target), signal);
+        const verified = await waitFor(() => {
+          if (!current.target.fromPath) return storyLoaded(current.target);
+          if (String(location.pathname) === current.target.fromPath) return false;
+          const next = String(location.pathname).match(STORY_PATH);
+          return Boolean(next) && storyLoaded({ username: next[1].toLocaleLowerCase(), storyId: next[2] });
+        }, signal);
         return verified
-          ? { verified: true, label: current.label, reason: 'Story opened' }
+          ? { verified: true, label: current.label,
+            reason: current.target.fromPath ? 'Next story opened' : 'Story opened' }
           : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
       }
       current.control.click();
@@ -8521,8 +9084,10 @@ const PRESENCE_ACTION_LABELS = Object.freeze({
   acceptRequests: 'Accept incoming requests',
 });
 
-const REVIEW_TTL_MS = 15 * 60_000;
+const SESSION_REVIEW_TTL_MS = 15 * 60_000;
+const LIVE_REVIEW_TTL_MS = 12 * 60 * 60_000;
 const MAX_ACTIONS = 50;
+const MAX_LIVE_ACTIONS = 500;
 const MIN_ACTIONS = 1;
 const reviews = new WeakSet();
 const consumed = new WeakSet();
@@ -8533,6 +9098,10 @@ const count = (value, fallback = 10) => {
   const number = Number(value);
   return Number.isInteger(number) && number >= MIN_ACTIONS && number <= MAX_ACTIONS
     ? number : fallback;
+};
+const boundedInteger = (value, { min, max, fallback }) => {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= min && number <= max ? number : fallback;
 };
 const digest = (value) => {
   const source = JSON.stringify(value);
@@ -8549,9 +9118,19 @@ function normalizePresenceSessionOptions(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   const actions = Object.fromEntries(ACTION_ORDER.map((action) => [action, source.actions?.[action] === true]));
   if (actions.reactStories) actions.viewStories = true;
+  const mode = source.mode === 'live' ? 'live' : 'session';
   return Object.freeze({
     actions: Object.freeze(actions),
-    maxActions: count(source.maxActions),
+    mode,
+    maxActions: mode === 'live'
+      ? boundedInteger(source.maxActions, { min: 1, max: MAX_LIVE_ACTIONS, fallback: 200 })
+      : count(source.maxActions),
+    liveDurationMinutes: boundedInteger(source.liveDurationMinutes,
+      { min: 30, max: 720, fallback: 120 }),
+    liveBurstActions: boundedInteger(source.liveBurstActions,
+      { min: 1, max: 20, fallback: 5 }),
+    quietMinutes: boundedInteger(source.quietMinutes,
+      { min: 1, max: 120, fallback: 10 }),
   });
 }
 
@@ -8580,10 +9159,12 @@ function createPresenceSession({
 
   let controller = null;
   let pauseGate = null;
+  let runSequence = 0;
   let state = Object.freeze({
     status: 'idle', reason: null, accountId: null, current: null,
     completed: 0, skipped: 0, uncertain: 0, maxActions: 0,
-    enabledActions: Object.freeze([]), results: Object.freeze([]), canPause: false,
+    mode: 'session', runId: null, enabledActions: Object.freeze([]),
+    results: Object.freeze([]), canPause: false,
     canResume: false, canStop: false,
   });
 
@@ -8594,7 +9175,7 @@ function createPresenceSession({
     return state;
   };
   const snapshot = () => clone(state);
-  const active = () => controller && ['running', 'waiting', 'paused', 'stopping'].includes(state.status);
+  const active = () => controller && ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(state.status);
   const context = (accountId) => {
     const value = nativeActions.inspectContext();
     if (value?.accountVerified !== true || value.usable !== true || value.accountId !== accountId
@@ -8604,14 +9185,17 @@ function createPresenceSession({
   };
   const sleep = async (ms, signal) => {
     if (wait) return wait(ms, signal);
-    await new Promise((resolve, reject) => {
-      let timer = null;
-      const done = () => { signal?.removeEventListener?.('abort', abort); if (timer !== null) clearTimeout(timer); resolve(); };
-      const abort = () => { if (timer !== null) clearTimeout(timer); reject(new DOMException('Stopped', 'AbortError')); };
-      if (signal?.aborted) return abort();
-      signal?.addEventListener?.('abort', abort, { once: true });
-      timer = setTimeout(done, ms);
-    });
+    const deadline = now() + ms;
+    while (now() < deadline && state.status !== 'paused') {
+      await new Promise((resolve, reject) => {
+        let timer = null;
+        const done = () => { signal?.removeEventListener?.('abort', abort); if (timer !== null) clearTimeout(timer); resolve(); };
+        const abort = () => { if (timer !== null) clearTimeout(timer); reject(new DOMException('Stopped', 'AbortError')); };
+        if (signal?.aborted) return abort();
+        signal?.addEventListener?.('abort', abort, { once: true });
+        timer = setTimeout(done, Math.min(1_000, Math.max(0, deadline - now())));
+      });
+    }
   };
   const awaitResume = async (signal) => {
     while (state.status === 'paused') {
@@ -8624,12 +9208,15 @@ function createPresenceSession({
     }
   };
 
-  function createReview({ accountId, options, expiresAt = now() + REVIEW_TTL_MS } = {}) {
+  function createReview({ accountId, options, expiresAt } = {}) {
     const normalized = normalizePresenceSessionOptions(options);
     const enabledActions = ACTION_ORDER.filter((action) => normalized.actions[action]);
     if (!/^[A-Za-z0-9_.-]{1,128}$/.test(text(accountId))) fail('presence-account-required');
     if (!enabledActions.length) fail('presence-action-required');
-    const expiry = Math.min(Number(expiresAt) || 0, now() + REVIEW_TTL_MS);
+    const ttl = normalized.mode === 'live'
+      ? Math.min(LIVE_REVIEW_TTL_MS, normalized.liveDurationMinutes * 60_000)
+      : SESSION_REVIEW_TTL_MS;
+    const expiry = Math.min(Number(expiresAt) || (now() + ttl), now() + ttl);
     if (expiry <= now()) fail('presence-review-expired');
     const payload = Object.freeze({ accountId: text(accountId), options: normalized,
       enabledActions: Object.freeze(enabledActions), expiresAt: expiry });
@@ -8657,11 +9244,14 @@ function createPresenceSession({
       const results = [];
       const seen = new Set();
       const empty = new Set();
+      const runId = `${now()}:${++runSequence}`;
+      let resultSequence = 0;
       let cursor = 0;
       publish({
         status: 'running', reason: null, accountId: review.accountId, current: null,
         completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
-        enabledActions: review.enabledActions, results, canPause: true, canResume: false, canStop: true,
+        mode: review.options.mode, runId, enabledActions: review.enabledActions,
+        results, canPause: true, canResume: false, canStop: true,
       });
       try {
         while (!signal.aborted && state.completed < review.options.maxActions && now() < review.expiresAt) {
@@ -8679,7 +9269,14 @@ function createPresenceSession({
           }
           if (!candidate) {
             empty.add(action);
-            if (empty.size === review.enabledActions.length) break;
+            if (empty.size === review.enabledActions.length) {
+              if (review.options.mode !== 'live') break;
+              empty.clear();
+              publish({ status: 'quiet', current: null });
+              await sleep(review.options.quietMinutes * 60_000, signal);
+              await awaitResume(signal);
+              if (!signal.aborted && now() < review.expiresAt) publish({ status: 'running' });
+            }
             continue;
           }
           if (!text(candidate.id) || candidate.action !== action || seen.has(candidate.id)) {
@@ -8707,21 +9304,32 @@ function createPresenceSession({
           seen.add(candidate.id);
           if (outcome?.verified === true) {
             results.unshift({ action, id: candidate.id, label: text(outcome.label) || text(candidate.label),
-              status: 'completed', reason: text(outcome.reason) });
+              status: 'completed', reason: text(outcome.reason), at: now(),
+              eventId: `${runId}:${++resultSequence}` });
             publish({ completed: state.completed + 1, current: null, results });
           } else if (outcome?.skipped === true && outcome?.uncertain !== true) {
             results.unshift({ action, id: candidate.id, label: text(candidate.label),
-              status: 'skipped', reason: text(outcome.reason) || 'No longer available' });
+              status: 'skipped', reason: text(outcome.reason) || 'No longer available', at: now(),
+              eventId: `${runId}:${++resultSequence}` });
             publish({ skipped: state.skipped + 1, current: null, results });
           } else {
             results.unshift({ action, id: candidate.id, label: text(candidate.label),
-              status: 'uncertain', reason: text(outcome?.reason) || 'Check Instagram before continuing' });
+              status: 'uncertain', reason: text(outcome?.reason) || 'Check Instagram before continuing',
+              at: now(), eventId: `${runId}:${++resultSequence}` });
             publish({ status: 'needs-attention', reason: text(outcome?.reason) || 'presence-outcome-uncertain',
               uncertain: state.uncertain + 1, current: null, results,
               canPause: false, canResume: false, canStop: false });
             return snapshot();
           }
           if (state.completed >= review.options.maxActions) break;
+          if (review.options.mode === 'live' && state.completed > 0
+            && state.completed % review.options.liveBurstActions === 0) {
+            publish({ status: 'quiet', current: null });
+            await sleep(review.options.quietMinutes * 60_000, signal);
+            await awaitResume(signal);
+            if (!signal.aborted) publish({ status: 'running' });
+            continue;
+          }
           const delay = Math.round(minDelayMs + random() * (maxDelayMs - minDelayMs));
           publish({ status: 'waiting', current: null });
           await sleep(delay, signal);
@@ -8754,7 +9362,7 @@ function createPresenceSession({
     start,
     snapshot,
     pause() {
-      if (!controller || !['running', 'waiting'].includes(state.status)) return false;
+      if (!controller || !['running', 'waiting', 'quiet'].includes(state.status)) return false;
       publish({ status: 'paused', canPause: false, canResume: true, canStop: true });
       return true;
     },
@@ -8776,8 +9384,138 @@ function createPresenceSession({
 
 return Object.freeze({ PRESENCE_ACTION_LABELS, normalizePresenceSessionOptions, createPresenceSession });
 })();
+localModules["extension/presence-activity-log.js"] = (() => {
+
+const VERSION = 1;
+const DEFAULT_LIMIT = 500;
+const OUTCOMES = new Set([
+  'started', 'completed', 'skipped', 'uncertain', 'paused', 'resumed',
+  'stopped', 'expired', 'needs-attention', 'quiet',
+]);
+
+const clean = (value, limit) => String(value ?? '')
+  .normalize('NFKC')
+  .replace(/[\u0000-\u001f\u007f]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .slice(0, limit);
+
+const timestamp = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : null;
+};
+
+function normalizeEntry(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const at = timestamp(value.at);
+  const eventId = clean(value.eventId, 160);
+  const outcome = clean(value.outcome, 32);
+  if (!at || !eventId || !OUTCOMES.has(outcome)) return null;
+  return Object.freeze({
+    eventId,
+    at,
+    kind: value.kind === 'action' ? 'action' : 'session',
+    action: clean(value.action, 48),
+    target: clean(value.target, 120),
+    outcome,
+    detail: clean(value.detail, 240),
+  });
+}
+
+function normalizePresenceActivityLog(value, { limit = DEFAULT_LIMIT } = {}) {
+  const safeLimit = Number.isInteger(limit) && limit >= 10 && limit <= 2_000
+    ? limit : DEFAULT_LIMIT;
+  const rows = Array.isArray(value?.entries) ? value.entries : [];
+  const entries = [];
+  const seen = new Set();
+  for (const candidate of rows) {
+    const entry = normalizeEntry(candidate);
+    if (!entry || seen.has(entry.eventId)) continue;
+    seen.add(entry.eventId);
+    entries.push(entry);
+    if (entries.length >= safeLimit) break;
+  }
+  return Object.freeze({ version: VERSION, entries: Object.freeze(entries) });
+}
+
+function createPresenceActivityLog({
+  read = () => null,
+  write = () => {},
+  onWriteError = () => {},
+  now = Date.now,
+  limit = DEFAULT_LIMIT,
+} = {}) {
+  if (typeof read !== 'function' || typeof write !== 'function'
+    || typeof onWriteError !== 'function' || typeof now !== 'function') {
+    throw new Error('presence-log-adapter-required');
+  }
+  let record = normalizePresenceActivityLog(read(), { limit });
+  let writeQueue = Promise.resolve();
+  let latestWrite = Promise.resolve();
+  const listeners = new Set();
+
+  const snapshot = () => structuredClone(record);
+  const publish = () => {
+    const value = snapshot();
+    for (const listener of listeners) listener(value);
+    return value;
+  };
+  const persist = () => {
+    const value = snapshot();
+    latestWrite = writeQueue.then(() => write(value));
+    writeQueue = latestWrite.catch((error) => {
+      onWriteError(error);
+    });
+    return latestWrite;
+  };
+
+  function append(value = {}) {
+    const at = timestamp(value.at) || timestamp(now());
+    const seed = clean(value.eventId, 160)
+      || `${at}:${clean(value.kind, 24)}:${clean(value.action, 48)}:${clean(value.outcome, 32)}`;
+    const entry = normalizeEntry({ ...value, at, eventId: seed });
+    if (!entry) throw new Error('presence-log-entry-invalid');
+    if (record.entries.some(row => row.eventId === entry.eventId)) return entry;
+    record = normalizePresenceActivityLog({ entries: [entry, ...record.entries] }, { limit });
+    publish();
+    void persist();
+    return entry;
+  }
+
+  function clear() {
+    record = normalizePresenceActivityLog(null, { limit });
+    publish();
+    void persist();
+  }
+
+  return Object.freeze({
+    append,
+    clear,
+    snapshot,
+    settled: () => latestWrite,
+    exportRecord() {
+      return Object.freeze({
+        schemaVersion: VERSION,
+        kind: 'insta-toolbox-presence-log',
+        generatedAt: new Date(now()).toISOString(),
+        entries: snapshot().entries,
+      });
+    },
+    subscribe(listener) {
+      if (typeof listener !== 'function') throw new Error('presence-log-listener-required');
+      listeners.add(listener);
+      listener(snapshot());
+      return () => listeners.delete(listener);
+    },
+  });
+}
+
+return Object.freeze({ normalizePresenceActivityLog, createPresenceActivityLog });
+})();
 localModules["extension/presence-session-panel.js"] = (() => {
 const { PRESENCE_ACTION_LABELS, normalizePresenceSessionOptions } = localModules["extension/presence-session.js"];
+const { createPresenceActivityLog } = localModules["extension/presence-activity-log.js"];
+
 
 const ACTIONS = Object.freeze([
   ['viewStories', 'View stories'],
@@ -8796,15 +9534,19 @@ function mountPresenceSessionPanel({
   confirmAction,
   readPreferences = () => null,
   writePreferences = () => {},
+  readLog = () => null,
+  writeLog = () => {},
   busy = () => false,
   onStatus = () => {},
   document = globalThis.document,
+  window = globalThis.window,
   now = Date.now,
 } = {}) {
   if (!container || !document?.createElement || typeof session?.createReview !== 'function'
     || typeof session?.start !== 'function' || typeof session?.snapshot !== 'function'
     || typeof inspectAccount !== 'function' || typeof confirmAction !== 'function'
     || typeof readPreferences !== 'function' || typeof writePreferences !== 'function'
+    || typeof readLog !== 'function' || typeof writeLog !== 'function'
     || typeof busy !== 'function' || typeof onStatus !== 'function' || typeof now !== 'function') {
     throw new Error('presence-panel-adapter-required');
   }
@@ -8826,7 +9568,10 @@ function mountPresenceSessionPanel({
     .presence-session .presence-option:last-child:nth-child(odd){grid-column:1/-1}
     .presence-session .presence-option input{flex:0 0 auto;width:18px;height:18px;accent-color:var(--insta-toolbox-accent)}
     .presence-session .presence-limit{display:grid;gap:6px;max-width:180px}
-    .presence-session .presence-limit input{box-sizing:border-box;width:100%;min-height:44px;font:inherit;color:inherit;background:var(--insta-toolbox-bg-sunken);border:1px solid var(--insta-toolbox-line);border-radius:8px;padding:8px 10px}
+    .presence-session .presence-run-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .presence-session .presence-limit{max-width:none}
+    .presence-session .presence-limit input,.presence-session .presence-limit select{box-sizing:border-box;width:100%;min-height:44px;font:inherit;color:inherit;background:var(--insta-toolbox-bg-sunken);border:1px solid var(--insta-toolbox-line);border-radius:8px;padding:8px 34px 8px 10px}
+    .presence-session .presence-live-options{display:grid;grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:12px;border:1px solid var(--insta-toolbox-line);border-radius:10px;background:var(--insta-toolbox-bg-sunken)}
     .presence-session .presence-controls{display:flex;flex-wrap:wrap;gap:8px}
     .presence-session .presence-controls .button{flex:1 1 132px;white-space:normal}
     .presence-session .presence-status{display:grid;gap:5px;padding:12px;border-left:3px solid var(--insta-toolbox-accent);background:var(--insta-toolbox-bg-sunken);border-radius:0 8px 8px 0}
@@ -8835,11 +9580,15 @@ function mountPresenceSessionPanel({
     .presence-session .presence-results{list-style:none;display:grid;gap:8px;margin:0;padding:0}
     .presence-session .presence-results li{display:grid;gap:2px;min-width:0;padding-top:8px;border-top:1px solid var(--insta-toolbox-line);overflow-wrap:anywhere}
     .presence-session .presence-results small{color:var(--insta-toolbox-muted,var(--insta-toolbox-text));line-height:1.45}
+    .presence-session .presence-log{border-top:1px solid var(--insta-toolbox-line);padding-top:4px}
+    .presence-session .presence-log>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700;-webkit-text-fill-color:currentColor}
+    .presence-session .presence-log-body{display:grid;gap:12px;padding-top:8px}
+    .presence-session .presence-log-empty{font-size:12px;color:var(--insta-toolbox-muted,var(--insta-toolbox-text))}
     .presence-session [hidden]{display:none!important}
     .presence-session :focus-visible{outline:2px solid var(--insta-toolbox-accent,Highlight);outline-offset:2px}
-    @container (max-width:280px){.presence-session .presence-options{grid-template-columns:1fr}.presence-session .presence-option:last-child:nth-child(odd){grid-column:auto}}
-    @media(max-width:600px){.presence-session .presence-options{grid-template-columns:1fr}.presence-session .presence-option:last-child:nth-child(odd){grid-column:auto}}
-    @media(forced-colors:active){.presence-session .presence-option,.presence-session .presence-limit input,.presence-session .presence-status{border:1px solid CanvasText}.presence-session :focus-visible{outline-color:Highlight}}
+    @container (max-width:340px){.presence-session .presence-options,.presence-session .presence-run-grid,.presence-session .presence-live-options{grid-template-columns:1fr}.presence-session .presence-option:last-child:nth-child(odd){grid-column:auto}}
+    @media(max-width:600px){.presence-session .presence-options,.presence-session .presence-run-grid,.presence-session .presence-live-options{grid-template-columns:1fr}.presence-session .presence-option:last-child:nth-child(odd){grid-column:auto}}
+    @media(forced-colors:active){.presence-session .presence-option,.presence-session .presence-limit input,.presence-session .presence-limit select,.presence-session .presence-status{border:1px solid CanvasText}.presence-session .presence-log>summary{color:LinkText;-webkit-text-fill-color:LinkText}.presence-session :focus-visible{outline-color:Highlight}}
   `);
   const heading = create('h2', 'Presence');
   heading.id = 'insta-toolbox-presence-title';
@@ -8855,7 +9604,17 @@ function mountPresenceSessionPanel({
     controls.set(key, input);
     options.append(wrapper);
   }
-  const limitLabel = create('label', 'Actions per run', 'presence-limit');
+  const runGrid = create('div', null, 'presence-run-grid');
+  const modeLabel = create('label', 'Run style', 'presence-limit');
+  const mode = create('select');
+  mode.setAttribute('data-presence-mode', '');
+  const sessionOption = create('option', 'One session');
+  sessionOption.value = 'session';
+  const liveOption = create('option', 'Live like me');
+  liveOption.value = 'live';
+  mode.append(sessionOption, liveOption);
+  modeLabel.append(mode);
+  const limitLabel = create('label', 'Actions this session', 'presence-limit');
   const limit = create('input');
   limit.type = 'number';
   limit.min = '1';
@@ -8864,15 +9623,38 @@ function mountPresenceSessionPanel({
   limit.inputMode = 'numeric';
   limit.setAttribute('data-presence-limit', '');
   limitLabel.append(limit);
+  const liveOptions = create('div', null, 'presence-live-options');
+  const durationLabel = create('label', 'Keep running', 'presence-limit');
+  const duration = create('select');
+  for (const [value, label] of [[60, '1 hour'], [120, '2 hours'], [240, '4 hours'], [480, '8 hours'], [720, '12 hours']]) {
+    const option = create('option', label); option.value = String(value); duration.append(option);
+  }
+  durationLabel.append(duration);
+  const burstLabel = create('label', 'Pause after', 'presence-limit');
+  const burst = create('select');
+  for (const value of [3, 5, 8, 10]) {
+    const option = create('option', `${value} actions`); option.value = String(value); burst.append(option);
+  }
+  burstLabel.append(burst);
+  const quietLabel = create('label', 'Rest for', 'presence-limit');
+  const quiet = create('select');
+  for (const value of [5, 10, 20, 30, 60]) {
+    const option = create('option', `${value} minutes`); option.value = String(value); quiet.append(option);
+  }
+  quietLabel.append(quiet);
+  liveOptions.append(durationLabel, burstLabel, quietLabel);
+  runGrid.append(modeLabel, limitLabel, liveOptions);
   const actions = create('div', null, 'presence-controls');
   const start = create('button', 'Start', 'button primary big');
   start.type = 'button';
+  start.setAttribute('data-presence-start', '');
   const pause = create('button', 'Pause', 'button quiet');
   pause.type = 'button';
   const resume = create('button', 'Resume', 'button primary');
   resume.type = 'button';
   const stop = create('button', 'Stop', 'button danger');
   stop.type = 'button';
+  stop.setAttribute('data-presence-stop', '');
   actions.append(start, pause, resume, stop);
   const statusBox = create('div', null, 'presence-status');
   const statusTitle = create('strong', 'Ready');
@@ -8880,12 +9662,32 @@ function mountPresenceSessionPanel({
   statusBox.append(statusTitle, statusDetail);
   const results = create('ul', null, 'presence-results');
   results.setAttribute('aria-label', 'Presence results');
-  root.append(style, heading, intro, options, limitLabel, statusBox, actions, results);
+  const logDetails = create('details', null, 'presence-log');
+  const logSummary = create('summary', 'Activity log');
+  const logBody = create('div', null, 'presence-log-body');
+  const logEmpty = create('p', 'No Presence activity yet.', 'presence-log-empty');
+  const logRecent = create('ul', null, 'presence-results');
+  logRecent.setAttribute('aria-label', 'Recent Presence activity');
+  const logControls = create('div', null, 'presence-controls');
+  const openLog = create('button', 'Open log window', 'button quiet'); openLog.type = 'button';
+  const exportLog = create('button', 'Download log', 'button quiet'); exportLog.type = 'button';
+  const clearLog = create('button', 'Clear log', 'button quiet'); clearLog.type = 'button';
+  logControls.append(openLog, exportLog, clearLog);
+  logBody.append(logEmpty, logRecent, logControls);
+  logDetails.append(logSummary, logBody);
+  root.append(style, heading, intro, options, runGrid, statusBox, actions, results, logDetails);
   container.replaceChildren(root);
 
   let disposed = false;
   let confirming = false;
+  let logWindow = null;
   const listeners = [];
+  const activityLog = createPresenceActivityLog({
+    read: readLog,
+    write: writeLog,
+    onWriteError: () => onStatus('Presence activity could not be saved. Existing history is unchanged.'),
+    now,
+  });
   const listen = (node, type, handler) => {
     node.addEventListener(type, handler);
     listeners.push(() => node.removeEventListener(type, handler));
@@ -8898,31 +9700,47 @@ function mountPresenceSessionPanel({
     }
     return normalizePresenceSessionOptions({
       actions: Object.fromEntries([...controls].map(([key, input]) => [key, input.checked])),
-      maxActions,
+      mode: mode.value,
+      maxActions: mode.value === 'live' ? 200 : maxActions,
+      liveDurationMinutes: Number(duration.value),
+      liveBurstActions: Number(burst.value),
+      quietMinutes: Number(quiet.value),
     });
   }
   function signature(options) {
-    return JSON.stringify({ actions: options.actions, maxActions: options.maxActions });
+    return JSON.stringify(options);
   }
   function save() {
     const options = readOptions();
     for (const [key, input] of controls) input.checked = options.actions[key];
-    limit.value = String(options.maxActions);
-    writePreferences(structuredClone(options));
+    mode.value = options.mode;
+    if (options.mode === 'session') limit.value = String(options.maxActions);
+    duration.value = String(options.liveDurationMinutes);
+    burst.value = String(options.liveBurstActions);
+    quiet.value = String(options.quietMinutes);
+    writePreferences({ ...structuredClone(options), sessionActions: Number(limit.value) });
     return options;
   }
   function load() {
-    const saved = normalizePresenceSessionOptions(readPreferences() || {
+    const source = readPreferences() || {
       actions: { viewStories: true, likePosts: true }, maxActions: 10,
-    });
+    };
+    const saved = normalizePresenceSessionOptions(source);
     for (const [key, input] of controls) input.checked = saved.actions[key];
-    limit.value = String(saved.maxActions);
+    mode.value = saved.mode;
+    const sessionActions = Number(source.sessionActions ?? (saved.mode === 'session' ? saved.maxActions : 10));
+    limit.value = String(Number.isInteger(sessionActions) && sessionActions >= 1 && sessionActions <= 50
+      ? sessionActions : 10);
+    duration.value = String(saved.liveDurationMinutes);
+    burst.value = String(saved.liveBurstActions);
+    quiet.value = String(saved.quietMinutes);
   }
   function describe(snapshot) {
     const count = Number(snapshot.completed || 0);
     if (snapshot.status === 'idle') return ['Ready', 'Nothing happens until you confirm.'];
     if (snapshot.status === 'running') return [snapshot.current?.label || 'Presence is running', `${count} verified action${count === 1 ? '' : 's'}.`];
     if (snapshot.status === 'waiting') return ['Taking a short pause', `${count} verified action${count === 1 ? '' : 's'}.`];
+    if (snapshot.status === 'quiet') return ['Resting', `${count} verified action${count === 1 ? '' : 's'}. Presence will continue in this loaded tab.`];
     if (snapshot.status === 'paused') return ['Paused', `${count} verified action${count === 1 ? '' : 's'}. Resume or stop when ready.`];
     if (snapshot.status === 'stopping') return ['Stopping', 'No new action will begin.'];
     if (snapshot.status === 'stopped') return ['Stopped', `${count} verified action${count === 1 ? '' : 's'}.`];
@@ -8933,10 +9751,12 @@ function mountPresenceSessionPanel({
   function render(snapshot = session.snapshot()) {
     if (disposed) return;
     const [title, detail] = describe(snapshot);
-    const active = ['running', 'waiting', 'paused', 'stopping'].includes(snapshot.status);
+    const active = ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(snapshot.status);
     intro.hidden = active;
     options.hidden = active;
-    limitLabel.hidden = active;
+    runGrid.hidden = active;
+    limitLabel.hidden = mode.value === 'live';
+    liveOptions.hidden = mode.value !== 'live';
     statusBox.hidden = snapshot.status === 'idle';
     statusTitle.textContent = title;
     statusDetail.textContent = detail;
@@ -8951,12 +9771,86 @@ function mountPresenceSessionPanel({
     const locked = confirming || snapshot.canStop === true || snapshot.canResume === true;
     for (const input of controls.values()) input.disabled = locked;
     limit.disabled = locked;
+    mode.disabled = locked;
+    duration.disabled = locked;
+    burst.disabled = locked;
+    quiet.disabled = locked;
     results.replaceChildren();
     for (const entry of (snapshot.results || []).slice(0, 12)) {
       const row = create('li');
       row.append(create('strong', clean(entry.label) || PRESENCE_ACTION_LABELS[entry.action] || 'Presence action'));
       row.append(create('small', `${entry.status === 'completed' ? 'Done' : entry.status === 'skipped' ? 'Skipped' : 'Needs attention'}${entry.reason ? ` — ${entry.reason}` : ''}`));
       results.append(row);
+    }
+  }
+  function formatEntry(entry) {
+    const time = new Date(entry.at).toLocaleString();
+    const label = entry.target || PRESENCE_ACTION_LABELS[entry.action] || 'Presence';
+    return { label, detail: `${time} · ${entry.outcome}${entry.detail ? ` · ${entry.detail}` : ''}` };
+  }
+  function renderLog(record = activityLog.snapshot()) {
+    if (disposed) return;
+    logRecent.replaceChildren();
+    logEmpty.hidden = record.entries.length > 0;
+    for (const entry of record.entries.slice(0, 5)) {
+      const row = create('li');
+      const formatted = formatEntry(entry);
+      row.append(create('strong', formatted.label), create('small', formatted.detail));
+      logRecent.append(row);
+    }
+    clearLog.disabled = record.entries.length === 0;
+    exportLog.disabled = record.entries.length === 0;
+    renderLogWindow(record);
+  }
+  function downloadRecord(record = activityLog.exportRecord(), targetWindow = window) {
+    const blob = new targetWindow.Blob([`${JSON.stringify(record, null, 2)}\n`], { type: 'application/json' });
+    const href = targetWindow.URL.createObjectURL(blob);
+    const link = targetWindow.document.createElement('a');
+    link.href = href;
+    link.download = `insta-toolbox-presence-log-${new Date(now()).toISOString().replace(/[:.]/g, '-')}.json`;
+    link.click();
+    targetWindow.setTimeout(() => targetWindow.URL.revokeObjectURL(href), 0);
+  }
+  function renderLogWindow(record = activityLog.snapshot()) {
+    if (!logWindow || logWindow.closed) return;
+    const target = logWindow.document;
+    const styleNode = target.createElement('style');
+    styleNode.textContent = 'html{color-scheme:light dark}body{margin:0;padding:24px;background:#101114;color:#f4f1e8;font:15px/1.5 system-ui,sans-serif}main{max-width:760px;margin:auto}h1{font-size:22px;margin:0 0 4px}p{color:#b8b8bd;margin:0 0 20px}ol{list-style:none;margin:0;padding:0;border-top:1px solid #34363d}li{padding:12px 0;border-bottom:1px solid #34363d}strong,small{display:block;overflow-wrap:anywhere}small{color:#b8b8bd;margin-top:2px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px}button{min-height:44px;padding:8px 14px;border:1px solid #545760;border-radius:8px;background:#202228;color:inherit;font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #d94d7c;outline-offset:2px}@media(forced-colors:active){button{border-color:CanvasText}}';
+    const main = target.createElement('main');
+    const title = target.createElement('h1'); title.textContent = 'Presence activity';
+    const note = target.createElement('p'); note.textContent = 'Stored only in this browser.';
+    const buttons = target.createElement('div'); buttons.className = 'actions';
+    const download = target.createElement('button'); download.type = 'button'; download.textContent = 'Download log';
+    download.disabled = record.entries.length === 0;
+    download.addEventListener('click', () => downloadRecord(activityLog.exportRecord(), logWindow));
+    const clear = target.createElement('button'); clear.type = 'button'; clear.textContent = 'Clear log';
+    clear.disabled = record.entries.length === 0;
+    clear.addEventListener('click', () => { if (logWindow.confirm('Clear the local Presence activity log?')) activityLog.clear(); });
+    buttons.append(download, clear);
+    const list = target.createElement('ol');
+    for (const entry of record.entries) {
+      const row = target.createElement('li');
+      const formatted = formatEntry(entry);
+      const strong = target.createElement('strong'); strong.textContent = formatted.label;
+      const small = target.createElement('small'); small.textContent = formatted.detail;
+      row.append(strong, small); list.append(row);
+    }
+    if (!record.entries.length) {
+      const empty = target.createElement('p'); empty.textContent = 'No Presence activity yet.'; list.append(empty);
+    }
+    main.append(title, note, buttons, list);
+    target.head.replaceChildren(styleNode);
+    target.title = 'Insta Toolbox · Presence activity';
+    target.body.replaceChildren(main);
+  }
+  function appendLog(value) {
+    try { activityLog.append(value); } catch { onStatus('Presence ran, but its activity log could not be updated.'); }
+  }
+  function logResultEntries(snapshot) {
+    for (const entry of [...(snapshot.results || [])].reverse()) {
+      if (!entry.eventId) continue;
+      appendLog({ eventId: entry.eventId, at: entry.at, kind: 'action', action: entry.action,
+        target: entry.label, outcome: entry.status, detail: entry.reason });
     }
   }
   async function begin() {
@@ -8971,18 +9865,25 @@ function mountPresenceSessionPanel({
       return false;
     }
     const reviewedSignature = signature(options);
-    const expiresAt = now() + 15 * 60_000;
+    const expiresAt = now() + (options.mode === 'live'
+      ? options.liveDurationMinutes * 60_000 : 15 * 60_000);
     confirming = true;
     render();
     const confirmation = await confirmAction({
       title: `Start Presence for @${account.accountId}?`,
-      message: `Allow up to ${options.maxActions} action${options.maxActions === 1 ? '' : 's'} in this tab.`,
+      message: options.mode === 'live'
+        ? `Run Presence for up to ${options.liveDurationMinutes / 60} hour${options.liveDurationMinutes === 60 ? '' : 's'} in this loaded tab.`
+        : `Allow up to ${options.maxActions} action${options.maxActions === 1 ? '' : 's'} in this tab.`,
       detail: 'Presence stops on Instagram restrictions, an account change, an uncertain result, or when you press Stop.',
       confirmLabel: 'Start Presence',
       facts: [
         { label: 'Account', value: `@${account.accountId}` },
         { label: 'Actions', value: enabled.map(([, label]) => label).join(', ') },
+        { label: 'Run style', value: options.mode === 'live' ? 'Live like me' : 'One session' },
         { label: 'Maximum', value: String(options.maxActions) },
+        ...(options.mode === 'live' ? [
+          { label: 'Rhythm', value: `${options.liveBurstActions} actions, then ${options.quietMinutes} minutes quiet` },
+        ] : []),
       ],
       binding: { action: 'presence', accountId: account.accountId, expiresAt,
         maxActions: options.maxActions, options: reviewedSignature },
@@ -9001,6 +9902,8 @@ function mountPresenceSessionPanel({
       return false;
     }
     const review = session.createReview({ accountId: account.accountId, options, expiresAt });
+    appendLog({ eventId: `${review.reviewedDigest}:started`, at: now(), kind: 'session',
+      outcome: 'started', detail: options.mode === 'live' ? 'Live like me started' : 'Presence started' });
     render(session.snapshot());
     let outcome;
     try {
@@ -9010,32 +9913,52 @@ function mountPresenceSessionPanel({
       onStatus(error?.message === 'presence-account-busy'
         ? 'Another Presence or Ghost run is already active.'
         : 'Presence could not start safely in this browser.');
+      appendLog({ eventId: `${review.reviewedDigest}:start-failed`, at: now(), kind: 'session',
+        outcome: 'needs-attention', detail: clean(error?.message) || 'Presence could not start' });
       return false;
     }
+    logResultEntries(outcome);
+    appendLog({ eventId: `${review.reviewedDigest}:${outcome.status}`, at: now(), kind: 'session',
+      outcome: ['completed', 'stopped', 'expired', 'needs-attention'].includes(outcome.status)
+        ? outcome.status : 'needs-attention', detail: describe(outcome)[0] });
     render(outcome);
     onStatus(describe(outcome).join('. '));
     return outcome.status === 'completed';
   }
 
   load();
+  const unsubscribeLog = activityLog.subscribe(renderLog);
   listen(start, 'click', () => { void begin(); });
-  listen(pause, 'click', () => { if (session.pause()) { render(); onStatus('Presence paused.'); } });
-  listen(resume, 'click', () => { if (session.resume()) { render(); onStatus('Presence resumed.'); } });
-  listen(stop, 'click', () => { if (session.stop()) { render(); onStatus('Stopping Presence.'); } });
+  listen(pause, 'click', () => { if (session.pause()) { const state = session.snapshot(); appendLog({ eventId: `${state.runId}:paused:${now()}`, at: now(), kind: 'session', outcome: 'paused', detail: 'Paused' }); render(); onStatus('Presence paused.'); } });
+  listen(resume, 'click', () => { if (session.resume()) { const state = session.snapshot(); appendLog({ eventId: `${state.runId}:resumed:${now()}`, at: now(), kind: 'session', outcome: 'resumed', detail: 'Resumed' }); render(); onStatus('Presence resumed.'); } });
+  listen(stop, 'click', () => { if (session.stop()) { const state = session.snapshot(); appendLog({ eventId: `${state.runId}:stopped:${now()}`, at: now(), kind: 'session', outcome: 'stopped', detail: 'Stop requested' }); render(); onStatus('Stopping Presence.'); } });
   for (const input of controls.values()) listen(input, 'change', () => { save(); render(); });
   listen(limit, 'change', () => { save(); render(); });
+  for (const input of [mode, duration, burst, quiet]) listen(input, 'change', () => { save(); render(); });
+  listen(openLog, 'click', () => {
+    logWindow = window?.open?.('', 'insta-toolbox-presence-log', 'popup=yes,width=620,height=760,resizable=yes,scrollbars=yes') || null;
+    if (!logWindow) { onStatus('Allow pop-ups to open the Presence log window.'); return; }
+    logWindow.addEventListener?.('load', () => renderLogWindow(), { once: true });
+    renderLogWindow();
+    window.setTimeout?.(() => renderLogWindow(), 0);
+  });
+  listen(exportLog, 'click', () => downloadRecord());
+  listen(clearLog, 'click', () => {
+    if (window?.confirm?.('Clear the local Presence activity log?')) activityLog.clear();
+  });
   render();
 
   return Object.freeze({
     begin,
     render,
     stop: () => session.stop(),
-    busy: () => ['running', 'waiting', 'paused', 'stopping'].includes(session.snapshot().status),
+    busy: () => ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(session.snapshot().status),
     snapshot: () => session.snapshot(),
     dispose() {
       if (disposed) return;
       session.stop();
       disposed = true;
+      unsubscribeLog();
       listeners.splice(0).forEach((remove) => remove());
       root.remove();
     },
@@ -9899,6 +10822,9 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       .confirm-dialog ul { max-height: 160px; margin: 0; padding: 8px 8px 8px 30px; overflow-y: auto; border: 1px solid var(--insta-toolbox-line, #d8ddd4); border-radius: 8px; font-size: 13px; line-height: 19px; }
       .confirm-dialog .toolbar { justify-content: flex-end; }
       [data-role="inbox-cleanup"] { display:grid; gap:12px; margin-top:12px; }
+      [data-role="inbox-cleanup"] > .field { margin:0; gap:6px; }
+      [data-role="inbox-cleanup"] > .lead { margin:0; }
+      [data-role="inbox-cleanup"] select { width:100%; padding-right:34px; }
       .inbox-selection { display:grid; gap:4px; max-height:240px; overflow:auto; }
       .inbox-choice { position:relative; display:flex; flex:none; align-items:center; gap:12px; width:100%; min-height:44px; padding:4px 8px; line-height:20px; scroll-margin-block:12px; }
       .inbox-choice > input[type="checkbox"] { flex:0 0 auto; min-width:20px; min-height:20px; }
@@ -9922,7 +10848,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       .settings-section .settings-inline { margin:0; padding:0; }
       .settings-section.settings-inline { margin:0; padding:0; row-gap:0; }
       .settings-section.settings-inline[open] { padding-bottom:12px; }
-      .settings-section.settings-inline > :not(summary), .settings-section .settings-inline > :not(summary) { margin-top:16px; }
+      .settings-section.settings-inline > :not(summary), .settings-section .settings-inline > :not(summary) { margin-top:12px; }
       .settings-appearance-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr)); gap:16px 12px; }
       .settings-appearance-wide { grid-column:1 / -1; }
       .setting-note { margin:0; font-size:12px; line-height:18px; color:var(--insta-toolbox-text-muted); }
@@ -9957,14 +10883,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
           <div class="card" data-role="comparison"></div>
           <section class="card comparison-browser" data-role="comparison-browser" aria-labelledby="insta-toolbox-comparison-browser-title" hidden><h2 id="insta-toolbox-comparison-browser-title">Comparison list</h2><div class="comparison-controls"><div class="field"><label for="insta-toolbox-comparison-category">Show accounts</label><select id="insta-toolbox-comparison-category" data-role="comparison-category" aria-controls="insta-toolbox-comparison-list"><option value="not-following-me-back">Don't follow you back</option><option value="i-do-not-follow-back">You don't follow back</option><option value="mutuals">Mutuals</option></select></div><div class="field"><label for="insta-toolbox-filter">Find a username</label><input id="insta-toolbox-filter" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-role="result-filter" aria-controls="insta-toolbox-comparison-list"></div></div><p id="insta-toolbox-comparison-count" class="comparison-count" data-role="comparison-count" tabindex="-1"></p><ul id="insta-toolbox-comparison-list" class="list comparison-list" data-role="comparison-list" aria-describedby="insta-toolbox-comparison-count"></ul><button class="button quiet comparison-more" type="button" data-action="show-more-comparison" data-role="comparison-more" hidden>Show more</button></section>
           <details class="settings-inline"><summary>Capture lists and export</summary><p class="lead">If the account check fails, open Followers or Following and scan that list.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="insta-toolbox-list-type">Raw list</label><select id="insta-toolbox-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
-        <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><div class="card" data-role="presence-routine"></div>
-          <details class="settings-inline" data-role="manual-account-disclosure"><summary>Manual Follow / Unfollow</summary><p class="lead">Review exact accounts before changing them.</p><div class="card" data-role="queue-current"></div>
-            <div class="toolbar"><button class="button primary" type="button" data-action="account-dry-run">Refresh profile status</button><button class="button quiet" type="button" data-action="open-profile">Open profile</button></div><details class="settings-inline"><summary>Queue and files</summary><div class="toolbar"><button class="button quiet" type="button" data-action="queue-complete">Complete</button><button class="button quiet" type="button" data-action="queue-skip">Skip</button></div><div class="toolbar"><label class="file quiet">Import queue JSON<input type="file" accept=".json,application/json" data-file="queue"></label><button class="button quiet" type="button" data-action="export-queue">Export queue state</button></div></details><div class="card" data-role="account-result"></div>
-            <div class="field"><label for="insta-toolbox-bot-action">Action</label><select id="insta-toolbox-bot-action" data-role="bot-action"><option value="follow">Follow people</option><option value="unfollow">Unfollow people</option></select></div>
-            <div class="field"><label for="insta-toolbox-bot-source">Accounts</label><select id="insta-toolbox-bot-source" data-role="bot-source"><option value="current-profile">Current profile</option><option value="i-do-not-follow-back">Followers you do not follow</option><option value="scanned-followers">Scanned Followers</option><option value="queue">Queue items</option></select></div>
-            <div class="field" data-role="bot-count-field"><label for="insta-toolbox-bot-count">Number of accounts</label><input id="insta-toolbox-bot-count" type="number" min="1" max="250" value="20" data-role="bot-count"></div>
-            <p class="lead" data-role="account-run-summary">Choose accounts, then review them.</p><div class="toolbar"><button class="button primary big" type="button" data-action="review-accounts" data-role="account-run-primary">Review 20 Follow targets</button></div><div class="review" data-role="run-review" hidden><strong data-role="review-title"></strong><ul class="list list--compact" data-role="review-list"></ul><p class="lead" data-role="review-skips"></p></div>
-          </details></section>
+        <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><div class="card" data-role="presence-routine"></div></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions afterward</label></div>
@@ -9997,8 +10916,8 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
         <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="removeOwnReactions" aria-describedby="insta-toolbox-reactions-note"> Remove my reactions afterward</label><p class="setting-note" id="insta-toolbox-reactions-note" hidden></p></div>
         <label><input type="checkbox" data-cleanup-preference="showSummary"> Show completed run details</label></details>
         <details class="settings-inline settings-section"><summary>Execution</summary>
-        <div class="field"><label for="insta-toolbox-execution-mode">Run in</label><select id="insta-toolbox-execution-mode" data-cleanup-preference="execution"><option value="foreground">Foreground</option><option value="background" disabled>Background — not available yet</option></select><p class="setting-note">Keep this Instagram tab active.</p></div>
-        <div class="field"><label for="insta-toolbox-workers">Managed tabs</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount" disabled><option value="1">1</option><option value="2">2</option></select><p class="setting-note">Multiple tabs are not available yet.</p></div>
+        <div class="field"><label for="insta-toolbox-execution-mode">Worker tabs</label><select id="insta-toolbox-execution-mode" data-cleanup-preference="execution"><option value="foreground">Keep in front</option><option value="background">Open in background</option></select><p class="setting-note">Tabs must stay open and loaded. Sleep, tab discard, or closing Chrome pauses the job.</p></div>
+        <div class="field"><label for="insta-toolbox-workers">Tabs to prepare</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select><p class="setting-note">Ghost mode prepares tabs together, then removes messages one conversation at a time.</p></div>
         <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="notifications" disabled> Completion notifications</label><p class="setting-note">Not available yet</p></div></details>
         <details class="settings-inline settings-section"><summary>Data and troubleshooting</summary><p class="setting-note" data-role="settings-version"></p><p class="setting-note" data-role="storage-usage"></p>
         <div class="toolbar"><button class="button quiet" type="button" data-action="backup-local">Export local data</button><button class="button quiet" type="button" data-action="export-diagnostics">Export diagnostics</button></div>
@@ -10366,6 +11285,8 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
   function renderAccount() {
     const item = currentQueueItem();
     const current = query('[data-role="queue-current"]');
+    const result = query('[data-role="account-result"]');
+    if (!current || !result) return;
     current.replaceChildren();
     const title = document.createElement('h2');
     title.textContent = item ? `@${item.account.username}` : 'No queue item loaded';
@@ -10374,7 +11295,6 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       ? `${item.action} · ${item.status} · ${item.reason}`
       : 'Import an insta-toolbox-manual-queue JSON file.';
     current.append(title, detail);
-    const result = query('[data-role="account-result"]');
     result.replaceChildren();
     const resultTitle = document.createElement('h3');
     resultTitle.textContent = 'Profile status';
@@ -12464,12 +13384,23 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       onUpdate: next => presencePanel?.render(next),
     });
     presencePanel = globalThis.InstaToolboxPresenceSessionPanel.mount({
-      container: query('[data-role="presence-routine"]'), document,
+      container: query('[data-role="presence-routine"]'), document, window,
       session: presenceSession,
       inspectAccount: inspectPresenceAccount,
       confirmAction: confirmRun,
       readPreferences: () => GM_getValue('instaToolboxPresenceSessionV1', null),
       writePreferences: value => GM_setValue('instaToolboxPresenceSessionV1', value),
+      readLog: () => {
+        const account = inspectPresenceAccount();
+        return account.accountKey
+          ? GM_getValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, null)
+          : null;
+      },
+      writeLog: value => {
+        const account = inspectPresenceAccount();
+        if (!account.accountKey) throw new Error('presence-log-account-unverified');
+        return GM_setValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, value);
+      },
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
         || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()),
       onStatus: status,
@@ -12499,6 +13430,22 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       cancelConfirmation: () => confirmationController?.cancel(),
       load: () => inspectInboxAccount().accountVerified ? inboxCheckpoints.load() : null,
       save: checkpoint => inboxCheckpoints.save(checkpoint),
+      workerTransport: typeof GM_openInTab === 'function'
+        && typeof GM_addValueChangeListener === 'function'
+        && typeof GM_removeValueChangeListener === 'function' ? {
+          storage: {
+            get: key => GM_getValue(key, null),
+            set: (key, value) => GM_setValue(key, value),
+            listen: (key, listener) => GM_addValueChangeListener(
+              key,
+              (_name, _before, value) => listener(value),
+            ),
+            unlisten: id => GM_removeValueChangeListener(id),
+          },
+          openTab: (url, options) => GM_openInTab(url, options),
+        } : null,
+      defaultWorkerCount: cleanupSettings.effective(cleanupPreferences, 'userscript').workerCount,
+      openWorkersInBackground: cleanupSettings.effective(cleanupPreferences, 'userscript').execution === 'background',
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
         || relationshipController || state.run?.status === 'running' || presencePanel?.busy()),
       onStatus: status,
@@ -12506,14 +13453,11 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
   }
   renderAll();
 
-  // Pick a paused account run back up after the navigation that advanced it.
+  // Presence replaces the old persisted manual account runner. Never resume a
+  // hidden legacy queue after an update or navigation.
   if (resumableAccountRun()) {
-    const pending = state.run.queue.length;
-    status(`Resuming run: ${pending} account${pending === 1 ? '' : 's'} left. Use Stop to end it.`);
-    void continueAccountRun().catch((error) => {
-      setRun({ status: 'stopped', stopReason: error.message, current: '' });
-      status(`Run stopped: ${error.message}`);
-    });
+    setRun({ status: 'stopped', stopReason: 'legacy account run retired', current: '', queue: [] });
+    status('An older manual account run was stopped. Presence does not resume past approvals.');
   }
 })();
 

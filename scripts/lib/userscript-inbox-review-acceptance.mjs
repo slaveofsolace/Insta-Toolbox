@@ -274,7 +274,11 @@ export async function acceptUserscriptInboxReview({
           overflow:inbox.scrollWidth-inbox.clientWidth,scrollOverflow:scroll.scrollWidth-scroll.clientWidth,
           liveRegions:root.querySelectorAll('[aria-live]').length};
       })()`);
-      assert.equal(metrics.controls.length, 10, `${viewport.label}: populated review controls`);
+      assert.equal(metrics.controls.length, 12, `${viewport.label}: populated review controls`);
+      assert.ok(metrics.controls.some(control => control.name === 'Managed worker tabs'),
+        `${viewport.label}: managed worker count control`);
+      assert.ok(metrics.controls.some(control => control.name === 'Worker tab opening'),
+        `${viewport.label}: worker opening control`);
       assert.ok(metrics.controls.every(control => control.height >= 44 && control.width >= 44), `${viewport.label}: undersized controls ${JSON.stringify(metrics)}`);
       assert.ok(metrics.controls.every(control => control.reachable && control.receivesPointer), `${viewport.label}: inaccessible controls ${JSON.stringify(metrics)}`);
       assert.ok(metrics.controls.every(control => control.left >= metrics.panel.left - 1 && control.right <= metrics.panel.right + 1));

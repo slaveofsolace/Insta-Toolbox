@@ -53,7 +53,83 @@ test('normalizes a small session and makes story reactions include story viewing
     viewStories: true, reactStories: true, likePosts: true,
     followPeople: false, acceptRequests: false,
   });
+  assert.equal(value.mode, 'session');
+  assert.equal(value.liveDurationMinutes, 120);
+  assert.equal(value.liveBurstActions, 5);
+  assert.equal(value.quietMinutes, 10);
   assert.equal(Object.isFrozen(value), true);
+});
+
+test('Live like me remains finite and inserts reviewed quiet windows', async () => {
+  const waits = [];
+  const f = fixture({
+    candidates: { likePosts: [
+      candidate('likePosts', 'post:1'),
+      candidate('likePosts', 'post:2'),
+      candidate('likePosts', 'post:3'),
+    ] },
+    wait: async ms => { waits.push(ms); },
+  });
+  const options = normalizePresenceSessionOptions({
+    mode: 'live', maxActions: 3, liveDurationMinutes: 60,
+    liveBurstActions: 2, quietMinutes: 7,
+    actions: { likePosts: true },
+  });
+  assert.equal(options.mode, 'live');
+  const review = f.session.createReview({ accountId: 'viewer', options,
+    expiresAt: NOW + 60 * 60_000 });
+  const result = await f.session.start(review);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.completed, 3);
+  assert.equal(result.mode, 'live');
+  assert.equal(waits.includes(7 * 60_000), true);
+  assert.equal(f.updates.some(value => value.status === 'quiet'), true);
+  assert.equal(result.results.every(value => Number.isFinite(value.at) && value.eventId), true);
+});
+
+test('Live like me clamps copied unbounded settings and never exceeds twelve hours', () => {
+  const f = fixture();
+  const options = normalizePresenceSessionOptions({
+    mode: 'live', maxActions: 50_000, liveDurationMinutes: 50_000,
+    liveBurstActions: 500, quietMinutes: 500,
+    actions: { viewStories: true },
+  });
+  assert.deepEqual({
+    maxActions: options.maxActions,
+    liveDurationMinutes: options.liveDurationMinutes,
+    liveBurstActions: options.liveBurstActions,
+    quietMinutes: options.quietMinutes,
+  }, { maxActions: 200, liveDurationMinutes: 120, liveBurstActions: 5, quietMinutes: 10 });
+  const review = f.session.createReview({ accountId: 'viewer', options,
+    expiresAt: NOW + 48 * 60 * 60_000 });
+  assert.equal(review.expiresAt, NOW + 120 * 60_000);
+});
+
+test('Live like me rests and checks again instead of ending when no target is visible', async () => {
+  let clock = NOW;
+  const waits = [];
+  const updates = [];
+  const nativeActions = {
+    inspectContext: () => ({ accountVerified: true, usable: true, accountId: 'viewer',
+      accountKey: 'iguser-v1-viewer' }),
+    find: async () => null,
+    execute: async () => { throw new Error('no target should execute'); },
+  };
+  const session = createPresenceSession({
+    nativeActions, locks: lockManager(), now: () => clock,
+    wait: async ms => { waits.push(ms); clock += ms; }, onUpdate: value => updates.push(value),
+  });
+  const review = session.createReview({
+    accountId: 'viewer',
+    options: { mode: 'live', maxActions: 5, liveDurationMinutes: 30,
+      liveBurstActions: 3, quietMinutes: 30, actions: { likePosts: true } },
+    expiresAt: NOW + 30 * 60_000,
+  });
+  const result = await session.start(review);
+  assert.equal(result.status, 'expired');
+  assert.equal(result.completed, 0);
+  assert.deepEqual(waits, [30 * 60_000]);
+  assert.equal(updates.some(value => value.status === 'quiet'), true);
 });
 
 test('runs only the reviewed finite action set and verifies every result', async () => {

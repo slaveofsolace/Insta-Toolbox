@@ -3,8 +3,6 @@
 **[Install Insta Toolbox with Tampermonkey](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js)**
 
 Instagram utilities that run locally in your browser. Check mutuals, review follow or unfollow targets, and unsend your own messages from the conversation you have open.
-_______________________
-##### Recommended user steps:
 ## Install in about a minute
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
@@ -21,15 +19,15 @@ _______________________
 
    ![The Insta Toolbox IT launcher after Instagram reloads](docs/media/install/03-open-toolbox.png)
 
-## **You're done — enjoy! :)**
+## You're done — enjoy! :)
 
 Need help or found a bug? [Submit a ticket](https://slaveofsolace.com/work/contact/) or [open an issue](https://github.com/slaveofsolace/Insta-Toolbox/issues).
 
-##### Like my work?
+### Like my work?
 
 [![Buy me a coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://www.buymeacoffee.com/slaveofsolace)
 
-Already on version 3.0? Tampermonkey updates it in place. Remove any 2.x copy so only one panel loads.
+Already on version 3.x or 4.0? Tampermonkey updates it in place. Remove any 2.x copy so only one panel loads.
 
 See [Installation](docs/INSTALLATION.md) for the extension, desktop apps, web app, checksums, updates, and uninstall steps.
 
@@ -38,8 +36,8 @@ See [Installation](docs/INSTALLATION.md) for the extension, desktop apps, web ap
 ## What it does
 
 - **Mutual Checker** compares the accounts Instagram returns. Browse, search, or download the results even when a list is partial. Partial results use “Not found” labels: a missing account may still be a mutual. [Why lists can be partial](docs/MUTUAL_CHECKER_PARTIAL_RESULTS.md).
-- **Follow / Unfollow** builds a finite target list, previews every target, and asks for confirmation before clicking.
-- **DM Unsend** works in the open conversation, confirms the thread and action, and reports only verified removals.
+- **Presence** can view stories, react to stories, like posts, follow people, and accept incoming requests through Instagram's visible controls. Every session is reviewed, finite, pausable, and recorded in a private local activity log.
+- **DM Unsend** works in the open conversation, confirms the thread and action, and reports only verified removals. **Ghost mode** runs the same reviewed cleanup across selected conversations in one to five managed tabs.
 - **Workspace** keeps local imports, comparisons, reviewed plans, ledgers, and exports in the PWA or desktop app.
 
 Live actions start disabled on every load. A follow, unfollow, or unsend run requires an action-specific confirmation. Stop remains available during a run. Challenge, rate-limit, wrong-thread, ambiguous-control, and uncertain-result checks stop the runner.
@@ -50,16 +48,16 @@ Mutual Checker waits before retrying rate-limited reads: Instagram's reset time 
 
 Download files from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 
-The 4.0 files below are planned release names. Until 4.0 is published, the latest release and stable installer serve 3.1.12.
+The stable Tampermonkey link always serves the latest published release. Version 4.1.0 files appear after the release checks finish.
 
 | Surface | Release file | Use it when |
 | --- | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` | You want the simplest Instagram overlay install. |
-| Chrome extension | `Insta-Toolbox-Extension-4.0.1.zip` | You prefer an unpacked browser extension. |
-| Windows desktop | `Insta-Toolbox-Setup-4.0.1.exe` | You want one downloadable Windows installer. |
-| macOS desktop | `Insta-Toolbox-4.0.1-universal.dmg` | You want the recommended drag-to-Applications package for Intel or Apple Silicon. |
-| macOS portable | `Insta-Toolbox-4.0.1-universal.zip` | You prefer to extract the universal app directly. |
-| Web/PWA | `insta-toolbox-web-4.0.1.zip` | You want to self-host the local-first workspace. |
+| Chrome extension | `Insta-Toolbox-Extension-4.1.0.zip` | You prefer an unpacked browser extension. |
+| Windows desktop | `Insta-Toolbox-Setup-4.1.0.exe` | You want one downloadable Windows installer. |
+| macOS desktop | `Insta-Toolbox-4.1.0-universal.dmg` | You want the recommended drag-to-Applications package for Intel or Apple Silicon. |
+| macOS portable | `Insta-Toolbox-4.1.0-universal.zip` | You prefer to extract the universal app directly. |
+| Web/PWA | `insta-toolbox-web-4.1.0.zip` | You want to self-host the local-first workspace. |
 
 Windows packages are unsigned. macOS packages are ad-hoc signed, but not Developer ID signed or notarized. Confirm the checksum before opening a download.
 
@@ -70,13 +68,13 @@ Download `SHA256SUMS.txt` from the same release.
 Windows PowerShell:
 
 ```powershell
-Get-FileHash .\Insta-Toolbox-Setup-4.0.1.exe -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Setup-4.1.0.exe -Algorithm SHA256
 ```
 
 macOS:
 
 ```sh
-shasum -a 256 Insta-Toolbox-4.0.1-universal.dmg
+shasum -a 256 Insta-Toolbox-4.1.0-universal.dmg
 ```
 
 Match the printed hash to the file's entry in `SHA256SUMS.txt`.
@@ -118,9 +116,9 @@ pnpm run qa:overlay:check
 pnpm run verify:repo-hygiene
 ```
 
-The 4.0 development matrix covers the PWA, extension, userscript, layout controls, and packaged apps. The service worker uses cache generation `insta-toolbox-v401`. The published release remains 3.1.12 while 4.0.1 acceptance is in progress. Authenticated Instagram behavior depends on the current site and must be accepted separately with disposable content.
+The 4.1 development matrix covers the PWA, extension, userscript, layout controls, and packaged apps. The service worker uses cache generation `insta-toolbox-v410`. Automated fixtures do not prove current authenticated Instagram behavior; disposable-content acceptance is recorded separately.
 
-See [Contributing](CONTRIBUTING.md), [Maintainer Guide](docs/MAINTAINER_GUIDE.md), [4.0.1 compatibility](docs/compatibility/4.0.1.md), and [4.0.1 acceptance](docs/acceptance/4.0.1.md).
+See [Contributing](CONTRIBUTING.md), [Maintainer Guide](docs/MAINTAINER_GUIDE.md), [4.1.0 compatibility](docs/compatibility/4.1.0.md), and [4.1.0 acceptance](docs/acceptance/4.1.0.md).
 
 ## License and credit
 

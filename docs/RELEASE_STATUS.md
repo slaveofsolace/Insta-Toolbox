@@ -1,9 +1,10 @@
 # Release status
 
-Current version: **4.0.1**
+Current version: **4.1.0**
 
-Version 4.0.1 contains reviewed serial inbox cleanup and the compact Presence
-session. The stable update URL always resolves to the latest published release.
+Version 4.1.0 restores the single-conversation Unsend traversal, adds reviewed
+managed tabs for Ghost cleanup, and expands Presence with a finite Live like me
+run and a private local activity log. The stable update URL always resolves to the latest published release.
 Authenticated acceptance remains separate from fixture results. See
 [DM restoration](./DM_RESTORATION_4.0.1.md) for the native selection and
 removal-reporting history.
@@ -13,10 +14,10 @@ removal-reporting history.
 | Surface | File |
 | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` |
-| Chrome extension | `Insta-Toolbox-Extension-4.0.1.zip` |
-| Web/PWA | `insta-toolbox-web-4.0.1.zip` |
-| Windows | `Insta-Toolbox-Setup-4.0.1.exe` |
-| macOS | `Insta-Toolbox-4.0.1-universal.dmg` and `.zip` |
+| Chrome extension | `Insta-Toolbox-Extension-4.1.0.zip` |
+| Web/PWA | `insta-toolbox-web-4.1.0.zip` |
+| Windows | `Insta-Toolbox-Setup-4.1.0.exe` |
+| macOS | `Insta-Toolbox-4.1.0-universal.dmg` and `.zip` |
 | Integrity | `SHA256SUMS.txt`, SBOM, and GitHub provenance attestation |
 
 The stable userscript channel is:
@@ -29,14 +30,17 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 973 automated tests at the shared Presence/Ghost integration checkpoint;
+- 989 automated tests at the shared Presence/Ghost integration checkpoint;
 - complete generated-userscript and extension fixture acceptance;
 - 45 overlay screenshot states checked against the reviewed pixel thresholds;
 - 11 PWA screenshot states checked against the reviewed pixel thresholds;
-- service-worker cache generation `insta-toolbox-v401`.
+- service-worker cache generation `insta-toolbox-v410`.
 
-The native DM regression matrix also covers restored pre-Fast handling of sent
-replies and story replies through the generated userscript's primary action.
+The native DM regression matrix covers restored pre-Fast handling of sent
+replies, story replies, direct chats, group chats, id-less rows, and unavailable
+account labels through the generated userscript's primary action. A verified
+removal now resets traversal even when Instagram recycles rows without changing
+the scroll height.
 Read-only native selection passed; post-removal authenticated acceptance is
 still pending for the repaired candidate.
 
@@ -47,8 +51,9 @@ dialog closure, and an independent verified count. This does not establish
 current authenticated Instagram reaction compatibility; a disposable live
 reaction remains a separate gate.
 
-The current source passes the complete extension/userscript acceptance,
-including responsive and true 200% zoom states. Release promotion uses the
+The current source passes the complete extension/userscript acceptance suite,
+including responsive and true 200% zoom states, the 45-state overlay matrix,
+the 11-state PWA matrix, and real Chrome extension/PWA pairing. Release promotion uses the
 browser, web, Windows, macOS, and checksum artifacts from one successful
 `main` CI run without rebuilding them. Authenticated acceptance remains a
 separate gate. Desktop/PWA expansion is deferred while the Tampermonkey workflow
@@ -76,8 +81,8 @@ The macOS application is ad-hoc signed for bundle integrity but is not Developer
 
 ## Evidence and nonclaims
 
-The candidate record is [acceptance/4.0.1.md](./acceptance/4.0.1.md).
-Compatibility is tracked in [compatibility/4.0.1.md](./compatibility/4.0.1.md).
+The candidate record is [acceptance/4.1.0.md](./acceptance/4.1.0.md).
+Compatibility is tracked in [compatibility/4.1.0.md](./compatibility/4.1.0.md).
 
 Automated fixtures do not prove current authenticated Instagram selectors, human screen-reader use, persistent-profile behavior, SmartScreen trust, Gatekeeper trust, or notarization. Record those checks separately without committing usernames, messages, thread IDs, cookies, tokens, or private screenshots.
 

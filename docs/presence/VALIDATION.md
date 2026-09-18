@@ -1,12 +1,12 @@
 # Presence validation
 
-Date: September 16, 2026.
+Date: September 18, 2026.
 
 ## Current production-shaped fixture
 
 The generated userscript mounts the compact Presence session in its primary
-account tab. Seven controller tests and eight browser gates pass across five
-rendered states.
+account tab. Focused controller, native-action, and activity-log tests pass.
+Nine browser gates pass across five rendered states.
 
 Verified in deterministic Instagram-shaped fixtures:
 
@@ -20,13 +20,19 @@ Verified in deterministic Instagram-shaped fixtures:
 - copied, replayed, expired, or wrong-account reviews fail;
 - Pause prevents the next action, Resume continues the same review, and Stop
   aborts the wait before another action;
+- Live like me remains finite, respects its reviewed window and action ceiling,
+  and enters bounded rest periods;
+- Instagram sections are reached through observed native controls rather than
+  manufactured page URLs;
+- the bounded per-account log renders in Presence and in a separate read-only
+  resizable window without message or session payloads;
 - uncertain results stop without retry;
 - one polite live region, 44 px controls, narrow and short layouts, light and
   dark themes, and true 200% zoom remain usable.
 
 The full extension/userscript acceptance matrix also passes with the Presence
 session mounted. This covers regressions against Mutual Checker, DM Unsend,
-Ghost, Manual Follow / Unfollow, responsive layouts, and the existing
+Ghost, responsive layouts, and the existing
 accessibility contract.
 
 ## Historical planner fixture
@@ -46,7 +52,7 @@ The current checks do not establish:
 
 - compatibility with the latest authenticated Instagram layouts;
 - reliable discovery beyond exact rendered targets;
-- shared cross-tab ownership with an active Ghost job;
+- current authenticated cross-tab ownership with an active Ghost job;
 - operation in a frozen, discarded, closed, or signed-out tab;
 - any guaranteed account-growth outcome.
 
@@ -58,8 +64,8 @@ The current checks do not establish:
    Requested result, request confirmation, story view, and story reaction.
 4. Verify Pause, Resume, Stop, restriction handling, account changes, and an
    uncertain postcondition without a repeat click.
-5. Connect and test the existing account-level owner shared by Presence and
-   Ghost before allowing the modes to overlap across tabs.
+5. Test the account-level owner shared by Presence and Ghost in the persistent
+   profile before allowing the modes to overlap across tabs.
 6. Rebuild the userscript from source and rerun the complete repository,
    browser, hygiene, parity, and release checks at the final candidate commit.
 

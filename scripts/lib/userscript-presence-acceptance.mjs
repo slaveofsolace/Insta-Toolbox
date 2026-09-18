@@ -131,13 +131,13 @@ export async function acceptUserscriptPresence({
       return {tab:root.querySelector('[data-view="account"]').textContent,
         labels:[...panel.querySelectorAll('.presence-option')].map(node=>node.textContent.trim()),
         plans:panel.textContent.includes('Build my plan') || panel.textContent.includes('Plan choices'),
-        manual:root.querySelector('[data-role="manual-account-disclosure"]')?.textContent.includes('Manual Follow / Unfollow'),
+        manual:Boolean(root.querySelector('[data-role="manual-account-disclosure"]')?.textContent.includes('Manual Follow / Unfollow')),
         liveRegions:root.querySelectorAll('[aria-live]').length};
     })()`);
     assert.equal(layout.tab, 'Presence');
     assert.deepEqual(layout.labels, ['View stories','React to stories','Like posts','Follow people','Accept incoming requests']);
     assert.equal(layout.plans, false);
-    assert.equal(layout.manual, true);
+    assert.equal(layout.manual, false);
     assert.equal(layout.liveRegions, 1, 'the toolbox keeps one polite live region');
     checks.push('simple Presence choices replace plan-building UI');
 
@@ -145,6 +145,32 @@ export async function acceptUserscriptPresence({
     await startAndConfirm('likePosts');
     assert.deepEqual(await evaluate('globalThis.fixturePresenceClicks'), ['likePosts']);
     checks.push('confirmed post Like is re-resolved and verified');
+
+    await waitForPageValue(webContents,
+      `${rootExpression}.querySelectorAll('.presence-log li').length > 0`,
+      'Presence local activity entry');
+    const logWindowReady = new Promise(resolve => webContents.once('did-create-window', resolve));
+    await evaluate(`(() => {
+      const details=${rootExpression}.querySelector('.presence-log');
+      details.open=true;
+      [...details.querySelectorAll('button')].find(node=>node.textContent==='Open log window').click();
+    })()`);
+    const logWindow = await withTimeout(logWindowReady, 'Presence activity log window');
+    await waitForPageValue(logWindow.webContents,
+      `document.title === 'Insta Toolbox · Presence activity' && document.querySelectorAll('ol li').length > 0`,
+      'Presence activity log contents');
+    const activityLog = await logWindow.webContents.executeJavaScript(`({
+      title:document.title,
+      heading:document.querySelector('h1')?.textContent || '',
+      rows:document.querySelectorAll('ol li').length,
+      buttons:[...document.querySelectorAll('button')].map(node=>node.textContent),
+    })`, true);
+    logWindow.close();
+    assert.equal(activityLog.title, 'Insta Toolbox · Presence activity');
+    assert.equal(activityLog.heading, 'Presence activity');
+    assert.ok(activityLog.rows >= 1);
+    assert.deepEqual(activityLog.buttons, ['Download log','Clear log']);
+    checks.push('local activity opens in a separate read-only log window');
 
     await evaluate(`globalThis.fixturePresenceSurface('follow')`);
     await select(['followPeople']);
@@ -207,7 +233,7 @@ export async function acceptUserscriptPresence({
         const root=${rootExpression}, panel=root.querySelector('.panel'), session=root.querySelector('.presence-session'), scroll=root.querySelector('.scroll');
         const box=panel.getBoundingClientRect();
         const visible=node=>node.getClientRects().length&&!node.closest('[hidden]');
-        const controls=[...session.querySelectorAll('button,input[type="number"],label.presence-option')].filter(visible).map(node=>{
+        const controls=[...session.querySelectorAll('button,summary,select,input[type="number"],label.presence-option')].filter(visible).map(node=>{
           const rect=node.getBoundingClientRect(); return {width:rect.width,height:rect.height,left:rect.left,right:rect.right};
         });
         return {controls,overflow:session.scrollWidth-session.clientWidth,scrollOverflow:scroll.scrollWidth-scroll.clientWidth,

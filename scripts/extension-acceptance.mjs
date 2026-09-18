@@ -657,12 +657,6 @@ async function acceptPartialAccountReview(webContents, surface) {
   console.log('Accepted ' + surface + ' partial Follow and Unfollow targets, uncertainty review, and zero-click cancellation.');
 }
 
-async function acceptUserscriptPartialAccountReview(webContents, baseUrl) {
-  await withTimeout(webContents.loadURL(baseUrl + '/userscript-fixture.html?partial-run=1'), 'partial userscript fixture load');
-  await waitForPageValue(webContents, `Boolean(document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot)`, 'partial userscript injection');
-  await acceptPartialAccountReview(webContents, 'userscript');
-}
-
 async function acceptOverlayDmConfirmation(webContents, baseUrl) {
   await loadFixture(webContents, baseUrl, 'messages-live');
   await webContents.executeJavaScript(`(() => {
@@ -1571,13 +1565,23 @@ async function acceptUserscriptFieldSpacing(webContents, baseUrl) {
           const s = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
           const area = ${JSON.stringify(state)} === 'settings' ? s.querySelector('.settings-dialog')
             : s.querySelector('[data-panel="' + ${JSON.stringify(state)} + '"]');
-          const fields = [...area.querySelectorAll('.field')].flatMap(field => {
-            const label = field.querySelector('label[for]');
-            const control = label && s.getElementById(label.htmlFor);
+          const fields = [...area.querySelectorAll('.field, .presence-limit')].flatMap(field => {
+            const presenceField = field.matches('.presence-limit');
+            const label = presenceField ? field : field.querySelector('label[for]');
+            const control = presenceField
+              ? field.querySelector('input, select')
+              : label && s.getElementById(label.htmlFor);
             if (!control || !control.getClientRects().length || !label.getClientRects().length) return [];
-            const lr = label.getBoundingClientRect(), cr = control.getBoundingClientRect();
+            const labelText = presenceField
+              ? [...label.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim())
+              : null;
+            const range = labelText ? document.createRange() : null;
+            if (range) range.selectNodeContents(labelText);
+            const lr = range ? range.getBoundingClientRect() : label.getBoundingClientRect();
+            const cr = control.getBoundingClientRect();
             if (control.type === 'range') return [];
-            return [{ name: label.textContent.trim(), gap: cr.top - lr.bottom, height: cr.height }];
+            return [{ name: labelText ? labelText.textContent.trim() : label.textContent.trim(),
+              gap: cr.top - lr.bottom, height: cr.height }];
           });
           const scopedFields = ${JSON.stringify(state)} === 'settings'
             ? [...s.querySelector('[data-cleanup-preference="messageScope"]').closest('details').querySelectorAll('.field')]
@@ -1720,6 +1724,7 @@ async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
       })()`, true);
       assert.deepEqual(metrics.controls.map(control => control.name), [
         'Ghost mode', 'Inbox section', 'Opening conversations may mark them read.', 'Find conversations', 'Open inbox',
+        'Managed worker tabs', 'Worker tab opening',
       ], `${viewport.label}: initial inbox controls`);
       assert.ok(metrics.controls.every(control => control.height >= 44 && control.width >= 44),
         `${viewport.label}: inbox targets below 44px ${JSON.stringify(metrics.controls)}`);
@@ -2177,15 +2182,17 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       liveRegions: shadow.querySelectorAll('[aria-live]').length,
       hasGlobalUnlock: Boolean(shadow.querySelector('[data-role="live-actions"]')),
       liveControls: [
-        'review-accounts', 'run-unsend', 'scan-following', 'scan-followers', 'scan-sent', 'stop-run',
-      ].map((action) => Boolean(shadow.querySelector('[data-action="' + action + '"]'))),
+        Boolean(shadow.querySelector('[data-presence-start]')),
+        ...['run-unsend', 'scan-following', 'scan-followers', 'scan-sent', 'stop-run']
+          .map((action) => Boolean(shadow.querySelector('[data-action="' + action + '"]'))),
+      ],
       checkerScanLabels: [
         shadow.querySelector('[data-action="scan-following"]')?.textContent.trim(),
         shadow.querySelector('[data-action="scan-followers"]')?.textContent.trim(),
       ],
       reviewControl: {
-        disabled: shadow.querySelector('[data-action="review-accounts"]')?.disabled,
-        live: shadow.querySelector('[data-action="review-accounts"]')?.hasAttribute('data-live-action'),
+        disabled: shadow.querySelector('[data-presence-start]')?.disabled,
+        live: shadow.querySelector('[data-presence-start]')?.hasAttribute('data-live-action'),
       },
       unsendControl: {
         disabled: shadow.querySelector('[data-action="run-unsend"]')?.disabled,
@@ -2625,38 +2632,22 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     notFollowedBack: { count: 'Showing 1 of 1 account.', rows: ['@follower_only'] },
   });
 
-  await webContents.executeJavaScript(`(() => {
+  const presenceSurface = await webContents.executeJavaScript(`(() => {
     const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
     shadow.querySelector('[data-view="account"]').click();
-    shadow.querySelector('[data-action="account-dry-run"]').click();
-  })()`, true);
-  const account = await webContents.executeJavaScript(`(() => {
-    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
     return {
       clicks: globalThis.fixtureProfileClickCount,
-      result: shadow.querySelector('[data-role="account-result"]')?.textContent,
+      heading: shadow.querySelector('[data-panel="account"] h2')?.textContent,
+      startDisabled: shadow.querySelector('[data-presence-start]')?.disabled,
+      manualDisclosure: Boolean(shadow.querySelector('[data-role="manual-account-disclosure"]')),
     };
   })()`, true);
-  assert.equal(account.clicks, 0);
-  assert.match(account.result, /Profile status/);
-
-  await webContents.executeJavaScript(`(() => {
-    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
-    shadow.querySelector('[data-action="queue-complete"]').click();
-    shadow.querySelector('[data-action="account-dry-run"]').click();
-  })()`, true);
-  const currentProfile = await webContents.executeJavaScript(`(() => {
-    const shadow = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
-    return {
-      clicks: globalThis.fixtureProfileClickCount,
-      current: shadow.querySelector('[data-role="queue-current"]')?.textContent,
-      result: shadow.querySelector('[data-role="account-result"]')?.textContent,
-    };
-  })()`, true);
-  assert.equal(currentProfile.clicks, 0);
-  assert.match(currentProfile.current, /No queue item loaded/);
-  assert.match(currentProfile.result, /Profile status/);
-  assert.match(currentProfile.result, /Observed @demo_creator as following without clicking/);
+  assert.deepEqual(presenceSurface, {
+    clicks: 0,
+    heading: 'Presence',
+    startDisabled: false,
+    manualDisclosure: false,
+  });
 
   await webContents.executeJavaScript(`(() => {
     globalThis.fixtureSetMessages();
@@ -3139,7 +3130,6 @@ async function run() {
     }
     if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_TOOLS_ONLY === '1') {
       await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
-      await acceptUserscriptPartialAccountReview(overlay.window.webContents, overlayBaseUrl);
       assert.deepEqual(overlay.problems, [], 'userscript tool browser problems');
       return;
     }
@@ -3208,7 +3198,6 @@ async function run() {
     await acceptToolboxLayout(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
-    await acceptUserscriptPartialAccountReview(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptInboxReview(presenceOptions);
     await acceptUserscriptPresence(presenceOptions);
     await acceptBackgroundComparison(background);

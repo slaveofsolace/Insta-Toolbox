@@ -18,6 +18,14 @@ const confirmation = await readFile(
   new URL('../extension/action-confirmation.js', import.meta.url),
   'utf8',
 );
+const presencePanel = await readFile(
+  new URL('../extension/presence-session-panel.js', import.meta.url),
+  'utf8',
+);
+const presenceActions = await readFile(
+  new URL('../extension/presence-native-actions.js', import.meta.url),
+  'utf8',
+);
 
 test('the userscript carries the metadata Tampermonkey needs to install and auto-update from GitHub', () => {
   const stableUrl = 'https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js';
@@ -47,16 +55,18 @@ test('the bundle ships the extension engine itself rather than a second copy of 
   assert.match(shell, /const engine = globalThis\.InstaToolboxInstagramInspector;/);
 });
 
-test('live Follow, Unfollow, and Unsend are available and go through the engine', () => {
-  assert.match(shell, /engine\.performReviewedProfileAction\(/);
+test('Presence Follow and DM Unsend are available through their reviewed engines', () => {
+  assert.match(source, /InstaToolboxPresenceSessionPanel/);
+  assert.match(source, /InstaToolboxPresenceNativeActions/);
   assert.doesNotMatch(shell, /engine\.performReviewedDmUnsend\(/);
   assert.match(source, /InstaToolboxDmThreadUnsender/);
   assert.match(source, /await dmRunner\.start\(\{/);
   assert.match(shell, /engine\.collectAccountList\(/);
   assert.match(shell, /dmRunner\.inspectAll\(\)/);
-  assert.match(source, /data-action="review-accounts"/);
-  assert.match(shell, /button\.dataset\.action = 'run-accounts'/);
-  assert.match(shell, /accountRunDraft\.signature !== current\.signature/);
+  assert.match(presencePanel, /await confirmAction\(\{/);
+  assert.match(presencePanel, /await session\.start\(review\)/);
+  assert.match(presenceActions, /action === 'followPeople'/);
+  assert.doesNotMatch(source, /data-role="manual-account-disclosure"|Manual Follow \/ Unfollow/);
   assert.match(source, /data-action="run-unsend"/);
   // Scanning is now a guided two-step sequence; the underlying handler is
   // still what both steps and the context prompt call.
@@ -68,11 +78,11 @@ test('live Follow, Unfollow, and Unsend are available and go through the engine'
   assert.doesNotMatch(source, /intentionally unavailable in userscript mode/);
 });
 
-test('the userscript can review the current exact profile as a one-item run', () => {
-  assert.match(source, /<option value="current-profile">Current profile<\/option>/);
-  assert.match(shell, /const source = query\('\[data-role="bot-source"\]'\)\?\.value \|\| 'current-profile'/);
-  assert.match(shell, /const count = source === 'current-profile' \? 1 : requestedCount/);
-  assert.match(shell, /engine\.normalizeUsername\?\.\(location\.pathname\)/);
+test('Presence follows only an exact observed profile row', () => {
+  assert.match(presenceActions, /logicalContainer\(control, 'follow'\)/);
+  assert.match(presenceActions, /resolved\.profile\.username === lower\(viewer\?\.accountId\)/);
+  assert.match(presenceActions, /id: `profile:\$\{resolved\.profile\.username\}`/);
+  assert.match(presenceActions, /resolve\(action, candidate\.id\)/);
 });
 
 test('each mutation uses one exact transient capability without a global unlock', () => {
@@ -165,20 +175,12 @@ test('the userscript records each verified Unsend once and never double-counts f
   assert.match(source, /onVerifiedRemoval: \(progress\) => recordVerifiedUnsend/);
 });
 
-test('an account run moves between profiles and survives the navigation it causes', () => {
-  // Navigating tears the userscript down, so without a persisted queue a
-  // multi-account run would only ever act on the profile already open.
-  assert.match(shell, /function resumableAccountRun\(\)/);
-  assert.match(shell, /async function continueAccountRun\(\)/);
-  assert.match(shell, /location\.href = `https:\/\/www\.instagram\.com\/\$\{encodeURIComponent\(username\)\}\/`;/);
-  assert.match(shell, /const onTarget = engine\.normalizeUsername\(location\.pathname\) === username;/);
-  assert.match(shell, /const managerTabStorageAvailable = managerTab !== null/);
-  assert.match(shell, /GM_saveTab\(managerTab\)/);
-  // Resuming must never inherit trust: the target is re-resolved on arrival.
-  assert.match(shell, /Resuming run: \$\{pending\} account/);
-  assert.match(shell, /resuming never inherits trust from the previous page/);
-  // Stopping has to clear the queue, or the next page load would carry on.
-  assert.match(shell, /status: 'aborted', stopReason: 'stopped by you', nextAt: null, current: '', queue: \[\]/);
+test('Presence clicks observed Instagram navigation and retires hidden legacy runs', () => {
+  assert.match(presenceActions, /control\.click\(\)/);
+  assert.match(presenceActions, /routeControl\(new Set\(\['\/explore\/', '\/explore'\]\), new Set\(\['explore'\]\)\)/);
+  assert.doesNotMatch(presenceActions, /location\.href\s*=|history\.pushState/);
+  assert.match(shell, /legacy account run retired/);
+  assert.doesNotMatch(shell, /Resuming run: \$\{pending\} account/);
 });
 
 test('a DM run is dropped on reload while an account run is kept', () => {
