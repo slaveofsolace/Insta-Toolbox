@@ -16,6 +16,7 @@ This project uses [Semantic Versioning](https://semver.org/).
 - Keep managed worker tabs unavailable until their browser integration passes acceptance.
 - Replace the Presence plan builder with five direct activities, one finite maximum, and Start, Pause, Resume, and Stop controls.
 - Keep Presence review authority in memory, require exact visible Instagram targets and postconditions, and stop on uncertain outcomes.
+- Serialize Presence and Ghost through one verified account lane so the two modes cannot click concurrently in the same browser profile.
 
 ## 3.1.12 - 2026-09-12
 
