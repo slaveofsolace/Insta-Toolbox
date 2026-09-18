@@ -152,9 +152,17 @@ cosmetic toggle.
 
 ## 9. Presence and Ghost coordination
 
-Read `docs/INBOX_CLEANUP_4.0.md` closely. The parent has coordinator/discovery/tab/runtime scaffolds, but native inbox execution remains disabled. Its metadata runtime is not yet a fully registered, authenticated executor. Do not claim Ghost works because a pure coordinator test passes.
+Read `docs/INBOX_CLEANUP_4.0.md` closely. The userscript now connects native
+inbox discovery, reviewed same-tab Ghost execution, and the existing Unsend
+runner. Presence and Ghost acquire the same account-scoped Web Lock, so they
+cannot overlap in one browser account lane. Their reviews and action authority
+remain separate.
 
-Before live Presence and Ghost coexist, introduce one trusted per-account activity owner. Reuse compatible parent contracts instead of creating a second independent background scheduler.
+This is deliberately a same-origin userscript boundary, not a distributed
+multi-tab broker. Managed background workers, restart reconciliation, automatic
+mode handoff, and cross-profile coordination remain unavailable. Starting a
+second mode while one is active fails closed; stop the current mode and review
+the other mode separately.
 
 Required behavior:
 
@@ -165,7 +173,9 @@ Required behavior:
 - Restart restores metadata only. A silent worker is not presumed dead and safe to replace.
 - Do not describe `modeHandoff().ready` as permission or a real distributed lock.
 
-Prove two-instance collisions, stale workers, account switches, late acknowledgements and storage failure. Do not wire live handlers until the account arbiter and native inspection are accepted.
+The source suite proves same-lane collision, account switching, late outcomes,
+storage failures, and release after settlement. Authenticated disposable-target
+acceptance remains separate from those fixtures.
 
 ## 10. Scheduling and background behavior
 

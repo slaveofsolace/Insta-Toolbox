@@ -1,7 +1,22 @@
 # Shared account activity
 
-Status: implemented and fixture-tested; not connected to production execution.
-Presence and Ghost live capability flags remain unchanged.
+Status: the generic arbiter is implemented and fixture-tested. The userscript
+production path uses its compatible account-scoped Web Lock name so Presence
+and Ghost cannot overlap in the same origin and browser profile. A private
+cross-tab broker is not implemented.
+
+## Userscript integration
+
+`extension/presence-session.js` and `extension/inbox-single-tab.js` both hold
+`insta-toolbox:account-activity:<account-key>` for the full reviewed session.
+The account key is derived from the verified signed-in username. A second mode
+receives no lock and performs no action. The current mode releases the lane
+only after its active operation settles.
+
+This integration does not restore authority after reload, coordinate separate
+browser profiles, or claim exactly-once behavior across a crash. Presence and
+Ghost keep separate confirmations, targets, and expiry. Managed worker tabs
+remain unavailable.
 
 ## Contract
 
@@ -90,10 +105,10 @@ These are deterministic adapter tests, not authenticated browser acceptance.
 
 | Item | Current behavior and missing capability | Next step / owner | Release criterion |
 | --- | --- | --- | --- |
-| Trusted broker | Module implemented; no production registration or shared cross-surface manager. Existing inbox runtime remains metadata-only. | Browser integration: choose one private broker and authenticated sender/document adapters; connect both modes through it. | Two real isolated runtime instances collide safely; page messages cannot mint leases. Disabled until accepted. |
-| Exact action wiring | Executor guard exists, but no Presence or Ghost native handler calls it yet. | Integration: wrap existing engines, invoke the guard before each native control, and preserve target-specific review. | Account/document switch, expiry, Stop, and mode handoff block the next mutation while settling dispatched work. Unwired. |
+| Trusted broker | Userscript Presence and Ghost share one origin-scoped Web Lock; same-profile overlap is rejected. No private cross-tab or cross-profile broker exists. | Browser integration: add a private broker only when managed worker tabs are implemented. | Two real isolated runtime instances collide safely; page messages cannot mint leases. Same-tab supported; cross-tab disabled. |
+| Exact action wiring | Presence and Ghost hold the shared lane while their existing exact-target adapters execute. Each adapter rechecks account, target, expiry, Stop, and postcondition. | QA: keep the lane and per-action guards covered together as native layouts change. | Account switch, expiry, Stop, and an occupied lane block the next mutation. Implemented for the userscript. |
 | Restart reconciliation | In-memory leases deliberately do not survive restart. No crash-recovery authority is implemented. | Browser integration: persist minimal idempotent outcomes through trusted storage and implement read-only reconciliation. | Lost acknowledgments, interrupted writes, browser crash, and service-worker restart restore metadata only; no blind retry. Proposed. |
-| Native acceptance | No Instagram action is performed by these tests. | QA: test source-matched fixtures first, then separately approved disposable targets in supported runtimes. | Verify native outcomes, interruptions, and handoff; preserve unresolved outcomes. No live support claim yet. |
+| Native acceptance | No Instagram action is performed by the account-lane tests. | QA: test source-matched fixtures first, then separately approved disposable targets in supported runtimes. | Verify native outcomes and interruptions; preserve unresolved outcomes. No current live support claim yet. |
 
 Related contracts: [Presence coordination](presence/CODEX_HANDOFF.md#9-presence-and-ghost-coordination),
 [Inbox cleanup](INBOX_CLEANUP_4.0.md), `extension/inbox-coordinator.js`, and

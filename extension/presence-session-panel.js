@@ -223,7 +223,16 @@ export function mountPresenceSessionPanel({
     }
     const review = session.createReview({ accountId: account.accountId, options, expiresAt });
     render(session.snapshot());
-    const outcome = await session.start(review);
+    let outcome;
+    try {
+      outcome = await session.start(review);
+    } catch (error) {
+      render(session.snapshot());
+      onStatus(error?.message === 'presence-account-busy'
+        ? 'Another Presence or Ghost run is already active.'
+        : 'Presence could not start safely in this browser.');
+      return false;
+    }
     render(outcome);
     onStatus(describe(outcome).join('. '));
     return outcome.status === 'completed';

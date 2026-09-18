@@ -29,7 +29,7 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 972 automated tests at the Presence integration checkpoint;
+- 973 automated tests at the shared Presence/Ghost integration checkpoint;
 - complete generated-userscript and extension fixture acceptance;
 - 45 historical 4.0.0 overlay screenshot states awaiting 4.0.1 recapture;
 - 11 historical 4.0.0 PWA screenshot states awaiting 4.0.1 recapture;
@@ -47,11 +47,12 @@ dialog closure, and an independent verified count. This does not establish
 current authenticated Instagram reaction compatibility; a disposable live
 reaction remains a separate gate.
 
-Earlier version-refreshed visual checks, Chrome pairing, Windows packaging,
-archive inspection, and local checksums do not certify the current source
-checkpoint. Packaging, remote CI, and authenticated acceptance remain separate
-gates. Desktop/PWA expansion is deferred while the Tampermonkey workflow is
-being completed. See the acceptance record for each check's exact scope.
+The current source passes the complete local extension/userscript acceptance,
+including responsive and true 200% zoom states. Earlier Chrome pairing, Windows
+and macOS packaging, archive inspection, and checksum results do not certify a
+new commit until exact-commit CI completes. Authenticated acceptance remains a
+separate gate. Desktop/PWA expansion is deferred while the Tampermonkey workflow
+is being completed. See the acceptance record for each check's exact scope.
 
 Before a release is promoted, the exact `main` commit must pass assembly, tests, repository hygiene, dependency audit, generated-userscript parity, extension and userscript acceptance, Chrome pairing, browser QA, overlay/PWA visual checks, Windows packaging, macOS packaging, archive inspection, checksum generation, and `git diff --check`.
 

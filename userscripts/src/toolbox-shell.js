@@ -1543,6 +1543,7 @@
       accountVerified: Boolean(accountId) && !restricted,
       usable: location.origin === 'https://www.instagram.com' && Boolean(accountId) && !restricted,
       accountId,
+      accountKey: globalThis.InstaToolboxInstagramViewer?.accountKey?.(accountId) || null,
       restriction: restricted,
       frozen: document.visibilityState === 'hidden' && document.wasDiscarded === true,
       discarded: document.wasDiscarded === true,
@@ -3402,6 +3403,7 @@
     });
     presenceSession = globalThis.InstaToolboxPresenceSession.create({
       nativeActions,
+      locks: globalThis.navigator?.locks || null,
       onUpdate: next => presencePanel?.render(next),
     });
     presencePanel = globalThis.InstaToolboxPresenceSessionPanel.mount({

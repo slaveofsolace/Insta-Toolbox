@@ -8536,6 +8536,7 @@ function normalizePresenceSessionOptions(value = {}) {
 
 function createPresenceSession({
   nativeActions,
+  locks = null,
   now = Date.now,
   random = Math.random,
   wait = null,
@@ -8546,6 +8547,7 @@ function createPresenceSession({
   if (typeof nativeActions?.inspectContext !== 'function'
     || typeof nativeActions?.find !== 'function'
     || typeof nativeActions?.execute !== 'function'
+    || (locks !== null && typeof locks?.request !== 'function')
     || typeof now !== 'function' || typeof random !== 'function'
     || (wait !== null && typeof wait !== 'function') || typeof onUpdate !== 'function') {
     fail('presence-session-adapter-required');
@@ -8620,102 +8622,110 @@ function createPresenceSession({
     if (active()) fail('presence-session-active');
     if (!review || !reviews.has(review) || consumed.has(review)) fail('presence-review-required');
     if (review.expiresAt <= now()) fail('presence-review-expired');
-    context(review.accountId);
-    consumed.add(review);
-    controller = new AbortController();
-    const { signal } = controller;
-    const results = [];
-    const seen = new Set();
-    const empty = new Set();
-    let cursor = 0;
-    publish({
-      status: 'running', reason: null, accountId: review.accountId, current: null,
-      completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
-      enabledActions: review.enabledActions, results, canPause: true, canResume: false, canStop: true,
-    });
-    try {
-      while (!signal.aborted && state.completed < review.options.maxActions && now() < review.expiresAt) {
-        await awaitResume(signal);
-        context(review.accountId);
-        const action = review.enabledActions[cursor % review.enabledActions.length];
-        cursor += 1;
-        let candidate;
-        try {
-          candidate = await nativeActions.find(action, Object.freeze({ accountId: review.accountId,
-            seen: new Set(seen), signal }));
-        } catch (error) {
-          if (signal.aborted) throw error;
-          fail(error?.message || 'presence-discovery-failed');
-        }
-        if (!candidate) {
-          empty.add(action);
-          if (empty.size === review.enabledActions.length) break;
-          continue;
-        }
-        if (!text(candidate.id) || candidate.action !== action || seen.has(candidate.id)) {
-          fail('presence-target-invalid');
-        }
-        empty.delete(action);
-        const actionId = `${action}:${candidate.id}`;
-        publish({ status: 'running', current: { action, id: candidate.id,
-          label: text(candidate.label) || PRESENCE_ACTION_LABELS[action] } });
-        const assertCurrent = () => {
-          if (signal.aborted || state.status === 'paused' || now() >= review.expiresAt) {
-            fail('presence-grant-revoked');
-          }
+    if (!locks) fail('presence-account-lock-unavailable');
+    const initialContext = context(review.accountId);
+    const accountKey = text(initialContext.accountKey);
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(accountKey)) fail('presence-account-lock-unavailable');
+    const lockName = `insta-toolbox:account-activity:${accountKey}`;
+    return locks.request(lockName, { mode: 'exclusive', ifAvailable: true }, async (lock) => {
+      if (!lock || lock.name !== lockName || lock.mode !== 'exclusive') fail('presence-account-busy');
+      context(review.accountId);
+      consumed.add(review);
+      controller = new AbortController();
+      const { signal } = controller;
+      const results = [];
+      const seen = new Set();
+      const empty = new Set();
+      let cursor = 0;
+      publish({
+        status: 'running', reason: null, accountId: review.accountId, current: null,
+        completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
+        enabledActions: review.enabledActions, results, canPause: true, canResume: false, canStop: true,
+      });
+      try {
+        while (!signal.aborted && state.completed < review.options.maxActions && now() < review.expiresAt) {
+          await awaitResume(signal);
           context(review.accountId);
-          return true;
-        };
-        let outcome;
-        try {
-          assertCurrent();
-          outcome = await nativeActions.execute(action, candidate, Object.freeze({ signal, assertCurrent, actionId }));
-        } catch (error) {
-          if (signal.aborted) throw error;
-          outcome = { verified: false, uncertain: true, reason: error?.message || 'presence-outcome-uncertain' };
+          const action = review.enabledActions[cursor % review.enabledActions.length];
+          cursor += 1;
+          let candidate;
+          try {
+            candidate = await nativeActions.find(action, Object.freeze({ accountId: review.accountId,
+              seen: new Set(seen), signal }));
+          } catch (error) {
+            if (signal.aborted) throw error;
+            fail(error?.message || 'presence-discovery-failed');
+          }
+          if (!candidate) {
+            empty.add(action);
+            if (empty.size === review.enabledActions.length) break;
+            continue;
+          }
+          if (!text(candidate.id) || candidate.action !== action || seen.has(candidate.id)) {
+            fail('presence-target-invalid');
+          }
+          empty.delete(action);
+          const actionId = `${action}:${candidate.id}`;
+          publish({ status: 'running', current: { action, id: candidate.id,
+            label: text(candidate.label) || PRESENCE_ACTION_LABELS[action] } });
+          const assertCurrent = () => {
+            if (signal.aborted || state.status === 'paused' || now() >= review.expiresAt) {
+              fail('presence-grant-revoked');
+            }
+            context(review.accountId);
+            return true;
+          };
+          let outcome;
+          try {
+            assertCurrent();
+            outcome = await nativeActions.execute(action, candidate, Object.freeze({ signal, assertCurrent, actionId }));
+          } catch (error) {
+            if (signal.aborted) throw error;
+            outcome = { verified: false, uncertain: true, reason: error?.message || 'presence-outcome-uncertain' };
+          }
+          seen.add(candidate.id);
+          if (outcome?.verified === true) {
+            results.unshift({ action, id: candidate.id, label: text(outcome.label) || text(candidate.label),
+              status: 'completed', reason: text(outcome.reason) });
+            publish({ completed: state.completed + 1, current: null, results });
+          } else if (outcome?.skipped === true && outcome?.uncertain !== true) {
+            results.unshift({ action, id: candidate.id, label: text(candidate.label),
+              status: 'skipped', reason: text(outcome.reason) || 'No longer available' });
+            publish({ skipped: state.skipped + 1, current: null, results });
+          } else {
+            results.unshift({ action, id: candidate.id, label: text(candidate.label),
+              status: 'uncertain', reason: text(outcome?.reason) || 'Check Instagram before continuing' });
+            publish({ status: 'needs-attention', reason: text(outcome?.reason) || 'presence-outcome-uncertain',
+              uncertain: state.uncertain + 1, current: null, results,
+              canPause: false, canResume: false, canStop: false });
+            return snapshot();
+          }
+          if (state.completed >= review.options.maxActions) break;
+          const delay = Math.round(minDelayMs + random() * (maxDelayMs - minDelayMs));
+          publish({ status: 'waiting', current: null });
+          await sleep(delay, signal);
+          if (!signal.aborted && state.status !== 'paused') publish({ status: 'running' });
         }
-        seen.add(candidate.id);
-        if (outcome?.verified === true) {
-          results.unshift({ action, id: candidate.id, label: text(outcome.label) || text(candidate.label),
-            status: 'completed', reason: text(outcome.reason) });
-          publish({ completed: state.completed + 1, current: null, results });
-        } else if (outcome?.skipped === true && outcome?.uncertain !== true) {
-          results.unshift({ action, id: candidate.id, label: text(candidate.label),
-            status: 'skipped', reason: text(outcome.reason) || 'No longer available' });
-          publish({ skipped: state.skipped + 1, current: null, results });
-        } else {
-          results.unshift({ action, id: candidate.id, label: text(candidate.label),
-            status: 'uncertain', reason: text(outcome?.reason) || 'Check Instagram before continuing' });
-          publish({ status: 'needs-attention', reason: text(outcome?.reason) || 'presence-outcome-uncertain',
-            uncertain: state.uncertain + 1, current: null, results,
+        if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+        const expired = now() >= review.expiresAt;
+        publish({ status: expired ? 'expired' : 'completed',
+          reason: expired ? 'presence-session-expired' : null, current: null,
+          canPause: false, canResume: false, canStop: false });
+        return snapshot();
+      } catch (error) {
+        if (signal.aborted || error?.name === 'AbortError') {
+          publish({ status: 'stopped', reason: 'presence-session-stopped', current: null,
             canPause: false, canResume: false, canStop: false });
           return snapshot();
         }
-        if (state.completed >= review.options.maxActions) break;
-        const delay = Math.round(minDelayMs + random() * (maxDelayMs - minDelayMs));
-        publish({ status: 'waiting', current: null });
-        await sleep(delay, signal);
-        if (!signal.aborted && state.status !== 'paused') publish({ status: 'running' });
-      }
-      if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
-      const expired = now() >= review.expiresAt;
-      publish({ status: expired ? 'expired' : 'completed',
-        reason: expired ? 'presence-session-expired' : null, current: null,
-        canPause: false, canResume: false, canStop: false });
-      return snapshot();
-    } catch (error) {
-      if (signal.aborted || error?.name === 'AbortError') {
-        publish({ status: 'stopped', reason: 'presence-session-stopped', current: null,
+        publish({ status: 'needs-attention', reason: error?.message || 'presence-session-failed', current: null,
           canPause: false, canResume: false, canStop: false });
         return snapshot();
+      } finally {
+        controller = null;
+        pauseGate = null;
       }
-      publish({ status: 'needs-attention', reason: error?.message || 'presence-session-failed', current: null,
-        canPause: false, canResume: false, canStop: false });
-      return snapshot();
-    } finally {
-      controller = null;
-      pauseGate = null;
-    }
+    });
   }
 
   return Object.freeze({
@@ -8971,7 +8981,16 @@ function mountPresenceSessionPanel({
     }
     const review = session.createReview({ accountId: account.accountId, options, expiresAt });
     render(session.snapshot());
-    const outcome = await session.start(review);
+    let outcome;
+    try {
+      outcome = await session.start(review);
+    } catch (error) {
+      render(session.snapshot());
+      onStatus(error?.message === 'presence-account-busy'
+        ? 'Another Presence or Ghost run is already active.'
+        : 'Presence could not start safely in this browser.');
+      return false;
+    }
     render(outcome);
     onStatus(describe(outcome).join('. '));
     return outcome.status === 'completed';
@@ -10556,6 +10575,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       accountVerified: Boolean(accountId) && !restricted,
       usable: location.origin === 'https://www.instagram.com' && Boolean(accountId) && !restricted,
       accountId,
+      accountKey: globalThis.InstaToolboxInstagramViewer?.accountKey?.(accountId) || null,
       restriction: restricted,
       frozen: document.visibilityState === 'hidden' && document.wasDiscarded === true,
       discarded: document.wasDiscarded === true,
@@ -12415,6 +12435,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
     });
     presenceSession = globalThis.InstaToolboxPresenceSession.create({
       nativeActions,
+      locks: globalThis.navigator?.locks || null,
       onUpdate: next => presencePanel?.render(next),
     });
     presencePanel = globalThis.InstaToolboxPresenceSessionPanel.mount({

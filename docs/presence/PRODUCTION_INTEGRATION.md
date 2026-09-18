@@ -21,6 +21,12 @@ rechecks the signed-in account, Instagram restriction signals, expiry, the
 exact DOM target, and the current action choice. It stops on an uncertain
 outcome and does not blindly retry that target.
 
+Presence and Ghost use the same account-scoped Web Lock in the userscript.
+Only one may hold that lane at a time, and the lock stays held until the active
+operation settles. Starting the other tool while the lane is occupied is
+rejected without a click. Each tool still requires its own review and action
+authority.
+
 The current native adapter supports exact visible controls for post likes,
 profile follows, incoming request confirmation, story links, and story likes.
 A private-profile Follow may verify as Requested. Story reaction automatically
@@ -42,7 +48,7 @@ endpoints, bypass restrictions, or restore authority after a reload.
 
 ## Evidence and remaining work
 
-Seven focused controller tests cover finite scope, account binding, expiry,
+Eight focused controller tests cover finite scope, account binding, expiry,
 replay rejection, uncertainty, Pause/Resume, Stop, and restrictions. Generated
 userscript acceptance covers all five visible choices, trusted confirmation
 before the first click, exact post/follow/request/story postconditions,
@@ -51,9 +57,8 @@ zoom.
 
 Those checks use deterministic Instagram-shaped fixtures. They do not establish
 current authenticated compatibility. Before release, verify each enabled
-adapter against a specifically approved disposable target. Also connect the
-existing trusted account-activity owner so Presence and Ghost cannot overlap,
-then test account switches, stale documents, expiry, restart, lost
-acknowledgments, and an inactive-but-loaded tab. Frozen, discarded, closed, or
-signed-out tabs must stop or require attention; no browser-closed operation is
-claimed.
+adapter against a specifically approved disposable target. The same-tab
+account lane is implemented and fixture-tested; a private cross-tab broker,
+restart reconciliation, managed background workers, and browser-closed
+operation are not available. Frozen, discarded, closed, or signed-out tabs
+must stop or require attention.

@@ -4,10 +4,23 @@ import { createPresenceSession, normalizePresenceSessionOptions } from '../exten
 
 const NOW = Date.parse('2026-09-16T20:00:00Z');
 
-function fixture({ candidates = {}, execute = null, wait = async () => {}, context = null } = {}) {
+function lockManager() {
+  const held = new Set();
+  return { held, async request(name, options, callback) {
+    assert.deepEqual(options, { mode: 'exclusive', ifAvailable: true });
+    if (held.has(name)) return callback(null);
+    held.add(name);
+    try { return await callback({ name, mode: 'exclusive' }); }
+    finally { held.delete(name); }
+  } };
+}
+
+function fixture({ candidates = {}, execute = null, wait = async () => {}, context = null,
+  locks = lockManager() } = {}) {
   let clock = NOW;
   let viewer = context || { accountVerified: true, usable: true, accountId: 'viewer',
-    challenge: false, actionBlocked: false, rateLimited: false, sessionExpired: false };
+    accountKey: 'iguser-v1-viewer', challenge: false, actionBlocked: false,
+    rateLimited: false, sessionExpired: false };
   const rows = Object.fromEntries(Object.entries(candidates).map(([key, value]) => [key, [...value]]));
   const calls = [];
   const updates = [];
@@ -24,9 +37,9 @@ function fixture({ candidates = {}, execute = null, wait = async () => {}, conte
       return execute ? execute(action, candidate, grant) : { verified: true, label: candidate.label };
     },
   };
-  const session = createPresenceSession({ nativeActions, now: () => clock, random: () => 0,
+  const session = createPresenceSession({ nativeActions, locks, now: () => clock, random: () => 0,
     wait, minDelayMs: 0, maxDelayMs: 0, onUpdate: state => updates.push(state) });
-  return { session, calls, updates, setClock: value => { clock = value; },
+  return { session, calls, updates, locks, setClock: value => { clock = value; },
     setViewer: value => { viewer = value; } };
 }
 
@@ -135,6 +148,32 @@ test('Stop aborts waits and prevents the next mutation', async () => {
   assert.equal(result.status, 'stopped');
   assert.equal(result.completed, 1);
   assert.equal(f.calls.filter(([kind]) => kind === 'execute').length, 1);
+});
+
+test('Presence and Ghost use one exclusive account activity lane', async () => {
+  const locks = lockManager();
+  let waiting = false;
+  const f = fixture({ locks,
+    candidates: { likePosts: [candidate('likePosts', 'post:1'), candidate('likePosts', 'post:2')] },
+    wait: (_ms, signal) => new Promise((resolve, reject) => {
+      waiting = true;
+      signal.addEventListener('abort', () => reject(new DOMException('Stopped', 'AbortError')), { once: true });
+    }),
+  });
+  const review = f.session.createReview({ accountId: 'viewer',
+    options: { maxActions: 2, actions: { likePosts: true } }, expiresAt: NOW + 60_000 });
+  const running = f.session.start(review);
+  while (!waiting) await new Promise(resolve => setTimeout(resolve, 0));
+  const lockName = 'insta-toolbox:account-activity:iguser-v1-viewer';
+  assert.equal(locks.held.has(lockName), true);
+  const ghostWhilePresenceRuns = await locks.request(lockName,
+    { mode: 'exclusive', ifAvailable: true }, async lock => Boolean(lock));
+  assert.equal(ghostWhilePresenceRuns, false);
+  f.session.stop();
+  await running;
+  const ghostAfterPresenceStops = await locks.request(lockName,
+    { mode: 'exclusive', ifAvailable: true }, async lock => Boolean(lock));
+  assert.equal(ghostAfterPresenceStops, true);
 });
 
 test('restriction or account loss before dispatch stops the session', async () => {
