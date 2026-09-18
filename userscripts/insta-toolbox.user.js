@@ -6086,7 +6086,11 @@ function createNativeInboxDiscovery({
   function waitFor(check, timeout = routeTimeoutMs, context = discoveryContext) {
     return new Promise((resolve, reject) => {
       let timer, poll, observer, settled = false;
-      const deadline = Math.min(now() + timeout, context.expiresAt);
+      const timeoutDeadline = now() + timeout;
+      const deadline = Math.min(timeoutDeadline, context.expiresAt);
+      const deadlineReason = context.expiresAt <= timeoutDeadline
+        ? context.expiryReason
+        : 'navigation-timeout';
       const finish = (error, value) => {
         if (settled) return; settled = true;
         clearTimeout(timer); clearInterval(poll); observer?.disconnect();
@@ -6098,7 +6102,7 @@ function createNativeInboxDiscovery({
         if (settled) return;
         try {
           guard(context);
-          if (now() >= deadline) return finish(new Error('navigation-timeout'));
+          if (now() >= deadline) return finish(new Error(deadlineReason));
           const result = check(); if (result) finish(null, result);
         }
         catch (error) { finish(error); }
@@ -6109,7 +6113,7 @@ function createNativeInboxDiscovery({
         window.addEventListener?.('popstate', inspect); window.addEventListener?.('hashchange', inspect);
         context.signal?.addEventListener('abort', inspect, { once: true }); context.controller.signal.addEventListener('abort', inspect, { once: true });
         poll = setInterval(inspect, Math.min(50, Math.max(1, Math.floor(timeout / 4))));
-        timer = setTimeout(() => { inspect(); if (!settled) finish(new Error('navigation-timeout')); }, Math.max(0, deadline - now()));
+        timer = setTimeout(() => { inspect(); if (!settled) finish(new Error(deadlineReason)); }, Math.max(0, deadline - now()));
         inspect();
       } catch (error) { finish(error); }
     });
