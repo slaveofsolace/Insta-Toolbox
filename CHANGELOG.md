@@ -2,7 +2,7 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
-## 4.0.1 - 2026-09-16 (Unreleased)
+## 4.0.1 - 2026-09-18
 
 - Recognize sent story and quoted replies when selecting the newest message.
 - Verify native removals across timestamp changes and history backfill without mistaking recycled rows for success.

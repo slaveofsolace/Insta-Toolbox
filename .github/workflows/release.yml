@@ -171,15 +171,18 @@ jobs:
             exit 1
           fi
           release_notes="$(cat <<'EOF'
-          Use partial Mutual Checker results to review Follow / Unfollow targets. The existing confirmation identifies partial data, and every profile's relationship is rechecked before acting. Partial results also explain viewer-age filtering as one possible cause and link to Accounts Center. Includes the updated Tampermonkey script.
+          Version 4.0.1 restores the proven single-conversation Unsend flow, adds optional verified removal of your own reactions, and introduces reviewed serial Ghost cleanup for selected or available conversations. Ghost includes Pause, Skip, Stop, durable local progress, and exact conversation checks.
 
-          Cooldowns do not bypass Instagram restrictions or guarantee complete server responses. Without Retry-After, waits begin at five and ten minutes; the existing 20-minute run deadline still applies.
+          Presence now offers five direct activities: view stories, react to stories, like posts, follow people, and accept follow requests. Presence and Ghost share one account-scoped activity lane so they cannot click at the same time in the same browser profile.
+
+          Mutual Checker and manual Follow / Unfollow remain available. Instagram restrictions, incomplete server responses, changed layouts, and ambiguous outcomes still stop the relevant workflow instead of guessing.
 
           ## Distribution notes
 
           - The Windows installer is unsigned and may show a Microsoft SmartScreen warning.
           - The macOS packages are ad-hoc signed and are not Apple-notarized.
-          - Automated CI does not claim current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 4.0.1 acceptance record for any separately recorded manual evidence.
+          - Ghost runs serially in the active Instagram tab. Managed worker tabs and operation after the browser closes are not included.
+          - Automated CI does not prove current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 4.0.1 acceptance record for separately recorded manual evidence.
           EOF
           )"
           gh release create "$RELEASE_TAG" release/* \

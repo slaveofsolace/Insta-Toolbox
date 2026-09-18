@@ -1,12 +1,12 @@
 # Release status
 
-Current candidate: **4.0.1**
+Current version: **4.0.1**
 
-Development candidate only. The published release remains **3.1.12**; the
-stable update URL is unchanged. The userscript contains reviewed serial inbox
-cleanup and the compact Presence session. Authenticated acceptance remains
-separate from the fixture results. See [DM restoration](./DM_RESTORATION_4.0.1.md)
-for the native selection and removal-reporting history.
+Version 4.0.1 contains reviewed serial inbox cleanup and the compact Presence
+session. The stable update URL always resolves to the latest published release.
+Authenticated acceptance remains separate from fixture results. See
+[DM restoration](./DM_RESTORATION_4.0.1.md) for the native selection and
+removal-reporting history.
 
 ## Release files
 
@@ -31,8 +31,8 @@ The development matrix contains:
 
 - 973 automated tests at the shared Presence/Ghost integration checkpoint;
 - complete generated-userscript and extension fixture acceptance;
-- 45 historical 4.0.0 overlay screenshot states awaiting 4.0.1 recapture;
-- 11 historical 4.0.0 PWA screenshot states awaiting 4.0.1 recapture;
+- 45 overlay screenshot states checked against the reviewed pixel thresholds;
+- 11 PWA screenshot states checked against the reviewed pixel thresholds;
 - service-worker cache generation `insta-toolbox-v401`.
 
 The native DM regression matrix also covers restored pre-Fast handling of sent
@@ -47,10 +47,10 @@ dialog closure, and an independent verified count. This does not establish
 current authenticated Instagram reaction compatibility; a disposable live
 reaction remains a separate gate.
 
-The current source passes the complete local extension/userscript acceptance,
-including responsive and true 200% zoom states. Earlier Chrome pairing, Windows
-and macOS packaging, archive inspection, and checksum results do not certify a
-new commit until exact-commit CI completes. Authenticated acceptance remains a
+The current source passes the complete extension/userscript acceptance,
+including responsive and true 200% zoom states. Release promotion uses the
+browser, web, Windows, macOS, and checksum artifacts from one successful
+`main` CI run without rebuilding them. Authenticated acceptance remains a
 separate gate. Desktop/PWA expansion is deferred while the Tampermonkey workflow
 is being completed. See the acceptance record for each check's exact scope.
 
