@@ -312,6 +312,37 @@ test('unmounting only a message group inside its retained virtual slot is not re
   assert.equal(proof.removalProven(target.row, before), false);
 });
 
+test('a closed Unsend confirmation accepts a stably removed native group inside its retained slot', async () => {
+  const { target, before, proof, root, Element } = fixture();
+  const dialogButton = new Element('button', { text: 'Unsend' });
+  root.append(dialogButton);
+  target.group.remove();
+  dialogButton.remove();
+  assert.equal(proof.removalProven(target.row, before), false,
+    'the detached inner group alone is not generic removal proof');
+  assert.equal(await proof.waitForRemoval(target.row, before,
+    { dialogButton, timeoutMs: 220, stableMs: 75 }), true);
+});
+
+test('a retained-slot removal stays uncertain when its payload returns during settlement', async () => {
+  const { target, before, proof, root, Element } = fixture();
+  const dialogButton = new Element('button', { text: 'Unsend' });
+  root.append(dialogButton);
+  target.group.remove();
+  dialogButton.remove();
+  const remount = setTimeout(() => target.row.append(target.group), 50);
+  assert.equal(await proof.waitForRemoval(target.row, before,
+    { dialogButton, timeoutMs: 220, stableMs: 150 }), false);
+  clearTimeout(remount);
+});
+
+test('a retained-slot disappearance without the exact confirmation settling is not success', async () => {
+  const { target, before, proof } = fixture();
+  target.group.remove();
+  assert.equal(await proof.waitForRemoval(target.row, before,
+    { timeoutMs: 100, stableMs: 25 }), false);
+});
+
 test('far-off message virtualization does not invalidate retained local removal anchors', () => {
   const { scroller, target, proof, makeRow } = fixture();
   const newer = [0, 1, 2, 3].map((index) => makeRow(`Newer neighbor ${index}`));

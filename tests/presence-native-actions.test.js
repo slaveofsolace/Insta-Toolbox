@@ -2,16 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createPresenceNativeActions } from '../extension/presence-native-actions.js';
 
-function element({ text = '', href = '', ariaLabel = '', click = () => {}, children = {} } = {}) {
+function element({ text = '', href = '', ariaLabel = '', role = '', click = () => {}, children = {} } = {}) {
   return {
     isConnected: true,
     hidden: false,
     textContent: text,
+    ariaLabel,
+    role,
     parentElement: null,
     click,
     getAttribute(name) {
       if (name === 'href') return href;
-      if (name === 'aria-label') return ariaLabel || null;
+      if (name === 'aria-label') return this.ariaLabel || null;
+      if (name === 'role') return this.role || null;
       if (name === 'aria-hidden') return null;
       return null;
     },
@@ -145,6 +148,83 @@ test('Presence advances stories through the observed Next control', async () => 
   });
   assert.equal(result.verified, true);
   assert.equal(result.reason, 'Next story opened');
+});
+
+test('Presence opens the current Instagram story-tray control directly', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/' };
+  let surface = 'tray';
+  let storyClicks = 0;
+  const tile = element({ role: 'button', ariaLabel: 'Story by person, not seen', click() {
+    storyClicks += 1;
+    surface = 'story';
+    location.pathname = '/stories/person/one/';
+  } });
+  const tray = connect(element(), tile);
+  const media = element();
+  const pause = element({ role: 'button', ariaLabel: 'Pause' });
+  const main = element({ children: { 'video,img': [media], '[role="button"]': [pause] } });
+  const documentFixture = {
+    documentElement: {},
+    querySelectorAll(selector) {
+      if (selector === 'main') return surface === 'story' ? [main] : [];
+      if (selector === '[role="button"]') return surface === 'tray' ? [tile] : [pause];
+      if (selector === 'button' || selector === 'a[href]') return [];
+      return [];
+    },
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer, timeoutMs: 500,
+  });
+  const candidate = await actions.find('viewStories', { seen: new Set(), signal: new AbortController().signal });
+  assert.equal(candidate.id, 'story-tray:person');
+  assert.equal(candidate.root, tray);
+  const result = await actions.execute('viewStories', candidate, {
+    signal: new AbortController().signal, assertCurrent: () => true,
+  });
+  assert.equal(storyClicks, 1);
+  assert.equal(result.verified, true);
+  assert.equal(result.reason, 'Story opened');
+});
+
+test('Presence recognizes current role-button post controls through their icon label', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/' };
+  let likeClicks = 0;
+  const contentLink = element({ href: '/p/current-dom/' });
+  const icon = element({ ariaLabel: 'Like' });
+  const like = element({ role: 'button', children: { '[aria-label]': [icon] }, click() {
+    likeClicks += 1;
+    icon.ariaLabel = 'Unlike';
+  } });
+  const article = element({ children: {
+    'a[href]': [contentLink],
+    button: [],
+    '[role="button"]': [like],
+  } });
+  const documentFixture = {
+    documentElement: {},
+    querySelectorAll(selector) {
+      if (selector === 'article') return [article];
+      return [];
+    },
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer, timeoutMs: 500,
+  });
+  const candidate = await actions.find('likePosts', { seen: new Set(), signal: new AbortController().signal });
+  assert.equal(candidate.id, 'post:current-dom');
+  const result = await actions.execute('likePosts', candidate, {
+    signal: new AbortController().signal, assertCurrent: () => true,
+  });
+  assert.equal(likeClicks, 1);
+  assert.equal(result.verified, true);
 });
 
 test('Presence opens an exact profile before clicking its visible story control', async () => {

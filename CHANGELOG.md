@@ -2,6 +2,14 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.1.2 - 2026-09-18
+
+- Verify confirmed Unsend results when Instagram removes the exact native message group but retains its outer virtual-list slot.
+- Require one matching native payload to disappear, keep duplicate-text handling exact, and reject remounts, edits, loading transitions, or missing confirmation settlement.
+- Discover current Instagram story-tray tiles and post actions exposed as accessible role buttons instead of relying on legacy story links or native `button` elements.
+- Keep Presence bound to the reviewed visible control and verify the resulting story viewer or action state before recording success.
+- Preserve DM ownership checks, exact-thread confirmation, adaptive pacing, Ghost checkpoints, and restriction stops.
+
 ## 4.1.1 - 2026-09-18
 
 - Keep delayed but verified message removals from being reported as uncertain by giving the stable postcondition its own full settlement window.

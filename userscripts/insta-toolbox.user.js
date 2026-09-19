@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.1.1
+// @version      4.1.2
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -2424,6 +2424,42 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         && retainedMessageSignature(element) === signature);
   }
 
+  function dispatchedNativeRemovalProven(before) {
+    const native = before?.native;
+    if (!native || native.target.isConnected || !before.root?.isConnected
+      || !before.parent?.isConnected || !removalScrollStayed(before)) return false;
+
+    const targetIndex = native.entries.findIndex(({ element }) => element === native.target);
+    if (targetIndex < 0) return false;
+    const targetSignature = native.entries[targetIndex].signature;
+    const after = nativeMessageGroups(before.root);
+    const beforeMatches = native.entries.filter(({ signature }) => signature === targetSignature).length;
+    const afterMatches = after.filter((element) => retainedMessageSignature(element) === targetSignature).length;
+
+    // Instagram currently keeps the outer virtual-list slot mounted after a
+    // confirmed Unsend while removing or recycling the exact native message
+    // group inside it. Count the target payload, not the physical slot. This
+    // remains fail-closed for duplicate messages: exactly one matching native
+    // payload must disappear and the clicked group itself must stay detached.
+    if (beforeMatches < 1 || afterMatches !== beforeMatches - 1) return false;
+    if (after.includes(native.target)) return false;
+
+    const adjacent = [native.entries[targetIndex - 1], native.entries[targetIndex + 1]].filter(Boolean);
+    const retainedAdjacent = adjacent.filter(({ element, signature }) => (
+      element.isConnected
+      && after.includes(element)
+      && retainedMessageSignature(element) === signature
+    ));
+    if (native.entries.length > 1 && retainedAdjacent.length < 1) return false;
+
+    if (native.row.isConnected) {
+      if (native.row.parentElement !== before.parent) return false;
+      const replacementGroups = nativeMessageGroups(native.row);
+      if (replacementGroups.some((element) => retainedMessageSignature(element) === targetSignature)) return false;
+    }
+    return true;
+  }
+
   function shortNativeRemovalProven(before) {
     const native = before.native, layout = before.shortLayout;
     if (!native || native.entries.length > 2 || !layout || before.scrollers.length
@@ -2561,7 +2597,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     while (Date.now() < deadline) {
       if (!contextValid()) return false;
       const dialogClosed = !dialogButton || !dialogButton.isConnected || !isVisible(dialogButton);
-      if (dialogClosed && removalProven(row, before)) {
+      const proven = removalProven(row, before)
+        || (Boolean(dialogButton) && dispatchedNativeRemovalProven(before));
+      if (dialogClosed && proven) {
         if (stableSince === null) stableSince = Date.now();
         if (Date.now() - stableSince >= stableMs) return true;
       } else stableSince = null;
@@ -8808,6 +8846,7 @@ localModules["extension/presence-native-actions.js"] = (() => {
 const PROFILE_PATH = /^\/([A-Za-z0-9._]{1,30})\/?$/;
 const STORY_PATH = /^\/stories\/([A-Za-z0-9._]{1,30})\/([^/?#]+)\/?/;
 const CONTENT_PATH = /^\/(?:p|reel)\/([^/?#]+)\/?/;
+const STORY_TILE_LABEL = /^story by ([A-Za-z0-9._]{1,30})(?:,|$)/i;
 const RESERVED = new Set(['accounts', 'about', 'api', 'direct', 'explore', 'reels', 'settings', 'stories', 'web']);
 
 const clean = (value) => String(value ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim();
@@ -8840,7 +8879,11 @@ function createPresenceNativeActions({
     || node?.textContent
     || node?.querySelector?.('[aria-label]')?.getAttribute?.('aria-label')
     || node?.querySelector?.('title')?.textContent);
-  const exactButtons = (root, names) => [...root.querySelectorAll('button')]
+  const buttonControls = (root) => [...new Set([
+    ...root.querySelectorAll('button'),
+    ...root.querySelectorAll('[role="button"]'),
+  ])];
+  const exactButtons = (root, names) => buttonControls(root)
     .filter(visible)
     .filter((node) => names.has(lower(controlName(node))));
   const exactControls = (root, names) => [...root.querySelectorAll('a[href],button,[role="button"]')]
@@ -8869,6 +8912,10 @@ function createPresenceNativeActions({
     if (!candidate || candidate.origin !== location.origin) return null;
     const match = candidate.pathname.match(STORY_PATH);
     return match ? { username: match[1].toLocaleLowerCase(), storyId: match[2], href: candidate.href } : null;
+  };
+  const storyTile = (node) => {
+    const match = clean(node?.getAttribute?.('aria-label')).match(STORY_TILE_LABEL);
+    return match ? { username: match[1].toLocaleLowerCase() } : null;
   };
   const logicalContainer = (control, buttonName) => {
     let node = control;
@@ -9027,6 +9074,14 @@ function createPresenceNativeActions({
           root: viewerRoot, control: controls[0] }];
       }
       const unique = new Map();
+      for (const control of buttonControls(document).filter(visible)) {
+        const target = storyTile(control);
+        if (!target || unique.has(target.username)) continue;
+        unique.set(target.username, { action,
+          id: `story-tray:${target.username}`, label: `@${target.username}'s story`,
+          target: { ...target, source: 'tray' }, root: control.parentElement || document, control });
+      }
+      if (unique.size) return [...unique.values()];
       for (const link of [...document.querySelectorAll('a[href]')].filter(visible)) {
         const target = story(link);
         if (!target || unique.has(target.username)) continue;
@@ -9093,6 +9148,17 @@ function createPresenceNativeActions({
         return { verified: false, skipped: true, reason: 'Target changed before the action' };
       }
       if (action === 'viewStories') {
+        if (current.target.source === 'tray') {
+          current.control.click();
+          const verified = await waitFor(() => {
+            const next = String(location.pathname || '').match(STORY_PATH);
+            if (!next || next[1].toLocaleLowerCase() !== current.target.username) return false;
+            return storyLoaded({ username: next[1].toLocaleLowerCase(), storyId: next[2] });
+          }, signal, assertCurrent);
+          return verified
+            ? { verified: true, label: current.label, reason: 'Story opened' }
+            : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+        }
         if (!current.target.fromPath) {
           current.control.click();
           const profileReady = await waitFor(() => exactProfilePath(current.target.username)

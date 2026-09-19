@@ -1643,6 +1643,42 @@
         && retainedMessageSignature(element) === signature);
   }
 
+  function dispatchedNativeRemovalProven(before) {
+    const native = before?.native;
+    if (!native || native.target.isConnected || !before.root?.isConnected
+      || !before.parent?.isConnected || !removalScrollStayed(before)) return false;
+
+    const targetIndex = native.entries.findIndex(({ element }) => element === native.target);
+    if (targetIndex < 0) return false;
+    const targetSignature = native.entries[targetIndex].signature;
+    const after = nativeMessageGroups(before.root);
+    const beforeMatches = native.entries.filter(({ signature }) => signature === targetSignature).length;
+    const afterMatches = after.filter((element) => retainedMessageSignature(element) === targetSignature).length;
+
+    // Instagram currently keeps the outer virtual-list slot mounted after a
+    // confirmed Unsend while removing or recycling the exact native message
+    // group inside it. Count the target payload, not the physical slot. This
+    // remains fail-closed for duplicate messages: exactly one matching native
+    // payload must disappear and the clicked group itself must stay detached.
+    if (beforeMatches < 1 || afterMatches !== beforeMatches - 1) return false;
+    if (after.includes(native.target)) return false;
+
+    const adjacent = [native.entries[targetIndex - 1], native.entries[targetIndex + 1]].filter(Boolean);
+    const retainedAdjacent = adjacent.filter(({ element, signature }) => (
+      element.isConnected
+      && after.includes(element)
+      && retainedMessageSignature(element) === signature
+    ));
+    if (native.entries.length > 1 && retainedAdjacent.length < 1) return false;
+
+    if (native.row.isConnected) {
+      if (native.row.parentElement !== before.parent) return false;
+      const replacementGroups = nativeMessageGroups(native.row);
+      if (replacementGroups.some((element) => retainedMessageSignature(element) === targetSignature)) return false;
+    }
+    return true;
+  }
+
   function shortNativeRemovalProven(before) {
     const native = before.native, layout = before.shortLayout;
     if (!native || native.entries.length > 2 || !layout || before.scrollers.length
@@ -1780,7 +1816,9 @@
     while (Date.now() < deadline) {
       if (!contextValid()) return false;
       const dialogClosed = !dialogButton || !dialogButton.isConnected || !isVisible(dialogButton);
-      if (dialogClosed && removalProven(row, before)) {
+      const proven = removalProven(row, before)
+        || (Boolean(dialogButton) && dispatchedNativeRemovalProven(before));
+      if (dialogClosed && proven) {
         if (stableSince === null) stableSince = Date.now();
         if (Date.now() - stableSince >= stableMs) return true;
       } else stableSince = null;

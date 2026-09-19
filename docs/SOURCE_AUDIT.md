@@ -156,6 +156,20 @@ not establish whether an account blocked someone or was deactivated. Neither
 the inspected upstream tests nor the local fixtures prove current authenticated
 compatibility for those account states.
 
+### 4.1.2 retained-slot review
+
+The same pinned upstream revision was compared again after Instagram retained
+an outer virtual-list slot while removing the confirmed native message group
+inside it. The upstream one-at-a-time hover, exact Unsend menu, confirmation,
+and adaptive pacing remain useful sequencing references. Its visual ownership
+heuristic and fixed-delay disconnection check remain intentionally rejected.
+
+The local adapter now accepts the retained slot only after the exact confirmed
+native group detaches, exactly one matching payload disappears, the message
+window stays anchored, an adjacent exact message remains when one exists, and
+the result stays stable. Duplicate text, payload remounts, missing confirmation
+settlement, loading states, and unrelated row recycling remain uncertain.
+
 ## License boundary
 
 MIT notices for reviewed MIT projects are retained in `THIRD_PARTY_NOTICES.md`. The implementation uses new local-first modules and does not vendor the reviewed applications. The unlicensed Gist is referenced only for provenance; its source is not included.

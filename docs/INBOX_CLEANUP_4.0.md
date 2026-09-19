@@ -34,7 +34,7 @@ Chrome service workers can terminate, so durable state must not depend on global
 Chrome exposes distinct frozen and discarded tab states; a frozen tab cannot execute handlers or timers. [Tabs API](https://developer.chrome.com/docs/extensions/reference/api/tabs).
 Tampermonkey documents tab-opening and storage-listener APIs, but their existence does not establish permission, isolation, atomicity, or compatibility in this build. [Tampermonkey API](https://www.tampermonkey.net/documentation.php).
 
-The 4.1.1 userscript uses those APIs only through
+The 4.1.2 userscript uses those APIs only through
 `extension/inbox-userscript-workers.js`. Reviews, manager ownership, worker
 assignments, account/thread checks, expiry, and mutation admission are
 revalidated at runtime. Persisted messages coordinate work but cannot recreate

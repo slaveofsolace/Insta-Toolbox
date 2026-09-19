@@ -1,6 +1,7 @@
 const PROFILE_PATH = /^\/([A-Za-z0-9._]{1,30})\/?$/;
 const STORY_PATH = /^\/stories\/([A-Za-z0-9._]{1,30})\/([^/?#]+)\/?/;
 const CONTENT_PATH = /^\/(?:p|reel)\/([^/?#]+)\/?/;
+const STORY_TILE_LABEL = /^story by ([A-Za-z0-9._]{1,30})(?:,|$)/i;
 const RESERVED = new Set(['accounts', 'about', 'api', 'direct', 'explore', 'reels', 'settings', 'stories', 'web']);
 
 const clean = (value) => String(value ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim();
@@ -33,7 +34,11 @@ export function createPresenceNativeActions({
     || node?.textContent
     || node?.querySelector?.('[aria-label]')?.getAttribute?.('aria-label')
     || node?.querySelector?.('title')?.textContent);
-  const exactButtons = (root, names) => [...root.querySelectorAll('button')]
+  const buttonControls = (root) => [...new Set([
+    ...root.querySelectorAll('button'),
+    ...root.querySelectorAll('[role="button"]'),
+  ])];
+  const exactButtons = (root, names) => buttonControls(root)
     .filter(visible)
     .filter((node) => names.has(lower(controlName(node))));
   const exactControls = (root, names) => [...root.querySelectorAll('a[href],button,[role="button"]')]
@@ -62,6 +67,10 @@ export function createPresenceNativeActions({
     if (!candidate || candidate.origin !== location.origin) return null;
     const match = candidate.pathname.match(STORY_PATH);
     return match ? { username: match[1].toLocaleLowerCase(), storyId: match[2], href: candidate.href } : null;
+  };
+  const storyTile = (node) => {
+    const match = clean(node?.getAttribute?.('aria-label')).match(STORY_TILE_LABEL);
+    return match ? { username: match[1].toLocaleLowerCase() } : null;
   };
   const logicalContainer = (control, buttonName) => {
     let node = control;
@@ -220,6 +229,14 @@ export function createPresenceNativeActions({
           root: viewerRoot, control: controls[0] }];
       }
       const unique = new Map();
+      for (const control of buttonControls(document).filter(visible)) {
+        const target = storyTile(control);
+        if (!target || unique.has(target.username)) continue;
+        unique.set(target.username, { action,
+          id: `story-tray:${target.username}`, label: `@${target.username}'s story`,
+          target: { ...target, source: 'tray' }, root: control.parentElement || document, control });
+      }
+      if (unique.size) return [...unique.values()];
       for (const link of [...document.querySelectorAll('a[href]')].filter(visible)) {
         const target = story(link);
         if (!target || unique.has(target.username)) continue;
@@ -286,6 +303,17 @@ export function createPresenceNativeActions({
         return { verified: false, skipped: true, reason: 'Target changed before the action' };
       }
       if (action === 'viewStories') {
+        if (current.target.source === 'tray') {
+          current.control.click();
+          const verified = await waitFor(() => {
+            const next = String(location.pathname || '').match(STORY_PATH);
+            if (!next || next[1].toLocaleLowerCase() !== current.target.username) return false;
+            return storyLoaded({ username: next[1].toLocaleLowerCase(), storyId: next[2] });
+          }, signal, assertCurrent);
+          return verified
+            ? { verified: true, label: current.label, reason: 'Story opened' }
+            : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+        }
         if (!current.target.fromPath) {
           current.control.click();
           const profileReady = await waitFor(() => exactProfilePath(current.target.username)

@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag:
-        description: Release tag, for example v4.1.1
+        description: Release tag, for example v4.1.2
         required: true
         type: string
 
@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           test "$RELEASE_TAG" = "v$version"
-          test "$version" = "4.1.1"
+          test "$version" = "4.1.2"
           mkdir -p release
           copy_exact() {
             local name="$1"
@@ -171,9 +171,9 @@ jobs:
             exit 1
           fi
           release_notes="$(cat <<'EOF'
-          Version 4.1.1 keeps verified but delayed Instagram message removals from being misreported as uncertain. Ghost continues across those verified removals without weakening its exact-conversation and postcondition checks.
+          Version 4.1.2 recognizes Instagram's retained virtual message slots after a confirmed Unsend. It verifies that exactly one native payload disappeared before continuing, including duplicate-text conversations.
 
-          Presence now opens stories through one exact visible profile and its story control instead of dispatching a discovered story link directly. **Live like me** remains finite, review-bound, and serialized with Ghost in the same browser profile.
+          Presence now follows Instagram's current controls: story-tray tiles and post actions rendered as accessible role buttons. **Live like me** remains finite, review-bound, and serialized with Ghost in the same browser profile.
 
           Mutual Checker and manual Follow / Unfollow remain available. Instagram restrictions, incomplete server responses, changed layouts, and ambiguous outcomes still stop the relevant workflow instead of guessing.
 
@@ -182,7 +182,7 @@ jobs:
           - The Windows installer is unsigned and may show a Microsoft SmartScreen warning.
           - The macOS packages are ad-hoc signed and are not Apple-notarized.
           - Ghost worker tabs must remain open and loaded. Tab discard, computer sleep, browser shutdown, or lost account evidence stops or pauses the job.
-          - Automated CI does not prove current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 4.1.1 acceptance record for separately recorded manual evidence.
+          - Automated CI does not prove current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 4.1.2 acceptance record for separately recorded manual evidence.
           EOF
           )"
           gh release create "$RELEASE_TAG" release/* \

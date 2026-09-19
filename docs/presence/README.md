@@ -4,7 +4,7 @@ Presence runs a small, reviewed Instagram session from the userscript.
 
 ## Development status
 
-The 4.1.1 candidate exposes five choices:
+The 4.1.2 candidate exposes five choices:
 
 - View stories
 - React to stories
