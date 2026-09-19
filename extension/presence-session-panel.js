@@ -223,6 +223,7 @@ export function mountPresenceSessionPanel({
     const count = Number(snapshot.completed || 0);
     if (snapshot.status === 'idle') return ['Ready', 'Nothing happens until you confirm.'];
     if (snapshot.status === 'running') return [snapshot.current?.label || 'Presence is running', `${count} verified action${count === 1 ? '' : 's'}.`];
+    if (snapshot.status === 'searching') return ['Looking for something to do', `${count} verified action${count === 1 ? '' : 's'}. Presence is checking the loaded Instagram tab now.`];
     if (snapshot.status === 'waiting') return ['Taking a short pause', `${count} verified action${count === 1 ? '' : 's'}.`];
     if (snapshot.status === 'quiet') return ['Resting', `${count} verified action${count === 1 ? '' : 's'}. Presence will continue in this loaded tab.`];
     if (snapshot.status === 'paused') return ['Paused', `${count} verified action${count === 1 ? '' : 's'}. Resume or stop when ready.`];
@@ -235,7 +236,7 @@ export function mountPresenceSessionPanel({
   function render(snapshot = session.snapshot()) {
     if (disposed) return;
     const [title, detail] = describe(snapshot);
-    const active = ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(snapshot.status);
+    const active = ['running', 'searching', 'waiting', 'quiet', 'paused', 'stopping'].includes(snapshot.status);
     intro.hidden = active;
     options.hidden = active;
     runGrid.hidden = active;

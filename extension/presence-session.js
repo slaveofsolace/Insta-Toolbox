@@ -19,6 +19,8 @@ const LIVE_REVIEW_TTL_MS = 12 * 60 * 60_000;
 const MAX_ACTIONS = 50;
 const MAX_LIVE_ACTIONS = 500;
 const MIN_ACTIONS = 1;
+const LIVE_STARTUP_SWEEPS = 3;
+const LIVE_STARTUP_RETRY_MS = 2_000;
 const reviews = new WeakSet();
 const consumed = new WeakSet();
 
@@ -105,7 +107,7 @@ export function createPresenceSession({
     return state;
   };
   const snapshot = () => clone(state);
-  const active = () => controller && ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(state.status);
+  const active = () => controller && ['running', 'searching', 'waiting', 'quiet', 'paused', 'stopping'].includes(state.status);
   const context = (accountId) => {
     const value = nativeActions.inspectContext();
     if (value?.accountVerified !== true || value.usable !== true || value.accountId !== accountId
@@ -177,6 +179,8 @@ export function createPresenceSession({
       const runId = `${now()}:${++runSequence}`;
       let resultSequence = 0;
       let cursor = 0;
+      let emptySweeps = 0;
+      let verifiedInBurst = 0;
       publish({
         status: 'running', reason: null, accountId: review.accountId, current: null,
         completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
@@ -189,6 +193,10 @@ export function createPresenceSession({
           context(review.accountId);
           const action = review.enabledActions[cursor % review.enabledActions.length];
           cursor += 1;
+          publish({
+            status: 'searching',
+            current: { action, id: null, label: PRESENCE_ACTION_LABELS[action] },
+          });
           let candidate;
           try {
             candidate = await nativeActions.find(action, Object.freeze({ accountId: review.accountId,
@@ -202,8 +210,15 @@ export function createPresenceSession({
             if (empty.size === review.enabledActions.length) {
               if (review.options.mode !== 'live') break;
               empty.clear();
-              publish({ status: 'quiet', current: null });
-              await sleep(review.options.quietMinutes * 60_000, signal);
+              emptySweeps += 1;
+              if (emptySweeps < LIVE_STARTUP_SWEEPS) {
+                publish({ status: 'searching', current: null });
+                await sleep(LIVE_STARTUP_RETRY_MS, signal);
+              } else {
+                emptySweeps = 0;
+                publish({ status: 'quiet', current: null });
+                await sleep(review.options.quietMinutes * 60_000, signal);
+              }
               await awaitResume(signal);
               if (!signal.aborted && now() < review.expiresAt) publish({ status: 'running' });
             }
@@ -213,6 +228,7 @@ export function createPresenceSession({
             fail('presence-target-invalid');
           }
           empty.delete(action);
+          emptySweeps = 0;
           const actionId = `${action}:${candidate.id}`;
           publish({ status: 'running', current: { action, id: candidate.id,
             label: text(candidate.label) || PRESENCE_ACTION_LABELS[action] } });
@@ -236,6 +252,7 @@ export function createPresenceSession({
             results.unshift({ action, id: candidate.id, label: text(outcome.label) || text(candidate.label),
               status: 'completed', reason: text(outcome.reason), at: now(),
               eventId: `${runId}:${++resultSequence}` });
+            verifiedInBurst += 1;
             publish({ completed: state.completed + 1, current: null, results });
           } else if (outcome?.skipped === true && outcome?.uncertain !== true) {
             results.unshift({ action, id: candidate.id, label: text(candidate.label),
@@ -252,8 +269,9 @@ export function createPresenceSession({
             return snapshot();
           }
           if (state.completed >= review.options.maxActions) break;
-          if (review.options.mode === 'live' && state.completed > 0
-            && state.completed % review.options.liveBurstActions === 0) {
+          if (review.options.mode === 'live'
+            && verifiedInBurst >= review.options.liveBurstActions) {
+            verifiedInBurst = 0;
             publish({ status: 'quiet', current: null });
             await sleep(review.options.quietMinutes * 60_000, signal);
             await awaitResume(signal);
@@ -292,7 +310,7 @@ export function createPresenceSession({
     start,
     snapshot,
     pause() {
-      if (!controller || !['running', 'waiting', 'quiet'].includes(state.status)) return false;
+      if (!controller || !['running', 'searching', 'waiting', 'quiet'].includes(state.status)) return false;
       publish({ status: 'paused', canPause: false, canResume: true, canStop: true });
       return true;
     },

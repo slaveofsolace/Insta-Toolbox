@@ -128,8 +128,39 @@ test('Live like me rests and checks again instead of ending when no target is vi
   const result = await session.start(review);
   assert.equal(result.status, 'expired');
   assert.equal(result.completed, 0);
-  assert.deepEqual(waits, [30 * 60_000]);
+  assert.deepEqual(waits, [2_000, 2_000, 30 * 60_000]);
+  const firstSearch = updates.findIndex(value => value.status === 'searching');
+  const firstRest = updates.findIndex(value => value.status === 'quiet');
+  assert.ok(firstSearch >= 0 && firstSearch < firstRest,
+    'the live run must visibly search before its first quiet window');
   assert.equal(updates.some(value => value.status === 'quiet'), true);
+});
+
+test('skipped targets do not consume a live burst or trigger another quiet window', async () => {
+  const waits = [];
+  const f = fixture({
+    candidates: { likePosts: [
+      candidate('likePosts', 'post:1'),
+      candidate('likePosts', 'post:2'),
+      candidate('likePosts', 'post:3'),
+    ] },
+    execute: async (_action, target) => target.id === 'post:2'
+      ? { verified: false, skipped: true, reason: 'No longer available' }
+      : { verified: true, label: target.label },
+    wait: async ms => { waits.push(ms); },
+  });
+  const review = f.session.createReview({
+    accountId: 'viewer',
+    options: { mode: 'live', maxActions: 2, liveDurationMinutes: 30,
+      liveBurstActions: 2, quietMinutes: 4, actions: { likePosts: true } },
+    expiresAt: NOW + 30 * 60_000,
+  });
+  const result = await f.session.start(review);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.completed, 2);
+  assert.equal(result.skipped, 1);
+  assert.equal(waits.includes(4 * 60_000), false,
+    'the run ends at its reviewed limit instead of resting after a skipped item');
 });
 
 test('runs only the reviewed finite action set and verifies every result', async () => {

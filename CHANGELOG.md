@@ -2,6 +2,14 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.1.3 - 2026-09-19
+
+- Start each Live like me cycle with visible target searches and two short retries before the first scheduled rest.
+- Count only verified actions toward a Presence burst so skipped targets do not trigger extra quiet windows.
+- Preserve whole-conversation Unsend progress after each verified removal instead of returning to the newest message.
+- Wait for delayed oldest-history loading and prove a stable boundary before declaring the conversation exhausted.
+- Keep finite newest/oldest scopes, exact ownership, thread authorization, removal proof, Stop, and restriction handling unchanged.
+
 ## 4.1.2 - 2026-09-18
 
 - Verify confirmed Unsend results when Instagram removes the exact native message group but retains its outer virtual-list slot.

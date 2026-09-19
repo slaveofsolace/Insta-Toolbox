@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.1.2
+// @version      4.1.3
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -2120,17 +2120,20 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     if (traversal.order === 'oldest' && (scrollerChanged || shrank)) {
       traversal.oldestBoundaryProven = false;
     }
-    // Instagram recycles and reorders the mounted message window after a
-    // confirmed Unsend even when scrollHeight happens to stay unchanged. A
-    // retained offset can therefore point at a stale virtual slot and make a
-    // multi-message run stop after its first success. Re-enter from the
-    // requested edge after every verified removal; processed logical IDs and
-    // postcondition markers still prevent selecting the removed message.
-    traversal.lastScrollTop = null;
+    // Whole-conversation cleanup keeps its current virtual window after a
+    // verified removal. Restarting at the newest edge after every message made
+    // old conversations repeatedly re-scan thousands of already checked rows.
+    // Finite newest/oldest scopes still re-enter from their reviewed edge, and
+    // a replaced scroller always starts fresh. Logical IDs plus postcondition
+    // markers keep recycled physical slots eligible only for new content.
+    const continuous = traversal.preferVisible === true && !scrollerChanged;
+    const currentTop = Number(scroller?.scrollTop);
+    traversal.lastScrollTop = continuous && Number.isFinite(currentTop) ? currentTop : null;
     traversal.lastScrollHeight = height;
     traversal.lastSearchGrew = false;
     traversal.lastSearchIncomplete = false;
     traversal.lastSearchSteps = 0;
+    if (continuous) traversal.oldestBoundaryProven = false;
   }
 
   async function reestablishTraversalEdge(context, traversal, signal) {
@@ -2285,6 +2288,26 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         position = direction > 0
           ? Math.min(end, position + step)
           : Math.max(end, position - step);
+      }
+
+      if (traversal.preferVisible && position === end && !traversal.oldestBoundaryProven) {
+        const heightBeforeBoundary = Number(scroller?.scrollHeight) || heightBeforePass;
+        const settled = await proveStableOldestBoundary(
+          context,
+          traversal,
+          signal,
+          authorizationExpiresAt,
+        );
+        current = traversalContext(settled, traversal);
+        scroller = current.scroller;
+        const heightAfterBoundary = Number(scroller?.scrollHeight) || 0;
+        traversal.lastSearchGrew = heightAfterBoundary > heightBeforeBoundary + 1;
+        const boundaryRow = firstVisibleCandidate(scroller, traversal.order, traversal)
+          || orderedCandidates(scroller, traversal.order, traversal)[0];
+        if (boundaryRow && await exposeRow(boundaryRow, scroller, signal, traversal)) {
+          traversal.lastScrollHeight = heightAfterBoundary;
+          return boundaryRow;
+        }
       }
 
       const heightAfterPass = Number(scroller?.scrollHeight) || 0;
@@ -9245,6 +9268,8 @@ const LIVE_REVIEW_TTL_MS = 12 * 60 * 60_000;
 const MAX_ACTIONS = 50;
 const MAX_LIVE_ACTIONS = 500;
 const MIN_ACTIONS = 1;
+const LIVE_STARTUP_SWEEPS = 3;
+const LIVE_STARTUP_RETRY_MS = 2_000;
 const reviews = new WeakSet();
 const consumed = new WeakSet();
 
@@ -9331,7 +9356,7 @@ function createPresenceSession({
     return state;
   };
   const snapshot = () => clone(state);
-  const active = () => controller && ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(state.status);
+  const active = () => controller && ['running', 'searching', 'waiting', 'quiet', 'paused', 'stopping'].includes(state.status);
   const context = (accountId) => {
     const value = nativeActions.inspectContext();
     if (value?.accountVerified !== true || value.usable !== true || value.accountId !== accountId
@@ -9403,6 +9428,8 @@ function createPresenceSession({
       const runId = `${now()}:${++runSequence}`;
       let resultSequence = 0;
       let cursor = 0;
+      let emptySweeps = 0;
+      let verifiedInBurst = 0;
       publish({
         status: 'running', reason: null, accountId: review.accountId, current: null,
         completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
@@ -9415,6 +9442,10 @@ function createPresenceSession({
           context(review.accountId);
           const action = review.enabledActions[cursor % review.enabledActions.length];
           cursor += 1;
+          publish({
+            status: 'searching',
+            current: { action, id: null, label: PRESENCE_ACTION_LABELS[action] },
+          });
           let candidate;
           try {
             candidate = await nativeActions.find(action, Object.freeze({ accountId: review.accountId,
@@ -9428,8 +9459,15 @@ function createPresenceSession({
             if (empty.size === review.enabledActions.length) {
               if (review.options.mode !== 'live') break;
               empty.clear();
-              publish({ status: 'quiet', current: null });
-              await sleep(review.options.quietMinutes * 60_000, signal);
+              emptySweeps += 1;
+              if (emptySweeps < LIVE_STARTUP_SWEEPS) {
+                publish({ status: 'searching', current: null });
+                await sleep(LIVE_STARTUP_RETRY_MS, signal);
+              } else {
+                emptySweeps = 0;
+                publish({ status: 'quiet', current: null });
+                await sleep(review.options.quietMinutes * 60_000, signal);
+              }
               await awaitResume(signal);
               if (!signal.aborted && now() < review.expiresAt) publish({ status: 'running' });
             }
@@ -9439,6 +9477,7 @@ function createPresenceSession({
             fail('presence-target-invalid');
           }
           empty.delete(action);
+          emptySweeps = 0;
           const actionId = `${action}:${candidate.id}`;
           publish({ status: 'running', current: { action, id: candidate.id,
             label: text(candidate.label) || PRESENCE_ACTION_LABELS[action] } });
@@ -9462,6 +9501,7 @@ function createPresenceSession({
             results.unshift({ action, id: candidate.id, label: text(outcome.label) || text(candidate.label),
               status: 'completed', reason: text(outcome.reason), at: now(),
               eventId: `${runId}:${++resultSequence}` });
+            verifiedInBurst += 1;
             publish({ completed: state.completed + 1, current: null, results });
           } else if (outcome?.skipped === true && outcome?.uncertain !== true) {
             results.unshift({ action, id: candidate.id, label: text(candidate.label),
@@ -9478,8 +9518,9 @@ function createPresenceSession({
             return snapshot();
           }
           if (state.completed >= review.options.maxActions) break;
-          if (review.options.mode === 'live' && state.completed > 0
-            && state.completed % review.options.liveBurstActions === 0) {
+          if (review.options.mode === 'live'
+            && verifiedInBurst >= review.options.liveBurstActions) {
+            verifiedInBurst = 0;
             publish({ status: 'quiet', current: null });
             await sleep(review.options.quietMinutes * 60_000, signal);
             await awaitResume(signal);
@@ -9518,7 +9559,7 @@ function createPresenceSession({
     start,
     snapshot,
     pause() {
-      if (!controller || !['running', 'waiting', 'quiet'].includes(state.status)) return false;
+      if (!controller || !['running', 'searching', 'waiting', 'quiet'].includes(state.status)) return false;
       publish({ status: 'paused', canPause: false, canResume: true, canStop: true });
       return true;
     },
@@ -9895,6 +9936,7 @@ function mountPresenceSessionPanel({
     const count = Number(snapshot.completed || 0);
     if (snapshot.status === 'idle') return ['Ready', 'Nothing happens until you confirm.'];
     if (snapshot.status === 'running') return [snapshot.current?.label || 'Presence is running', `${count} verified action${count === 1 ? '' : 's'}.`];
+    if (snapshot.status === 'searching') return ['Looking for something to do', `${count} verified action${count === 1 ? '' : 's'}. Presence is checking the loaded Instagram tab now.`];
     if (snapshot.status === 'waiting') return ['Taking a short pause', `${count} verified action${count === 1 ? '' : 's'}.`];
     if (snapshot.status === 'quiet') return ['Resting', `${count} verified action${count === 1 ? '' : 's'}. Presence will continue in this loaded tab.`];
     if (snapshot.status === 'paused') return ['Paused', `${count} verified action${count === 1 ? '' : 's'}. Resume or stop when ready.`];
@@ -9907,7 +9949,7 @@ function mountPresenceSessionPanel({
   function render(snapshot = session.snapshot()) {
     if (disposed) return;
     const [title, detail] = describe(snapshot);
-    const active = ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(snapshot.status);
+    const active = ['running', 'searching', 'waiting', 'quiet', 'paused', 'stopping'].includes(snapshot.status);
     intro.hidden = active;
     options.hidden = active;
     runGrid.hidden = active;

@@ -692,24 +692,38 @@ test('generic slot IDs and duplicate id-less text cannot alias processed message
   );
 });
 
-test('streaming traversal restarts from a fresh edge after every verified removal', () => {
+test('whole-conversation traversal preserves progress while finite scopes keep their exact edge', () => {
   const runner = loadRunner();
   const traversal = runner.__test.createTraversal('newest');
   const scroller = { scrollHeight: 1_000, scrollTop: 420 };
   traversal.scroller = scroller;
   traversal.lastScrollTop = 400;
+  traversal.preferVisible = true;
 
   runner.__test.resetTraversalAfterRemoval(traversal, scroller, { scroller, scrollHeight: 1_000 });
-  assert.equal(traversal.lastScrollTop, null, 'an unchanged virtual range can still recycle its mounted slots');
+  assert.equal(traversal.lastScrollTop, 420,
+    'whole-conversation cleanup resumes in the current virtual window');
+  assert.equal(traversal.oldestBoundaryProven, false,
+    'a mutation requires a fresh oldest-boundary proof before exhaustion');
 
   scroller.scrollHeight = 800;
+  scroller.scrollTop = 360;
   runner.__test.resetTraversalAfterRemoval(traversal, scroller, { scroller, scrollHeight: 1_000 });
-  assert.equal(traversal.lastScrollTop, null, 'a shrinking list restarts from the requested edge');
+  assert.equal(traversal.lastScrollTop, 360,
+    'a shrinking whole-conversation list keeps the browser-adjusted position');
 
   const replacement = { scrollHeight: 800, scrollTop: 200 };
   traversal.lastScrollTop = 200;
   runner.__test.resetTraversalAfterRemoval(traversal, replacement, { scroller, scrollHeight: 800 });
   assert.equal(traversal.lastScrollTop, null, 'a replaced virtual scroller restarts safely');
+
+  const finite = runner.__test.createTraversal('newest');
+  finite.scroller = replacement;
+  finite.lastScrollTop = 200;
+  runner.__test.resetTraversalAfterRemoval(finite, replacement,
+    { scroller: replacement, scrollHeight: 800 });
+  assert.equal(finite.lastScrollTop, null,
+    'finite newest/oldest plans continue to re-enter from their reviewed edge');
 });
 
 test('finite traversal re-establishes its requested edge after virtual replacement or shrink', async () => {
@@ -885,7 +899,12 @@ test('oldest traversal waits for delayed history after virtual scroller replacem
     const runner = loadRunner({ document, location: { pathname: '/direct/t/thread-delayed/' } });
     const signal = { aborted: false, addEventListener: () => {} };
 
-    function makeScroller(initialMessages, { loadOlder = false } = {}) {
+    function makeScroller(initialMessages, {
+      loadOlder = false,
+      loadDelayMs = 40,
+      olderMessage = 'message-1',
+      sent = () => true,
+    } = {}) {
       let logicalMessages = [...initialMessages];
       let loadScheduled = false;
       const scroller = Object.assign(new EventTarget(), {
@@ -920,7 +939,7 @@ test('oldest traversal waits for delayed history after virtual scroller replacem
           children: [],
           getAttribute(name) {
             if (name === 'data-message-id') return id;
-            if (name === 'data-sent-by-me') return 'true';
+            if (name === 'data-sent-by-me') return sent(id) ? 'true' : 'false';
             return '';
           },
           getBoundingClientRect: () => ({ bottom: top + 40, height: 40, left: 20, right: 330, top, width: 310 }),
@@ -951,15 +970,20 @@ test('oldest traversal waits for delayed history after virtual scroller replacem
         scroller.scrollTop = reversed ? -range : 0;
         renderWindow();
       };
+      scroller.mountNewest = () => {
+        const range = scroller.scrollHeight - scroller.clientHeight;
+        scroller.scrollTop = reversed ? 0 : range;
+        renderWindow();
+      };
       scroller.addEventListener('scroll', () => {
         renderWindow();
         if (!loadOlder || loadScheduled) return;
         loadScheduled = true;
         setTimeout(() => {
-          logicalMessages = ['message-1', ...logicalMessages];
+          logicalMessages = [olderMessage, ...logicalMessages];
           scroller.scrollHeight += 240;
           renderWindow();
-        }, 40);
+        }, loadDelayMs);
       });
       scroller.mountOldest();
       return scroller;
@@ -1021,6 +1045,35 @@ test('oldest traversal waits for delayed history after virtual scroller replacem
       `${reversed ? 'reversed' : 'normal'} traversal must select the true next oldest message`,
     );
     assert.equal(traversal.oldestBoundaryProven, true);
+
+    const streamScroller = makeScroller(
+      ['received-2', 'received-3', 'received-4', 'received-5'],
+      {
+        loadOlder: true,
+        loadDelayMs: 250,
+        olderMessage: 'message-top',
+        sent: id => id === 'message-top',
+      },
+    );
+    streamScroller.mountNewest();
+    root.children = [streamScroller];
+    const streamTraversal = runner.__test.createTraversal('newest');
+    streamTraversal.preferVisible = true;
+    streamTraversal.scroller = streamScroller;
+    streamTraversal.lastScrollTop = runner.__test.traversalBounds(streamScroller, 'newest').start;
+    streamTraversal.lastScrollHeight = streamScroller.scrollHeight;
+    const top = await runner.__test.nextSentRow(
+      { root, scroller: streamScroller, threadId: 'thread-delayed' },
+      signal,
+      'newest',
+      streamTraversal,
+      Date.now() + 30_000,
+    );
+    assert.equal(
+      top.getAttribute('data-message-id'),
+      'message-top',
+      `${reversed ? 'reversed' : 'normal'} whole-conversation traversal waits for delayed oldest history`,
+    );
   }
 });
 

@@ -1339,17 +1339,20 @@
     if (traversal.order === 'oldest' && (scrollerChanged || shrank)) {
       traversal.oldestBoundaryProven = false;
     }
-    // Instagram recycles and reorders the mounted message window after a
-    // confirmed Unsend even when scrollHeight happens to stay unchanged. A
-    // retained offset can therefore point at a stale virtual slot and make a
-    // multi-message run stop after its first success. Re-enter from the
-    // requested edge after every verified removal; processed logical IDs and
-    // postcondition markers still prevent selecting the removed message.
-    traversal.lastScrollTop = null;
+    // Whole-conversation cleanup keeps its current virtual window after a
+    // verified removal. Restarting at the newest edge after every message made
+    // old conversations repeatedly re-scan thousands of already checked rows.
+    // Finite newest/oldest scopes still re-enter from their reviewed edge, and
+    // a replaced scroller always starts fresh. Logical IDs plus postcondition
+    // markers keep recycled physical slots eligible only for new content.
+    const continuous = traversal.preferVisible === true && !scrollerChanged;
+    const currentTop = Number(scroller?.scrollTop);
+    traversal.lastScrollTop = continuous && Number.isFinite(currentTop) ? currentTop : null;
     traversal.lastScrollHeight = height;
     traversal.lastSearchGrew = false;
     traversal.lastSearchIncomplete = false;
     traversal.lastSearchSteps = 0;
+    if (continuous) traversal.oldestBoundaryProven = false;
   }
 
   async function reestablishTraversalEdge(context, traversal, signal) {
@@ -1504,6 +1507,26 @@
         position = direction > 0
           ? Math.min(end, position + step)
           : Math.max(end, position - step);
+      }
+
+      if (traversal.preferVisible && position === end && !traversal.oldestBoundaryProven) {
+        const heightBeforeBoundary = Number(scroller?.scrollHeight) || heightBeforePass;
+        const settled = await proveStableOldestBoundary(
+          context,
+          traversal,
+          signal,
+          authorizationExpiresAt,
+        );
+        current = traversalContext(settled, traversal);
+        scroller = current.scroller;
+        const heightAfterBoundary = Number(scroller?.scrollHeight) || 0;
+        traversal.lastSearchGrew = heightAfterBoundary > heightBeforeBoundary + 1;
+        const boundaryRow = firstVisibleCandidate(scroller, traversal.order, traversal)
+          || orderedCandidates(scroller, traversal.order, traversal)[0];
+        if (boundaryRow && await exposeRow(boundaryRow, scroller, signal, traversal)) {
+          traversal.lastScrollHeight = heightAfterBoundary;
+          return boundaryRow;
+        }
       }
 
       const heightAfterPass = Number(scroller?.scrollHeight) || 0;

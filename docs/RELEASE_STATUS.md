@@ -1,10 +1,12 @@
 # Release status
 
-Current version: **4.1.2**
+Current version: **4.1.3**
 
-Version 4.1.2 recognizes Instagram's retained virtual message slot after the
-exact confirmed message payload disappears. Presence recognizes the current
-story-tray and post-action role buttons. The stable update URL always resolves to the latest published release.
+Version 4.1.3 starts Presence with an active search cycle before scheduled rest
+and keeps whole-conversation Unsend moving through its current virtual window.
+At the oldest edge, the runner waits for delayed Instagram history and proves a
+stable boundary before reporting completion. The stable update URL always
+resolves to the latest published release.
 Authenticated acceptance remains separate from fixture results. See
 [DM restoration](./DM_RESTORATION_4.0.1.md) for the native selection and
 removal-reporting history.
@@ -14,10 +16,10 @@ removal-reporting history.
 | Surface | File |
 | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` |
-| Chrome extension | `Insta-Toolbox-Extension-4.1.2.zip` |
-| Web/PWA | `insta-toolbox-web-4.1.2.zip` |
-| Windows | `Insta-Toolbox-Setup-4.1.2.exe` |
-| macOS | `Insta-Toolbox-4.1.2-universal.dmg` and `.zip` |
+| Chrome extension | `Insta-Toolbox-Extension-4.1.3.zip` |
+| Web/PWA | `insta-toolbox-web-4.1.3.zip` |
+| Windows | `Insta-Toolbox-Setup-4.1.3.exe` |
+| macOS | `Insta-Toolbox-4.1.3-universal.dmg` and `.zip` |
 | Integrity | `SHA256SUMS.txt`, SBOM, and GitHub provenance attestation |
 
 The stable userscript channel is:
@@ -30,17 +32,17 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 1004 automated tests at the shared Presence/Ghost integration checkpoint;
+- 1005 automated tests at the shared Presence/Ghost integration checkpoint;
 - complete generated-userscript and extension fixture acceptance;
 - 45 overlay screenshot states checked against the reviewed pixel thresholds;
 - 11 PWA screenshot states checked against the reviewed pixel thresholds;
-- service-worker cache generation `insta-toolbox-v412`.
+- service-worker cache generation `insta-toolbox-v413`.
 
 The native DM regression matrix covers restored pre-Fast handling of sent
 replies, story replies, direct chats, group chats, id-less rows, and unavailable
 account labels through the generated userscript's primary action. A verified
-removal now resets traversal even when Instagram recycles rows without changing
-the scroll height.
+removal now preserves whole-conversation progress while finite newest/oldest
+plans continue to re-enter from their exact reviewed edge.
 Read-only native selection passed; post-removal authenticated acceptance is
 still pending for the repaired candidate.
 
@@ -81,8 +83,8 @@ The macOS application is ad-hoc signed for bundle integrity but is not Developer
 
 ## Evidence and nonclaims
 
-The candidate record is [acceptance/4.1.2.md](./acceptance/4.1.2.md).
-Compatibility is tracked in [compatibility/4.1.2.md](./compatibility/4.1.2.md).
+The candidate record is [acceptance/4.1.3.md](./acceptance/4.1.3.md).
+Compatibility is tracked in [compatibility/4.1.3.md](./compatibility/4.1.3.md).
 
 Automated fixtures do not prove current authenticated Instagram selectors, human screen-reader use, persistent-profile behavior, SmartScreen trust, Gatekeeper trust, or notarization. Record those checks separately without committing usernames, messages, thread IDs, cookies, tokens, or private screenshots.
 
