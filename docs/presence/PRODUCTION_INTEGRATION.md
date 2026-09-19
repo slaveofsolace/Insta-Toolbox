@@ -29,7 +29,13 @@ authority.
 
 The current native adapter supports exact visible controls for Instagram
 navigation, post likes,
-profile follows, incoming request confirmation, story links, and story likes.
+profile follows, incoming request confirmation, and story likes. A new story is
+opened only after Presence resolves one visible story hint to one exact visible
+profile link, opens that profile, rechecks the account and restrictions, and
+then finds one visible **View story** control. It does not dispatch the story
+hint URL directly or guess from screen coordinates. Completion requires the
+expected story route plus media and controls inside one visible story-viewer
+root; unrelated page media cannot prove success.
 A private-profile Follow may verify as Requested. Story reaction automatically
 includes story viewing. This adapter does not collect credentials, call private
 endpoints, bypass restrictions, or restore authority after a reload.

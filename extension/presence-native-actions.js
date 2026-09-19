@@ -73,14 +73,44 @@ export function createPresenceNativeActions({
     }
     return null;
   };
-  const storyLoaded = (expected) => {
+  const storyViewerRoot = (expected) => {
     const match = String(location.pathname || '').match(STORY_PATH);
-    if (!match || match[1].toLocaleLowerCase() !== expected.username || match[2] !== expected.storyId) return false;
-    const media = [...document.querySelectorAll('main video, main img, [role="dialog"] video, [role="dialog"] img')].filter(visible);
-    const controls = exactButtons(document, new Set(['pause', 'next', 'like', 'unlike']));
-    return media.length > 0 && controls.length > 0;
+    if (!match || match[1].toLocaleLowerCase() !== expected.username
+      || (expected.storyId && match[2] !== expected.storyId)) return null;
+    const qualifying = (roots) => roots.filter(visible).filter((root) => {
+      const media = [...root.querySelectorAll('video,img')].filter(visible);
+      const controls = exactButtons(root, new Set(['pause', 'next', 'like', 'unlike']));
+      return media.length > 0 && controls.length > 0;
+    });
+    const dialogs = qualifying([...document.querySelectorAll('[role="dialog"]')]);
+    if (dialogs.length) return dialogs.length === 1 ? dialogs[0] : null;
+    const mains = qualifying([...document.querySelectorAll('main')]);
+    return mains.length === 1 ? mains[0] : null;
   };
-  const waitFor = (predicate, signal) => new Promise((resolve, reject) => {
+  const storyLoaded = (expected) => Boolean(storyViewerRoot(expected));
+  const profileControls = (root, username) => [...root.querySelectorAll('a[href]')]
+    .filter(visible)
+    .filter((node) => profile(node)?.username === username);
+  const profileRouteForStory = (hint, username) => {
+    let node = hint?.parentElement || null;
+    for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+      const matches = profileControls(node, username);
+      if (matches.length === 1) return { root: node, control: matches[0] };
+      if (matches.length > 1) return null;
+    }
+    const matches = profileControls(document, username);
+    return matches.length === 1 ? { root: document, control: matches[0] } : null;
+  };
+  const profileStoryControl = (username) => {
+    const names = new Set(['view story', 'watch story', `${username}'s story`, `view ${username}'s story`]);
+    const matches = exactControls(document, names).filter((node) => {
+      const target = story(node);
+      return !target || target.username === username;
+    });
+    return matches.length === 1 ? matches[0] : null;
+  };
+  const exactProfilePath = (username) => String(location.pathname || '').replace(/\/+$/, '') === `/${username}`;
+  const waitFor = (predicate, signal, guard = null) => new Promise((resolve, reject) => {
     const startedAt = now();
     let observer = null;
     let timer = null;
@@ -97,7 +127,12 @@ export function createPresenceNativeActions({
     const check = () => {
       if (signal?.aborted) return abort();
       let result = false;
-      try { result = predicate() === true; } catch {}
+      try {
+        guard?.();
+        result = predicate() === true;
+      } catch (error) {
+        return finish(false, error);
+      }
       if (result) return finish(true);
       if (now() - startedAt >= timeoutMs) return finish(false);
       if (timer !== null) clearTimeout(timer);
@@ -123,7 +158,8 @@ export function createPresenceNativeActions({
     let ready = null;
     if (['viewStories', 'likePosts'].includes(action) && location.pathname !== '/') {
       control = routeControl(new Set(['/']), new Set(['home']));
-      ready = () => location.pathname === '/';
+      ready = () => location.pathname === '/'
+        && (action !== 'viewStories' || candidates('viewStories').length > 0);
     } else if (action === 'followPeople' && !String(location.pathname).startsWith('/explore')) {
       control = routeControl(new Set(['/explore/', '/explore']), new Set(['explore']));
       ready = () => String(location.pathname).startsWith('/explore');
@@ -172,30 +208,39 @@ export function createPresenceNativeActions({
     }
     if (action === 'viewStories') {
       const current = String(location.pathname || '').match(STORY_PATH);
-      if (current && storyLoaded({ username: current[1].toLocaleLowerCase(), storyId: current[2] })) {
-        const controls = exactButtons(document, new Set(['next']));
+      const currentTarget = current
+        ? { username: current[1].toLocaleLowerCase(), storyId: current[2] }
+        : null;
+      const viewerRoot = currentTarget ? storyViewerRoot(currentTarget) : null;
+      if (viewerRoot) {
+        const controls = exactButtons(viewerRoot, new Set(['next']));
         if (controls.length !== 1) return [];
         return [{ action, id: `story-next:${current[1].toLocaleLowerCase()}:${current[2]}`,
           label: 'Next story', target: { fromPath: String(location.pathname) },
-          root: document, control: controls[0] }];
+          root: viewerRoot, control: controls[0] }];
       }
       const unique = new Map();
       for (const link of [...document.querySelectorAll('a[href]')].filter(visible)) {
         const target = story(link);
-        if (target && !unique.has(target.storyId)) unique.set(target.storyId, { action,
-          id: `story:${target.username}:${target.storyId}`, label: `@${target.username}'s story`,
-          target, root: link, control: link });
+        if (!target || unique.has(target.username)) continue;
+        const route = profileRouteForStory(link, target.username);
+        if (!route) continue;
+        unique.set(target.username, { action,
+          id: `story-profile:${target.username}`, label: `@${target.username}'s story`,
+          target: { username: target.username }, root: route.root, control: route.control });
       }
       return [...unique.values()];
     }
     if (action === 'reactStories') {
       const current = String(location.pathname || '').match(STORY_PATH);
       if (!current) return [];
-      const controls = exactButtons(document, new Set(['like']));
-      if (controls.length !== 1) return [];
       const target = { username: current[1].toLocaleLowerCase(), storyId: current[2] };
+      const viewerRoot = storyViewerRoot(target);
+      if (!viewerRoot) return [];
+      const controls = exactButtons(viewerRoot, new Set(['like']));
+      if (controls.length !== 1) return [];
       return [{ action, id: `story-reaction:${target.username}:${target.storyId}`,
-        label: `React to @${target.username}'s story`, target, root: document, control: controls[0] }];
+        label: `React to @${target.username}'s story`, target, root: viewerRoot, control: controls[0] }];
     }
     if (action === 'acceptRequests') {
       return exactButtons(document, new Set(['confirm'])).flatMap((control) => {
@@ -241,13 +286,32 @@ export function createPresenceNativeActions({
         return { verified: false, skipped: true, reason: 'Target changed before the action' };
       }
       if (action === 'viewStories') {
+        if (!current.target.fromPath) {
+          current.control.click();
+          const profileReady = await waitFor(() => exactProfilePath(current.target.username)
+            && Boolean(profileStoryControl(current.target.username)), signal, assertCurrent);
+          if (!profileReady) {
+            return { verified: false, skipped: true,
+              reason: 'The profile or its story control was not available' };
+          }
+          assertCurrent();
+          const storyControl = profileStoryControl(current.target.username);
+          if (!storyControl) {
+            return { verified: false, skipped: true, reason: 'The story control changed' };
+          }
+          const expected = story(storyControl) || { username: current.target.username };
+          storyControl.click();
+          const verified = await waitFor(() => storyLoaded(expected), signal, assertCurrent);
+          return verified
+            ? { verified: true, label: current.label, reason: 'Story opened' }
+            : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+        }
         current.control.click();
         const verified = await waitFor(() => {
-          if (!current.target.fromPath) return storyLoaded(current.target);
           if (String(location.pathname) === current.target.fromPath) return false;
           const next = String(location.pathname).match(STORY_PATH);
           return Boolean(next) && storyLoaded({ username: next[1].toLocaleLowerCase(), storyId: next[2] });
-        }, signal);
+        }, signal, assertCurrent);
         return verified
           ? { verified: true, label: current.label,
             reason: current.target.fromPath ? 'Next story opened' : 'Story opened' }

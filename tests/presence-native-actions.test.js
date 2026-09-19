@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createPresenceNativeActions } from '../extension/presence-native-actions.js';
 
-function element({ text = '', href = '', click = () => {}, children = {} } = {}) {
+function element({ text = '', href = '', ariaLabel = '', click = () => {}, children = {} } = {}) {
   return {
     isConnected: true,
     hidden: false,
@@ -11,7 +11,7 @@ function element({ text = '', href = '', click = () => {}, children = {} } = {})
     click,
     getAttribute(name) {
       if (name === 'href') return href;
-      if (name === 'aria-label') return null;
+      if (name === 'aria-label') return ariaLabel || null;
       if (name === 'aria-hidden') return null;
       return null;
     },
@@ -23,6 +23,11 @@ function element({ text = '', href = '', click = () => {}, children = {} } = {})
     },
     getClientRects: () => [{}],
   };
+}
+
+function connect(parent, ...children) {
+  for (const child of children) child.parentElement = parent;
+  return parent;
 }
 
 test('Presence reaches a feed by clicking the observed Home control before acting', async () => {
@@ -118,11 +123,11 @@ test('Presence advances stories through the observed Next control', async () => 
   const location = { origin: 'https://www.instagram.com', pathname: '/stories/person/one/' };
   const media = element();
   const next = element({ text: 'Next', click() { location.pathname = '/stories/person/two/'; } });
+  const main = element({ children: { 'video,img': [media], button: [next] } });
   const documentFixture = {
     documentElement: {},
     querySelectorAll(selector) {
-      if (selector === 'button') return [next];
-      if (selector.includes('video') || selector.includes('img')) return [media];
+      if (selector === 'main') return [main];
       return [];
     },
   };
@@ -140,4 +145,232 @@ test('Presence advances stories through the observed Next control', async () => 
   });
   assert.equal(result.verified, true);
   assert.equal(result.reason, 'Next story opened');
+});
+
+test('Presence opens an exact profile before clicking its visible story control', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/' };
+  const clicks = [];
+  let surface = 'home';
+  const storyHint = element({ href: '/stories/person/one/', click() { clicks.push('direct-story'); } });
+  const profileLink = element({ text: 'person', href: '/person/', click() {
+    clicks.push('profile'); surface = 'profile'; location.pathname = '/person/';
+  } });
+  const row = connect(element({ children: { 'a[href]': [storyHint, profileLink] } }), storyHint, profileLink);
+  const storyControl = element({ ariaLabel: 'View story', click() {
+    clicks.push('story'); surface = 'story'; location.pathname = '/stories/person/one/';
+  } });
+  const media = element();
+  const pause = element({ ariaLabel: 'Pause' });
+  const main = element();
+  main.querySelectorAll = (selector) => {
+    if (selector === 'video,img') return surface === 'story' ? [media] : [];
+    if (selector === 'button') return surface === 'profile' ? [storyControl] : surface === 'story' ? [pause] : [];
+    return [];
+  };
+  const documentFixture = {
+    documentElement: {},
+    querySelectorAll(selector) {
+      if (selector === 'main') return [main];
+      if (selector === 'a[href]') return surface === 'home' ? [storyHint, profileLink] : [];
+      if (selector === 'a[href],button,[role="button"]') {
+        if (surface === 'home') return [storyHint, profileLink];
+        if (surface === 'profile') return [storyControl];
+        return [pause];
+      }
+      if (selector === 'button') return surface === 'profile' ? [storyControl] : surface === 'story' ? [pause] : [];
+      return [];
+    },
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer, timeoutMs: 500,
+  });
+  const candidate = await actions.find('viewStories', { seen: new Set(), signal: new AbortController().signal });
+  assert.equal(candidate.id, 'story-profile:person');
+  assert.equal(candidate.root, row);
+  const result = await actions.execute('viewStories', candidate, {
+    signal: new AbortController().signal, assertCurrent: () => true,
+  });
+  assert.deepEqual(clicks, ['profile', 'story']);
+  assert.equal(result.verified, true);
+  assert.equal(result.reason, 'Story opened');
+});
+
+test('Presence does not click a direct story link without one exact profile route', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/' };
+  let storyClicks = 0;
+  const storyHint = element({ href: '/stories/person/one/', click() { storyClicks += 1; } });
+  const profileOne = element({ text: 'person', href: '/person/' });
+  const profileTwo = element({ text: 'person', href: '/person/' });
+  const documentFixture = {
+    documentElement: {},
+    querySelectorAll(selector) {
+      if (selector === 'a[href]') return [storyHint, profileOne, profileTwo];
+      if (selector === 'a[href],button,[role="button"]') return [storyHint, profileOne, profileTwo];
+      return [];
+    },
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer, timeoutMs: 500,
+  });
+  const candidate = await actions.find('viewStories', { seen: new Set(), signal: new AbortController().signal });
+  assert.equal(candidate, null);
+  assert.equal(storyClicks, 0);
+  assert.equal(location.pathname, '/');
+});
+
+test('Presence rechecks the account context after profile navigation and before opening a story', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/' };
+  let surface = 'home';
+  let storyClicks = 0;
+  let checks = 0;
+  const storyHint = element({ href: '/stories/person/one/' });
+  const profileLink = element({ text: 'person', href: '/person/', click() {
+    surface = 'profile'; location.pathname = '/person/';
+  } });
+  connect(element({ children: { 'a[href]': [storyHint, profileLink] } }), storyHint, profileLink);
+  const storyControl = element({ ariaLabel: 'View story', click() { storyClicks += 1; } });
+  const documentFixture = {
+    documentElement: {},
+    querySelectorAll(selector) {
+      if (selector === 'a[href]') return surface === 'home' ? [storyHint, profileLink] : [];
+      if (selector === 'a[href],button,[role="button"]') return surface === 'home'
+        ? [storyHint, profileLink] : [storyControl];
+      if (selector === 'button') return surface === 'profile' ? [storyControl] : [];
+      return [];
+    },
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer, timeoutMs: 500,
+  });
+  const candidate = await actions.find('viewStories', { seen: new Set(), signal: new AbortController().signal });
+  await assert.rejects(actions.execute('viewStories', candidate, {
+    signal: new AbortController().signal,
+    assertCurrent() {
+      checks += 1;
+      if (checks === 2) throw new Error('presence-context-changed');
+      return true;
+    },
+  }), /presence-context-changed/);
+  assert.equal(checks, 2);
+  assert.equal(storyClicks, 0);
+  assert.equal(location.pathname, '/person/');
+});
+
+test('Presence does not accept unrelated global media and controls as a loaded story viewer', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/stories/person/one/' };
+  const media = element();
+  const pause = element({ ariaLabel: 'Pause' });
+  const main = element({ children: { 'video,img': [media], button: [] } });
+  const documentFixture = {
+    documentElement: {},
+    querySelectorAll(selector) {
+      if (selector === 'main') return [main];
+      if (selector === 'button') return [pause];
+      if (selector === 'main video, main img, [role="dialog"] video, [role="dialog"] img') return [media];
+      return [];
+    },
+  };
+  class Observer { observe() {} disconnect() {} }
+  let clock = 0;
+  const actions = createPresenceNativeActions({
+    document: documentFixture, location, now: () => { clock += 500; return clock; },
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer, timeoutMs: 500,
+  });
+  const candidate = await actions.find('viewStories', { seen: new Set(), signal: new AbortController().signal });
+  assert.equal(candidate, null);
+});
+
+test('Presence waits for delayed story and profile discovery after clicking Home', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/direct/inbox/' };
+  let ready = false;
+  let homeClicks = 0;
+  const storyHint = element({ href: '/stories/person/one/' });
+  const profileLink = element({ text: 'person', href: '/person/' });
+  connect(element({ children: { 'a[href]': [storyHint, profileLink] } }), storyHint, profileLink);
+  const home = element({ text: 'Home', href: '/', click() {
+    homeClicks += 1;
+    location.pathname = '/';
+    setTimeout(() => { ready = true; }, 20);
+  } });
+  const documentFixture = {
+    documentElement: {},
+    querySelectorAll(selector) {
+      if (selector === 'a[href]') return ready ? [storyHint, profileLink] : [home];
+      if (selector === 'a[href],button,[role="button"]') return ready ? [storyHint, profileLink] : [home];
+      return [];
+    },
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer, timeoutMs: 500,
+  });
+  const candidate = await actions.find('viewStories', { seen: new Set(), signal: new AbortController().signal });
+  assert.equal(homeClicks, 1);
+  assert.equal(candidate.id, 'story-profile:person');
+});
+
+test('Presence rejects a restriction surface even when stale story media remains visible', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/' };
+  let surface = 'home';
+  let restricted = false;
+  const storyHint = element({ href: '/stories/person/one/' });
+  const profileLink = element({ text: 'person', href: '/person/', click() {
+    surface = 'profile'; location.pathname = '/person/';
+  } });
+  connect(element({ children: { 'a[href]': [storyHint, profileLink] } }), storyHint, profileLink);
+  const storyControl = element({ ariaLabel: 'View story', click() {
+    surface = 'story'; location.pathname = '/stories/person/one/'; restricted = true;
+  } });
+  const media = element();
+  const pause = element({ ariaLabel: 'Pause' });
+  const main = element();
+  main.querySelectorAll = (selector) => {
+    if (selector === 'video,img') return surface === 'story' ? [media] : [];
+    if (selector === 'button') return surface === 'profile' ? [storyControl] : surface === 'story' ? [pause] : [];
+    return [];
+  };
+  const documentFixture = {
+    documentElement: {},
+    querySelectorAll(selector) {
+      if (selector === 'main') return [main];
+      if (selector === 'a[href]') return surface === 'home' ? [storyHint, profileLink] : [];
+      if (selector === 'a[href],button,[role="button"]') return surface === 'home'
+        ? [storyHint, profileLink] : surface === 'profile' ? [storyControl] : [pause];
+      if (selector === 'button') return surface === 'profile' ? [storyControl] : surface === 'story' ? [pause] : [];
+      return [];
+    },
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer, timeoutMs: 500,
+  });
+  const candidate = await actions.find('viewStories', { seen: new Set(), signal: new AbortController().signal });
+  await assert.rejects(actions.execute('viewStories', candidate, {
+    signal: new AbortController().signal,
+    assertCurrent() {
+      if (restricted) throw new Error('presence-context-changed');
+      return true;
+    },
+  }), /presence-context-changed/);
+  assert.equal(location.pathname, '/stories/person/one/');
 });

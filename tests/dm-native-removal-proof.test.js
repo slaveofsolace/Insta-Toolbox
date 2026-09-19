@@ -201,6 +201,43 @@ test('bottom anchoring after native height shrink is not mistaken for scrolling 
   assert.equal(proof.removalProven(target.row, before), false);
 });
 
+test('keyed removal accepts native bottom anchoring after the list shrinks', () => {
+  const current = fixture({ normalBottom: true });
+  current.target.row.attributes['data-message-id'] = 'target-message';
+  const before = current.proof.removalEvidence(current.target.row);
+  current.target.row.remove();
+  current.scroller.scrollHeight = 450;
+  current.scroller.scrollTop = 250;
+  assert.equal(current.proof.removalProven(current.target.row, before), true);
+  current.scroller.scrollTop = 225;
+  assert.equal(current.proof.removalProven(current.target.row, before), false);
+});
+
+test('keyed removal survives an exact virtual scroller remount with retained anchors', () => {
+  const current = fixture();
+  current.target.group.attributes['data-message-id'] = 'target-message';
+  current.neighbors[0].group.attributes['data-message-id'] = 'neighbor-one';
+  current.neighbors[1].group.attributes['data-message-id'] = 'neighbor-two';
+  const before = current.proof.removalEvidence(current.target.row);
+
+  const replacementRoot = new current.Element('div', { 'data-pagelet': 'IGDMessagesList' });
+  const replacementScroller = new current.Element();
+  Object.assign(replacementScroller, { scrollTop: 0, scrollHeight: 500, clientHeight: 200 });
+  const first = current.makeRow('Earlier message');
+  const second = current.makeRow('Adjacent message');
+  first.group.attributes['data-message-id'] = 'neighbor-one';
+  second.group.attributes['data-message-id'] = 'neighbor-two';
+  replacementScroller.append(first.row, second.row);
+  replacementRoot.append(replacementScroller);
+  current.document.root = replacementRoot;
+
+  assert.equal(current.proof.removalProven(current.target.row, before), true);
+  const remountedTarget = current.makeRow('Disposable message');
+  remountedTarget.group.attributes['data-message-id'] = 'target-message';
+  replacementScroller.append(remountedTarget.row);
+  assert.equal(current.proof.removalProven(current.target.row, before), false);
+});
+
 test('a native edited or recycled group is not an unsent message', () => {
   const { target, before, proof } = fixture();
   target.content.attributes.text = 'Edited or recycled message';

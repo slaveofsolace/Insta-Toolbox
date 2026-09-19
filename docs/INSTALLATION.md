@@ -1,6 +1,6 @@
-# Install Insta Toolbox 4.1.0
+# Install Insta Toolbox 4.1.1
 
-The stable Tampermonkey link always installs the latest published release. Version 4.1.0 package names below become available after its release checks finish.
+The stable Tampermonkey link always installs the latest published release. Version 4.1.1 package names below become available after its release checks finish.
 
 Tampermonkey is the quickest way to put the toolbox on Instagram. Desktop and web builds provide the larger local workspace for imports, comparisons, reviewed plans, ledgers, and exports.
 
@@ -48,7 +48,7 @@ Open the Tampermonkey dashboard, locate **Insta Toolbox**, and choose **Delete**
 
 ## Chrome extension
 
-1. Download `Insta-Toolbox-Extension-4.1.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download `Insta-Toolbox-Extension-4.1.1.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify its SHA-256 checksum as described below.
 3. Extract the ZIP to a permanent folder.
 4. Open `chrome://extensions` and enable **Developer mode**.
@@ -61,7 +61,7 @@ To remove it, open `chrome://extensions`, select **Remove**, and delete the extr
 
 ## Windows desktop app
 
-1. Download `Insta-Toolbox-Setup-4.1.0.exe` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download `Insta-Toolbox-Setup-4.1.1.exe` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify the checksum.
 3. Double-click the installer.
 
@@ -74,13 +74,13 @@ Uninstall from **Settings > Apps > Installed apps > Insta Toolbox**.
 
 ## macOS desktop app
 
-1. Download the recommended `Insta-Toolbox-4.1.0-universal.dmg` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download the recommended `Insta-Toolbox-4.1.1-universal.dmg` and `SHA256SUMS.txt` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify the checksum.
 3. Open the DMG and drag **Insta Toolbox** to Applications.
 
 The universal package targets Intel and Apple Silicon. Public builds are not notarized unless the release notes explicitly say they are. On first launch, control-click the app, choose **Open**, then confirm the macOS warning.
 
-The release also includes `Insta-Toolbox-4.1.0-universal.zip` as a portable alternative. Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
+The release also includes `Insta-Toolbox-4.1.1-universal.zip` as a portable alternative. Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
 
 To remove it, quit the app and move **Insta Toolbox** from Applications to Trash. Remove its application data separately only if you want to erase local workspace history.
 
@@ -94,7 +94,7 @@ Use the browser's **Install app** command for a standalone PWA window. Browser w
 
 To self-host it:
 
-1. Download `insta-toolbox-web-4.1.0.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+1. Download `insta-toolbox-web-4.1.1.zip` from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
 2. Verify its checksum.
 3. Extract the ZIP.
 4. Serve the extracted `insta-toolbox-web` directory over HTTPS or a loopback HTTP origin.
@@ -110,15 +110,15 @@ Download `SHA256SUMS.txt` from the same release as the package.
 ### Windows PowerShell
 
 ```powershell
-Get-FileHash .\Insta-Toolbox-Setup-4.1.0.exe -Algorithm SHA256
-Get-FileHash .\Insta-Toolbox-Extension-4.1.0.zip -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Setup-4.1.1.exe -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Extension-4.1.1.zip -Algorithm SHA256
 ```
 
 ### macOS or Linux
 
 ```sh
-shasum -a 256 Insta-Toolbox-4.1.0-universal.dmg
-shasum -a 256 insta-toolbox-web-4.1.0.zip
+shasum -a 256 Insta-Toolbox-4.1.1-universal.dmg
+shasum -a 256 insta-toolbox-web-4.1.1.zip
 ```
 
 The printed hash must match the corresponding line in `SHA256SUMS.txt`. A mismatch means the file should not be opened.
@@ -167,8 +167,8 @@ Read the reason shown in the active tool. Challenge, rate-limit, wrong-thread, c
 
 ## Acceptance and support
 
-- [4.1.0 acceptance record](acceptance/4.1.0.md)
-- [4.1.0 compatibility](compatibility/4.1.0.md)
+- [4.1.1 acceptance record](acceptance/4.1.1.md)
+- [4.1.1 compatibility](compatibility/4.1.1.md)
 - [Operator acceptance guide](OPERATOR_ACCEPTANCE.md)
 - [Security policy](../SECURITY.md)
 - [Open an issue](https://github.com/slaveofsolace/Insta-Toolbox/issues)
