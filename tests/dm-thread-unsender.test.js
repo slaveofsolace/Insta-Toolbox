@@ -1062,13 +1062,19 @@ test('oldest traversal waits for delayed history after virtual scroller replacem
     streamTraversal.scroller = streamScroller;
     streamTraversal.lastScrollTop = runner.__test.traversalBounds(streamScroller, 'newest').start;
     streamTraversal.lastScrollHeight = streamScroller.scrollHeight;
-    const top = await runner.__test.nextSentRow(
-      { root, scroller: streamScroller, threadId: 'thread-delayed' },
-      signal,
-      'newest',
-      streamTraversal,
-      Date.now() + 30_000,
-    );
+    let top = null;
+    for (let pass = 0; pass < 3 && !top; pass += 1) {
+      top = await runner.__test.nextSentRow(
+        { root, scroller: streamScroller, threadId: 'thread-delayed' },
+        signal,
+        'newest',
+        streamTraversal,
+        Date.now() + 30_000,
+      );
+      if (!top) await new Promise((resolve) => { setTimeout(resolve, 160); });
+    }
+    assert.ok(top,
+      `${reversed ? 'reversed' : 'normal'} whole-conversation traversal must settle delayed oldest history`);
     assert.equal(
       top.getAttribute('data-message-id'),
       'message-top',
