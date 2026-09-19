@@ -2360,13 +2360,39 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   function retainedMessageSignature(row) {
-    const content = [...row?.querySelectorAll?.(
-      '[dir="auto"], img, video, audio, a[href], time[datetime], [data-timestamp]',
-    ) || []].map((element) => [
-      element.tagName || '',
-      element.matches?.('[dir="auto"]') ? visibleText(element) : '',
-      ...['href', 'src', 'datetime', 'data-timestamp'].map((name) => element.getAttribute?.(name) || ''),
-    ]);
+    const content = [...row?.querySelectorAll?.([
+      '[dir="auto"]',
+      'img',
+      'video',
+      'audio',
+      'canvas',
+      'a[href]',
+      'time[datetime]',
+      '[data-timestamp]',
+      '[aria-valuetext]',
+      '[role="slider"]',
+      'button[aria-label]',
+      '[role="button"][aria-label]',
+      'svg[aria-label]',
+    ].join(', ')) || []]
+      // Message-action controls survive after Instagram removes or recycles a
+      // voice-note payload. They describe the wrapper, not the message, and
+      // therefore cannot be used as removal evidence.
+      .filter((element) => !element.closest?.('[aria-label="Message actions"]'))
+      .map((element) => [
+        element.tagName || '',
+        element.getAttribute?.('role') || '',
+        element.matches?.('[dir="auto"]') ? visibleText(element) : '',
+        ...[
+          'aria-label',
+          'aria-valuetext',
+          'aria-valuenow',
+          'href',
+          'src',
+          'datetime',
+          'data-timestamp',
+        ].map((name) => element.getAttribute?.(name) || ''),
+      ]);
     return JSON.stringify([stableMessageKey(row), preview(row), content]);
   }
 
@@ -3353,6 +3379,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       isVisible,
       markProcessedRow,
       messageFingerprint,
+      retainedMessageSignature,
       nextSentRow,
       oldestBoundarySnapshot,
       orderedCandidates,
@@ -8977,6 +9004,39 @@ function createPresenceNativeActions({
     throw new Error('presence-native-adapter-required');
   }
 
+  let retainedAccount = null;
+  const inspectContext = () => {
+    const observed = inspectViewer() || {};
+    const restricted = Boolean(observed.challenge || observed.actionBlocked
+      || observed.rateLimited || observed.sessionExpired || observed.discarded);
+    const observedAccountId = clean(observed.accountId);
+    const observedAccountKey = clean(observed.accountKey);
+    if (observed.accountVerified === true && observed.usable === true
+      && observedAccountId && observedAccountKey && !restricted) {
+      retainedAccount = Object.freeze({
+        accountId: observedAccountId,
+        accountKey: observedAccountKey,
+      });
+      return observed;
+    }
+    // Instagram temporarily removes its account navigation while showing a
+    // story or another full-screen surface. Keep the identity that was proved
+    // in this same document instead of treating that route change
+    // as an account change. An explicitly observed different account still
+    // replaces this value and the session's account binding stops the run.
+    if (!restricted && location.origin === 'https://www.instagram.com'
+      && retainedAccount && !observedAccountId) {
+      return Object.freeze({
+        ...observed,
+        ...retainedAccount,
+        accountVerified: true,
+        usable: true,
+        routeIdentityRetained: true,
+      });
+    }
+    return observed;
+  };
+
   const visible = (node) => {
     if (!node?.isConnected || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
     const style = getStyle(node);
@@ -9167,7 +9227,7 @@ function createPresenceNativeActions({
       return exactButtons(document, new Set(['follow'])).flatMap((control) => {
         const resolved = logicalContainer(control, 'follow');
         if (!resolved) return [];
-        const viewer = inspectViewer();
+        const viewer = inspectContext();
         if (resolved.profile.username === lower(viewer?.accountId)) return [];
         return [{ action, id: `profile:${resolved.profile.username}`, label: `@${resolved.profile.username}`,
           target: resolved.profile, root: resolved.node, control }];
@@ -9235,7 +9295,7 @@ function createPresenceNativeActions({
 
   return Object.freeze({
     inspectContext() {
-      const viewer = inspectViewer();
+      const viewer = inspectContext();
       return Object.freeze({ ...viewer,
         frozen: document.visibilityState === 'hidden' && document.wasDiscarded === true,
         discarded: document.wasDiscarded === true });
@@ -10240,7 +10300,8 @@ function mountPresenceSessionPanel({
     begin,
     render,
     stop: () => session.stop(),
-    busy: () => ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(session.snapshot().status),
+    busy: () => ['running', 'searching', 'waiting', 'quiet', 'paused', 'stopping']
+      .includes(session.snapshot().status),
     snapshot: () => session.snapshot(),
     dispose() {
       if (disposed) return;
@@ -12154,6 +12215,17 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
     }
     if (session.rateLimited) {
       return { tone: 'blocked', title: 'Rate limited', detail: 'Instagram is throttling this account. Runs stop until it passes.' };
+    }
+
+    const presenceState = presenceSession?.snapshot?.();
+    if (presencePanel?.busy()) {
+      const paused = presenceState?.status === 'paused';
+      return {
+        tone: paused ? 'warning' : 'ready',
+        title: paused ? 'Presence paused' : 'Presence active',
+        detail: paused ? 'Resume when you are ready.' : 'Presence is continuing in this tab.',
+        view: 'account',
+      };
     }
 
     const path = location.pathname.toLowerCase();

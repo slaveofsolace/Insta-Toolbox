@@ -497,3 +497,86 @@ test('Presence rejects a restriction surface even when stale story media remains
   }), /presence-context-changed/);
   assert.equal(location.pathname, '/stories/person/one/');
 });
+
+test('Presence retains a verified account across same-tab full-screen routes', () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/viewer/' };
+  const observations = [
+    {
+      accountVerified: true,
+      usable: true,
+      accountId: 'viewer',
+      accountKey: 'iguser-v1-viewer',
+    },
+    {
+      accountVerified: false,
+      usable: false,
+      accountId: '',
+      accountKey: '',
+    },
+    {
+      accountVerified: true,
+      usable: true,
+      accountId: 'other-account',
+      accountKey: 'iguser-v1-other-account',
+    },
+  ];
+  const documentFixture = {
+    visibilityState: 'visible',
+    wasDiscarded: false,
+    querySelectorAll: () => [],
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture,
+    location,
+    inspectViewer: () => observations.shift(),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer,
+  });
+
+  assert.equal(actions.inspectContext().accountId, 'viewer');
+  const storyContext = actions.inspectContext();
+  assert.equal(storyContext.accountId, 'viewer');
+  assert.equal(storyContext.accountVerified, true);
+  assert.equal(storyContext.routeIdentityRetained, true);
+  assert.equal(actions.inspectContext().accountId, 'other-account');
+});
+
+test('Presence never masks an Instagram restriction with retained account identity', () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/stories/person/one/' };
+  const observations = [
+    {
+      accountVerified: true,
+      usable: true,
+      accountId: 'viewer',
+      accountKey: 'iguser-v1-viewer',
+    },
+    {
+      accountVerified: false,
+      usable: false,
+      accountId: '',
+      accountKey: '',
+      challenge: true,
+    },
+  ];
+  const documentFixture = {
+    visibilityState: 'visible',
+    wasDiscarded: false,
+    querySelectorAll: () => [],
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture,
+    location,
+    inspectViewer: () => observations.shift(),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer,
+  });
+
+  actions.inspectContext();
+  const restricted = actions.inspectContext();
+  assert.equal(restricted.accountVerified, false);
+  assert.equal(restricted.usable, false);
+  assert.equal(restricted.challenge, true);
+  assert.equal(restricted.routeIdentityRetained, undefined);
+});

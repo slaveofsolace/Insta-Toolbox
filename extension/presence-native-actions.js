@@ -23,6 +23,39 @@ export function createPresenceNativeActions({
     throw new Error('presence-native-adapter-required');
   }
 
+  let retainedAccount = null;
+  const inspectContext = () => {
+    const observed = inspectViewer() || {};
+    const restricted = Boolean(observed.challenge || observed.actionBlocked
+      || observed.rateLimited || observed.sessionExpired || observed.discarded);
+    const observedAccountId = clean(observed.accountId);
+    const observedAccountKey = clean(observed.accountKey);
+    if (observed.accountVerified === true && observed.usable === true
+      && observedAccountId && observedAccountKey && !restricted) {
+      retainedAccount = Object.freeze({
+        accountId: observedAccountId,
+        accountKey: observedAccountKey,
+      });
+      return observed;
+    }
+    // Instagram temporarily removes its account navigation while showing a
+    // story or another full-screen surface. Keep the identity that was proved
+    // in this same document instead of treating that route change
+    // as an account change. An explicitly observed different account still
+    // replaces this value and the session's account binding stops the run.
+    if (!restricted && location.origin === 'https://www.instagram.com'
+      && retainedAccount && !observedAccountId) {
+      return Object.freeze({
+        ...observed,
+        ...retainedAccount,
+        accountVerified: true,
+        usable: true,
+        routeIdentityRetained: true,
+      });
+    }
+    return observed;
+  };
+
   const visible = (node) => {
     if (!node?.isConnected || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
     const style = getStyle(node);
@@ -213,7 +246,7 @@ export function createPresenceNativeActions({
       return exactButtons(document, new Set(['follow'])).flatMap((control) => {
         const resolved = logicalContainer(control, 'follow');
         if (!resolved) return [];
-        const viewer = inspectViewer();
+        const viewer = inspectContext();
         if (resolved.profile.username === lower(viewer?.accountId)) return [];
         return [{ action, id: `profile:${resolved.profile.username}`, label: `@${resolved.profile.username}`,
           target: resolved.profile, root: resolved.node, control }];
@@ -281,7 +314,7 @@ export function createPresenceNativeActions({
 
   return Object.freeze({
     inspectContext() {
-      const viewer = inspectViewer();
+      const viewer = inspectContext();
       return Object.freeze({ ...viewer,
         frozen: document.visibilityState === 'hidden' && document.wasDiscarded === true,
         discarded: document.wasDiscarded === true });

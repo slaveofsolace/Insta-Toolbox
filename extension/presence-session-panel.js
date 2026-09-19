@@ -437,7 +437,8 @@ export function mountPresenceSessionPanel({
     begin,
     render,
     stop: () => session.stop(),
-    busy: () => ['running', 'waiting', 'quiet', 'paused', 'stopping'].includes(session.snapshot().status),
+    busy: () => ['running', 'searching', 'waiting', 'quiet', 'paused', 'stopping']
+      .includes(session.snapshot().status),
     snapshot: () => session.snapshot(),
     dispose() {
       if (disposed) return;

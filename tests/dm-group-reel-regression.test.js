@@ -270,3 +270,30 @@ test('a sibling with a changed message identity is not stable id-less removal ev
   second.attributes['data-message-id'] = 'after';
   assert.equal(proof.removalProven(first, before), false);
 });
+
+test('voice-note payload removal changes the retained signature while message actions remain', () => {
+  const { Element, root, proof, runner } = fixture();
+  const waveform = new Element('canvas');
+  const progress = new Element('div', {
+    role: 'slider',
+    'aria-valuetext': '0:17',
+    'aria-valuenow': '0',
+  });
+  const actions = new Element('div', { role: 'group', 'aria-label': 'Message actions' }, [
+    new Element('button', { 'aria-label': 'More options' }),
+  ]);
+  const voiceNote = new Element('div', { role: 'group' }, [waveform, progress, actions]);
+  root.append(voiceNote);
+
+  const removalEvidence = proof.removalEvidence(voiceNote);
+  const before = runner.__test.retainedMessageSignature(voiceNote);
+  assert.equal(proof.exactNativeTargetStillPresent(removalEvidence), true);
+  waveform.remove();
+  progress.remove();
+  actions.children[0].attributes['aria-label'] = 'Options';
+  const after = runner.__test.retainedMessageSignature(voiceNote);
+
+  assert.notEqual(after, before);
+  assert.equal(proof.exactNativeTargetStillPresent(removalEvidence), false);
+  assert.equal(after, runner.__test.retainedMessageSignature(voiceNote));
+});

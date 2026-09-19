@@ -2,12 +2,13 @@
 
 Current version: **4.1.4**
 
-Version 4.1.4 recognizes Instagram's duplicated Home navigation label so
-Presence can leave a DM view and begin its reviewed feed search. Direct Unsend
-retries an unchanged native message, accepts exact confirmed payload recycling,
-and checks the remaining conversation after a genuinely unprovable row. Only
-verified removals count as unsent. The stable update URL always resolves to the
-latest published release.
+Version 4.1.4 recognizes Instagram's duplicated Home navigation label and keeps
+the verified account bound while Presence moves through same-tab stories and
+full-screen views. Direct Unsend fingerprints voice-note playback and waveform
+payloads, retries an unchanged native message, accepts exact confirmed payload
+recycling, and checks the remaining conversation after a genuinely unprovable
+row. Only verified removals count as unsent. The stable update URL always
+resolves to the latest published release.
 Authenticated acceptance remains separate from fixture results. See
 [DM restoration](./DM_RESTORATION_4.0.1.md) for the native selection and
 removal-reporting history.
@@ -33,7 +34,7 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 1009 automated tests at the shared Presence/Ghost integration checkpoint;
+- 1012 automated tests at the shared Presence/Ghost integration checkpoint;
 - complete generated-userscript and extension fixture acceptance;
 - 45 overlay screenshot states checked against the reviewed pixel thresholds;
 - 11 PWA screenshot states checked against the reviewed pixel thresholds;

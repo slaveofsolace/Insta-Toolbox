@@ -1579,13 +1579,39 @@
   }
 
   function retainedMessageSignature(row) {
-    const content = [...row?.querySelectorAll?.(
-      '[dir="auto"], img, video, audio, a[href], time[datetime], [data-timestamp]',
-    ) || []].map((element) => [
-      element.tagName || '',
-      element.matches?.('[dir="auto"]') ? visibleText(element) : '',
-      ...['href', 'src', 'datetime', 'data-timestamp'].map((name) => element.getAttribute?.(name) || ''),
-    ]);
+    const content = [...row?.querySelectorAll?.([
+      '[dir="auto"]',
+      'img',
+      'video',
+      'audio',
+      'canvas',
+      'a[href]',
+      'time[datetime]',
+      '[data-timestamp]',
+      '[aria-valuetext]',
+      '[role="slider"]',
+      'button[aria-label]',
+      '[role="button"][aria-label]',
+      'svg[aria-label]',
+    ].join(', ')) || []]
+      // Message-action controls survive after Instagram removes or recycles a
+      // voice-note payload. They describe the wrapper, not the message, and
+      // therefore cannot be used as removal evidence.
+      .filter((element) => !element.closest?.('[aria-label="Message actions"]'))
+      .map((element) => [
+        element.tagName || '',
+        element.getAttribute?.('role') || '',
+        element.matches?.('[dir="auto"]') ? visibleText(element) : '',
+        ...[
+          'aria-label',
+          'aria-valuetext',
+          'aria-valuenow',
+          'href',
+          'src',
+          'datetime',
+          'data-timestamp',
+        ].map((name) => element.getAttribute?.(name) || ''),
+      ]);
     return JSON.stringify([stableMessageKey(row), preview(row), content]);
   }
 
@@ -2572,6 +2598,7 @@
       isVisible,
       markProcessedRow,
       messageFingerprint,
+      retainedMessageSignature,
       nextSentRow,
       oldestBoundarySnapshot,
       orderedCandidates,

@@ -1892,6 +1892,17 @@
       return { tone: 'blocked', title: 'Rate limited', detail: 'Instagram is throttling this account. Runs stop until it passes.' };
     }
 
+    const presenceState = presenceSession?.snapshot?.();
+    if (presencePanel?.busy()) {
+      const paused = presenceState?.status === 'paused';
+      return {
+        tone: paused ? 'warning' : 'ready',
+        title: paused ? 'Presence paused' : 'Presence active',
+        detail: paused ? 'Resume when you are ready.' : 'Presence is continuing in this tab.',
+        view: 'account',
+      };
+    }
+
     const path = location.pathname.toLowerCase();
     if (path.startsWith('/direct/t/')) {
       return {
