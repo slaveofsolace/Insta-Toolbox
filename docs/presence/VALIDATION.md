@@ -15,7 +15,9 @@ Verified in deterministic Instagram-shaped fixtures:
 - post Like verifies the matching Unlike state;
 - Follow verifies Following or Requested;
 - request confirmation verifies Following or Remove;
-- story opening verifies the exact story route and loaded media;
+- story opening first uses one exact visible profile route, rechecks context,
+  and then verifies the story route, media, and controls inside one story-viewer
+  root;
 - story reaction verifies the matching Unlike state;
 - copied, replayed, expired, or wrong-account reviews fail;
 - Pause prevents the next action, Resume continues the same review, and Stop
@@ -23,7 +25,8 @@ Verified in deterministic Instagram-shaped fixtures:
 - Live like me remains finite, respects its reviewed window and action ceiling,
   and enters bounded rest periods;
 - Instagram sections are reached through observed native controls rather than
-  manufactured page URLs;
+  manufactured page URLs; Home waits for delayed story/profile discovery and a
+  story hint is never clicked as a direct shortcut;
 - the bounded per-account log renders in Presence and in a separate read-only
   resizable window without message or session payloads;
 - uncertain results stop without retry;

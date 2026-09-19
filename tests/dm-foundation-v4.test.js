@@ -500,7 +500,7 @@ test('Stop after dispatch settles a proven removal once without dispatching anot
 
 test('the restored runner counts one native id-less removal despite layout reconciliation', async () => {
   const fixture = interactionFixture(({ target, root, Element, observerCount }) => {
-    assert.ok(observerCount >= 3, 'thread, dialog and removal observers are armed before dispatch');
+    assert.ok(observerCount >= 1, 'the exact-thread monitor is armed before dispatch');
     target.remove();
     root.append(new Element('span', {}, 'Seen'));
   }, { nativeLayout: true });
@@ -625,7 +625,12 @@ async function timedFixture(speed, fixtureOptions = {}) {
     },
     clearTimeout(id) { timers.delete(id); },
   };
-  const fixture = interactionFixture(({ target }) => target.remove(), { ...fixtureOptions, speed, runtime });
+  const settlementDelayMs = Math.max(0, Number(fixtureOptions.settlementDelayMs) || 0);
+  const fixture = interactionFixture(({ target, runner }) => {
+    if (settlementDelayMs) runtime.setTimeout(() => target.remove(), settlementDelayMs);
+    else target.remove();
+    if (fixtureOptions.stopAfterDispatch) runner.stop();
+  }, { ...fixtureOptions, speed, runtime });
   let result;
   const pending = fixture.run().then((value) => { result = value; });
   for (let step = 0; step < 1_000 && !result; step += 1) {
@@ -664,6 +669,25 @@ test('restored hover timing remains 110ms with verified bounded settlement', asy
     failuresPerRun: 0,
     uncertainPerRun: 0,
   }));
+});
+
+test('a delayed native removal uses one full stability window instead of becoming uncertain', async () => {
+  const delayed = await timedFixture('standard', { settlementDelayMs: 4_900 });
+  assert.equal(delayed.result.status, 'completed', JSON.stringify(delayed.result));
+  assert.equal(delayed.result.processed, 1);
+  assert.equal(delayed.result.uncertain, 0);
+  assert.equal(delayed.fixture.dispatches(), 1);
+  assert.equal(delayed.fixture.ledgerWrites(), 1);
+  assert.ok(delayed.result.phaseTimings.verification >= 5_250);
+});
+
+test('Stop after a delayed dispatch settles the verified removal without starting another one', async () => {
+  const delayed = await timedFixture('standard', { settlementDelayMs: 4_900, stopAfterDispatch: true });
+  assert.equal(delayed.result.status, 'stopped', JSON.stringify(delayed.result));
+  assert.equal(delayed.result.processed, 1);
+  assert.equal(delayed.result.uncertain, 0);
+  assert.equal(delayed.fixture.dispatches(), 1);
+  assert.equal(delayed.fixture.ledgerWrites(), 1);
 });
 
 test('All continues after each verified removal and reaches stable exhaustion without counting received rows', async () => {

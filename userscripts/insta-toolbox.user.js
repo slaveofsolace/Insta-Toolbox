@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.1.0
+// @version      4.1.1
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -866,6 +866,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   const DEFAULT_MIN_DELAY_MS = 1_000;
   const DEFAULT_MAX_DELAY_MS = 2_000;
   const DEFAULT_MAX_FAILURES = 5;
+  const REMOVAL_SETTLEMENT_MS = 10_000;
   const MIN_USABLE_VISIBLE_PX = 24;
   const MAX_HOVER_DEPTH = 8;
   const MAX_HISTORY_CHECK_MS = 90_000;
@@ -1777,37 +1778,24 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
     const before = removalEvidence(row);
     const settlement = new AbortController();
-    const deadline = Date.now() + 5_000;
-    // Observe both native transitions before clicking, as in the original
-    // runner. The separate settlement signal lets Stop prevent the next
-    // action without abandoning the outcome of this dispatched action.
-    const closed = waitForElement(
-      document.body,
-      () => (!dialogButton.isConnected || !isVisible(dialogButton) ? true : null),
-      settlement.signal,
-      5_000,
-    );
-    const removed = waitForElement(
-      document.body,
-      () => (currentThreadId() === expectedThreadId && removalProven(row, before) ? true : null),
-      settlement.signal,
-      5_000,
-    ).then((ready) => ready === true && waitForRemoval(row, before, {
+    // Arm one stable postcondition before dispatch. The former two-stage wait
+    // spent most of its five-second budget waiting for the first true sample,
+    // then tried to prove stability with only the leftover milliseconds. A
+    // normal, slightly delayed Instagram update was therefore reported as an
+    // uncertain outcome even after the message had been removed.
+    const removed = waitForRemoval(row, before, {
       dialogButton,
       contextValid: () => currentThreadId() === expectedThreadId,
-      timeoutMs: Math.max(0, deadline - Date.now()),
+      timeoutMs: REMOVAL_SETTLEMENT_MS,
       signal: settlement.signal,
-    }));
-    closed.catch(() => {});
+    });
     removed.catch(() => {});
     let dispatched = false;
     try {
       requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
       dispatched = true;
       activateControl(dialogButton);
-      const verified = await measurePhase('verification', async () => (
-        (await closed) === true && (await removed) === true
-      ));
+      const verified = await measurePhase('verification', () => removed);
       if (!verified) throw new Error('Removal could not be verified.');
       return true;
     } catch (cause) {
@@ -2373,6 +2361,38 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     });
   }
 
+  function keyedReplacementRemovalProven(before, currentRoot, isPlaceholder) {
+    if (!before?.key || !before.native || !currentRoot) return false;
+    const matchingTarget = [...currentRoot.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
+      .filter((candidate) => stableMessageKey(candidate) === before.key);
+    if (matchingTarget.length) return matchingTarget.length === 1 && isPlaceholder(matchingTarget[0]);
+
+    const targetIndex = before.native.entries.findIndex(({ element }) => element === before.native.target);
+    if (targetIndex < 0) return false;
+    const anchors = before.native.entries
+      .map((entry, index) => ({ ...entry, index, key: stableMessageKey(entry.element) }))
+      .filter(({ index, key }) => index !== targetIndex && key)
+      .sort((left, right) => Math.abs(left.index - targetIndex) - Math.abs(right.index - targetIndex))
+      .slice(0, 4)
+      .sort((left, right) => left.index - right.index);
+    // A replacement container is accepted only when two exact retained
+    // messages prove that the same virtual window was remounted and the
+    // dispatched message key is absent. Without those anchors the outcome is
+    // still uncertain.
+    if (anchors.length < 2) return false;
+    const groups = nativeMessageGroups(currentRoot);
+    let previous = -1;
+    for (const anchor of anchors) {
+      const matches = groups
+        .map((element, index) => ({ element, index }))
+        .filter(({ element }) => stableMessageKey(element) === anchor.key
+          && retainedMessageSignature(element) === anchor.signature);
+      if (matches.length !== 1 || matches[0].index <= previous) return false;
+      previous = matches[0].index;
+    }
+    return true;
+  }
+
   function nativeRemovalProven(before) {
     const native = before.native;
     if (!native || native.row.isConnected || native.target.isConnected
@@ -2482,8 +2502,6 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
   function removalProven(row, before) {
     if (!before?.connected) return false;
-    const root = before.root;
-    if (root && (!root.isConnected || visibleLoader(root) || root.getAttribute?.('aria-busy') === 'true')) return false;
     // Instagram may remove the message and its timestamp together, backfill
     // older rows, and unmount far-off content. Use the exact detached message
     // row and its retained native neighbors, not every layout child.
@@ -2494,6 +2512,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         && !candidate.querySelector?.('img, video, audio, [aria-haspopup="menu"]')
         && !actionButton(candidate);
     };
+    const proofDocument = before.root?.ownerDocument || globalThis.document;
+    const roots = before.root?.isConnected
+      ? [before.root]
+      : [...proofDocument?.querySelectorAll?.("[data-pagelet='IGDMessagesList']") || []].filter(isVisible);
+    if (roots.length !== 1) return false;
+    const root = roots[0];
+    if (visibleLoader(root) || root.getAttribute?.('aria-busy') === 'true') return false;
     if (row?.isConnected) {
       if (stableMessageKey(row) !== before.key) return false;
       return isPlaceholder(row);
@@ -2503,11 +2528,12 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       const matches = [...root?.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
         .filter((candidate) => stableMessageKey(candidate) === before.key);
       if (matches.length) return matches.length === 1 && isPlaceholder(matches[0]);
+      if (root !== before.root || !before.parent?.isConnected || !removalScrollStayed(before)) {
+        return keyedReplacementRemovalProven(before, root, isPlaceholder);
+      }
     }
     if (!before.parent?.isConnected) return false;
-    if (before.scrollers.some(({ element, top }) => (
-      !element.isConnected || Math.abs((Number(element.scrollTop) || 0) - top) > 2
-    ))) return false;
+    if (!removalScrollStayed(before)) return false;
     if (before.key) return true;
     // Without a logical ID, prove the exact row disappeared while every
     // neighboring message stayed unchanged and in order. Duplicate text and
@@ -8854,14 +8880,44 @@ function createPresenceNativeActions({
     }
     return null;
   };
-  const storyLoaded = (expected) => {
+  const storyViewerRoot = (expected) => {
     const match = String(location.pathname || '').match(STORY_PATH);
-    if (!match || match[1].toLocaleLowerCase() !== expected.username || match[2] !== expected.storyId) return false;
-    const media = [...document.querySelectorAll('main video, main img, [role="dialog"] video, [role="dialog"] img')].filter(visible);
-    const controls = exactButtons(document, new Set(['pause', 'next', 'like', 'unlike']));
-    return media.length > 0 && controls.length > 0;
+    if (!match || match[1].toLocaleLowerCase() !== expected.username
+      || (expected.storyId && match[2] !== expected.storyId)) return null;
+    const qualifying = (roots) => roots.filter(visible).filter((root) => {
+      const media = [...root.querySelectorAll('video,img')].filter(visible);
+      const controls = exactButtons(root, new Set(['pause', 'next', 'like', 'unlike']));
+      return media.length > 0 && controls.length > 0;
+    });
+    const dialogs = qualifying([...document.querySelectorAll('[role="dialog"]')]);
+    if (dialogs.length) return dialogs.length === 1 ? dialogs[0] : null;
+    const mains = qualifying([...document.querySelectorAll('main')]);
+    return mains.length === 1 ? mains[0] : null;
   };
-  const waitFor = (predicate, signal) => new Promise((resolve, reject) => {
+  const storyLoaded = (expected) => Boolean(storyViewerRoot(expected));
+  const profileControls = (root, username) => [...root.querySelectorAll('a[href]')]
+    .filter(visible)
+    .filter((node) => profile(node)?.username === username);
+  const profileRouteForStory = (hint, username) => {
+    let node = hint?.parentElement || null;
+    for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+      const matches = profileControls(node, username);
+      if (matches.length === 1) return { root: node, control: matches[0] };
+      if (matches.length > 1) return null;
+    }
+    const matches = profileControls(document, username);
+    return matches.length === 1 ? { root: document, control: matches[0] } : null;
+  };
+  const profileStoryControl = (username) => {
+    const names = new Set(['view story', 'watch story', `${username}'s story`, `view ${username}'s story`]);
+    const matches = exactControls(document, names).filter((node) => {
+      const target = story(node);
+      return !target || target.username === username;
+    });
+    return matches.length === 1 ? matches[0] : null;
+  };
+  const exactProfilePath = (username) => String(location.pathname || '').replace(/\/+$/, '') === `/${username}`;
+  const waitFor = (predicate, signal, guard = null) => new Promise((resolve, reject) => {
     const startedAt = now();
     let observer = null;
     let timer = null;
@@ -8878,7 +8934,12 @@ function createPresenceNativeActions({
     const check = () => {
       if (signal?.aborted) return abort();
       let result = false;
-      try { result = predicate() === true; } catch {}
+      try {
+        guard?.();
+        result = predicate() === true;
+      } catch (error) {
+        return finish(false, error);
+      }
       if (result) return finish(true);
       if (now() - startedAt >= timeoutMs) return finish(false);
       if (timer !== null) clearTimeout(timer);
@@ -8904,7 +8965,8 @@ function createPresenceNativeActions({
     let ready = null;
     if (['viewStories', 'likePosts'].includes(action) && location.pathname !== '/') {
       control = routeControl(new Set(['/']), new Set(['home']));
-      ready = () => location.pathname === '/';
+      ready = () => location.pathname === '/'
+        && (action !== 'viewStories' || candidates('viewStories').length > 0);
     } else if (action === 'followPeople' && !String(location.pathname).startsWith('/explore')) {
       control = routeControl(new Set(['/explore/', '/explore']), new Set(['explore']));
       ready = () => String(location.pathname).startsWith('/explore');
@@ -8953,30 +9015,39 @@ function createPresenceNativeActions({
     }
     if (action === 'viewStories') {
       const current = String(location.pathname || '').match(STORY_PATH);
-      if (current && storyLoaded({ username: current[1].toLocaleLowerCase(), storyId: current[2] })) {
-        const controls = exactButtons(document, new Set(['next']));
+      const currentTarget = current
+        ? { username: current[1].toLocaleLowerCase(), storyId: current[2] }
+        : null;
+      const viewerRoot = currentTarget ? storyViewerRoot(currentTarget) : null;
+      if (viewerRoot) {
+        const controls = exactButtons(viewerRoot, new Set(['next']));
         if (controls.length !== 1) return [];
         return [{ action, id: `story-next:${current[1].toLocaleLowerCase()}:${current[2]}`,
           label: 'Next story', target: { fromPath: String(location.pathname) },
-          root: document, control: controls[0] }];
+          root: viewerRoot, control: controls[0] }];
       }
       const unique = new Map();
       for (const link of [...document.querySelectorAll('a[href]')].filter(visible)) {
         const target = story(link);
-        if (target && !unique.has(target.storyId)) unique.set(target.storyId, { action,
-          id: `story:${target.username}:${target.storyId}`, label: `@${target.username}'s story`,
-          target, root: link, control: link });
+        if (!target || unique.has(target.username)) continue;
+        const route = profileRouteForStory(link, target.username);
+        if (!route) continue;
+        unique.set(target.username, { action,
+          id: `story-profile:${target.username}`, label: `@${target.username}'s story`,
+          target: { username: target.username }, root: route.root, control: route.control });
       }
       return [...unique.values()];
     }
     if (action === 'reactStories') {
       const current = String(location.pathname || '').match(STORY_PATH);
       if (!current) return [];
-      const controls = exactButtons(document, new Set(['like']));
-      if (controls.length !== 1) return [];
       const target = { username: current[1].toLocaleLowerCase(), storyId: current[2] };
+      const viewerRoot = storyViewerRoot(target);
+      if (!viewerRoot) return [];
+      const controls = exactButtons(viewerRoot, new Set(['like']));
+      if (controls.length !== 1) return [];
       return [{ action, id: `story-reaction:${target.username}:${target.storyId}`,
-        label: `React to @${target.username}'s story`, target, root: document, control: controls[0] }];
+        label: `React to @${target.username}'s story`, target, root: viewerRoot, control: controls[0] }];
     }
     if (action === 'acceptRequests') {
       return exactButtons(document, new Set(['confirm'])).flatMap((control) => {
@@ -9022,13 +9093,32 @@ function createPresenceNativeActions({
         return { verified: false, skipped: true, reason: 'Target changed before the action' };
       }
       if (action === 'viewStories') {
+        if (!current.target.fromPath) {
+          current.control.click();
+          const profileReady = await waitFor(() => exactProfilePath(current.target.username)
+            && Boolean(profileStoryControl(current.target.username)), signal, assertCurrent);
+          if (!profileReady) {
+            return { verified: false, skipped: true,
+              reason: 'The profile or its story control was not available' };
+          }
+          assertCurrent();
+          const storyControl = profileStoryControl(current.target.username);
+          if (!storyControl) {
+            return { verified: false, skipped: true, reason: 'The story control changed' };
+          }
+          const expected = story(storyControl) || { username: current.target.username };
+          storyControl.click();
+          const verified = await waitFor(() => storyLoaded(expected), signal, assertCurrent);
+          return verified
+            ? { verified: true, label: current.label, reason: 'Story opened' }
+            : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+        }
         current.control.click();
         const verified = await waitFor(() => {
-          if (!current.target.fromPath) return storyLoaded(current.target);
           if (String(location.pathname) === current.target.fromPath) return false;
           const next = String(location.pathname).match(STORY_PATH);
           return Boolean(next) && storyLoaded({ username: next[1].toLocaleLowerCase(), storyId: next[2] });
-        }, signal);
+        }, signal, assertCurrent);
         return verified
           ? { verified: true, label: current.label,
             reason: current.target.fromPath ? 'Next story opened' : 'Story opened' }

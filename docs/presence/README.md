@@ -4,7 +4,7 @@ Presence runs a small, reviewed Instagram session from the userscript.
 
 ## Development status
 
-The 4.1.0 candidate exposes five choices:
+The 4.1.1 candidate exposes five choices:
 
 - View stories
 - React to stories
@@ -36,7 +36,8 @@ Presence processes one exact target at a time. Before each click it checks:
 After each click it requires a matching Instagram state change. An uncertain
 result stops the session and is not retried. Private-profile follows may finish
 as **Requested** instead of **Following**. Story reactions automatically include
-story viewing.
+story viewing. A new story starts by opening one exact visible profile and then
+its visible story control; Presence does not jump to a discovered story URL.
 
 The current adapters use rendered Instagram controls. They do not call private
 endpoints, collect credentials, bypass restrictions, spoof the browser, or run

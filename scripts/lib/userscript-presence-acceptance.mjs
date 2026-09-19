@@ -36,7 +36,7 @@ function fixturePrelude() {
       if (mode === 'follow') main.innerHTML = '<section><a href="/new_friend/">new_friend</a><button aria-label="Follow" type="button">Follow</button></section>';
       if (mode === 'private-follow') main.innerHTML = '<section data-private-profile><a href="/private_friend/">private_friend</a><button aria-label="Follow" type="button">Follow</button></section>';
       if (mode === 'request') main.innerHTML = '<section><a href="/request_friend/">request_friend</a><button aria-label="Confirm" type="button">Confirm</button></section>';
-      if (mode === 'story') main.innerHTML = '<a href="/stories/story_friend/story-1/">story_friend story</a>';
+      if (mode === 'story') main.innerHTML = '<section><a href="/stories/story_friend/story-1/">story_friend story</a><a href="/story_friend/">story_friend profile</a></section>';
     };
     globalThis.fixturePresenceSurface('post');
     document.addEventListener('click', event => {
@@ -53,11 +53,17 @@ function fixturePrelude() {
       } else if (name === 'Confirm') {
         control.setAttribute('aria-label', 'Following'); control.textContent = 'Following';
         globalThis.fixturePresenceClicks.push('acceptRequests');
-      } else if (control.matches('a[href^="/stories/"]')) {
+      } else if (control.matches('a[href="/story_friend/"]')) {
         event.preventDefault();
-        history.replaceState({}, '', control.getAttribute('href'));
+        history.replaceState({}, '', '/story_friend/');
+        document.querySelector('main').innerHTML = '<button aria-label="View story" type="button">View story</button>';
+        globalThis.fixturePresenceClicks.push('openStoryProfile');
+      } else if (name === 'View story') {
+        history.replaceState({}, '', '/stories/story_friend/story-1/');
         document.querySelector('main').innerHTML = '<img alt="Story" width="320" height="480" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22320%22 height=%22480%22/%3E"><button aria-label="Like" type="button">Like</button><button aria-label="Pause" type="button">Pause</button>';
         globalThis.fixturePresenceClicks.push('viewStories');
+      } else if (control.matches('a[href^="/stories/"]')) {
+        globalThis.fixturePresenceClicks.push('directStoryLink');
       }
     }, true);
   </script>`;
@@ -196,8 +202,10 @@ export async function acceptUserscriptPresence({
         react:root.querySelector('[data-presence-action="reactStories"]').checked};
     })()`), {view:true,react:true}, 'story reactions also require story viewing');
     await startAndConfirm('reactStories');
-    assert.deepEqual((await evaluate('globalThis.fixturePresenceClicks')).slice(-2), ['viewStories','reactStories']);
-    checks.push('story opens before its reaction and both outcomes are verified');
+    assert.deepEqual((await evaluate('globalThis.fixturePresenceClicks')).slice(-3),
+      ['openStoryProfile','viewStories','reactStories']);
+    assert.equal(await evaluate('globalThis.fixturePresenceClicks.includes("directStoryLink")'), false);
+    checks.push('story opens through its exact profile before its reaction and both outcomes are verified');
 
     await evaluate(`globalThis.fixturePresenceSurface('post')`);
     await select(['likePosts'], 2);

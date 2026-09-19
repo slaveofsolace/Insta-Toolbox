@@ -85,6 +85,7 @@
   const DEFAULT_MIN_DELAY_MS = 1_000;
   const DEFAULT_MAX_DELAY_MS = 2_000;
   const DEFAULT_MAX_FAILURES = 5;
+  const REMOVAL_SETTLEMENT_MS = 10_000;
   const MIN_USABLE_VISIBLE_PX = 24;
   const MAX_HOVER_DEPTH = 8;
   const MAX_HISTORY_CHECK_MS = 90_000;
@@ -996,37 +997,24 @@
 
     const before = removalEvidence(row);
     const settlement = new AbortController();
-    const deadline = Date.now() + 5_000;
-    // Observe both native transitions before clicking, as in the original
-    // runner. The separate settlement signal lets Stop prevent the next
-    // action without abandoning the outcome of this dispatched action.
-    const closed = waitForElement(
-      document.body,
-      () => (!dialogButton.isConnected || !isVisible(dialogButton) ? true : null),
-      settlement.signal,
-      5_000,
-    );
-    const removed = waitForElement(
-      document.body,
-      () => (currentThreadId() === expectedThreadId && removalProven(row, before) ? true : null),
-      settlement.signal,
-      5_000,
-    ).then((ready) => ready === true && waitForRemoval(row, before, {
+    // Arm one stable postcondition before dispatch. The former two-stage wait
+    // spent most of its five-second budget waiting for the first true sample,
+    // then tried to prove stability with only the leftover milliseconds. A
+    // normal, slightly delayed Instagram update was therefore reported as an
+    // uncertain outcome even after the message had been removed.
+    const removed = waitForRemoval(row, before, {
       dialogButton,
       contextValid: () => currentThreadId() === expectedThreadId,
-      timeoutMs: Math.max(0, deadline - Date.now()),
+      timeoutMs: REMOVAL_SETTLEMENT_MS,
       signal: settlement.signal,
-    }));
-    closed.catch(() => {});
+    });
     removed.catch(() => {});
     let dispatched = false;
     try {
       requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
       dispatched = true;
       activateControl(dialogButton);
-      const verified = await measurePhase('verification', async () => (
-        (await closed) === true && (await removed) === true
-      ));
+      const verified = await measurePhase('verification', () => removed);
       if (!verified) throw new Error('Removal could not be verified.');
       return true;
     } catch (cause) {
@@ -1592,6 +1580,38 @@
     });
   }
 
+  function keyedReplacementRemovalProven(before, currentRoot, isPlaceholder) {
+    if (!before?.key || !before.native || !currentRoot) return false;
+    const matchingTarget = [...currentRoot.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
+      .filter((candidate) => stableMessageKey(candidate) === before.key);
+    if (matchingTarget.length) return matchingTarget.length === 1 && isPlaceholder(matchingTarget[0]);
+
+    const targetIndex = before.native.entries.findIndex(({ element }) => element === before.native.target);
+    if (targetIndex < 0) return false;
+    const anchors = before.native.entries
+      .map((entry, index) => ({ ...entry, index, key: stableMessageKey(entry.element) }))
+      .filter(({ index, key }) => index !== targetIndex && key)
+      .sort((left, right) => Math.abs(left.index - targetIndex) - Math.abs(right.index - targetIndex))
+      .slice(0, 4)
+      .sort((left, right) => left.index - right.index);
+    // A replacement container is accepted only when two exact retained
+    // messages prove that the same virtual window was remounted and the
+    // dispatched message key is absent. Without those anchors the outcome is
+    // still uncertain.
+    if (anchors.length < 2) return false;
+    const groups = nativeMessageGroups(currentRoot);
+    let previous = -1;
+    for (const anchor of anchors) {
+      const matches = groups
+        .map((element, index) => ({ element, index }))
+        .filter(({ element }) => stableMessageKey(element) === anchor.key
+          && retainedMessageSignature(element) === anchor.signature);
+      if (matches.length !== 1 || matches[0].index <= previous) return false;
+      previous = matches[0].index;
+    }
+    return true;
+  }
+
   function nativeRemovalProven(before) {
     const native = before.native;
     if (!native || native.row.isConnected || native.target.isConnected
@@ -1701,8 +1721,6 @@
 
   function removalProven(row, before) {
     if (!before?.connected) return false;
-    const root = before.root;
-    if (root && (!root.isConnected || visibleLoader(root) || root.getAttribute?.('aria-busy') === 'true')) return false;
     // Instagram may remove the message and its timestamp together, backfill
     // older rows, and unmount far-off content. Use the exact detached message
     // row and its retained native neighbors, not every layout child.
@@ -1713,6 +1731,13 @@
         && !candidate.querySelector?.('img, video, audio, [aria-haspopup="menu"]')
         && !actionButton(candidate);
     };
+    const proofDocument = before.root?.ownerDocument || globalThis.document;
+    const roots = before.root?.isConnected
+      ? [before.root]
+      : [...proofDocument?.querySelectorAll?.("[data-pagelet='IGDMessagesList']") || []].filter(isVisible);
+    if (roots.length !== 1) return false;
+    const root = roots[0];
+    if (visibleLoader(root) || root.getAttribute?.('aria-busy') === 'true') return false;
     if (row?.isConnected) {
       if (stableMessageKey(row) !== before.key) return false;
       return isPlaceholder(row);
@@ -1722,11 +1747,12 @@
       const matches = [...root?.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
         .filter((candidate) => stableMessageKey(candidate) === before.key);
       if (matches.length) return matches.length === 1 && isPlaceholder(matches[0]);
+      if (root !== before.root || !before.parent?.isConnected || !removalScrollStayed(before)) {
+        return keyedReplacementRemovalProven(before, root, isPlaceholder);
+      }
     }
     if (!before.parent?.isConnected) return false;
-    if (before.scrollers.some(({ element, top }) => (
-      !element.isConnected || Math.abs((Number(element.scrollTop) || 0) - top) > 2
-    ))) return false;
+    if (!removalScrollStayed(before)) return false;
     if (before.key) return true;
     // Without a logical ID, prove the exact row disappeared while every
     // neighboring message stayed unchanged and in order. Duplicate text and

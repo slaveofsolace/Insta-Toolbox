@@ -2,6 +2,14 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.1.1 - 2026-09-18
+
+- Keep delayed but verified message removals from being reported as uncertain by giving the stable postcondition its own full settlement window.
+- Verify keyed message removals across native bottom anchoring and exact virtual-scroller replacement while retaining strict neighbor and conversation checks.
+- Keep Stop from starting another removal while still settling the exact action already dispatched.
+- Open stories through one exact visible profile and its story control. Presence no longer activates a discovered story link directly or accepts unrelated page media as proof.
+- Preserve Ghost checkpoints, exact-thread authorization, ownership checks, normal 1–2 second pacing, and fail-closed handling for genuinely unproven outcomes.
+
 ## 4.1.0 - 2026-09-18
 
 - Restore multi-message Unsend traversal after Instagram recycles a virtual message row, while retaining exact ownership and removal checks.
