@@ -87,6 +87,8 @@ test('the panel names the current Instagram context for every handled state', ()
     'security check',
     'Action blocked',
     'Rate limited',
+    'Presence active',
+    'Presence paused',
     'Conversation open',
     'Inbox open',
     'Nothing to work on here',
@@ -96,6 +98,8 @@ test('the panel names the current Instagram context for every handled state', ()
   assert.match(shell, /listType: 'followers', label: 'Followers'/);
   assert.match(shell, /listType: 'following', label: 'Following'/);
   assert.match(shell, /Manual capture is optional\./);
+  assert.match(shell, /if \(presencePanel\?\.busy\(\)\)/);
+  assert.match(shell, /Presence is continuing in this tab\./);
   assert.doesNotMatch(shell, /action: `scan-\$\{followerList\.listType\}`/);
   assert.match(shell, /new MutationObserver\(\(records\) => \{[\s\S]*?renderContext\(\);/);
   // Blocked states must not offer an action that cannot work.
@@ -365,6 +369,7 @@ test('Presence reviews a bounded action set before it starts', () => {
   assert.ok(beginBody.indexOf('await confirmAction({') < beginBody.indexOf('session.createReview({'));
   assert.ok(beginBody.indexOf('session.createReview({') < beginBody.indexOf('await session.start(review)'));
   assert.match(presencePanel, /Presence stops on Instagram restrictions/);
+  assert.match(presencePanel, /\['running', 'searching', 'waiting', 'quiet', 'paused', 'stopping'\]/);
   assert.doesNotMatch(generated, /data-role="manual-account-disclosure"|Manual Follow \/ Unfollow/);
 });
 

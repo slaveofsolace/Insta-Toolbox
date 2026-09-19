@@ -187,7 +187,11 @@ Before thread-wide DM Unsend:
 5. Revalidate thread, expiry, sent ownership, menu, and confirmation before each removal.
 6. Append ledger progress only after verified removal; never record a mounted-row estimate as a result.
 
-Any uncertainty stops the job.
+A direct single-conversation run may record a genuinely unprovable row and
+continue checking the remaining messages, but it must finish in a
+needs-attention state and must not count that row as removed. Ghost and other
+managed-worker jobs stop on uncertainty because the coordinator cannot safely
+reassign an unsettled external mutation.
 
 ## Release checklist
 

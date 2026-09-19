@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag:
-        description: Release tag, for example v4.1.3
+        description: Release tag, for example v4.1.4
         required: true
         type: string
 
@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           test "$RELEASE_TAG" = "v$version"
-          test "$version" = "4.1.3"
+          test "$version" = "4.1.4"
           mkdir -p release
           copy_exact() {
             local name="$1"
@@ -171,7 +171,7 @@ jobs:
             exit 1
           fi
           release_notes="$(cat <<'EOF'
-          Version 4.1.3 keeps whole-conversation Unsend traversal at the current virtualized position after each verified removal, and proves the oldest boundary before completion. This improves reliable cleanup of delayed and reversed message histories.
+          Version 4.1.4 retries an unchanged native message, reconciles retained or recycled virtual groups, and keeps direct cleanup moving after an unprovable row. Presence also recognizes Instagram's duplicated Home navigation label before searching the feed.
 
           Presence now begins by checking the loaded Instagram tab immediately, retries short empty startup sweeps before resting, and counts only verified actions toward each active burst. **Live like me** remains finite, review-bound, and serialized with Ghost in the same browser profile.
 
@@ -182,7 +182,7 @@ jobs:
           - The Windows installer is unsigned and may show a Microsoft SmartScreen warning.
           - The macOS packages are ad-hoc signed and are not Apple-notarized.
           - Ghost worker tabs must remain open and loaded. Tab discard, computer sleep, browser shutdown, or lost account evidence stops or pauses the job.
-          - Automated CI does not prove current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 4.1.3 acceptance record for separately recorded manual evidence.
+          - Automated CI does not prove current authenticated Instagram compatibility or a completed human screen-reader walkthrough. Consult the 4.1.4 acceptance record for separately recorded manual evidence.
           EOF
           )"
           gh release create "$RELEASE_TAG" release/* \

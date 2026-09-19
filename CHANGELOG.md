@@ -2,6 +2,17 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.1.4 - 2026-09-19
+
+- Recognize voice-note waveforms and playback controls as part of the exact message payload, so a removed voice message is not mistaken for an unchanged virtual row.
+- Keep Presence bound to the verified signed-in account while Instagram temporarily hides account navigation in story and full-screen views.
+- Treat Presence target searches as active work and keep the toolbox status on Presence while it moves between Instagram surfaces.
+- Retry an unchanged sent message through its exact native menu up to five times instead of ending the conversation pass after the first unverified result.
+- Continue the direct Unsend traversal after a genuinely recycled or unprovable row, keep verified removals counted separately, and report unresolved outcomes after the remaining messages are checked.
+- Accept Instagram's retained and recycled virtual message groups when the exact confirmed payload has disappeared or changed, without treating preview edits or received messages as sent-message proof.
+- Recognize duplicated Instagram navigation labels such as `HomeHome`, so Presence can leave a DM view and start its reviewed feed search.
+- Keep Ghost worker uncertainty handling, exact-thread authorization, adaptive pacing, Stop, expiry, and restriction handling unchanged.
+
 ## 4.1.3 - 2026-09-19
 
 - Start each Live like me cycle with visible target searches and two short retries before the first scheduled rest.

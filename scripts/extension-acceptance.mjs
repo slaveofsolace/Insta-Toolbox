@@ -1112,15 +1112,18 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
         })()`);
         throw new Error(`${error.message} ${JSON.stringify(diagnostic)}`);
       });
+      const retryExhausted = Boolean(uncertain && shortThread);
+      const expectedUncertain = uncertain && !retryExhausted ? shortThread?.count || 2 : 0;
+      const expectedFailures = retryExhausted ? 1 : 0;
       assert.equal(outcome.status, uncertain ? 'error' : 'completed', JSON.stringify(outcome));
       assert.equal(outcome.processed, expectedRemovals, JSON.stringify(outcome));
-      assert.equal(outcome.failed, 0, JSON.stringify(outcome));
-      assert.equal(outcome.uncertain || 0, uncertain ? 1 : 0, JSON.stringify(outcome));
+      assert.equal(outcome.failed, expectedFailures, JSON.stringify(outcome));
+      assert.equal(outcome.uncertain || 0, expectedUncertain, JSON.stringify(outcome));
       assert.equal(outcome.actualRemovals, expectedRemovals, JSON.stringify(outcome));
       assert.equal(outcome.receivedRetained, shortThread ? Boolean(shortThread.received) : true, JSON.stringify(outcome));
       if (media || shortThread) {
         assert.equal(outcome.remainingSent, uncertain ? shortThread?.count || 2 : 0);
-        assert.equal(outcome.fixtureClicks, uncertain ? 3 : expectedRemovals * 3, 'each exact native control is activated once');
+        assert.equal(outcome.fixtureClicks, retryExhausted ? 15 : uncertain ? expectedUncertain * 3 : expectedRemovals * 3, 'each exact native control is activated once per bounded attempt');
       }
       if (shortThread) {
         assert.equal(outcome.summaryVisible, true);
@@ -1148,7 +1151,7 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
       if (uncertain) {
         assert.equal(outcome.summaryVisible, true, 'uncertain primary run is visible without a preliminary scan');
         assert.match(outcome.summaryText, /0 unsent/);
-        assert.match(outcome.summaryText, /uncertain/i);
+        assert.match(outcome.summaryText, retryExhausted ? /Stopped with an error/i : /uncertain/i);
       }
       measurements.push({ surface, fixture: fixtureLabel, speed, processed: outcome.processed, failed: outcome.failed,
         uncertain: outcome.uncertain || 0, elapsedMs: outcome.elapsedMs, phaseTimings: outcome.phaseTimings });
@@ -1156,7 +1159,7 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
     }
   }
   await writeFile(path.join(resultsRoot, `speed-${fixtureLabel}-fixture.json`), `${JSON.stringify({ fixtureOnly: true, measurements }, null, 2)}\n`);
-  console.log(`Accepted restored Unsend ${fixtureLabel} flow: ${expectedRemovals} verified removals, received messages unchanged${uncertain ? ', uncertain outcome visible without retry' : ', no failures or uncertain outcomes'}.`);
+  console.log(`Accepted restored Unsend ${fixtureLabel} flow: ${expectedRemovals} verified removals, received messages unchanged${uncertain ? shortThread ? ', five bounded retries ended without a false success' : ', uncertain outcomes stayed visible while the pass continued' : ', no failures or uncertain outcomes'}.`);
 }
 
 async function acceptShortNativeConversations(webContents, baseUrl) {
