@@ -324,6 +324,40 @@ test('a closed Unsend confirmation accepts a stably removed native group inside 
     { dialogButton, timeoutMs: 220, stableMs: 75 }), true);
 });
 
+test('a confirmed Unsend accepts a retained virtual group after its exact payload is recycled away', async () => {
+  const { target, before, proof, root, Element } = fixture();
+  const dialogButton = new Element('button', { text: 'Unsend' });
+  root.append(dialogButton);
+  target.content.attributes.text = 'Replacement virtual payload';
+  target.group.children = [target.content];
+  dialogButton.remove();
+  assert.equal(proof.removalProven(target.row, before), false,
+    'a generic DOM edit remains insufficient without the dispatched confirmation');
+  assert.equal(await proof.waitForRemoval(target.row, before,
+    { dialogButton, timeoutMs: 220, stableMs: 75 }), true);
+});
+
+test('a confirmed Unsend accepts a recycled virtual group now holding a different exact payload', async () => {
+  const { target, before, proof, root, Element } = fixture();
+  const dialogButton = new Element('button', { text: 'Unsend' });
+  root.append(dialogButton);
+  target.content.attributes.text = 'Next mounted message';
+  dialogButton.remove();
+  assert.equal(proof.removalProven(target.row, before), false,
+    'recycling remains insufficient without the dispatched confirmation');
+  assert.equal(await proof.waitForRemoval(target.row, before,
+    { dialogButton, timeoutMs: 220, stableMs: 75 }), true);
+});
+
+test('an unchanged exact native target is retryable but a recycled or detached target is not', () => {
+  const current = fixture();
+  assert.equal(current.proof.exactNativeTargetStillPresent(current.before), true);
+  current.target.content.attributes.text = 'Recycled payload';
+  assert.equal(current.proof.exactNativeTargetStillPresent(current.before), false);
+  current.target.row.remove();
+  assert.equal(current.proof.exactNativeTargetStillPresent(current.before), false);
+});
+
 test('a retained-slot removal stays uncertain when its payload returns during settlement', async () => {
   const { target, before, proof, root, Element } = fixture();
   const dialogButton = new Element('button', { text: 'Unsend' });

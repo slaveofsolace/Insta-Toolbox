@@ -30,21 +30,25 @@ export function createPresenceNativeActions({
     const rects = node.getClientRects?.();
     return !rects || rects.length > 0;
   };
-  const controlName = (node) => clean(node?.getAttribute?.('aria-label')
-    || node?.textContent
-    || node?.querySelector?.('[aria-label]')?.getAttribute?.('aria-label')
-    || node?.querySelector?.('title')?.textContent);
+  const controlNames = (node) => new Set([
+    node?.getAttribute?.('aria-label'),
+    node?.textContent,
+    ...[...node?.querySelectorAll?.('[aria-label]') || []]
+      .map((element) => element.getAttribute?.('aria-label')),
+    ...[...node?.querySelectorAll?.('title') || []].map((element) => element.textContent),
+  ].map(lower).filter(Boolean));
+  const hasControlName = (node, names) => [...controlNames(node)].some((name) => names.has(name));
   const buttonControls = (root) => [...new Set([
     ...root.querySelectorAll('button'),
     ...root.querySelectorAll('[role="button"]'),
   ])];
   const exactButtons = (root, names) => buttonControls(root)
     .filter(visible)
-    .filter((node) => names.has(lower(controlName(node))));
+    .filter((node) => hasControlName(node, names));
   const exactControls = (root, names) => [...root.querySelectorAll('a[href],button,[role="button"]')]
     .filter(visible)
     .filter((node, index, all) => all.indexOf(node) === index)
-    .filter((node) => names.has(lower(controlName(node))));
+    .filter((node) => hasControlName(node, names));
   const url = (node) => {
     try { return new URL(node?.getAttribute?.('href') || '', location.origin); }
     catch { return null; }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.1.3
+// @version      4.1.4
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -867,6 +867,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   const DEFAULT_MAX_DELAY_MS = 2_000;
   const DEFAULT_MAX_FAILURES = 5;
   const REMOVAL_SETTLEMENT_MS = 10_000;
+  const RETRYABLE_SETTLEMENT_MS = 1_500;
   const MIN_USABLE_VISIBLE_PX = 24;
   const MAX_HOVER_DEPTH = 8;
   const MAX_HISTORY_CHECK_MS = 90_000;
@@ -1160,15 +1161,16 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     return signal?.reason?.code === 'DM_LIFECYCLE_INTERRUPTED' ? signal.reason.reason : null;
   }
 
-  function interruptionState(signal, processed, failed, uncertain = false) {
+  function interruptionState(signal, processed, failed, uncertain = 0) {
     const reason = lifecycleReason(signal);
+    const uncertainCount = Math.max(0, Number(uncertain) || 0);
     return {
       status: reason ? 'needs-attention' : 'stopped',
       needsAttention: Boolean(reason),
       interruptionReason: reason,
-      uncertain: uncertain ? 1 : 0,
+      uncertain: uncertainCount,
       message: reason
-        ? `${reason === 'page-frozen' ? 'Tab suspended' : 'Page interrupted'}. ${uncertain ? 'The last Unsend outcome is uncertain. ' : ''}Review the conversation before starting again. ${processed} message${processed === 1 ? '' : 's'} unsent.`
+        ? `${reason === 'page-frozen' ? 'Tab suspended' : 'Page interrupted'}. ${uncertainCount ? `${uncertainCount} outcome${uncertainCount === 1 ? ' is' : 's are'} uncertain. ` : ''}Review the conversation before starting again. ${processed} message${processed === 1 ? '' : 's'} unsent.`
         : `Stopped. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
       processed,
       failed,
@@ -1790,16 +1792,34 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       signal: settlement.signal,
     });
     removed.catch(() => {});
+    const outcome = Promise.race([
+      removed.then((verified) => verified ? 'verified' : 'uncertain'),
+      (async () => {
+        await delay(RETRYABLE_SETTLEMENT_MS, settlement.signal);
+        const dialogClosed = !dialogButton.isConnected || !isVisible(dialogButton);
+        if (dialogClosed && currentThreadId() === expectedThreadId
+          && exactNativeTargetStillPresent(before)) return 'retryable';
+        return (await removed) ? 'verified' : 'uncertain';
+      })(),
+    ]);
     let dispatched = false;
     try {
       requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
       dispatched = true;
       activateControl(dialogButton);
-      const verified = await measurePhase('verification', () => removed);
-      if (!verified) throw new Error('Removal could not be verified.');
+      const removalResult = await measurePhase('verification', () => outcome);
+      if (removalResult !== 'verified') {
+        if (removalResult === 'retryable' || exactNativeTargetStillPresent(before)) {
+          const retryable = new Error('Instagram left the exact message in place. Retrying it.');
+          retryable.code = 'DM_UNSEND_RETRYABLE';
+          throw retryable;
+        }
+        throw new Error('Removal could not be verified.');
+      }
       return true;
     } catch (cause) {
       if (!dispatched) throw cause;
+      if (cause?.code === 'DM_UNSEND_RETRYABLE') throw cause;
       const error = new Error('The last Unsend outcome is uncertain. Check the conversation before starting again.');
       error.code = 'DM_OUTCOME_UNCERTAIN';
       throw error;
@@ -2449,7 +2469,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
   function dispatchedNativeRemovalProven(before) {
     const native = before?.native;
-    if (!native || native.target.isConnected || !before.root?.isConnected
+    if (!native || !before.root?.isConnected
       || !before.parent?.isConnected || !removalScrollStayed(before)) return false;
 
     const targetIndex = native.entries.findIndex(({ element }) => element === native.target);
@@ -2459,13 +2479,17 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const beforeMatches = native.entries.filter(({ signature }) => signature === targetSignature).length;
     const afterMatches = after.filter((element) => retainedMessageSignature(element) === targetSignature).length;
 
+    // Instagram may keep a physical virtual-list group mounted after Unsend
+    // while emptying or recycling the exact payload inside it. The clicked
+    // payload must disappear; the wrapper node does not have to.
+    if (native.target.isConnected && retainedMessageSignature(native.target) === targetSignature) return false;
+
     // Instagram currently keeps the outer virtual-list slot mounted after a
     // confirmed Unsend while removing or recycling the exact native message
     // group inside it. Count the target payload, not the physical slot. This
     // remains fail-closed for duplicate messages: exactly one matching native
-    // payload must disappear and the clicked group itself must stay detached.
+    // payload must disappear from the exact retained neighborhood.
     if (beforeMatches < 1 || afterMatches !== beforeMatches - 1) return false;
-    if (after.includes(native.target)) return false;
 
     const adjacent = [native.entries[targetIndex - 1], native.entries[targetIndex + 1]].filter(Boolean);
     const retainedAdjacent = adjacent.filter(({ element, signature }) => (
@@ -2481,6 +2505,30 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       if (replacementGroups.some((element) => retainedMessageSignature(element) === targetSignature)) return false;
     }
     return true;
+  }
+
+  function exactNativeTargetStillPresent(before) {
+    const native = before?.native;
+    if (!native || !before.root?.isConnected || !before.parent?.isConnected
+      || !removalScrollStayed(before) || visibleLoader(before.root)
+      || before.root.getAttribute?.('aria-busy') === 'true') return false;
+    const targetIndex = native.entries.findIndex(({ element }) => element === native.target);
+    if (targetIndex < 0 || !native.target.isConnected) return false;
+    const targetSignature = native.entries[targetIndex].signature;
+    if (retainedMessageSignature(native.target) !== targetSignature) return false;
+    const after = nativeMessageGroups(before.root);
+    const afterIndex = after.indexOf(native.target);
+    if (afterIndex < 0) return false;
+
+    const adjacent = [native.entries[targetIndex - 1], native.entries[targetIndex + 1]].filter(Boolean);
+    if (!adjacent.length) return native.entries.length === 1;
+    return adjacent.some((entry) => {
+      const beforeIndex = native.entries.indexOf(entry);
+      const currentIndex = after.indexOf(entry.element);
+      if (currentIndex < 0 || !entry.element.isConnected
+        || retainedMessageSignature(entry.element) !== entry.signature) return false;
+      return beforeIndex < targetIndex ? currentIndex < afterIndex : currentIndex > afterIndex;
+    });
   }
 
   function shortNativeRemovalProven(before) {
@@ -2970,6 +3018,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     traversal.preferVisible = plan.scope === 'all';
     let processed = 0;
     let failed = 0;
+    let uncertain = 0;
     let retryAttempts = 0;
     let consecutiveFailures = 0;
     let lastUnsendAt = 0;
@@ -3118,7 +3167,25 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           removalVerified = true;
         } catch (error) {
           if (workerAdapter || error?.code === 'DM_WORKER_STOP') throw error;
-          if (error?.code === 'DM_OUTCOME_UNCERTAIN') throw error;
+          if (error?.code === 'DM_OUTCOME_UNCERTAIN') {
+            uncertain += 1;
+            markProcessedRow(row, traversal, keyBeforeRemoval);
+            const recoveredContext = threadContext();
+            if (!recoveredContext.ok || recoveredContext.threadId !== expectedThreadId) throw error;
+            resetTraversalAfterRemoval(traversal, recoveredContext.scroller, traversalBeforeRemoval);
+            consecutiveFailures = 0;
+            publish({
+              status: 'running',
+              uncertain,
+              processed,
+              failed,
+              retryAttempts,
+              consecutiveFailures,
+              current: null,
+              message: 'One message could not be confirmed. Continuing with the rest…',
+            });
+            continue;
+          }
           if (signal.aborted) throw error;
           retryAttempts += 1;
           consecutiveFailures += 1;
@@ -3161,6 +3228,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
             status: signal.aborted ? 'stopping' : 'running',
             processed,
             failed,
+            uncertain,
             retryAttempts,
             consecutiveFailures,
             current: null,
@@ -3171,13 +3239,14 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       }
 
       if (signal.aborted) {
-        publish(interruptionState(signal, processed, failed));
+        publish(interruptionState(signal, processed, failed, uncertain));
       } else if (consecutiveFailures >= maxFailures) {
         publish({
           status: 'error',
           message: `Stopped after ${consecutiveFailures} consecutive failures. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
           processed,
           failed,
+          uncertain,
           current: null,
           canStop: false,
           finishedAt: new Date().toISOString(),
@@ -3188,19 +3257,23 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           message: `Safety stop after ${processed} verified removals. Start a fresh run to continue.`,
           processed,
           failed,
+          uncertain,
           current: null,
           canStop: false,
           finishedAt: new Date().toISOString(),
         });
       } else {
         const shortfall = plan.limit !== null && processed < plan.limit && exhausted;
+        const completionNotes = [];
+        if (shortfall) completionNotes.push('no more sent messages were found');
+        if (uncertain) completionNotes.push(`${uncertain} action${uncertain === 1 ? '' : 's'} could not be confirmed`);
         publish({
-          status: 'completed',
-          message: shortfall
-            ? `Done. ${processed} message${processed === 1 ? '' : 's'} unsent; no more sent messages were found.`
-            : `Done. ${processed} message${processed === 1 ? '' : 's'} unsent.`,
+          status: uncertain ? 'error' : 'completed',
+          needsAttention: Boolean(uncertain),
+          message: `Done. ${processed} message${processed === 1 ? '' : 's'} unsent${completionNotes.length ? `; ${completionNotes.join('; ')}` : ''}.`,
           processed,
           failed,
+          uncertain,
           current: null,
           canStop: false,
           finishedAt: new Date().toISOString(),
@@ -3208,13 +3281,19 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       }
     } catch (error) {
       if (lifecycleReason(signal)) {
-        publish(interruptionState(signal, processed, failed, error?.code === 'DM_OUTCOME_UNCERTAIN'));
+        publish(interruptionState(
+          signal,
+          processed,
+          failed,
+          uncertain + (error?.code === 'DM_OUTCOME_UNCERTAIN' ? 1 : 0),
+        ));
       } else if (error?.code !== 'DM_OUTCOME_UNCERTAIN' && (error?.name === 'AbortError' || signal.aborted)) {
-        publish(interruptionState(signal, processed, failed));
+        publish(interruptionState(signal, processed, failed, uncertain));
       } else {
+        const uncertainCount = uncertain + (error?.code === 'DM_OUTCOME_UNCERTAIN' ? 1 : 0);
         publish({
           status: 'error',
-          uncertain: error?.code === 'DM_OUTCOME_UNCERTAIN' ? 1 : 0,
+          uncertain: uncertainCount,
           message: `${error.message || 'The conversation changed unexpectedly.'} ${processed} message${processed === 1 ? '' : 's'} unsent.`,
           processed,
           failed,
@@ -3253,7 +3332,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     };
   }
 
-  const messageProof = Object.freeze({ sentByCurrentUser, removalEvidence, removalProven, waitForRemoval });
+  const messageProof = Object.freeze({
+    sentByCurrentUser,
+    removalEvidence,
+    removalProven,
+    waitForRemoval,
+    exactNativeTargetStillPresent,
+  });
   const publicApi = { createPlan, createMessageWalker, inspect, inspectAll, snapshot, start, stop, subscribe, messageProof };
   if (globalThis.__instaToolboxTestHooks === true) {
     publicApi.__test = Object.freeze({
@@ -3275,6 +3360,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       removalEvidence,
       removalProven,
       waitForRemoval,
+      exactNativeTargetStillPresent,
       waitForElement,
       delay,
       reversedLayout,
@@ -8898,21 +8984,25 @@ function createPresenceNativeActions({
     const rects = node.getClientRects?.();
     return !rects || rects.length > 0;
   };
-  const controlName = (node) => clean(node?.getAttribute?.('aria-label')
-    || node?.textContent
-    || node?.querySelector?.('[aria-label]')?.getAttribute?.('aria-label')
-    || node?.querySelector?.('title')?.textContent);
+  const controlNames = (node) => new Set([
+    node?.getAttribute?.('aria-label'),
+    node?.textContent,
+    ...[...node?.querySelectorAll?.('[aria-label]') || []]
+      .map((element) => element.getAttribute?.('aria-label')),
+    ...[...node?.querySelectorAll?.('title') || []].map((element) => element.textContent),
+  ].map(lower).filter(Boolean));
+  const hasControlName = (node, names) => [...controlNames(node)].some((name) => names.has(name));
   const buttonControls = (root) => [...new Set([
     ...root.querySelectorAll('button'),
     ...root.querySelectorAll('[role="button"]'),
   ])];
   const exactButtons = (root, names) => buttonControls(root)
     .filter(visible)
-    .filter((node) => names.has(lower(controlName(node))));
+    .filter((node) => hasControlName(node, names));
   const exactControls = (root, names) => [...root.querySelectorAll('a[href],button,[role="button"]')]
     .filter(visible)
     .filter((node, index, all) => all.indexOf(node) === index)
-    .filter((node) => names.has(lower(controlName(node))));
+    .filter((node) => hasControlName(node, names));
   const url = (node) => {
     try { return new URL(node?.getAttribute?.('href') || '', location.origin); }
     catch { return null; }

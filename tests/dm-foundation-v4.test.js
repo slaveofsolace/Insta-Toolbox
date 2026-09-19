@@ -475,7 +475,7 @@ function interactionFixture(onDispatch, {
   };
 }
 
-test('a dispatched but unproven Unsend is not retried and writes no success ledger entry', async () => {
+test('a dispatched but unproven Unsend is skipped without a false ledger entry', async () => {
   const fixture = interactionFixture(() => {});
   const result = await fixture.run();
   assert.equal(fixture.dispatches(), 1, JSON.stringify(result));
@@ -483,7 +483,8 @@ test('a dispatched but unproven Unsend is not retried and writes no success ledg
   assert.equal(result.processed, 0);
   assert.equal(result.retryAttempts, 0);
   assert.equal(result.status, 'error');
-  assert.match(result.message, /uncertain/);
+  assert.equal(result.uncertain, 1);
+  assert.match(result.message, /could not be confirmed/);
 });
 
 test('Stop after dispatch settles a proven removal once without dispatching another mutation', async () => {

@@ -149,6 +149,21 @@ the existing anchored proof for virtualized lists. It does not accept edited
 text, recycled slots, loading transitions or an optimistic removal that returns
 during settlement.
 
+### 4.1.4 retained-row and retry review
+
+The pinned `08b8874964c6edfec828056bafb84c96d94f0a27` source was reviewed again
+for its per-message retry and virtual-list traversal behavior. The useful
+behavior is a bounded retry of the same mounted row before the traversal moves
+on. The project keeps its stricter sent-message ownership, exact native menu and
+dialog binding, and verified-removal accounting instead of copying the
+upstream right-alignment and dialog-closure assumptions.
+
+The repaired runner now distinguishes three outcomes: verified removal; an
+exact unchanged row that may be retried; and a recycled or otherwise
+unprovable row. Direct cleanup checks the rest of the conversation after the
+third outcome and finishes with attention required. Managed Ghost workers keep
+their existing stop-on-uncertainty behavior.
+
 Thread identity comes from the exact conversation route, not its display name.
 An absent profile link, a group title or the label “Instagram user” is not a
 reason to reject an otherwise proven outgoing message. That label alone does

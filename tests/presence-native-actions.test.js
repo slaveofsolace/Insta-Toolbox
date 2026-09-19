@@ -76,6 +76,49 @@ test('Presence reaches a feed by clicking the observed Home control before actin
   assert.equal(result.verified, true);
 });
 
+test('Presence recognizes Instagram navigation whose icon and caption duplicate Home text', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/direct/t/123/' };
+  let homeClicks = 0;
+  const contentLink = element({ href: '/p/live-feed-post/' });
+  const like = element({ text: 'Like' });
+  const article = element({ children: { 'a[href]': [contentLink], button: [like] } });
+  const homeIcon = element({ ariaLabel: 'Home' });
+  const home = element({
+    text: 'HomeHome',
+    href: '/',
+    children: { '[aria-label]': [homeIcon] },
+    click() {
+      homeClicks += 1;
+      location.pathname = '/';
+      documentFixture.articles = [article];
+    },
+  });
+  const documentFixture = {
+    articles: [],
+    documentElement: {},
+    querySelectorAll(selector) {
+      if (selector === 'article') return this.articles;
+      if (selector === 'a[href],button,[role="button"]') return [home];
+      return [];
+    },
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({
+    document: documentFixture,
+    location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    MutationObserver: Observer,
+    timeoutMs: 500,
+  });
+  const candidate = await actions.find('likePosts', {
+    seen: new Set(),
+    signal: new AbortController().signal,
+  });
+  assert.equal(homeClicks, 1);
+  assert.equal(candidate.id, 'post:live-feed-post');
+});
+
 test('Presence never manufactures a destination when the matching native control is absent', async () => {
   const location = { origin: 'https://www.instagram.com', pathname: '/direct/inbox/' };
   const documentFixture = {
