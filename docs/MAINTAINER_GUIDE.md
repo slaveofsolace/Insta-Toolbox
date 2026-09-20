@@ -119,7 +119,7 @@ The `Release` workflow promotes tested artifacts; it does not rebuild them.
 3. Run the `Release` workflow manually with that run ID and the
    `v<package.version>` tag.
 4. Approve the protected `release` environment after reviewing the run and
-   [acceptance record](./acceptance/4.0.0.md).
+   [acceptance record](./acceptance/4.1.5.md).
 5. Confirm that the workflow rejects a stale, non-`main`, non-push, failed, or
    version-mismatched CI run.
 6. Verify every promoted file against `SHA256SUMS.txt`, then inspect the SBOM,
@@ -132,8 +132,8 @@ Pages to use GitHub Actions; the Pages workflow extracts the exact successful
 Keep the repository description, homepage, and topics aligned with
 [GITHUB_METADATA.md](./GITHUB_METADATA.md).
 
-Version 4.0 is planned to publish `insta-toolbox.user.js`,
-`Insta-Toolbox-Extension-4.0.0.zip`, and `insta-toolbox-web-4.0.0.zip`. Do not
+Version 4.1.5 publishes `insta-toolbox.user.js`,
+`Insta-Toolbox-Extension-4.1.5.zip`, and `insta-toolbox-web-4.1.5.zip`. Do not
 publish old-name aliases or a raw-branch userscript update channel.
 
 ## Source integrations
@@ -187,11 +187,12 @@ Before thread-wide DM Unsend:
 5. Revalidate thread, expiry, sent ownership, menu, and confirmation before each removal.
 6. Append ledger progress only after verified removal; never record a mounted-row estimate as a result.
 
-A direct single-conversation run may record a genuinely unprovable row and
-continue checking the remaining messages, but it must finish in a
-needs-attention state and must not count that row as removed. Ghost and other
-managed-worker jobs stop on uncertainty because the coordinator cannot safely
-reassign an unsettled external mutation.
+A single-conversation or Ghost run may retire an unprovable row and continue
+with independently resolved messages. It must report the unresolved outcome
+separately, never count it as removed, and finish in a needs-attention state.
+Do not retry that target or reassign an unsettled external mutation. A pending
+dispatched action retains its worker until its result settles; Stop must not
+close the tab in the middle of verification.
 
 ## Release checklist
 
