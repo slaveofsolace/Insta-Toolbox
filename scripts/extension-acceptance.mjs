@@ -11,6 +11,7 @@ import { createAppServer } from './serve.mjs';
 import { instagramScriptOrder } from './instagram-script-order.mjs';
 import { acceptUserscriptPresence } from './lib/userscript-presence-acceptance.mjs';
 import { acceptUserscriptInboxReview } from './lib/userscript-inbox-review-acceptance.mjs';
+import { acceptUserscriptGhostWorkers } from './lib/userscript-ghost-workers-acceptance.mjs';
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(moduleDirectory, '..');
@@ -3135,6 +3136,10 @@ async function run() {
       assert.deepEqual(overlay.problems, [], 'userscript Ghost review browser problems');
       return;
     }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_GHOST_WORKERS_ONLY === '1') {
+      await acceptUserscriptGhostWorkers(presenceOptions);
+      return;
+    }
     if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_REACTION_ONLY === '1') {
       await acceptUserscriptReactionCleanup(presenceOptions);
       assert.deepEqual(overlay.problems, [], 'userscript reaction cleanup browser problems');
@@ -3216,6 +3221,7 @@ async function run() {
     await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptInboxReview(presenceOptions);
+    await acceptUserscriptGhostWorkers(presenceOptions);
     await acceptUserscriptPresence(presenceOptions);
     await acceptBackgroundComparison(background);
     await acceptPwaInstallability(pwa.window.webContents, pwaBaseUrl);

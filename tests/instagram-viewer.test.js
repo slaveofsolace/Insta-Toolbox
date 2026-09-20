@@ -34,6 +34,23 @@ test('viewer identity requires matching account picker and global navigation', (
   assert.equal(result.accountKey, 'iguser-v1-666978747572655f766965776572');
 });
 
+test('the native Messages item can point to the last thread instead of an inbox route', () => {
+  const f = fixture();
+  f.links[2].attributes.href = '/direct/t/12345/';
+  f.links[2].attributes['aria-label'] = 'Messages';
+  assert.equal(f.inspect().accountVerified, true);
+  delete f.links[2].attributes['aria-label'];
+  assert.equal(f.inspect().accountVerified, false, 'an arbitrary thread link does not establish global navigation');
+});
+
+test('global account navigation can identify the viewer before opening the inbox', () => {
+  const f = fixture(); f.options.location.pathname = '/';
+  f.document.querySelectorAll = selector => selector === '[aria-label="Thread list"]' ? [] : [f.profile];
+  assert.equal(f.inspect().accountVerified, true); assert.equal(f.inspect().usable, false);
+  f.rail.querySelector = () => ({});
+  assert.equal(f.inspect().accountVerified, false, 'a page-wide ancestor cannot turn a feed avatar into the account control');
+});
+
 test('versioned viewer keys preserve dotted usernames without claiming a numeric identity', () => {
   const context = vm.createContext({ URL, Object }); vm.runInContext(source, context);
   const key = context.InstaToolboxInstagramViewer.accountKey;

@@ -29,6 +29,13 @@ function fixturePrelude() {
     rail.innerHTML = '<a role="link" href="/">Home</a><a role="link" href="/reels/">Reels</a><a role="link" href="/direct/inbox/">Inbox</a><a role="link" href="/${OWNER}/"><img alt="${OWNER}&#39;s profile picture" width="24" height="24" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22/%3E"></a>';
     document.body.append(rail);
     globalThis.fixturePresenceClicks = [];
+    globalThis.fixtureStorySlide = 0;
+    globalThis.fixtureNativeStory = () => {
+      history.replaceState({}, '', '/stories/story_friend/');
+      const slide = ++globalThis.fixtureStorySlide;
+      document.querySelector('main').innerHTML = '<section><img alt="Story" width="320" height="480" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22320%22 height=%22480%22%3E%3Crect width=%22320%22 height=%22480%22 fill=%22rgb(' + slide * 40 + ',80,90)%22/%3E%3C/svg%3E"><button aria-label="Pause" type="button">Pause</button><button aria-label="Like" type="button">Like</button>' + (slide < 3 ? '<button aria-label="Next" type="button">Next</button>' : '') + '</section><button aria-label="Close" type="button">Close</button>';
+      globalThis.fixturePresenceClicks.push('viewStories');
+    };
     globalThis.fixturePresenceSurface = mode => {
       history.replaceState({}, '', '/');
       const main = document.querySelector('main');
@@ -37,13 +44,20 @@ function fixturePrelude() {
       if (mode === 'private-follow') main.innerHTML = '<section data-private-profile><a href="/private_friend/">private_friend</a><button aria-label="Follow" type="button">Follow</button></section>';
       if (mode === 'request') main.innerHTML = '<section><a href="/request_friend/">request_friend</a><button aria-label="Confirm" type="button">Confirm</button></section>';
       if (mode === 'story') main.innerHTML = '<section><a href="/stories/story_friend/story-1/">story_friend story</a><a href="/story_friend/">story_friend profile</a></section>';
+      if (mode === 'story-tray') { globalThis.fixtureStorySlide = 0; main.innerHTML = '<button aria-label="Story by story_friend, not seen" type="button">Story</button>'; }
     };
     globalThis.fixturePresenceSurface('post');
     document.addEventListener('click', event => {
       const control = event.target.closest('a,button,[role="button"]');
       if (!control) return;
       const name = control.getAttribute('aria-label') || control.textContent.trim();
-      if (name === 'Like') {
+      if (name === 'Story by story_friend, not seen' || name === 'Next') {
+        globalThis.fixtureNativeStory();
+      } else if (name === 'Close' && location.pathname.startsWith('/stories/')) {
+        globalThis.fixturePresenceSurface('post');
+      } else if (control.matches('a[href="/"]')) {
+        event.preventDefault(); globalThis.fixturePresenceSurface('post');
+      } else if (name === 'Like') {
         control.setAttribute('aria-label', 'Unlike'); control.textContent = 'Unlike';
         globalThis.fixturePresenceClicks.push(location.pathname.startsWith('/stories/') ? 'reactStories' : 'likePosts');
       } else if (name === 'Follow') {
@@ -127,7 +141,7 @@ export async function acceptUserscriptPresence({
     await trustedClick(webContents, `${rootExpression}.querySelector('[data-action="confirm-accept"]')`, 'Presence confirmation');
     await waitForPageValue(webContents,
       `globalThis.fixturePresenceClicks.length > ${before} && globalThis.fixturePresenceClicks.at(-1) === ${JSON.stringify(expectedAction)}`,
-      `Presence ${expectedAction}`);
+      `Presence ${expectedAction}`, 30_000);
     await waitForPageValue(webContents, `${rootExpression}.querySelector('.presence-status strong')?.textContent === 'Presence finished'`, 'Presence completion');
   };
   try {
@@ -206,6 +220,15 @@ export async function acceptUserscriptPresence({
       ['openStoryProfile','viewStories','reactStories']);
     assert.equal(await evaluate('globalThis.fixturePresenceClicks.includes("directStoryLink")'), false);
     checks.push('story opens through its exact profile before its reaction and both outcomes are verified');
+
+    await evaluate(`globalThis.fixturePresenceSurface('story-tray')`);
+    await select(['viewStories', 'likePosts'], 4);
+    await startAndConfirm('likePosts');
+    assert.deepEqual((await evaluate('globalThis.fixturePresenceClicks')).slice(-4),
+      ['viewStories', 'viewStories', 'viewStories', 'likePosts']);
+    assert.equal(await evaluate('location.pathname'), '/');
+    assert.equal(await evaluate(`${rootExpression}.textContent.includes('Nothing to work on here')`), false);
+    checks.push('ID-less native story slides advance without a URL change, then close before the feed activity');
 
     await evaluate(`globalThis.fixturePresenceSurface('post')`);
     await select(['likePosts'], 2);

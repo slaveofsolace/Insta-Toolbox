@@ -181,6 +181,23 @@ export function createPresenceSession({
       let cursor = 0;
       let emptySweeps = 0;
       let verifiedInBurst = 0;
+      // Stay on a surface for a short visit instead of bouncing between feed,
+      // stories and notifications after every click. Story reactions follow
+      // the story they belong to before advancing to the next story.
+      const itinerary = [];
+      if (review.options.actions.viewStories) for (let index = 0; index < 3; index += 1) {
+        itinerary.push('viewStories');
+        if (review.options.actions.reactStories) itinerary.push('reactStories');
+      }
+      for (const action of review.enabledActions.filter(value => !['viewStories', 'reactStories'].includes(value))) {
+        itinerary.push(action, action, action);
+      }
+      const assertCurrent = () => {
+        if (signal.aborted || now() >= review.expiresAt) fail('presence-grant-revoked');
+        if (state.status === 'paused') fail('presence-paused');
+        context(review.accountId);
+        return true;
+      };
       publish({
         status: 'running', reason: null, accountId: review.accountId, current: null,
         completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
@@ -191,7 +208,7 @@ export function createPresenceSession({
         while (!signal.aborted && state.completed < review.options.maxActions && now() < review.expiresAt) {
           await awaitResume(signal);
           context(review.accountId);
-          const action = review.enabledActions[cursor % review.enabledActions.length];
+          const action = itinerary[cursor % itinerary.length];
           cursor += 1;
           publish({
             status: 'searching',
@@ -200,11 +217,17 @@ export function createPresenceSession({
           let candidate;
           try {
             candidate = await nativeActions.find(action, Object.freeze({ accountId: review.accountId,
-              seen: new Set(seen), signal }));
+              seen: new Set(seen), signal, assertCurrent }));
           } catch (error) {
             if (signal.aborted) throw error;
+            if (error?.message === 'presence-paused') {
+              await awaitResume(signal); cursor -= 1; continue;
+            }
             fail(error?.message || 'presence-discovery-failed');
           }
+          await awaitResume(signal);
+          if (signal.aborted || now() >= review.expiresAt) break;
+          assertCurrent();
           if (!candidate) {
             empty.add(action);
             if (empty.size === review.enabledActions.length) {
@@ -232,17 +255,14 @@ export function createPresenceSession({
           const actionId = `${action}:${candidate.id}`;
           publish({ status: 'running', current: { action, id: candidate.id,
             label: text(candidate.label) || PRESENCE_ACTION_LABELS[action] } });
-          const assertCurrent = () => {
-            if (signal.aborted || state.status === 'paused' || now() >= review.expiresAt) {
-              fail('presence-grant-revoked');
-            }
-            context(review.accountId);
-            return true;
-          };
           let outcome;
           try {
             assertCurrent();
-            outcome = await nativeActions.execute(action, candidate, Object.freeze({ signal, assertCurrent, actionId }));
+            outcome = await nativeActions.execute(action, candidate, Object.freeze({ signal,
+              assertCurrent: () => {
+                if (state.status === 'paused') fail('presence-grant-revoked');
+                return assertCurrent();
+              }, actionId }));
           } catch (error) {
             if (signal.aborted) throw error;
             outcome = { verified: false, uncertain: true, reason: error?.message || 'presence-outcome-uncertain' };

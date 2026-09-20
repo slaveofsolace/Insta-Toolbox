@@ -165,6 +165,7 @@ export function mountPresenceSessionPanel({
   let disposed = false;
   let confirming = false;
   let logWindow = null;
+  const loggedEvents = new Set();
   const listeners = [];
   const activityLog = createPresenceActivityLog({
     read: readLog,
@@ -235,6 +236,7 @@ export function mountPresenceSessionPanel({
   }
   function render(snapshot = session.snapshot()) {
     if (disposed) return;
+    logResultEntries(snapshot);
     const [title, detail] = describe(snapshot);
     const active = ['running', 'searching', 'waiting', 'quiet', 'paused', 'stopping'].includes(snapshot.status);
     intro.hidden = active;
@@ -333,9 +335,10 @@ export function mountPresenceSessionPanel({
   }
   function logResultEntries(snapshot) {
     for (const entry of [...(snapshot.results || [])].reverse()) {
-      if (!entry.eventId) continue;
+      if (!entry.eventId || loggedEvents.has(entry.eventId)) continue;
       appendLog({ eventId: entry.eventId, at: entry.at, kind: 'action', action: entry.action,
         target: entry.label, outcome: entry.status, detail: entry.reason });
+      loggedEvents.add(entry.eventId);
     }
   }
   async function begin() {

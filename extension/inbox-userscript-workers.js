@@ -5,6 +5,8 @@ const MAX_WORKERS = 5;
 const MAX_TTL_MS = 12 * 60 * 60_000;
 const HEARTBEAT_MS = 3_000;
 const STALE_MS = 90_000;
+const OPENING_MS = 60_000;
+const SETTLEMENT_MS = 15_000;
 const TERMINAL = new Set(['completed', 'partial', 'skipped', 'failed', 'uncertain', 'stopped']);
 const reviews = new WeakSet();
 const consumed = new WeakSet();
@@ -12,16 +14,6 @@ const consumed = new WeakSet();
 const clone = value => structuredClone(value);
 const fail = reason => { throw new Error(reason); };
 const identity = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value);
-const digest = (value) => {
-  const source = JSON.stringify(value);
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < source.length; index += 1) {
-    hash ^= source.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-};
-
 export function createUserscriptGhostReview({
   accountId,
   threadIds,
@@ -103,15 +95,19 @@ export function createUserscriptGhostBridge({
   const threadFromLocation = () => String(location?.pathname || '').match(/^\/direct\/t\/([^/?#]+)\/?$/)?.[1] || null;
   const sleep = (ms, signal) => new Promise((resolve, reject) => {
     let timer = null;
+    let settled = false;
     const finish = (error) => {
+      if (settled) return;
+      settled = true;
       clearTimeoutFn(timer);
       signal?.removeEventListener?.('abort', abort);
       error ? reject(error) : resolve();
     };
     const abort = () => finish(new DOMException('Stopped', 'AbortError'));
     if (signal?.aborted) return abort();
-    signal?.addEventListener?.('abort', abort, { once: true });
     timer = setTimeoutFn(() => finish(), ms);
+    signal?.addEventListener?.('abort', abort, { once: true });
+    if (signal?.aborted) abort();
   });
 
   function createManager(review) {
@@ -125,13 +121,16 @@ export function createUserscriptGhostBridge({
     let finishing = null;
     let releaseCoordinatorLock = null;
     let coordinatorLockPromise = null;
+    let releaseActivityLock = null;
+    let activityLockPromise = null;
+    let ticking = null;
     let resolveFinished = null;
     const finished = new Promise(resolve => { resolveFinished = resolve; });
     const snapshot = () => current ? clone(current) : null;
     const publish = (job) => {
       current = job ? clone(job) : null;
       const value = snapshot();
-      for (const listener of listeners) listener(value);
+      for (const listener of listeners) { try { listener(value); } catch {} }
       if (value && value.status !== 'running') settle();
     };
     const settle = () => {
@@ -139,12 +138,24 @@ export function createUserscriptGhostBridge({
       finishing = Promise.resolve().then(async () => {
         if (heartbeat !== null) clearIntervalFn(heartbeat);
         heartbeat = null;
+        // A confirmed click may still be settling when Stop is pressed. Keep
+        // that tab alive until its result is saved; never close it mid-proof.
+        const deadline = now() + SETTLEMENT_MS;
+        while (current?.pendingMutation?.phase === 'dispatched' && now() < deadline) {
+          await sleep(100);
+          const saved = await read();
+          if (saved?.jobId === current?.jobId) current = saved;
+        }
         if (storageListener !== null) storage.unlisten(storageListener);
         storageListener = null;
         releaseCoordinatorLock?.();
         releaseCoordinatorLock = null;
         await Promise.resolve(coordinatorLockPromise).catch(() => {});
-        for (const handle of handles.values()) {
+        releaseActivityLock?.();
+        releaseActivityLock = null;
+        await Promise.resolve(activityLockPromise).catch(() => {});
+        for (const [threadId, handle] of handles) {
+          if (current?.pendingMutation?.threadId === threadId) continue;
           try { await handle?.close?.(); } catch {}
         }
         handles.clear();
@@ -153,7 +164,18 @@ export function createUserscriptGhostBridge({
       });
       return finishing;
     };
-    const tick = async () => {
+    const closeSettled = async saved => {
+      if (saved?.jobId === current?.jobId) for (const [threadId, handle] of handles) {
+        const task = saved.tasks.find(item => item.threadId === threadId);
+        if (task && TERMINAL.has(task.status) && saved.pendingMutation?.threadId !== threadId) {
+          try { await handle?.close?.(); } catch {}
+          handles.delete(threadId);
+        }
+      }
+    };
+    const runTick = async () => {
+      // Reuse a bounded tab pool, not one tab per conversation until the end.
+      await closeSettled(await read());
       const launches = [];
       const job = await update((value) => {
         if (!validJob(value) || value.jobId !== current?.jobId
@@ -164,6 +186,12 @@ export function createUserscriptGhostBridge({
           return value;
         }
         value.coordinatorHeartbeatAt = now();
+        for (const task of value.tasks) {
+          if (task.status === 'opening' && (now() - task.openedAt >= OPENING_MS
+            || handles.get(task.threadId)?.closed === true)) {
+            task.status = 'failed'; task.reason = 'conversation-load-timeout';
+          }
+        }
         const stale = value.tasks.find(task => task.status === 'running'
           && now() - Number(task.workerHeartbeatAt) > STALE_MS);
         if (stale) {
@@ -175,6 +203,7 @@ export function createUserscriptGhostBridge({
         for (const task of value.tasks.filter(task => task.status === 'pending').slice(0, value.workerCount - active)) {
           task.status = 'opening';
           task.launchId = randomId();
+          task.openedAt = now();
           launches.push({ threadId: task.threadId, launchId: task.launchId });
         }
         if (value.tasks.every(task => TERMINAL.has(task.status))) {
@@ -183,26 +212,36 @@ export function createUserscriptGhostBridge({
         value.updatedAt = now();
         return value;
       });
+      await closeSettled(job);
       publish(job);
       for (const launch of launches) {
+        if (current?.status !== 'running') break;
         try {
-          const handle = await openTab(`https://www.instagram.com/direct/t/${encodeURIComponent(launch.threadId)}/`, {
+          const handle = await openTab(`https://www.instagram.com/direct/t/${encodeURIComponent(launch.threadId)}/#insta-toolbox-worker=${job.jobId}.${launch.launchId}`, {
             active: !review.openInBackground, insert: true, setParent: true,
           });
           handles.set(launch.threadId, handle);
+          if (current?.status !== 'running') {
+            await handle?.close?.(); handles.delete(launch.threadId);
+          }
         } catch {
           const failed = await update((value) => {
             if (!validJob(value) || value.jobId !== current?.jobId) return value;
             const task = value.tasks.find(item => item.threadId === launch.threadId
               && item.launchId === launch.launchId && item.status === 'opening');
             if (task) { task.status = 'failed'; task.reason = 'tab-open-failed'; }
-            value.status = 'paused'; value.reason = 'tab-open-failed'; value.updatedAt = now();
+            value.updatedAt = now();
             return value;
           });
           publish(failed);
         }
       }
       return snapshot();
+    };
+    const tick = () => {
+      if (ticking) return ticking;
+      ticking = runTick().finally(() => { ticking = null; });
+      return ticking;
     };
     return Object.freeze({
       kind: 'multi-tab',
@@ -240,6 +279,14 @@ export function createUserscriptGhostBridge({
         );
         if (!await coordinatorReady) fail('ghost-coordinator-active');
         try {
+          let announceActivityLock;
+          const ready = new Promise(resolve => { announceActivityLock = resolve; });
+          activityLockPromise = locks.request(`insta-toolbox:account-activity:${review.accountId}`,
+            { mode: 'exclusive', ifAvailable: true }, async lock => {
+              announceActivityLock(Boolean(lock));
+              if (lock) await new Promise(resolve => { releaseActivityLock = resolve; });
+            });
+          if (!await ready) fail('ghost-account-busy');
           await locks.request(jobLock(), { mode: 'exclusive' }, async () => {
             const existing = await read();
             if (activeJob(existing)) fail('ghost-job-active');
@@ -249,7 +296,10 @@ export function createUserscriptGhostBridge({
             if (!validJob(value) || value.jobId !== current?.jobId) return;
             publish(value);
           });
-          heartbeat = setIntervalFn(() => { void tick().catch(() => {}); }, HEARTBEAT_MS);
+          heartbeat = setIntervalFn(() => { void tick().catch(error => {
+            current.status = 'paused'; current.reason = error?.message || 'ghost-storage-failed';
+            publish(current);
+          }); }, HEARTBEAT_MS);
           await tick();
           return finished;
         } catch (error) {
@@ -277,16 +327,34 @@ export function createUserscriptGhostBridge({
 
   async function attachWorker() {
     const threadId = threadFromLocation();
-    if (!threadId) return null;
+    const launch = String(location?.hash || '').match(/^#insta-toolbox-worker=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
+    if (!threadId || !launch) return null;
     const workerId = randomId();
     let latest = await read();
-    const context = inspectContext();
-    if (!activeJob(latest) || !await coordinatorPresent(latest)
-      || context?.accountId !== latest.accountId
-      || context?.threadId !== threadId || context?.usable !== true) return null;
+    const deadline = now() + OPENING_MS;
+    let context;
+    // The userscript starts before React mounts the authenticated message pane.
+    // A launch fragment is correlation only; the private reviewed job grants
+    // authority. An ordinary Instagram tab must never become a worker.
+    while (true) {
+      latest = await read();
+      const opening = latest?.tasks?.find(item => item.threadId === threadId
+        && item.status === 'opening' && item.launchId === launch[2]);
+      if (!activeJob(latest) || latest.jobId !== launch[1] || !opening
+        || threadFromLocation() !== threadId || !await coordinatorPresent(latest)) return null;
+      context = inspectContext();
+      if (context?.restriction || (context?.accountId && context.accountId !== latest.accountId)) return null;
+      const messageView = typeof runner.inspect === 'function' ? runner.inspect() : null;
+      if (context?.accountId === latest.accountId && context?.threadId === threadId
+        && context?.usable === true && (typeof runner.inspect !== 'function'
+          || (messageView?.ready === true && messageView.threadId === threadId))) break;
+      if (now() >= deadline) return null;
+      await sleep(250);
+    }
     latest = await update((value) => {
       if (!activeJob(value) || value.accountId !== context.accountId) return value;
-      const task = value.tasks.find(item => item.threadId === threadId && item.status === 'opening');
+      const task = value.tasks.find(item => item.threadId === threadId && item.status === 'opening'
+        && value.jobId === launch[1] && item.launchId === launch[2]);
       if (!task) return value;
       task.status = 'running'; task.workerId = workerId; task.workerHeartbeatAt = now();
       value.updatedAt = now();
@@ -325,6 +393,16 @@ export function createUserscriptGhostBridge({
     let grant = null;
     const adapter = Object.freeze({
       signal: controller.signal,
+      async onDispatch() {
+        valid();
+        if (!grant) fail('ghost-worker-target-unproven');
+        latest = await update(value => {
+          if (!activeJob(value) || value.jobId !== latest.jobId || value.pendingMutation) fail('ghost-job-changed');
+          value.pendingMutation = { threadId, workerId, phase: 'dispatched' };
+          value.updatedAt = now();
+          return value;
+        });
+      },
       assertContext: ({ threadId: expected }) => expected === threadId && valid(),
       assertAction: ({ threadId: expected, candidate }) => expected === threadId && grant
         && candidate?.key === grant.key && candidate?.timestamp === grant.timestamp && valid(candidate),
@@ -343,29 +421,35 @@ export function createUserscriptGhostBridge({
             if (!activeJob(value) || value.jobId !== latest.jobId || value.pendingMutation) fail('ghost-job-changed');
             const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
             if (row?.status !== 'running') fail('ghost-worker-revoked');
-            value.pendingMutation = { threadId, workerId, phase: 'dispatched' };
             value.nextActionAt = now() + 1_000 + Math.floor(Math.max(0, Math.min(1, random())) * 1_000);
             value.updatedAt = now();
             return value;
           });
           let result;
+          let actionError;
           try { result = await execute(); }
-          catch { result = { verified: false }; }
+          catch (error) { actionError = error; }
           latest = await update((value) => {
             if (!validJob(value) || value.jobId !== latest.jobId) return value;
             const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
             if (result?.verified === true && row) {
               row.messageRemovals += 1; value.pendingMutation = null;
+            } else if (value.pendingMutation?.workerId === workerId
+              && actionError?.code !== 'DM_UNSEND_RETRYABLE' && actionError?.dmDispatched !== false) {
+              if (row) { row.uncertain = (row.uncertain || 0) + 1; row.reason = 'removal-not-proven'; }
+              // The runner retires this target, never retries the uncertain
+              // click, and can continue with other independently resolved rows.
+              value.pendingMutation = null;
             } else {
-              if (row) { row.status = 'uncertain'; row.reason = 'removal-not-proven'; }
-              if (value.pendingMutation?.workerId === workerId) value.pendingMutation.phase = 'uncertain';
-              value.status = 'paused'; value.reason = 'removal-not-proven';
+              // No confirmation was dispatched, or the exact unchanged target
+              // was proved still present. Let the runner retry its native menu.
+              value.pendingMutation = null;
             }
             value.updatedAt = now();
             return value;
           });
           grant = null;
-          if (result?.verified !== true) controller.abort('removal-not-proven');
+          if (actionError) throw actionError;
           return { verified: result?.verified === true };
         }),
     });
@@ -380,8 +464,18 @@ export function createUserscriptGhostBridge({
         row.status = outcome?.status === 'completed' ? 'completed'
           : outcome?.uncertain ? 'uncertain' : outcome?.processed > 0 ? 'partial' : 'failed';
         row.reason = outcome?.status === 'completed' ? null : outcome?.message || 'conversation-incomplete';
-        if (row.status === 'uncertain') { value.status = 'paused'; value.reason = 'removal-not-proven'; }
         value.updatedAt = now();
+        return value;
+      });
+      return clone(latest.tasks.find(item => item.threadId === threadId));
+    } catch (error) {
+      latest = await update(value => {
+        if (!validJob(value) || value.jobId !== latest.jobId) return value;
+        const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
+        if (row?.status === 'running') {
+          row.status = row.messageRemovals ? 'partial' : 'failed';
+          row.reason = error?.message || 'conversation-incomplete';
+        }
         return value;
       });
       return clone(latest.tasks.find(item => item.threadId === threadId));

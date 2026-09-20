@@ -101,6 +101,7 @@
   const PLAN_SCOPES = new Set(['all', 'newest', 'oldest']);
   const listeners = new Set();
   const consumedPlanDigests = new Map();
+  let traversalSequence = 0;
 
   let activeController = null;
   let activeMessageWalker = null;
@@ -486,7 +487,8 @@
     let messageContainer = null;
     let messageCount = 0;
     const isMessageRow = (element) => ['row', 'listitem'].includes(element?.getAttribute?.('role'))
-      || Boolean(element?.getAttribute?.('data-message-id') || element?.getAttribute?.('data-item-id'));
+      || Boolean(element?.getAttribute?.('data-message-id') || element?.getAttribute?.('data-item-id'))
+      || element?.querySelectorAll?.('[aria-label="Message actions"]').length === 1;
     const queue = [{ element: scroller, depth: 0 }];
     while (queue.length) {
       const { element, depth } = queue.shift();
@@ -512,7 +514,7 @@
 
   function hasMessageContent(row) {
     return Boolean(
-      row?.querySelector?.('[role="none"], [role="presentation"], [dir="auto"], img, video, audio'),
+      row?.querySelector?.('[role="none"], [role="presentation"], [dir="auto"], img, video, audio, canvas, [role="slider"]'),
     );
   }
 
@@ -551,7 +553,7 @@
       // siblings as the end of the message's ownership evidence.
       for (let lane = actions.parentElement; lane; lane = lane.parentElement) {
         const style = view.getComputedStyle?.(lane);
-        const payload = [...lane.querySelectorAll?.('[dir="auto"], img, video, audio') || []]
+        const payload = [...lane.querySelectorAll?.('[dir="auto"], img, video, audio, canvas, [role="slider"]') || []]
           .some((element) => !actions.contains?.(element));
         if (payload && ['flex', 'inline-flex'].includes(style?.display)
           && style.flexDirection === 'row' && style.direction !== 'rtl') {
@@ -630,6 +632,7 @@
       || '',
     );
     return digestText(JSON.stringify({
+      traversal: traversal?.id ?? null,
       key: stableMessageKey(row),
       genericHint: genericMessageHint(row),
       position: messagePositionFingerprint(row, traversal),
@@ -1024,6 +1027,8 @@
     let dispatched = false;
     try {
       requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
+      await activeExecution?.workerAdapter?.onDispatch?.();
+      requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
       dispatched = true;
       activateControl(dialogButton);
       const removalResult = await measurePhase('verification', () => outcome);
@@ -1037,7 +1042,7 @@
       }
       return true;
     } catch (cause) {
-      if (!dispatched) throw cause;
+      if (!dispatched) { cause.dmDispatched = false; throw cause; }
       if (cause?.code === 'DM_UNSEND_RETRYABLE') throw cause;
       const error = new Error('The last Unsend outcome is uncertain. Check the conversation before starting again.');
       error.code = 'DM_OUTCOME_UNCERTAIN';
@@ -1215,6 +1220,7 @@
 
   function createTraversal(order = 'newest') {
     return {
+      id: ++traversalSequence,
       order: order === 'oldest' ? 'oldest' : 'newest',
       scroller: null,
       lastScrollTop: null,
@@ -1304,6 +1310,14 @@
       else requireAuthorization(context.threadId, authorizationExpiresAt);
       const refreshed = traversalContext(context, traversal);
       const after = oldestBoundarySnapshot(refreshed);
+      // All streams each newly loaded window immediately. Only an explicit
+      // Oldest selection needs to load to the boundary before its first action.
+      if (traversal.preferVisible && orderedCandidates(refreshed.scroller, traversal.order, traversal).length) {
+        traversal.lastScrollTop = Number(refreshed.scroller.scrollTop);
+        traversal.lastScrollHeight = after.height;
+        traversal.lastSearchGrew = true;
+        return refreshed;
+      }
       const atOldest = Math.abs(Number(after.scroller?.scrollTop) - after.oldest) <= 1;
       const replaced = before.scroller !== after.scroller;
       const changed = replaced
@@ -1385,7 +1399,7 @@
       readOnlyTraversals.get(traversal)?.check(true);
       scroller.scrollTop = start;
       dispatch(scroller, new Event('scroll', { bubbles: true }));
-      await delay(5, signal);
+      await delay(120, signal);
 
       const refreshed = traversalContext(context, traversal);
       if (refreshed.scroller !== scroller) continue;
@@ -1420,6 +1434,7 @@
 
     let current = traversalContext(context, traversal);
     let scroller = current.scroller;
+    if (traversal.preferVisible && traversal.lastScrollTop === null) traversal.oldestBoundaryProven = false;
     const startingHeight = Number(scroller?.scrollHeight) || 0;
     if (traversal.lastScrollHeight && startingHeight + 1 < traversal.lastScrollHeight) {
       // A successful Unsend can shrink the scroll range. Resume from the
@@ -1500,9 +1515,9 @@
         scroller.scrollTop = position;
         dispatch(scroller, new Event('scroll', { bubbles: true }));
         traversal.lastSearchSteps += 1;
-        await delay(5, signal);
+        await delay(120, signal);
 
-        if (readOnlyTraversals.has(traversal)) {
+        {
           const refreshed = traversalContext(context, traversal);
           if (refreshed.scroller !== scroller) {
             traversal.lastSearchIncomplete = true;
@@ -1579,6 +1594,7 @@
   }
 
   function retainedMessageSignature(row) {
+    const voice = Boolean(row?.querySelector?.('canvas, [role="slider"]'));
     const content = [...row?.querySelectorAll?.([
       '[dir="auto"]',
       'img',
@@ -1604,13 +1620,15 @@
         element.matches?.('[dir="auto"]') ? visibleText(element) : '',
         ...[
           'aria-label',
-          'aria-valuetext',
-          'aria-valuenow',
           'href',
           'src',
           'datetime',
           'data-timestamp',
-        ].map((name) => element.getAttribute?.(name) || ''),
+        ].map((name) => {
+          const value = element.getAttribute?.(name) || '';
+          return voice && name === 'aria-label' && /^(play|pause)(?: audio| voice message)?$/i.test(value)
+            ? 'voice playback' : value;
+        }),
       ]);
     return JSON.stringify([stableMessageKey(row), preview(row), content]);
   }
@@ -1644,6 +1662,13 @@
       // shrinking range. This is not navigation to a different virtual window.
       const afterEnd = Math.max(0, Number(element.scrollHeight) - Number(element.clientHeight));
       const beforeEnd = Math.max(0, height - client);
+      if (reversedLayout(element) && afterEnd < beforeEnd
+        && top >= -beforeEnd - 2 && top <= 2 && afterTop >= -afterEnd - 2 && afterTop <= 2) {
+        // column-reverse lists have negative offsets. Native anchoring moves
+        // that offset by the removed row height; retained neighbors below still
+        // have to prove this was a deletion, not a different virtual window.
+        return Math.abs(afterTop - top) <= beforeEnd - afterEnd + 2;
+      }
       return beforeEnd > 0 && Math.abs(top - beforeEnd) <= 2
         && Math.abs(afterTop - afterEnd) <= 2 && afterEnd < beforeEnd;
     });
@@ -2255,9 +2280,9 @@
     const unwatch = watchThread(controller, expectedThreadId);
     const maxFailures = Math.max(1, Math.min(10, Number(options.maxConsecutiveFailures) || DEFAULT_MAX_FAILURES));
     const authorizationExpiresAt = plan.expiresAt;
-    // "all" is intentionally not bound to a virtual-DOM count. This ceiling
-    // is only a catastrophic-loop guard, not a daily or user-facing quota.
-    const maxMessages = plan.limit === null ? MAX_PLAN_MESSAGES : plan.limit;
+    // Completion follows history exhaustion. Expiry and no-progress bounds
+    // stop runaway work without imposing a message quota on a long history.
+    const maxMessages = plan.limit === null ? Infinity : plan.limit;
     const order = plan.scope === 'oldest' ? 'oldest' : 'newest';
     const traversal = createTraversal(order);
     traversal.preferVisible = plan.scope === 'all';
@@ -2411,7 +2436,7 @@
           }
           removalVerified = true;
         } catch (error) {
-          if (workerAdapter || error?.code === 'DM_WORKER_STOP') throw error;
+          if (signal.aborted || error?.code === 'DM_WORKER_STOP') throw error;
           if (error?.code === 'DM_OUTCOME_UNCERTAIN') {
             uncertain += 1;
             markProcessedRow(row, traversal, keyBeforeRemoval);
@@ -2446,7 +2471,14 @@
               ? `Could not remove this message after ${consecutiveFailures} attempts.`
               : `Could not remove this message. Retrying in ${Math.round(backoff / 1_000)}s (${consecutiveFailures}/${maxFailures})…`,
           });
-          if (consecutiveFailures >= maxFailures) break;
+          if (consecutiveFailures >= maxFailures) {
+            if (plan.scope !== 'all') break;
+            markProcessedRow(row, traversal, keyBeforeRemoval);
+            consecutiveFailures = 0;
+            publish({ status: 'running', failed, consecutiveFailures,
+              message: 'Could not remove one message. Continuing with the rest…' });
+            continue;
+          }
           await delay(backoff, signal);
           continue;
         }
@@ -2496,25 +2528,15 @@
           canStop: false,
           finishedAt: new Date().toISOString(),
         });
-      } else if (plan.limit === null && processed >= MAX_PLAN_MESSAGES && !exhausted) {
-        publish({
-          status: 'error',
-          message: `Safety stop after ${processed} verified removals. Start a fresh run to continue.`,
-          processed,
-          failed,
-          uncertain,
-          current: null,
-          canStop: false,
-          finishedAt: new Date().toISOString(),
-        });
       } else {
         const shortfall = plan.limit !== null && processed < plan.limit && exhausted;
         const completionNotes = [];
         if (shortfall) completionNotes.push('no more sent messages were found');
         if (uncertain) completionNotes.push(`${uncertain} action${uncertain === 1 ? '' : 's'} could not be confirmed`);
+        if (failed) completionNotes.push(`${failed} message${failed === 1 ? '' : 's'} could not be removed`);
         publish({
-          status: uncertain ? 'error' : 'completed',
-          needsAttention: Boolean(uncertain),
+          status: uncertain || failed ? 'error' : 'completed',
+          needsAttention: Boolean(uncertain || failed),
           message: `Done. ${processed} message${processed === 1 ? '' : 's'} unsent${completionNotes.length ? `; ${completionNotes.join('; ')}` : ''}.`,
           processed,
           failed,

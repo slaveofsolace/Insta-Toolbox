@@ -15,9 +15,11 @@ export function createUserscriptInboxDiscovery({
   if (!document || !window?.location || typeof viewer?.inspect !== 'function'
     || typeof viewer.accountKey !== 'function' || typeof now !== 'function'
     || (onProgress !== null && typeof onProgress !== 'function')) throw new Error('inbox-discovery-unavailable');
-  let active = null, inventory = null, captured = null, navigator = null;
+  let active = null, inventory = null, captured = null, navigator = null, opening = null;
   let state = { status: 'idle', reason: null, inventory: null, executionAvailable: false };
   const snapshot = () => copy(state);
+  const inboxReady = () => /^\/direct\/(?:inbox\/?|t\/\d+\/?)$/.test(window.location.pathname)
+    && [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible).length === 1;
   const publish = (patch) => {
     state = { ...state, ...patch };
     try { onProgress?.(snapshot()); } catch {}
@@ -41,11 +43,13 @@ export function createUserscriptInboxDiscovery({
     const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
     if (roots.length !== 1) return null;
     const selected = [...roots[0].querySelectorAll('[role="tab"][aria-selected="true"]')].filter(visible);
+    if (!selected.length && !roots[0].querySelectorAll('[role="tab"]').length) return 'primary';
     if (selected.length !== 1) return null;
     const label = (selected[0].getAttribute('aria-label') || selected[0].textContent || '').trim();
     return nativeInboxSection(label);
   }
   const stop = () => {
+    if (opening) { opening.abort(); return true; }
     if (navigator) { navigator.stop(); navigator = null; return true; }
     if (!active) return false;
     active.stop(); publish({ status: 'stopping', reason: 'cancelled', inventory: active.snapshot() });
@@ -56,22 +60,55 @@ export function createUserscriptInboxDiscovery({
     availableSections() {
       const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
       if (roots.length !== 1) return [];
-      return [...new Set([...roots[0].querySelectorAll('[role="tab"]')]
+      const sections = [...new Set([...roots[0].querySelectorAll('[role="tab"]')]
         .filter(visible)
         .map((tab) => nativeInboxSection(tab.getAttribute('aria-label') || tab.textContent))
         .filter(Boolean))];
+      return sections.length ? sections : ['primary'];
     },
     reviewLabels() {
       const current = context();
       if (state.inventory && current.accountId !== state.inventory.accountId) return rejectContext('inbox-account-changed');
       return (active || captured)?.reviewLabels() || [];
     },
-    async discover({ navigationAcknowledged = false, sections = ['primary'], expiresAt = now() + 5 * 60_000 } = {}) {
-      if (active) throw new Error('inbox-discovery-active');
+    async discover({ navigationAcknowledged = false, sections = null, expiresAt = now() + 20 * 60_000 } = {}) {
+      if (active || opening) throw new Error('inbox-discovery-active');
       if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');
       if (!Number.isFinite(expiresAt) || expiresAt <= now() || expiresAt > now() + 20 * 60_000) throw new Error('discovery-expired');
-      if (!/^\/direct\/inbox\/?$/.test(window.location.pathname)) throw new Error('inbox-route-required');
       const identity = context();
+      if (!inboxReady()) {
+        const links = [...document.querySelectorAll('a[href]')].filter(node => {
+          if (!visible(node)) return false;
+          try { const target = new URL(node.getAttribute('href'), ORIGIN);
+            if (target.origin !== ORIGIN) return false;
+            if (/^\/direct\/inbox\/?$/.test(target.pathname)) return true;
+            return /^\/direct\/t\/\d+\/?$/.test(target.pathname)
+              && (node.getAttribute('aria-label') === 'Messages'
+                || node.querySelector('[aria-label="Messages"]')); }
+          catch { return false; }
+        });
+        if (!links.length) throw new Error('inbox-return-unavailable');
+        opening = new AbortController();
+        publish({ status: 'discovering', reason: null, inventory: null });
+        const deadline = now() + routeTimeoutMs;
+        try {
+          links[0].click();
+          while (true) {
+            if (opening.signal.aborted) throw new Error('cancelled');
+            const observed = viewer.inspect({ document, location: window.location });
+            if (observed?.restriction) throw new Error('inbox-account-restricted');
+            if (observed?.accountVerified && observed.accountKey !== identity.accountId) throw new Error('inbox-account-changed');
+            if (inboxReady() && observed?.accountVerified && observed.accountKey === identity.accountId) break;
+            if (now() >= deadline) throw new Error('navigation-timeout');
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          if (opening.signal.aborted) throw new Error('cancelled');
+        } catch (error) {
+          publish({ status: 'needs-attention', reason: error.message, inventory: null });
+          throw error;
+        } finally { opening = null; }
+      }
+      if (sections === null) sections = this.availableSections();
       navigator?.stop(); navigator = null; captured = null; inventory = null;
       const operation = createNativeInboxDiscovery({
         accountId: identity.accountId, resolveAccount: context,

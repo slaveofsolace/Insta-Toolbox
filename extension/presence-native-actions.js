@@ -1,5 +1,5 @@
 const PROFILE_PATH = /^\/([A-Za-z0-9._]{1,30})\/?$/;
-const STORY_PATH = /^\/stories\/([A-Za-z0-9._]{1,30})\/([^/?#]+)\/?/;
+const STORY_PATH = /^\/stories\/([A-Za-z0-9._]{1,30})(?:\/([^/?#]+))?\/?$/;
 const CONTENT_PATH = /^\/(?:p|reel)\/([^/?#]+)\/?/;
 const STORY_TILE_LABEL = /^story by ([A-Za-z0-9._]{1,30})(?:,|$)/i;
 const RESERVED = new Set(['accounts', 'about', 'api', 'direct', 'explore', 'reels', 'settings', 'stories', 'web']);
@@ -58,8 +58,13 @@ export function createPresenceNativeActions({
 
   const visible = (node) => {
     if (!node?.isConnected || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
+    if (node.closest?.('[hidden], [aria-hidden="true"], [inert], #insta-toolbox-host')) return false;
     const style = getStyle(node);
     if (style?.display === 'none' || style?.visibility === 'hidden' || Number(style?.opacity) === 0) return false;
+    const rect = node.getBoundingClientRect?.();
+    if (rect && (rect.bottom <= 0 || rect.right <= 0
+      || rect.top >= Number(globalThis.innerHeight || 100_000)
+      || rect.left >= Number(globalThis.innerWidth || 100_000))) return false;
     const rects = node.getClientRects?.();
     return !rects || rects.length > 0;
   };
@@ -122,7 +127,7 @@ export function createPresenceNativeActions({
   const storyViewerRoot = (expected) => {
     const match = String(location.pathname || '').match(STORY_PATH);
     if (!match || match[1].toLocaleLowerCase() !== expected.username
-      || (expected.storyId && match[2] !== expected.storyId)) return null;
+      || (expected.storyId && match[2] && match[2] !== expected.storyId)) return null;
     const qualifying = (roots) => roots.filter(visible).filter((root) => {
       const media = [...root.querySelectorAll('video,img')].filter(visible);
       const controls = exactButtons(root, new Set(['pause', 'next', 'like', 'unlike']));
@@ -131,9 +136,43 @@ export function createPresenceNativeActions({
     const dialogs = qualifying([...document.querySelectorAll('[role="dialog"]')]);
     if (dialogs.length) return dialogs.length === 1 ? dialogs[0] : null;
     const mains = qualifying([...document.querySelectorAll('main')]);
-    return mains.length === 1 ? mains[0] : null;
+    if (mains.length === 1) return mains[0];
+    // The full-screen web viewer is also rendered directly under the app root,
+    // without main/dialog landmarks. Its route, media and native toolbar still
+    // identify it; do not require a profile-page landmark after opening a story.
+    return document.body && qualifying([document.body]).length === 1 ? document.body : null;
   };
   const storyLoaded = (expected) => Boolean(storyViewerRoot(expected));
+  const currentStory = () => {
+    const match = String(location.pathname || '').match(STORY_PATH);
+    if (!match) return null;
+    const username = match[1].toLocaleLowerCase();
+    const root = storyViewerRoot({ username, storyId: match[2] });
+    if (!root) return null;
+    if (match[2]) return { username, storyId: match[2], root };
+    // Current Instagram routes often omit the slide ID entirely. Identify the
+    // active full-size media, not avatar thumbnails or off-screen previews.
+    const largeMedia = scope => [...scope.querySelectorAll('video,img')].filter(visible).filter(node => {
+      const rect = node.getBoundingClientRect?.();
+      return rect && rect.width >= 128 && rect.height >= 128
+        && rect.bottom > 0 && rect.right > 0
+        && rect.top < Number(globalThis.innerHeight || 100_000)
+        && rect.left < Number(globalThis.innerWidth || 100_000);
+    });
+    let media = largeMedia(root);
+    const playback = exactButtons(root, new Set(['pause', 'play']));
+    if (playback.length === 1) for (let node = playback[0].parentElement; node; node = node.parentElement) {
+      const nearby = largeMedia(node);
+      if (nearby.length === 1) { media = nearby; break; }
+      if (node === root) break;
+    }
+    if (media.length !== 1) return null;
+    const source = media[0].currentSrc || media[0].getAttribute('src');
+    if (!source) return null;
+    let hash = 0x811c9dc5;
+    for (const character of `${username}:${source}`) hash = Math.imul(hash ^ character.charCodeAt(0), 0x01000193);
+    return { username, storyId: `media-${(hash >>> 0).toString(16)}`, root };
+  };
   const profileControls = (root, username) => [...root.querySelectorAll('a[href]')]
     .filter(visible)
     .filter((node) => profile(node)?.username === username);
@@ -197,9 +236,25 @@ export function createPresenceNativeActions({
       const candidate = url(node);
       return candidate?.origin === location.origin && pathnames.has(candidate.pathname);
     });
-    return matches.length === 1 ? matches[0] : null;
+    return matches.length ? matches[0] : null;
   };
-  const openSurface = async (action, signal) => {
+  const closeOverlay = async (action, signal, guard) => {
+    const inStory = STORY_PATH.test(String(location.pathname));
+    if (inStory && (action === 'reactStories'
+      || (action === 'viewStories' && candidates('viewStories').length))) return true;
+    const names = inStory ? new Set(['close', 'close story', 'close stories'])
+      : new Set(['close notifications']);
+    const controls = exactControls(document, names);
+    if (controls.length === 1 && (inStory || action !== 'acceptRequests')) {
+      guard?.();
+      controls[0].click();
+      return waitFor(() => inStory ? !STORY_PATH.test(String(location.pathname))
+        : !visible(controls[0]), signal, guard);
+    }
+    return !inStory;
+  };
+  const openSurface = async (action, signal, guard) => {
+    if (!await closeOverlay(action, signal, guard)) return false;
     let control = null;
     let ready = null;
     if (['viewStories', 'likePosts'].includes(action) && location.pathname !== '/') {
@@ -211,26 +266,39 @@ export function createPresenceNativeActions({
       ready = () => String(location.pathname).startsWith('/explore');
     } else if (action === 'acceptRequests') {
       const controls = exactControls(document, new Set(['notifications']));
+      if (exactControls(document, new Set(['close notifications'])).length
+        || candidates('acceptRequests').length) return true;
       if (controls.length === 1 && controls[0].getAttribute?.('aria-expanded') !== 'true') {
         control = controls[0];
         ready = () => candidates('acceptRequests').length > 0
-          || control.getAttribute?.('aria-expanded') === 'true';
+          || control.getAttribute?.('aria-expanded') === 'true'
+          || exactControls(document, new Set(['close notifications'])).length > 0;
       }
     }
     if (!control || typeof control.click !== 'function') return false;
+    guard?.();
     control.click();
-    return waitFor(ready, signal);
+    return waitFor(ready, signal, guard);
   };
-  const advanceSurface = async (action, seen, signal) => {
+  const advanceSurface = async (action, seen, signal, guard) => {
     if (!['likePosts', 'followPeople'].includes(action)) return false;
-    const surface = document.scrollingElement || document.documentElement;
+    const anchors = action === 'likePosts' ? [...document.querySelectorAll('article')].filter(visible)
+      : exactButtons(document, new Set(['follow']));
+    let surface = null;
+    for (let node = anchors[0]?.parentElement; node; node = node.parentElement) {
+      if (/(auto|scroll)/.test(getStyle(node)?.overflowY || '')
+        && Number(node.scrollHeight) > Number(node.clientHeight) + 1) { surface = node; break; }
+    }
+    surface ||= document.scrollingElement || document.documentElement;
     if (typeof surface?.scrollBy !== 'function') return false;
+    guard?.();
     surface.scrollBy({ top: Math.max(320, Math.round(Number(globalThis.innerHeight || 800) * .75)),
       left: 0, behavior: 'auto' });
-    return waitFor(() => candidates(action).some(candidate => !seen.has(candidate.id)), signal);
+    return waitFor(() => candidates(action).some(candidate => !seen.has(candidate.id)), signal, guard);
   };
 
   function candidates(action) {
+    if (STORY_PATH.test(String(location.pathname)) && !['viewStories', 'reactStories'].includes(action)) return [];
     if (action === 'likePosts') {
       return [...document.querySelectorAll('article')].filter(visible).flatMap((article) => {
         const links = [...article.querySelectorAll('a[href]')].map(content).filter(Boolean);
@@ -254,17 +322,17 @@ export function createPresenceNativeActions({
     }
     if (action === 'viewStories') {
       const current = String(location.pathname || '').match(STORY_PATH);
-      const currentTarget = current
-        ? { username: current[1].toLocaleLowerCase(), storyId: current[2] }
-        : null;
-      const viewerRoot = currentTarget ? storyViewerRoot(currentTarget) : null;
+      const currentTarget = currentStory();
+      const viewerRoot = currentTarget?.root;
       if (viewerRoot) {
         const controls = exactButtons(viewerRoot, new Set(['next']));
         if (controls.length !== 1) return [];
-        return [{ action, id: `story-next:${current[1].toLocaleLowerCase()}:${current[2]}`,
-          label: 'Next story', target: { fromPath: String(location.pathname) },
+        return [{ action, id: `story-next:${currentTarget.username}:${currentTarget.storyId}`,
+          label: 'Next story', target: { fromPath: String(location.pathname),
+            fromStory: `${currentTarget.username}:${currentTarget.storyId}` },
           root: viewerRoot, control: controls[0] }];
       }
+      if (current) return [];
       const unique = new Map();
       for (const control of buttonControls(document).filter(visible)) {
         const target = storyTile(control);
@@ -286,11 +354,10 @@ export function createPresenceNativeActions({
       return [...unique.values()];
     }
     if (action === 'reactStories') {
-      const current = String(location.pathname || '').match(STORY_PATH);
+      const current = currentStory();
       if (!current) return [];
-      const target = { username: current[1].toLocaleLowerCase(), storyId: current[2] };
-      const viewerRoot = storyViewerRoot(target);
-      if (!viewerRoot) return [];
+      const target = { username: current.username, storyId: current.storyId };
+      const viewerRoot = current.root;
       const controls = exactButtons(viewerRoot, new Set(['like']));
       if (controls.length !== 1) return [];
       return [{ action, id: `story-reaction:${target.username}:${target.storyId}`,
@@ -319,13 +386,15 @@ export function createPresenceNativeActions({
         frozen: document.visibilityState === 'hidden' && document.wasDiscarded === true,
         discarded: document.wasDiscarded === true });
     },
-    async find(action, { seen = new Set(), signal } = {}) {
+    async find(action, { seen = new Set(), signal, assertCurrent } = {}) {
       if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
+      assertCurrent?.();
+      if (!await closeOverlay(action, signal, assertCurrent)) return null;
       let available = candidates(action).filter((candidate) => !seen.has(candidate.id));
-      if (!available.length && await openSurface(action, signal)) {
+      if (!available.length && await openSurface(action, signal, assertCurrent)) {
         available = candidates(action).filter((candidate) => !seen.has(candidate.id));
       }
-      if (!available.length && await advanceSurface(action, seen, signal)) {
+      if (!available.length && await advanceSurface(action, seen, signal, assertCurrent)) {
         available = candidates(action).filter((candidate) => !seen.has(candidate.id));
       }
       return available.length ? Object.freeze(available[0]) : null;
@@ -349,7 +418,7 @@ export function createPresenceNativeActions({
           }, signal, assertCurrent);
           return verified
             ? { verified: true, label: current.label, reason: 'Story opened' }
-            : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+            : { verified: false, skipped: true, reason: 'Story did not finish loading' };
         }
         if (!current.target.fromPath) {
           current.control.click();
@@ -369,22 +438,27 @@ export function createPresenceNativeActions({
           const verified = await waitFor(() => storyLoaded(expected), signal, assertCurrent);
           return verified
             ? { verified: true, label: current.label, reason: 'Story opened' }
-            : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+            : { verified: false, skipped: true, reason: 'Story did not finish loading' };
         }
         current.control.click();
         const verified = await waitFor(() => {
-          if (String(location.pathname) === current.target.fromPath) return false;
-          const next = String(location.pathname).match(STORY_PATH);
-          return Boolean(next) && storyLoaded({ username: next[1].toLocaleLowerCase(), storyId: next[2] });
+          const next = currentStory();
+          return Boolean(next) && `${next.username}:${next.storyId}` !== current.target.fromStory;
         }, signal, assertCurrent);
         return verified
           ? { verified: true, label: current.label,
             reason: current.target.fromPath ? 'Next story opened' : 'Story opened' }
-          : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+          : { verified: false, skipped: true, reason: STORY_PATH.test(String(location.pathname))
+            ? 'Next story did not finish loading' : 'End of stories' };
       }
       current.control.click();
       const verified = await waitFor(() => {
         if (!current.root.isConnected) return false;
+        if (action === 'reactStories') {
+          const displayed = currentStory();
+          if (!displayed || displayed.username !== current.target.username
+            || displayed.storyId !== current.target.storyId) return false;
+        }
         if (action === 'likePosts' || action === 'reactStories') {
           return exactButtons(current.root, new Set(['unlike'])).length === 1;
         }

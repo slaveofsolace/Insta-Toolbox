@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.1.4
+// @version      4.1.5
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -882,6 +882,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   const PLAN_SCOPES = new Set(['all', 'newest', 'oldest']);
   const listeners = new Set();
   const consumedPlanDigests = new Map();
+  let traversalSequence = 0;
 
   let activeController = null;
   let activeMessageWalker = null;
@@ -1267,7 +1268,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     let messageContainer = null;
     let messageCount = 0;
     const isMessageRow = (element) => ['row', 'listitem'].includes(element?.getAttribute?.('role'))
-      || Boolean(element?.getAttribute?.('data-message-id') || element?.getAttribute?.('data-item-id'));
+      || Boolean(element?.getAttribute?.('data-message-id') || element?.getAttribute?.('data-item-id'))
+      || element?.querySelectorAll?.('[aria-label="Message actions"]').length === 1;
     const queue = [{ element: scroller, depth: 0 }];
     while (queue.length) {
       const { element, depth } = queue.shift();
@@ -1293,7 +1295,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
   function hasMessageContent(row) {
     return Boolean(
-      row?.querySelector?.('[role="none"], [role="presentation"], [dir="auto"], img, video, audio'),
+      row?.querySelector?.('[role="none"], [role="presentation"], [dir="auto"], img, video, audio, canvas, [role="slider"]'),
     );
   }
 
@@ -1332,7 +1334,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       // siblings as the end of the message's ownership evidence.
       for (let lane = actions.parentElement; lane; lane = lane.parentElement) {
         const style = view.getComputedStyle?.(lane);
-        const payload = [...lane.querySelectorAll?.('[dir="auto"], img, video, audio') || []]
+        const payload = [...lane.querySelectorAll?.('[dir="auto"], img, video, audio, canvas, [role="slider"]') || []]
           .some((element) => !actions.contains?.(element));
         if (payload && ['flex', 'inline-flex'].includes(style?.display)
           && style.flexDirection === 'row' && style.direction !== 'rtl') {
@@ -1411,6 +1413,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       || '',
     );
     return digestText(JSON.stringify({
+      traversal: traversal?.id ?? null,
       key: stableMessageKey(row),
       genericHint: genericMessageHint(row),
       position: messagePositionFingerprint(row, traversal),
@@ -1805,6 +1808,8 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     let dispatched = false;
     try {
       requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
+      await activeExecution?.workerAdapter?.onDispatch?.();
+      requireAuthorization(expectedThreadId, authorizationExpiresAt, true);
       dispatched = true;
       activateControl(dialogButton);
       const removalResult = await measurePhase('verification', () => outcome);
@@ -1818,7 +1823,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       }
       return true;
     } catch (cause) {
-      if (!dispatched) throw cause;
+      if (!dispatched) { cause.dmDispatched = false; throw cause; }
       if (cause?.code === 'DM_UNSEND_RETRYABLE') throw cause;
       const error = new Error('The last Unsend outcome is uncertain. Check the conversation before starting again.');
       error.code = 'DM_OUTCOME_UNCERTAIN';
@@ -1996,6 +2001,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
   function createTraversal(order = 'newest') {
     return {
+      id: ++traversalSequence,
       order: order === 'oldest' ? 'oldest' : 'newest',
       scroller: null,
       lastScrollTop: null,
@@ -2085,6 +2091,14 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       else requireAuthorization(context.threadId, authorizationExpiresAt);
       const refreshed = traversalContext(context, traversal);
       const after = oldestBoundarySnapshot(refreshed);
+      // All streams each newly loaded window immediately. Only an explicit
+      // Oldest selection needs to load to the boundary before its first action.
+      if (traversal.preferVisible && orderedCandidates(refreshed.scroller, traversal.order, traversal).length) {
+        traversal.lastScrollTop = Number(refreshed.scroller.scrollTop);
+        traversal.lastScrollHeight = after.height;
+        traversal.lastSearchGrew = true;
+        return refreshed;
+      }
       const atOldest = Math.abs(Number(after.scroller?.scrollTop) - after.oldest) <= 1;
       const replaced = before.scroller !== after.scroller;
       const changed = replaced
@@ -2166,7 +2180,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       readOnlyTraversals.get(traversal)?.check(true);
       scroller.scrollTop = start;
       dispatch(scroller, new Event('scroll', { bubbles: true }));
-      await delay(5, signal);
+      await delay(120, signal);
 
       const refreshed = traversalContext(context, traversal);
       if (refreshed.scroller !== scroller) continue;
@@ -2201,6 +2215,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
     let current = traversalContext(context, traversal);
     let scroller = current.scroller;
+    if (traversal.preferVisible && traversal.lastScrollTop === null) traversal.oldestBoundaryProven = false;
     const startingHeight = Number(scroller?.scrollHeight) || 0;
     if (traversal.lastScrollHeight && startingHeight + 1 < traversal.lastScrollHeight) {
       // A successful Unsend can shrink the scroll range. Resume from the
@@ -2281,9 +2296,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         scroller.scrollTop = position;
         dispatch(scroller, new Event('scroll', { bubbles: true }));
         traversal.lastSearchSteps += 1;
-        await delay(5, signal);
+        await delay(120, signal);
 
-        if (readOnlyTraversals.has(traversal)) {
+        {
           const refreshed = traversalContext(context, traversal);
           if (refreshed.scroller !== scroller) {
             traversal.lastSearchIncomplete = true;
@@ -2360,6 +2375,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   }
 
   function retainedMessageSignature(row) {
+    const voice = Boolean(row?.querySelector?.('canvas, [role="slider"]'));
     const content = [...row?.querySelectorAll?.([
       '[dir="auto"]',
       'img',
@@ -2385,13 +2401,15 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         element.matches?.('[dir="auto"]') ? visibleText(element) : '',
         ...[
           'aria-label',
-          'aria-valuetext',
-          'aria-valuenow',
           'href',
           'src',
           'datetime',
           'data-timestamp',
-        ].map((name) => element.getAttribute?.(name) || ''),
+        ].map((name) => {
+          const value = element.getAttribute?.(name) || '';
+          return voice && name === 'aria-label' && /^(play|pause)(?: audio| voice message)?$/i.test(value)
+            ? 'voice playback' : value;
+        }),
       ]);
     return JSON.stringify([stableMessageKey(row), preview(row), content]);
   }
@@ -2425,6 +2443,13 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       // shrinking range. This is not navigation to a different virtual window.
       const afterEnd = Math.max(0, Number(element.scrollHeight) - Number(element.clientHeight));
       const beforeEnd = Math.max(0, height - client);
+      if (reversedLayout(element) && afterEnd < beforeEnd
+        && top >= -beforeEnd - 2 && top <= 2 && afterTop >= -afterEnd - 2 && afterTop <= 2) {
+        // column-reverse lists have negative offsets. Native anchoring moves
+        // that offset by the removed row height; retained neighbors below still
+        // have to prove this was a deletion, not a different virtual window.
+        return Math.abs(afterTop - top) <= beforeEnd - afterEnd + 2;
+      }
       return beforeEnd > 0 && Math.abs(top - beforeEnd) <= 2
         && Math.abs(afterTop - afterEnd) <= 2 && afterEnd < beforeEnd;
     });
@@ -3036,9 +3061,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const unwatch = watchThread(controller, expectedThreadId);
     const maxFailures = Math.max(1, Math.min(10, Number(options.maxConsecutiveFailures) || DEFAULT_MAX_FAILURES));
     const authorizationExpiresAt = plan.expiresAt;
-    // "all" is intentionally not bound to a virtual-DOM count. This ceiling
-    // is only a catastrophic-loop guard, not a daily or user-facing quota.
-    const maxMessages = plan.limit === null ? MAX_PLAN_MESSAGES : plan.limit;
+    // Completion follows history exhaustion. Expiry and no-progress bounds
+    // stop runaway work without imposing a message quota on a long history.
+    const maxMessages = plan.limit === null ? Infinity : plan.limit;
     const order = plan.scope === 'oldest' ? 'oldest' : 'newest';
     const traversal = createTraversal(order);
     traversal.preferVisible = plan.scope === 'all';
@@ -3192,7 +3217,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           }
           removalVerified = true;
         } catch (error) {
-          if (workerAdapter || error?.code === 'DM_WORKER_STOP') throw error;
+          if (signal.aborted || error?.code === 'DM_WORKER_STOP') throw error;
           if (error?.code === 'DM_OUTCOME_UNCERTAIN') {
             uncertain += 1;
             markProcessedRow(row, traversal, keyBeforeRemoval);
@@ -3227,7 +3252,14 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
               ? `Could not remove this message after ${consecutiveFailures} attempts.`
               : `Could not remove this message. Retrying in ${Math.round(backoff / 1_000)}s (${consecutiveFailures}/${maxFailures})…`,
           });
-          if (consecutiveFailures >= maxFailures) break;
+          if (consecutiveFailures >= maxFailures) {
+            if (plan.scope !== 'all') break;
+            markProcessedRow(row, traversal, keyBeforeRemoval);
+            consecutiveFailures = 0;
+            publish({ status: 'running', failed, consecutiveFailures,
+              message: 'Could not remove one message. Continuing with the rest…' });
+            continue;
+          }
           await delay(backoff, signal);
           continue;
         }
@@ -3277,25 +3309,15 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
           canStop: false,
           finishedAt: new Date().toISOString(),
         });
-      } else if (plan.limit === null && processed >= MAX_PLAN_MESSAGES && !exhausted) {
-        publish({
-          status: 'error',
-          message: `Safety stop after ${processed} verified removals. Start a fresh run to continue.`,
-          processed,
-          failed,
-          uncertain,
-          current: null,
-          canStop: false,
-          finishedAt: new Date().toISOString(),
-        });
       } else {
         const shortfall = plan.limit !== null && processed < plan.limit && exhausted;
         const completionNotes = [];
         if (shortfall) completionNotes.push('no more sent messages were found');
         if (uncertain) completionNotes.push(`${uncertain} action${uncertain === 1 ? '' : 's'} could not be confirmed`);
+        if (failed) completionNotes.push(`${failed} message${failed === 1 ? '' : 's'} could not be removed`);
         publish({
-          status: uncertain ? 'error' : 'completed',
-          needsAttention: Boolean(uncertain),
+          status: uncertain || failed ? 'error' : 'completed',
+          needsAttention: Boolean(uncertain || failed),
           message: `Done. ${processed} message${processed === 1 ? '' : 's'} unsent${completionNotes.length ? `; ${completionNotes.join('; ')}` : ''}.`,
           processed,
           failed,
@@ -5966,35 +5988,40 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const restriction = session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited;
     if (restriction) return { ...unavailable, threadId, restriction: true, reason: 'instagram-restricted' };
     const lists = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
-    if (lists.length !== 1) return { ...unavailable, threadId, reason: 'account-picker-unavailable' };
+    if (lists.length > 1 || (threadId && lists.length !== 1)) return { ...unavailable, threadId, reason: 'account-picker-unavailable' };
     const list = lists[0];
-    const headings = [...list.querySelectorAll('h2')].filter((heading) => {
+    const headings = [...(list?.querySelectorAll('h2') || [])].filter((heading) => {
       const picker = heading.closest('[role="button"][tabindex="0"]');
       return visible(heading) && picker && list.contains(picker) && visible(picker);
     });
-    if (headings.length !== 1) return { ...unavailable, threadId, reason: 'account-picker-ambiguous' };
-    const accountId = username(headings[0].textContent);
-    if (!accountId) return { ...unavailable, threadId, reason: 'account-name-unavailable' };
+    if (list && headings.length !== 1) return { ...unavailable, threadId, reason: 'account-picker-ambiguous' };
+    const pickerAccount = list ? username(headings[0].textContent) : null;
+    if (list && !pickerAccount) return { ...unavailable, threadId, reason: 'account-name-unavailable' };
     const profiles = [...document.querySelectorAll('a[role="link"][href]')].filter((link) => {
-      if (!visible(link) || list.contains(link)
+      if (!visible(link) || list?.contains(link)
         || link.getAttribute('aria-label')?.startsWith('Open the profile page of')) return false;
       const match = pathOf(link).match(/^\/([a-z0-9._]+)\/?$/i);
-      if (!match || username(match[1]) !== accountId) return false;
+      const accountId = match && username(match[1]);
+      if (!accountId || (pickerAccount && accountId !== pickerAccount)) return false;
       const pictures = [...link.querySelectorAll('img')].filter(visible);
       if (pictures.length !== 1
         || String(pictures[0].getAttribute('alt')).toLowerCase() !== `${accountId}'s profile picture`) return false;
       for (let rail = link.parentElement; rail && rail !== document.body; rail = rail.parentElement) {
-        if (rail.contains(list)) return false;
-        const paths = new Set([...rail.querySelectorAll('a[href]')].filter(visible).map(pathOf));
+        if ((list && rail.contains(list)) || rail.querySelector?.('main, article, [data-pagelet="IGDMessagesList"]')) return false;
+        const links = [...rail.querySelectorAll('a[href]')].filter(visible);
+        const paths = new Set(links.map(pathOf));
+        const messages = links.some(node => /^\/direct\/t\/\d+\/?$/.test(pathOf(node))
+          && (node.getAttribute('aria-label') === 'Messages' || node.querySelector?.('[aria-label="Messages"]')));
         if (paths.has('/') && (paths.has('/reels/') || paths.has('/reels'))
-          && (paths.has('/direct/inbox/') || paths.has('/direct/inbox'))) return true;
+          && (paths.has('/direct/inbox/') || paths.has('/direct/inbox') || messages)) return true;
       }
       return false;
     });
     if (profiles.length !== 1) return { ...unavailable, threadId, reason: 'account-navigation-unavailable' };
+    const accountId = pickerAccount || username(pathOf(profiles[0]).split('/')[1]);
     return { accountVerified: true, accountId, threadId, usable: Boolean(threadId),
       accountKey: accountKey(accountId), identityKind: 'verified-viewer-username',
-      restriction: false, evidence: 'visible-account-picker-and-navigation' };
+      restriction: false, evidence: list ? 'visible-account-picker-and-navigation' : 'visible-account-navigation' };
   }
   Object.defineProperty(globalThis, 'InstaToolboxInstagramViewer', {
     configurable: false, writable: false, value: Object.freeze({ inspect, accountKey }),
@@ -6268,12 +6295,13 @@ function createNativeInboxDiscovery({
   accountId, resolveAccount, navigationAcknowledged = false,
   document = globalThis.document, window = globalThis.window,
   sections = ['primary'], expiresAt, now = Date.now, signal,
-  maxThreads = 1_000, maxSamples = 100, maxVisits = 2_000,
-  routeTimeoutMs = 8_000, settleMs = 400, proveTerminal = null, resolveSection = null, onProgress = null,
+  maxThreads = 1_000, maxSamples = 1_000, maxVisits = 20_000,
+  routeTimeoutMs = 8_000, settleMs = 400, paginationTimeoutMs = routeTimeoutMs,
+  proveTerminal = null, resolveSection = null, onProgress = null,
 } = {}) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(accountId || '') || typeof resolveAccount !== 'function') throw new Error('account-identity-required');
   if (!Array.isArray(sections) || !sections.length || sections.some((name) => !Object.hasOwn(SECTION_LABELS, name))) throw new Error('inbox-section-invalid');
-  for (const [value, ceiling] of [[maxThreads, 10_000], [maxSamples, 1_000], [maxVisits, 20_000], [routeTimeoutMs, 30_000], [settleMs, 5_000]]) {
+  for (const [value, ceiling] of [[maxThreads, 10_000], [maxSamples, 1_000], [maxVisits, 20_000], [routeTimeoutMs, 30_000], [paginationTimeoutMs, 30_000], [settleMs, 5_000]]) {
     if (!Number.isSafeInteger(value) || value < 1 || value > ceiling) throw new Error('discovery-bound-invalid');
   }
   if (!Number.isFinite(expiresAt) || expiresAt <= now()) throw new Error('discovery-expired');
@@ -6290,9 +6318,11 @@ function createNativeInboxDiscovery({
   let started = false, finished = false, stopped = false, reason = null, visits = 0;
   let navigator = null;
   const href = () => String(window.location.href);
+  const inboxSurface = () => (inboxUrl(href()) || Boolean(inboxThreadId(href())))
+    && [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible).length === 1;
   const snapshot = () => ({
     version: 1, accountId, complete: !stopped && sectionState.every((state) => state.complete),
-    stopped, reason, visits, needsInboxReturn: !inboxUrl(href()),
+    stopped, reason, visits, needsInboxReturn: !inboxSurface(),
     sections: sectionState.map((state) => ({ ...state })),
     conversations: [...inventory].map(([threadId, names]) => ({ threadId, sections: [...names] })),
   });
@@ -6476,13 +6506,16 @@ function createNativeInboxDiscovery({
     }
     await settle(context);
   }
-  async function returnToInbox(threadId, position, section, context = discoveryContext) {
+  async function returnToInbox(threadId, position, section, context = discoveryContext, retainList = false) {
     guard(context);
     if (inboxThreadId(href()) !== threadId) throw new Error('conversation-changed');
     const links = [...document.querySelectorAll('a[href]')].filter((node) => visible(node) && inboxUrl(node.getAttribute('href')));
-    if (!links.length) throw new Error('inbox-return-unavailable');
-    links[0].click();
-    await waitFor(() => inboxUrl(href()) && [...document.querySelectorAll('[aria-label="Thread list"]')].some(visible), routeTimeoutMs, context);
+    if (!links.length) {
+      if (!retainList || !inboxSurface()) throw new Error('inbox-return-unavailable');
+    } else {
+      links[0].click();
+      await waitFor(() => inboxUrl(href()) && [...document.querySelectorAll('[aria-label="Thread list"]')].some(visible), routeTimeoutMs, context);
+    }
     await selectSection(section, context);
     const scroll = scroller(listRoot()); scroll.scrollTop = position;
     await settle(context);
@@ -6491,15 +6524,18 @@ function createNativeInboxDiscovery({
     await selectSection(state.section);
     let priorWindow = null;
     for (; state.samples < maxSamples;) {
-      guard(); if (!inboxUrl(href())) throw new Error('inbox-route-changed');
+      guard(); if (!inboxSurface()) throw new Error('inbox-route-changed');
       state.samples += 1; state.reason = 'partial';
       const root = listRoot(), scroll = scroller(root), position = scroll.scrollTop || 0;
-      const count = rows(root).length, windowIds = [];
-      for (let index = 0; index < count; index += 1) {
-        guard(); if (!inboxUrl(href())) throw new Error('inbox-route-changed');
+      const count = rows(root).length, windowIds = [], deferredRows = [];
+      for (let turn = 0; turn < count + deferredRows.length; turn += 1) {
+        const index = turn < count ? turn : deferredRows[turn - count];
+        guard(); if (!inboxSurface()) throw new Error('inbox-route-changed');
         if (visits >= maxVisits) throw new Error('visit-limit');
         const currentRoot = listRoot(), row = rows(currentRoot)[index];
         if (!row || !currentRoot.contains(row)) throw new Error('inbox-window-changed');
+        const previous = row.tagName === 'A' ? inboxThreadId(row.getAttribute('href')) : null;
+        if (previous && inventory.has(previous)) { windowIds.push(previous); continue; }
         // The position is only used to observe a row. Resulting route IDs,
         // never row positions or preview text, identify conversations.
         const evidence = { row, fingerprint: fingerprint(row), href: row.tagName === 'A' ? row.getAttribute('href') : null,
@@ -6507,12 +6543,24 @@ function createNativeInboxDiscovery({
         const priorPanes = messagePanes();
         const priorActions = priorPanes.flatMap((pane) => [...pane.querySelectorAll('[aria-label="Message actions"]')]);
         const priorHeaders = [...document.querySelectorAll('[data-pagelet="IGDInboxHeaderOffMsys"]')];
+        const priorThread = inboxThreadId(href());
+        // The desktop inbox remains visible alongside an open conversation.
+        // A selected row may not change the URL. Revisit it after another row
+        // instead of attributing the previous URL to the row just clicked.
         visits += 1; row.click();
-        const threadId = await waitFor(() => {
-          const id = inboxThreadId(href());
-          if (!id && !inboxUrl(href())) throw new Error('unexpected-route');
-          return id;
-        });
+        let threadId;
+        try {
+          threadId = await waitFor(() => {
+            const id = inboxThreadId(href());
+            if (!id && !inboxUrl(href())) throw new Error('unexpected-route');
+            return id && id !== priorThread ? id : false;
+          });
+        } catch (error) {
+          if (error.message !== 'navigation-timeout' || !priorThread || !inboxSurface()) throw error;
+          if (turn < count && count > 1) deferredRows.push(index);
+          if (inventory.has(priorThread)) windowIds.push(priorThread);
+          continue;
+        }
         if (evidence.href && inboxThreadId(evidence.href) !== threadId) throw new Error('conversation-changed');
         if (!inventory.has(threadId)) {
           if (inventory.size >= maxThreads) throw new Error('thread-limit');
@@ -6530,7 +6578,7 @@ function createNativeInboxDiscovery({
           if (error.message !== 'navigation-timeout') throw error;
         }
         windowIds.push(threadId); publish();
-        await returnToInbox(threadId, position, state.section);
+        await returnToInbox(threadId, position, state.section, discoveryContext, true);
       }
       guard();
       const nextRoot = listRoot();
@@ -6541,11 +6589,29 @@ function createNativeInboxDiscovery({
         }
       }
       const signature = windowIds.join(',');
-      if (signature === priorWindow) { state.reason = 'repeated-window-unverified'; return; }
+      const repeated = signature === priorWindow;
       priorWindow = signature;
       const next = scroller(nextRoot), end = Math.max(0, next.scrollHeight - next.clientHeight);
       const destination = Math.min(end, (next.scrollTop || 0) + Math.max(1, Math.floor(next.clientHeight * 0.8)));
-      if (destination <= (next.scrollTop || 0)) { state.reason = 'end-unverified'; return; }
+      if (destination <= (next.scrollTop || 0)) {
+        const height = next.scrollHeight;
+        const mounted = rows(nextRoot).map(fingerprint).join('\n');
+        // Reaching the bottom triggers pagination; it is not itself the end.
+        // Keep the rail there while its next page loads and reacquire recycled
+        // containers. Only stop after a bounded quiet wait with no new window.
+        try {
+          await waitFor(() => {
+            const root = listRoot(), scroll = scroller(root);
+            return scroll.scrollHeight !== height || rows(root).map(fingerprint).join('\n') !== mounted;
+          }, paginationTimeoutMs);
+          priorWindow = null;
+          continue;
+        } catch (error) {
+          if (error.message !== 'navigation-timeout') throw error;
+          state.reason = repeated ? 'repeated-window-unverified' : 'end-unverified';
+          return;
+        }
+      }
       next.scrollTop = destination; await settle();
     }
     state.reason = 'sample-limit';
@@ -6674,7 +6740,7 @@ function createNativeInboxDiscovery({
       started = true;
       if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');
       try {
-        guard(); if (!inboxUrl(href())) throw new Error('inbox-route-required');
+        guard(); if (!inboxSurface()) throw new Error('inbox-route-required');
         for (const state of sectionState) {
           try { await scan(state); }
           catch (error) { state.reason = error.message; throw error; }
@@ -7144,9 +7210,11 @@ function createUserscriptInboxDiscovery({
   if (!document || !window?.location || typeof viewer?.inspect !== 'function'
     || typeof viewer.accountKey !== 'function' || typeof now !== 'function'
     || (onProgress !== null && typeof onProgress !== 'function')) throw new Error('inbox-discovery-unavailable');
-  let active = null, inventory = null, captured = null, navigator = null;
+  let active = null, inventory = null, captured = null, navigator = null, opening = null;
   let state = { status: 'idle', reason: null, inventory: null, executionAvailable: false };
   const snapshot = () => copy(state);
+  const inboxReady = () => /^\/direct\/(?:inbox\/?|t\/\d+\/?)$/.test(window.location.pathname)
+    && [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible).length === 1;
   const publish = (patch) => {
     state = { ...state, ...patch };
     try { onProgress?.(snapshot()); } catch {}
@@ -7170,11 +7238,13 @@ function createUserscriptInboxDiscovery({
     const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
     if (roots.length !== 1) return null;
     const selected = [...roots[0].querySelectorAll('[role="tab"][aria-selected="true"]')].filter(visible);
+    if (!selected.length && !roots[0].querySelectorAll('[role="tab"]').length) return 'primary';
     if (selected.length !== 1) return null;
     const label = (selected[0].getAttribute('aria-label') || selected[0].textContent || '').trim();
     return nativeInboxSection(label);
   }
   const stop = () => {
+    if (opening) { opening.abort(); return true; }
     if (navigator) { navigator.stop(); navigator = null; return true; }
     if (!active) return false;
     active.stop(); publish({ status: 'stopping', reason: 'cancelled', inventory: active.snapshot() });
@@ -7185,22 +7255,55 @@ function createUserscriptInboxDiscovery({
     availableSections() {
       const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
       if (roots.length !== 1) return [];
-      return [...new Set([...roots[0].querySelectorAll('[role="tab"]')]
+      const sections = [...new Set([...roots[0].querySelectorAll('[role="tab"]')]
         .filter(visible)
         .map((tab) => nativeInboxSection(tab.getAttribute('aria-label') || tab.textContent))
         .filter(Boolean))];
+      return sections.length ? sections : ['primary'];
     },
     reviewLabels() {
       const current = context();
       if (state.inventory && current.accountId !== state.inventory.accountId) return rejectContext('inbox-account-changed');
       return (active || captured)?.reviewLabels() || [];
     },
-    async discover({ navigationAcknowledged = false, sections = ['primary'], expiresAt = now() + 5 * 60_000 } = {}) {
-      if (active) throw new Error('inbox-discovery-active');
+    async discover({ navigationAcknowledged = false, sections = null, expiresAt = now() + 20 * 60_000 } = {}) {
+      if (active || opening) throw new Error('inbox-discovery-active');
       if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');
       if (!Number.isFinite(expiresAt) || expiresAt <= now() || expiresAt > now() + 20 * 60_000) throw new Error('discovery-expired');
-      if (!/^\/direct\/inbox\/?$/.test(window.location.pathname)) throw new Error('inbox-route-required');
       const identity = context();
+      if (!inboxReady()) {
+        const links = [...document.querySelectorAll('a[href]')].filter(node => {
+          if (!visible(node)) return false;
+          try { const target = new URL(node.getAttribute('href'), ORIGIN);
+            if (target.origin !== ORIGIN) return false;
+            if (/^\/direct\/inbox\/?$/.test(target.pathname)) return true;
+            return /^\/direct\/t\/\d+\/?$/.test(target.pathname)
+              && (node.getAttribute('aria-label') === 'Messages'
+                || node.querySelector('[aria-label="Messages"]')); }
+          catch { return false; }
+        });
+        if (!links.length) throw new Error('inbox-return-unavailable');
+        opening = new AbortController();
+        publish({ status: 'discovering', reason: null, inventory: null });
+        const deadline = now() + routeTimeoutMs;
+        try {
+          links[0].click();
+          while (true) {
+            if (opening.signal.aborted) throw new Error('cancelled');
+            const observed = viewer.inspect({ document, location: window.location });
+            if (observed?.restriction) throw new Error('inbox-account-restricted');
+            if (observed?.accountVerified && observed.accountKey !== identity.accountId) throw new Error('inbox-account-changed');
+            if (inboxReady() && observed?.accountVerified && observed.accountKey === identity.accountId) break;
+            if (now() >= deadline) throw new Error('navigation-timeout');
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          if (opening.signal.aborted) throw new Error('cancelled');
+        } catch (error) {
+          publish({ status: 'needs-attention', reason: error.message, inventory: null });
+          throw error;
+        } finally { opening = null; }
+      }
+      if (sections === null) sections = this.availableSections();
       navigator?.stop(); navigator = null; captured = null; inventory = null;
       const operation = createNativeInboxDiscovery({
         accountId: identity.accountId, resolveAccount: context,
@@ -7560,6 +7663,8 @@ const MAX_WORKERS = 5;
 const MAX_TTL_MS = 12 * 60 * 60_000;
 const HEARTBEAT_MS = 3_000;
 const STALE_MS = 90_000;
+const OPENING_MS = 60_000;
+const SETTLEMENT_MS = 15_000;
 const TERMINAL = new Set(['completed', 'partial', 'skipped', 'failed', 'uncertain', 'stopped']);
 const reviews = new WeakSet();
 const consumed = new WeakSet();
@@ -7567,16 +7672,6 @@ const consumed = new WeakSet();
 const clone = value => structuredClone(value);
 const fail = reason => { throw new Error(reason); };
 const identity = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value);
-const digest = (value) => {
-  const source = JSON.stringify(value);
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < source.length; index += 1) {
-    hash ^= source.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-};
-
 function createUserscriptGhostReview({
   accountId,
   threadIds,
@@ -7658,15 +7753,19 @@ function createUserscriptGhostBridge({
   const threadFromLocation = () => String(location?.pathname || '').match(/^\/direct\/t\/([^/?#]+)\/?$/)?.[1] || null;
   const sleep = (ms, signal) => new Promise((resolve, reject) => {
     let timer = null;
+    let settled = false;
     const finish = (error) => {
+      if (settled) return;
+      settled = true;
       clearTimeoutFn(timer);
       signal?.removeEventListener?.('abort', abort);
       error ? reject(error) : resolve();
     };
     const abort = () => finish(new DOMException('Stopped', 'AbortError'));
     if (signal?.aborted) return abort();
-    signal?.addEventListener?.('abort', abort, { once: true });
     timer = setTimeoutFn(() => finish(), ms);
+    signal?.addEventListener?.('abort', abort, { once: true });
+    if (signal?.aborted) abort();
   });
 
   function createManager(review) {
@@ -7680,13 +7779,16 @@ function createUserscriptGhostBridge({
     let finishing = null;
     let releaseCoordinatorLock = null;
     let coordinatorLockPromise = null;
+    let releaseActivityLock = null;
+    let activityLockPromise = null;
+    let ticking = null;
     let resolveFinished = null;
     const finished = new Promise(resolve => { resolveFinished = resolve; });
     const snapshot = () => current ? clone(current) : null;
     const publish = (job) => {
       current = job ? clone(job) : null;
       const value = snapshot();
-      for (const listener of listeners) listener(value);
+      for (const listener of listeners) { try { listener(value); } catch {} }
       if (value && value.status !== 'running') settle();
     };
     const settle = () => {
@@ -7694,12 +7796,24 @@ function createUserscriptGhostBridge({
       finishing = Promise.resolve().then(async () => {
         if (heartbeat !== null) clearIntervalFn(heartbeat);
         heartbeat = null;
+        // A confirmed click may still be settling when Stop is pressed. Keep
+        // that tab alive until its result is saved; never close it mid-proof.
+        const deadline = now() + SETTLEMENT_MS;
+        while (current?.pendingMutation?.phase === 'dispatched' && now() < deadline) {
+          await sleep(100);
+          const saved = await read();
+          if (saved?.jobId === current?.jobId) current = saved;
+        }
         if (storageListener !== null) storage.unlisten(storageListener);
         storageListener = null;
         releaseCoordinatorLock?.();
         releaseCoordinatorLock = null;
         await Promise.resolve(coordinatorLockPromise).catch(() => {});
-        for (const handle of handles.values()) {
+        releaseActivityLock?.();
+        releaseActivityLock = null;
+        await Promise.resolve(activityLockPromise).catch(() => {});
+        for (const [threadId, handle] of handles) {
+          if (current?.pendingMutation?.threadId === threadId) continue;
           try { await handle?.close?.(); } catch {}
         }
         handles.clear();
@@ -7708,7 +7822,18 @@ function createUserscriptGhostBridge({
       });
       return finishing;
     };
-    const tick = async () => {
+    const closeSettled = async saved => {
+      if (saved?.jobId === current?.jobId) for (const [threadId, handle] of handles) {
+        const task = saved.tasks.find(item => item.threadId === threadId);
+        if (task && TERMINAL.has(task.status) && saved.pendingMutation?.threadId !== threadId) {
+          try { await handle?.close?.(); } catch {}
+          handles.delete(threadId);
+        }
+      }
+    };
+    const runTick = async () => {
+      // Reuse a bounded tab pool, not one tab per conversation until the end.
+      await closeSettled(await read());
       const launches = [];
       const job = await update((value) => {
         if (!validJob(value) || value.jobId !== current?.jobId
@@ -7719,6 +7844,12 @@ function createUserscriptGhostBridge({
           return value;
         }
         value.coordinatorHeartbeatAt = now();
+        for (const task of value.tasks) {
+          if (task.status === 'opening' && (now() - task.openedAt >= OPENING_MS
+            || handles.get(task.threadId)?.closed === true)) {
+            task.status = 'failed'; task.reason = 'conversation-load-timeout';
+          }
+        }
         const stale = value.tasks.find(task => task.status === 'running'
           && now() - Number(task.workerHeartbeatAt) > STALE_MS);
         if (stale) {
@@ -7730,6 +7861,7 @@ function createUserscriptGhostBridge({
         for (const task of value.tasks.filter(task => task.status === 'pending').slice(0, value.workerCount - active)) {
           task.status = 'opening';
           task.launchId = randomId();
+          task.openedAt = now();
           launches.push({ threadId: task.threadId, launchId: task.launchId });
         }
         if (value.tasks.every(task => TERMINAL.has(task.status))) {
@@ -7738,26 +7870,36 @@ function createUserscriptGhostBridge({
         value.updatedAt = now();
         return value;
       });
+      await closeSettled(job);
       publish(job);
       for (const launch of launches) {
+        if (current?.status !== 'running') break;
         try {
-          const handle = await openTab(`https://www.instagram.com/direct/t/${encodeURIComponent(launch.threadId)}/`, {
+          const handle = await openTab(`https://www.instagram.com/direct/t/${encodeURIComponent(launch.threadId)}/#insta-toolbox-worker=${job.jobId}.${launch.launchId}`, {
             active: !review.openInBackground, insert: true, setParent: true,
           });
           handles.set(launch.threadId, handle);
+          if (current?.status !== 'running') {
+            await handle?.close?.(); handles.delete(launch.threadId);
+          }
         } catch {
           const failed = await update((value) => {
             if (!validJob(value) || value.jobId !== current?.jobId) return value;
             const task = value.tasks.find(item => item.threadId === launch.threadId
               && item.launchId === launch.launchId && item.status === 'opening');
             if (task) { task.status = 'failed'; task.reason = 'tab-open-failed'; }
-            value.status = 'paused'; value.reason = 'tab-open-failed'; value.updatedAt = now();
+            value.updatedAt = now();
             return value;
           });
           publish(failed);
         }
       }
       return snapshot();
+    };
+    const tick = () => {
+      if (ticking) return ticking;
+      ticking = runTick().finally(() => { ticking = null; });
+      return ticking;
     };
     return Object.freeze({
       kind: 'multi-tab',
@@ -7795,6 +7937,14 @@ function createUserscriptGhostBridge({
         );
         if (!await coordinatorReady) fail('ghost-coordinator-active');
         try {
+          let announceActivityLock;
+          const ready = new Promise(resolve => { announceActivityLock = resolve; });
+          activityLockPromise = locks.request(`insta-toolbox:account-activity:${review.accountId}`,
+            { mode: 'exclusive', ifAvailable: true }, async lock => {
+              announceActivityLock(Boolean(lock));
+              if (lock) await new Promise(resolve => { releaseActivityLock = resolve; });
+            });
+          if (!await ready) fail('ghost-account-busy');
           await locks.request(jobLock(), { mode: 'exclusive' }, async () => {
             const existing = await read();
             if (activeJob(existing)) fail('ghost-job-active');
@@ -7804,7 +7954,10 @@ function createUserscriptGhostBridge({
             if (!validJob(value) || value.jobId !== current?.jobId) return;
             publish(value);
           });
-          heartbeat = setIntervalFn(() => { void tick().catch(() => {}); }, HEARTBEAT_MS);
+          heartbeat = setIntervalFn(() => { void tick().catch(error => {
+            current.status = 'paused'; current.reason = error?.message || 'ghost-storage-failed';
+            publish(current);
+          }); }, HEARTBEAT_MS);
           await tick();
           return finished;
         } catch (error) {
@@ -7832,16 +7985,34 @@ function createUserscriptGhostBridge({
 
   async function attachWorker() {
     const threadId = threadFromLocation();
-    if (!threadId) return null;
+    const launch = String(location?.hash || '').match(/^#insta-toolbox-worker=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
+    if (!threadId || !launch) return null;
     const workerId = randomId();
     let latest = await read();
-    const context = inspectContext();
-    if (!activeJob(latest) || !await coordinatorPresent(latest)
-      || context?.accountId !== latest.accountId
-      || context?.threadId !== threadId || context?.usable !== true) return null;
+    const deadline = now() + OPENING_MS;
+    let context;
+    // The userscript starts before React mounts the authenticated message pane.
+    // A launch fragment is correlation only; the private reviewed job grants
+    // authority. An ordinary Instagram tab must never become a worker.
+    while (true) {
+      latest = await read();
+      const opening = latest?.tasks?.find(item => item.threadId === threadId
+        && item.status === 'opening' && item.launchId === launch[2]);
+      if (!activeJob(latest) || latest.jobId !== launch[1] || !opening
+        || threadFromLocation() !== threadId || !await coordinatorPresent(latest)) return null;
+      context = inspectContext();
+      if (context?.restriction || (context?.accountId && context.accountId !== latest.accountId)) return null;
+      const messageView = typeof runner.inspect === 'function' ? runner.inspect() : null;
+      if (context?.accountId === latest.accountId && context?.threadId === threadId
+        && context?.usable === true && (typeof runner.inspect !== 'function'
+          || (messageView?.ready === true && messageView.threadId === threadId))) break;
+      if (now() >= deadline) return null;
+      await sleep(250);
+    }
     latest = await update((value) => {
       if (!activeJob(value) || value.accountId !== context.accountId) return value;
-      const task = value.tasks.find(item => item.threadId === threadId && item.status === 'opening');
+      const task = value.tasks.find(item => item.threadId === threadId && item.status === 'opening'
+        && value.jobId === launch[1] && item.launchId === launch[2]);
       if (!task) return value;
       task.status = 'running'; task.workerId = workerId; task.workerHeartbeatAt = now();
       value.updatedAt = now();
@@ -7880,6 +8051,16 @@ function createUserscriptGhostBridge({
     let grant = null;
     const adapter = Object.freeze({
       signal: controller.signal,
+      async onDispatch() {
+        valid();
+        if (!grant) fail('ghost-worker-target-unproven');
+        latest = await update(value => {
+          if (!activeJob(value) || value.jobId !== latest.jobId || value.pendingMutation) fail('ghost-job-changed');
+          value.pendingMutation = { threadId, workerId, phase: 'dispatched' };
+          value.updatedAt = now();
+          return value;
+        });
+      },
       assertContext: ({ threadId: expected }) => expected === threadId && valid(),
       assertAction: ({ threadId: expected, candidate }) => expected === threadId && grant
         && candidate?.key === grant.key && candidate?.timestamp === grant.timestamp && valid(candidate),
@@ -7898,29 +8079,35 @@ function createUserscriptGhostBridge({
             if (!activeJob(value) || value.jobId !== latest.jobId || value.pendingMutation) fail('ghost-job-changed');
             const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
             if (row?.status !== 'running') fail('ghost-worker-revoked');
-            value.pendingMutation = { threadId, workerId, phase: 'dispatched' };
             value.nextActionAt = now() + 1_000 + Math.floor(Math.max(0, Math.min(1, random())) * 1_000);
             value.updatedAt = now();
             return value;
           });
           let result;
+          let actionError;
           try { result = await execute(); }
-          catch { result = { verified: false }; }
+          catch (error) { actionError = error; }
           latest = await update((value) => {
             if (!validJob(value) || value.jobId !== latest.jobId) return value;
             const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
             if (result?.verified === true && row) {
               row.messageRemovals += 1; value.pendingMutation = null;
+            } else if (value.pendingMutation?.workerId === workerId
+              && actionError?.code !== 'DM_UNSEND_RETRYABLE' && actionError?.dmDispatched !== false) {
+              if (row) { row.uncertain = (row.uncertain || 0) + 1; row.reason = 'removal-not-proven'; }
+              // The runner retires this target, never retries the uncertain
+              // click, and can continue with other independently resolved rows.
+              value.pendingMutation = null;
             } else {
-              if (row) { row.status = 'uncertain'; row.reason = 'removal-not-proven'; }
-              if (value.pendingMutation?.workerId === workerId) value.pendingMutation.phase = 'uncertain';
-              value.status = 'paused'; value.reason = 'removal-not-proven';
+              // No confirmation was dispatched, or the exact unchanged target
+              // was proved still present. Let the runner retry its native menu.
+              value.pendingMutation = null;
             }
             value.updatedAt = now();
             return value;
           });
           grant = null;
-          if (result?.verified !== true) controller.abort('removal-not-proven');
+          if (actionError) throw actionError;
           return { verified: result?.verified === true };
         }),
     });
@@ -7935,8 +8122,18 @@ function createUserscriptGhostBridge({
         row.status = outcome?.status === 'completed' ? 'completed'
           : outcome?.uncertain ? 'uncertain' : outcome?.processed > 0 ? 'partial' : 'failed';
         row.reason = outcome?.status === 'completed' ? null : outcome?.message || 'conversation-incomplete';
-        if (row.status === 'uncertain') { value.status = 'paused'; value.reason = 'removal-not-proven'; }
         value.updatedAt = now();
+        return value;
+      });
+      return clone(latest.tasks.find(item => item.threadId === threadId));
+    } catch (error) {
+      latest = await update(value => {
+        if (!validJob(value) || value.jobId !== latest.jobId) return value;
+        const row = value.tasks.find(item => item.threadId === threadId && item.workerId === workerId);
+        if (row?.status === 'running') {
+          row.status = row.messageRemovals ? 'partial' : 'failed';
+          row.reason = error?.message || 'conversation-incomplete';
+        }
         return value;
       });
       return clone(latest.tasks.find(item => item.threadId === threadId));
@@ -7976,6 +8173,7 @@ function mountUserscriptInboxPanel({
   workerTransport = null,
   defaultWorkerCount = 2,
   openWorkersInBackground = true,
+  discoveryTiming = {},
   busy = () => false, onStatus = () => {},
 }) {
   if (!container || typeof confirmAction !== 'function' || typeof save !== 'function') throw new Error('inbox-panel-unavailable');
@@ -8001,7 +8199,7 @@ function mountUserscriptInboxPanel({
   const acknowledgment = create('label', null, 'inbox-choice');
   const acknowledged = create('input'); acknowledged.type = 'checkbox';
   acknowledgment.append(acknowledged, document.createTextNode(' Opening conversations may mark them read.'));
-  const note = create('p', 'Open your inbox to find conversations. Nothing is removed during this step.', 'lead');
+  const note = create('p', 'Find conversations, choose which to clean up, then start. Nothing is removed while finding chats.', 'lead');
   const workersLabel = create('label', 'Worker tabs', 'field');
   const workers = create('select');
   workers.setAttribute('aria-label', 'Managed worker tabs');
@@ -8157,7 +8355,8 @@ function mountUserscriptInboxPanel({
     if (value.reason) inventoryStatus.textContent += ` ${friendlyReason(value.reason)}`;
     updateControls();
   }
-  const discovery = createUserscriptInboxDiscovery({ document, window, viewer, onProgress: showInventory });
+  const discovery = createUserscriptInboxDiscovery({ document, window, viewer, onProgress: showInventory,
+    routeTimeoutMs: discoveryTiming.routeTimeoutMs ?? 8_000, settleMs: discoveryTiming.settleMs ?? 400 });
   function friendlyReason(reason) {
     const labels = {
       'inbox-route-required': 'Open your inbox first.',
@@ -8227,8 +8426,7 @@ function mountUserscriptInboxPanel({
     try {
       await loadCheckpoint();
       if (epoch !== operationEpoch) return;
-      const sections = section.value === 'all' ? discovery.availableSections() : [section.value];
-      if (!sections.length) throw new Error('section-control-unavailable');
+      const sections = section.value === 'all' ? null : [section.value];
       await discovery.discover({ navigationAcknowledged: true, sections });
     }
     catch (error) { announce(friendlyReason(error.message)); }
@@ -8980,7 +9178,7 @@ return Object.freeze({ createPresenceNativeInputs });
 localModules["extension/presence-native-actions.js"] = (() => {
 
 const PROFILE_PATH = /^\/([A-Za-z0-9._]{1,30})\/?$/;
-const STORY_PATH = /^\/stories\/([A-Za-z0-9._]{1,30})\/([^/?#]+)\/?/;
+const STORY_PATH = /^\/stories\/([A-Za-z0-9._]{1,30})(?:\/([^/?#]+))?\/?$/;
 const CONTENT_PATH = /^\/(?:p|reel)\/([^/?#]+)\/?/;
 const STORY_TILE_LABEL = /^story by ([A-Za-z0-9._]{1,30})(?:,|$)/i;
 const RESERVED = new Set(['accounts', 'about', 'api', 'direct', 'explore', 'reels', 'settings', 'stories', 'web']);
@@ -9039,8 +9237,13 @@ function createPresenceNativeActions({
 
   const visible = (node) => {
     if (!node?.isConnected || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
+    if (node.closest?.('[hidden], [aria-hidden="true"], [inert], #insta-toolbox-host')) return false;
     const style = getStyle(node);
     if (style?.display === 'none' || style?.visibility === 'hidden' || Number(style?.opacity) === 0) return false;
+    const rect = node.getBoundingClientRect?.();
+    if (rect && (rect.bottom <= 0 || rect.right <= 0
+      || rect.top >= Number(globalThis.innerHeight || 100_000)
+      || rect.left >= Number(globalThis.innerWidth || 100_000))) return false;
     const rects = node.getClientRects?.();
     return !rects || rects.length > 0;
   };
@@ -9103,7 +9306,7 @@ function createPresenceNativeActions({
   const storyViewerRoot = (expected) => {
     const match = String(location.pathname || '').match(STORY_PATH);
     if (!match || match[1].toLocaleLowerCase() !== expected.username
-      || (expected.storyId && match[2] !== expected.storyId)) return null;
+      || (expected.storyId && match[2] && match[2] !== expected.storyId)) return null;
     const qualifying = (roots) => roots.filter(visible).filter((root) => {
       const media = [...root.querySelectorAll('video,img')].filter(visible);
       const controls = exactButtons(root, new Set(['pause', 'next', 'like', 'unlike']));
@@ -9112,9 +9315,43 @@ function createPresenceNativeActions({
     const dialogs = qualifying([...document.querySelectorAll('[role="dialog"]')]);
     if (dialogs.length) return dialogs.length === 1 ? dialogs[0] : null;
     const mains = qualifying([...document.querySelectorAll('main')]);
-    return mains.length === 1 ? mains[0] : null;
+    if (mains.length === 1) return mains[0];
+    // The full-screen web viewer is also rendered directly under the app root,
+    // without main/dialog landmarks. Its route, media and native toolbar still
+    // identify it; do not require a profile-page landmark after opening a story.
+    return document.body && qualifying([document.body]).length === 1 ? document.body : null;
   };
   const storyLoaded = (expected) => Boolean(storyViewerRoot(expected));
+  const currentStory = () => {
+    const match = String(location.pathname || '').match(STORY_PATH);
+    if (!match) return null;
+    const username = match[1].toLocaleLowerCase();
+    const root = storyViewerRoot({ username, storyId: match[2] });
+    if (!root) return null;
+    if (match[2]) return { username, storyId: match[2], root };
+    // Current Instagram routes often omit the slide ID entirely. Identify the
+    // active full-size media, not avatar thumbnails or off-screen previews.
+    const largeMedia = scope => [...scope.querySelectorAll('video,img')].filter(visible).filter(node => {
+      const rect = node.getBoundingClientRect?.();
+      return rect && rect.width >= 128 && rect.height >= 128
+        && rect.bottom > 0 && rect.right > 0
+        && rect.top < Number(globalThis.innerHeight || 100_000)
+        && rect.left < Number(globalThis.innerWidth || 100_000);
+    });
+    let media = largeMedia(root);
+    const playback = exactButtons(root, new Set(['pause', 'play']));
+    if (playback.length === 1) for (let node = playback[0].parentElement; node; node = node.parentElement) {
+      const nearby = largeMedia(node);
+      if (nearby.length === 1) { media = nearby; break; }
+      if (node === root) break;
+    }
+    if (media.length !== 1) return null;
+    const source = media[0].currentSrc || media[0].getAttribute('src');
+    if (!source) return null;
+    let hash = 0x811c9dc5;
+    for (const character of `${username}:${source}`) hash = Math.imul(hash ^ character.charCodeAt(0), 0x01000193);
+    return { username, storyId: `media-${(hash >>> 0).toString(16)}`, root };
+  };
   const profileControls = (root, username) => [...root.querySelectorAll('a[href]')]
     .filter(visible)
     .filter((node) => profile(node)?.username === username);
@@ -9178,9 +9415,25 @@ function createPresenceNativeActions({
       const candidate = url(node);
       return candidate?.origin === location.origin && pathnames.has(candidate.pathname);
     });
-    return matches.length === 1 ? matches[0] : null;
+    return matches.length ? matches[0] : null;
   };
-  const openSurface = async (action, signal) => {
+  const closeOverlay = async (action, signal, guard) => {
+    const inStory = STORY_PATH.test(String(location.pathname));
+    if (inStory && (action === 'reactStories'
+      || (action === 'viewStories' && candidates('viewStories').length))) return true;
+    const names = inStory ? new Set(['close', 'close story', 'close stories'])
+      : new Set(['close notifications']);
+    const controls = exactControls(document, names);
+    if (controls.length === 1 && (inStory || action !== 'acceptRequests')) {
+      guard?.();
+      controls[0].click();
+      return waitFor(() => inStory ? !STORY_PATH.test(String(location.pathname))
+        : !visible(controls[0]), signal, guard);
+    }
+    return !inStory;
+  };
+  const openSurface = async (action, signal, guard) => {
+    if (!await closeOverlay(action, signal, guard)) return false;
     let control = null;
     let ready = null;
     if (['viewStories', 'likePosts'].includes(action) && location.pathname !== '/') {
@@ -9192,26 +9445,39 @@ function createPresenceNativeActions({
       ready = () => String(location.pathname).startsWith('/explore');
     } else if (action === 'acceptRequests') {
       const controls = exactControls(document, new Set(['notifications']));
+      if (exactControls(document, new Set(['close notifications'])).length
+        || candidates('acceptRequests').length) return true;
       if (controls.length === 1 && controls[0].getAttribute?.('aria-expanded') !== 'true') {
         control = controls[0];
         ready = () => candidates('acceptRequests').length > 0
-          || control.getAttribute?.('aria-expanded') === 'true';
+          || control.getAttribute?.('aria-expanded') === 'true'
+          || exactControls(document, new Set(['close notifications'])).length > 0;
       }
     }
     if (!control || typeof control.click !== 'function') return false;
+    guard?.();
     control.click();
-    return waitFor(ready, signal);
+    return waitFor(ready, signal, guard);
   };
-  const advanceSurface = async (action, seen, signal) => {
+  const advanceSurface = async (action, seen, signal, guard) => {
     if (!['likePosts', 'followPeople'].includes(action)) return false;
-    const surface = document.scrollingElement || document.documentElement;
+    const anchors = action === 'likePosts' ? [...document.querySelectorAll('article')].filter(visible)
+      : exactButtons(document, new Set(['follow']));
+    let surface = null;
+    for (let node = anchors[0]?.parentElement; node; node = node.parentElement) {
+      if (/(auto|scroll)/.test(getStyle(node)?.overflowY || '')
+        && Number(node.scrollHeight) > Number(node.clientHeight) + 1) { surface = node; break; }
+    }
+    surface ||= document.scrollingElement || document.documentElement;
     if (typeof surface?.scrollBy !== 'function') return false;
+    guard?.();
     surface.scrollBy({ top: Math.max(320, Math.round(Number(globalThis.innerHeight || 800) * .75)),
       left: 0, behavior: 'auto' });
-    return waitFor(() => candidates(action).some(candidate => !seen.has(candidate.id)), signal);
+    return waitFor(() => candidates(action).some(candidate => !seen.has(candidate.id)), signal, guard);
   };
 
   function candidates(action) {
+    if (STORY_PATH.test(String(location.pathname)) && !['viewStories', 'reactStories'].includes(action)) return [];
     if (action === 'likePosts') {
       return [...document.querySelectorAll('article')].filter(visible).flatMap((article) => {
         const links = [...article.querySelectorAll('a[href]')].map(content).filter(Boolean);
@@ -9235,17 +9501,17 @@ function createPresenceNativeActions({
     }
     if (action === 'viewStories') {
       const current = String(location.pathname || '').match(STORY_PATH);
-      const currentTarget = current
-        ? { username: current[1].toLocaleLowerCase(), storyId: current[2] }
-        : null;
-      const viewerRoot = currentTarget ? storyViewerRoot(currentTarget) : null;
+      const currentTarget = currentStory();
+      const viewerRoot = currentTarget?.root;
       if (viewerRoot) {
         const controls = exactButtons(viewerRoot, new Set(['next']));
         if (controls.length !== 1) return [];
-        return [{ action, id: `story-next:${current[1].toLocaleLowerCase()}:${current[2]}`,
-          label: 'Next story', target: { fromPath: String(location.pathname) },
+        return [{ action, id: `story-next:${currentTarget.username}:${currentTarget.storyId}`,
+          label: 'Next story', target: { fromPath: String(location.pathname),
+            fromStory: `${currentTarget.username}:${currentTarget.storyId}` },
           root: viewerRoot, control: controls[0] }];
       }
+      if (current) return [];
       const unique = new Map();
       for (const control of buttonControls(document).filter(visible)) {
         const target = storyTile(control);
@@ -9267,11 +9533,10 @@ function createPresenceNativeActions({
       return [...unique.values()];
     }
     if (action === 'reactStories') {
-      const current = String(location.pathname || '').match(STORY_PATH);
+      const current = currentStory();
       if (!current) return [];
-      const target = { username: current[1].toLocaleLowerCase(), storyId: current[2] };
-      const viewerRoot = storyViewerRoot(target);
-      if (!viewerRoot) return [];
+      const target = { username: current.username, storyId: current.storyId };
+      const viewerRoot = current.root;
       const controls = exactButtons(viewerRoot, new Set(['like']));
       if (controls.length !== 1) return [];
       return [{ action, id: `story-reaction:${target.username}:${target.storyId}`,
@@ -9300,13 +9565,15 @@ function createPresenceNativeActions({
         frozen: document.visibilityState === 'hidden' && document.wasDiscarded === true,
         discarded: document.wasDiscarded === true });
     },
-    async find(action, { seen = new Set(), signal } = {}) {
+    async find(action, { seen = new Set(), signal, assertCurrent } = {}) {
       if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
+      assertCurrent?.();
+      if (!await closeOverlay(action, signal, assertCurrent)) return null;
       let available = candidates(action).filter((candidate) => !seen.has(candidate.id));
-      if (!available.length && await openSurface(action, signal)) {
+      if (!available.length && await openSurface(action, signal, assertCurrent)) {
         available = candidates(action).filter((candidate) => !seen.has(candidate.id));
       }
-      if (!available.length && await advanceSurface(action, seen, signal)) {
+      if (!available.length && await advanceSurface(action, seen, signal, assertCurrent)) {
         available = candidates(action).filter((candidate) => !seen.has(candidate.id));
       }
       return available.length ? Object.freeze(available[0]) : null;
@@ -9330,7 +9597,7 @@ function createPresenceNativeActions({
           }, signal, assertCurrent);
           return verified
             ? { verified: true, label: current.label, reason: 'Story opened' }
-            : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+            : { verified: false, skipped: true, reason: 'Story did not finish loading' };
         }
         if (!current.target.fromPath) {
           current.control.click();
@@ -9350,22 +9617,27 @@ function createPresenceNativeActions({
           const verified = await waitFor(() => storyLoaded(expected), signal, assertCurrent);
           return verified
             ? { verified: true, label: current.label, reason: 'Story opened' }
-            : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+            : { verified: false, skipped: true, reason: 'Story did not finish loading' };
         }
         current.control.click();
         const verified = await waitFor(() => {
-          if (String(location.pathname) === current.target.fromPath) return false;
-          const next = String(location.pathname).match(STORY_PATH);
-          return Boolean(next) && storyLoaded({ username: next[1].toLocaleLowerCase(), storyId: next[2] });
+          const next = currentStory();
+          return Boolean(next) && `${next.username}:${next.storyId}` !== current.target.fromStory;
         }, signal, assertCurrent);
         return verified
           ? { verified: true, label: current.label,
             reason: current.target.fromPath ? 'Next story opened' : 'Story opened' }
-          : { verified: false, uncertain: true, reason: 'Story view could not be verified' };
+          : { verified: false, skipped: true, reason: STORY_PATH.test(String(location.pathname))
+            ? 'Next story did not finish loading' : 'End of stories' };
       }
       current.control.click();
       const verified = await waitFor(() => {
         if (!current.root.isConnected) return false;
+        if (action === 'reactStories') {
+          const displayed = currentStory();
+          if (!displayed || displayed.username !== current.target.username
+            || displayed.storyId !== current.target.storyId) return false;
+        }
         if (action === 'likePosts' || action === 'reactStories') {
           return exactButtons(current.root, new Set(['unlike'])).length === 1;
         }
@@ -9580,6 +9852,23 @@ function createPresenceSession({
       let cursor = 0;
       let emptySweeps = 0;
       let verifiedInBurst = 0;
+      // Stay on a surface for a short visit instead of bouncing between feed,
+      // stories and notifications after every click. Story reactions follow
+      // the story they belong to before advancing to the next story.
+      const itinerary = [];
+      if (review.options.actions.viewStories) for (let index = 0; index < 3; index += 1) {
+        itinerary.push('viewStories');
+        if (review.options.actions.reactStories) itinerary.push('reactStories');
+      }
+      for (const action of review.enabledActions.filter(value => !['viewStories', 'reactStories'].includes(value))) {
+        itinerary.push(action, action, action);
+      }
+      const assertCurrent = () => {
+        if (signal.aborted || now() >= review.expiresAt) fail('presence-grant-revoked');
+        if (state.status === 'paused') fail('presence-paused');
+        context(review.accountId);
+        return true;
+      };
       publish({
         status: 'running', reason: null, accountId: review.accountId, current: null,
         completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
@@ -9590,7 +9879,7 @@ function createPresenceSession({
         while (!signal.aborted && state.completed < review.options.maxActions && now() < review.expiresAt) {
           await awaitResume(signal);
           context(review.accountId);
-          const action = review.enabledActions[cursor % review.enabledActions.length];
+          const action = itinerary[cursor % itinerary.length];
           cursor += 1;
           publish({
             status: 'searching',
@@ -9599,11 +9888,17 @@ function createPresenceSession({
           let candidate;
           try {
             candidate = await nativeActions.find(action, Object.freeze({ accountId: review.accountId,
-              seen: new Set(seen), signal }));
+              seen: new Set(seen), signal, assertCurrent }));
           } catch (error) {
             if (signal.aborted) throw error;
+            if (error?.message === 'presence-paused') {
+              await awaitResume(signal); cursor -= 1; continue;
+            }
             fail(error?.message || 'presence-discovery-failed');
           }
+          await awaitResume(signal);
+          if (signal.aborted || now() >= review.expiresAt) break;
+          assertCurrent();
           if (!candidate) {
             empty.add(action);
             if (empty.size === review.enabledActions.length) {
@@ -9631,17 +9926,14 @@ function createPresenceSession({
           const actionId = `${action}:${candidate.id}`;
           publish({ status: 'running', current: { action, id: candidate.id,
             label: text(candidate.label) || PRESENCE_ACTION_LABELS[action] } });
-          const assertCurrent = () => {
-            if (signal.aborted || state.status === 'paused' || now() >= review.expiresAt) {
-              fail('presence-grant-revoked');
-            }
-            context(review.accountId);
-            return true;
-          };
           let outcome;
           try {
             assertCurrent();
-            outcome = await nativeActions.execute(action, candidate, Object.freeze({ signal, assertCurrent, actionId }));
+            outcome = await nativeActions.execute(action, candidate, Object.freeze({ signal,
+              assertCurrent: () => {
+                if (state.status === 'paused') fail('presence-grant-revoked');
+                return assertCurrent();
+              }, actionId }));
           } catch (error) {
             if (signal.aborted) throw error;
             outcome = { verified: false, uncertain: true, reason: error?.message || 'presence-outcome-uncertain' };
@@ -10028,6 +10320,7 @@ function mountPresenceSessionPanel({
   let disposed = false;
   let confirming = false;
   let logWindow = null;
+  const loggedEvents = new Set();
   const listeners = [];
   const activityLog = createPresenceActivityLog({
     read: readLog,
@@ -10098,6 +10391,7 @@ function mountPresenceSessionPanel({
   }
   function render(snapshot = session.snapshot()) {
     if (disposed) return;
+    logResultEntries(snapshot);
     const [title, detail] = describe(snapshot);
     const active = ['running', 'searching', 'waiting', 'quiet', 'paused', 'stopping'].includes(snapshot.status);
     intro.hidden = active;
@@ -10196,9 +10490,10 @@ function mountPresenceSessionPanel({
   }
   function logResultEntries(snapshot) {
     for (const entry of [...(snapshot.results || [])].reverse()) {
-      if (!entry.eventId) continue;
+      if (!entry.eventId || loggedEvents.has(entry.eventId)) continue;
       appendLog({ eventId: entry.eventId, at: entry.at, kind: 'action', action: entry.action,
         target: entry.label, outcome: entry.status, detail: entry.reason });
+      loggedEvents.add(entry.eventId);
     }
   }
   async function begin() {
@@ -12227,6 +12522,10 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
         view: 'account',
       };
     }
+    if (preferences.view === 'account' && inspectPresenceAccount().accountVerified) {
+      return { tone: 'ready', title: 'Presence ready',
+        detail: 'Choose activities and start. Presence can move between Instagram pages.', view: 'account' };
+    }
 
     const path = location.pathname.toLowerCase();
     if (path.startsWith('/direct/t/')) {
@@ -13741,23 +14040,23 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
     presenceSession = globalThis.InstaToolboxPresenceSession.create({
       nativeActions,
       locks: globalThis.navigator?.locks || null,
-      onUpdate: next => presencePanel?.render(next),
+      onUpdate: next => { presencePanel?.render(next); renderContext(); },
     });
     presencePanel = globalThis.InstaToolboxPresenceSessionPanel.mount({
       container: query('[data-role="presence-routine"]'), document, window,
       session: presenceSession,
-      inspectAccount: inspectPresenceAccount,
+      inspectAccount: () => nativeActions.inspectContext(),
       confirmAction: confirmRun,
       readPreferences: () => GM_getValue('instaToolboxPresenceSessionV1', null),
       writePreferences: value => GM_setValue('instaToolboxPresenceSessionV1', value),
       readLog: () => {
-        const account = inspectPresenceAccount();
+        const account = nativeActions.inspectContext();
         return account.accountKey
           ? GM_getValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, null)
           : null;
       },
       writeLog: value => {
-        const account = inspectPresenceAccount();
+        const account = nativeActions.inspectContext();
         if (!account.accountKey) throw new Error('presence-log-account-unverified');
         return GM_setValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, value);
       },

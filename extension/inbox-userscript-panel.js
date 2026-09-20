@@ -11,6 +11,7 @@ export function mountUserscriptInboxPanel({
   workerTransport = null,
   defaultWorkerCount = 2,
   openWorkersInBackground = true,
+  discoveryTiming = {},
   busy = () => false, onStatus = () => {},
 }) {
   if (!container || typeof confirmAction !== 'function' || typeof save !== 'function') throw new Error('inbox-panel-unavailable');
@@ -36,7 +37,7 @@ export function mountUserscriptInboxPanel({
   const acknowledgment = create('label', null, 'inbox-choice');
   const acknowledged = create('input'); acknowledged.type = 'checkbox';
   acknowledgment.append(acknowledged, document.createTextNode(' Opening conversations may mark them read.'));
-  const note = create('p', 'Open your inbox to find conversations. Nothing is removed during this step.', 'lead');
+  const note = create('p', 'Find conversations, choose which to clean up, then start. Nothing is removed while finding chats.', 'lead');
   const workersLabel = create('label', 'Worker tabs', 'field');
   const workers = create('select');
   workers.setAttribute('aria-label', 'Managed worker tabs');
@@ -192,7 +193,8 @@ export function mountUserscriptInboxPanel({
     if (value.reason) inventoryStatus.textContent += ` ${friendlyReason(value.reason)}`;
     updateControls();
   }
-  const discovery = createUserscriptInboxDiscovery({ document, window, viewer, onProgress: showInventory });
+  const discovery = createUserscriptInboxDiscovery({ document, window, viewer, onProgress: showInventory,
+    routeTimeoutMs: discoveryTiming.routeTimeoutMs ?? 8_000, settleMs: discoveryTiming.settleMs ?? 400 });
   function friendlyReason(reason) {
     const labels = {
       'inbox-route-required': 'Open your inbox first.',
@@ -262,8 +264,7 @@ export function mountUserscriptInboxPanel({
     try {
       await loadCheckpoint();
       if (epoch !== operationEpoch) return;
-      const sections = section.value === 'all' ? discovery.availableSections() : [section.value];
-      if (!sections.length) throw new Error('section-control-unavailable');
+      const sections = section.value === 'all' ? null : [section.value];
       await discovery.discover({ navigationAcknowledged: true, sections });
     }
     catch (error) { announce(friendlyReason(error.message)); }

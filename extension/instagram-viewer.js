@@ -29,35 +29,40 @@
     const restriction = session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited;
     if (restriction) return { ...unavailable, threadId, restriction: true, reason: 'instagram-restricted' };
     const lists = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
-    if (lists.length !== 1) return { ...unavailable, threadId, reason: 'account-picker-unavailable' };
+    if (lists.length > 1 || (threadId && lists.length !== 1)) return { ...unavailable, threadId, reason: 'account-picker-unavailable' };
     const list = lists[0];
-    const headings = [...list.querySelectorAll('h2')].filter((heading) => {
+    const headings = [...(list?.querySelectorAll('h2') || [])].filter((heading) => {
       const picker = heading.closest('[role="button"][tabindex="0"]');
       return visible(heading) && picker && list.contains(picker) && visible(picker);
     });
-    if (headings.length !== 1) return { ...unavailable, threadId, reason: 'account-picker-ambiguous' };
-    const accountId = username(headings[0].textContent);
-    if (!accountId) return { ...unavailable, threadId, reason: 'account-name-unavailable' };
+    if (list && headings.length !== 1) return { ...unavailable, threadId, reason: 'account-picker-ambiguous' };
+    const pickerAccount = list ? username(headings[0].textContent) : null;
+    if (list && !pickerAccount) return { ...unavailable, threadId, reason: 'account-name-unavailable' };
     const profiles = [...document.querySelectorAll('a[role="link"][href]')].filter((link) => {
-      if (!visible(link) || list.contains(link)
+      if (!visible(link) || list?.contains(link)
         || link.getAttribute('aria-label')?.startsWith('Open the profile page of')) return false;
       const match = pathOf(link).match(/^\/([a-z0-9._]+)\/?$/i);
-      if (!match || username(match[1]) !== accountId) return false;
+      const accountId = match && username(match[1]);
+      if (!accountId || (pickerAccount && accountId !== pickerAccount)) return false;
       const pictures = [...link.querySelectorAll('img')].filter(visible);
       if (pictures.length !== 1
         || String(pictures[0].getAttribute('alt')).toLowerCase() !== `${accountId}'s profile picture`) return false;
       for (let rail = link.parentElement; rail && rail !== document.body; rail = rail.parentElement) {
-        if (rail.contains(list)) return false;
-        const paths = new Set([...rail.querySelectorAll('a[href]')].filter(visible).map(pathOf));
+        if ((list && rail.contains(list)) || rail.querySelector?.('main, article, [data-pagelet="IGDMessagesList"]')) return false;
+        const links = [...rail.querySelectorAll('a[href]')].filter(visible);
+        const paths = new Set(links.map(pathOf));
+        const messages = links.some(node => /^\/direct\/t\/\d+\/?$/.test(pathOf(node))
+          && (node.getAttribute('aria-label') === 'Messages' || node.querySelector?.('[aria-label="Messages"]')));
         if (paths.has('/') && (paths.has('/reels/') || paths.has('/reels'))
-          && (paths.has('/direct/inbox/') || paths.has('/direct/inbox'))) return true;
+          && (paths.has('/direct/inbox/') || paths.has('/direct/inbox') || messages)) return true;
       }
       return false;
     });
     if (profiles.length !== 1) return { ...unavailable, threadId, reason: 'account-navigation-unavailable' };
+    const accountId = pickerAccount || username(pathOf(profiles[0]).split('/')[1]);
     return { accountVerified: true, accountId, threadId, usable: Boolean(threadId),
       accountKey: accountKey(accountId), identityKind: 'verified-viewer-username',
-      restriction: false, evidence: 'visible-account-picker-and-navigation' };
+      restriction: false, evidence: list ? 'visible-account-picker-and-navigation' : 'visible-account-navigation' };
   }
   Object.defineProperty(globalThis, 'InstaToolboxInstagramViewer', {
     configurable: false, writable: false, value: Object.freeze({ inspect, accountKey }),

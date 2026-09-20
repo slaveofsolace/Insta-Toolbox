@@ -426,7 +426,7 @@ test('the primary Unsend action requires an explicit in-overlay second click wit
   assert.doesNotMatch(labels, /phrase = `UNSEND|ENABLE LIVE ACTIONS/);
   assert.match(labels, /countExact: false/);
   assert.match(labels, /stableEmptyPasses < STABLE_EMPTY_PASSES/);
-  assert.match(labels, /plan\.limit === null \? MAX_PLAN_MESSAGES : plan\.limit/);
+  assert.match(labels, /plan\.limit === null \? Infinity : plan\.limit/);
   assert.doesNotMatch(shell, /'unsend-all':/);
   assert.match(shell, /'run-unsend': \(\) => runDmUnsend\(\)/);
   // An empty result says nothing was touched rather than implying success.
