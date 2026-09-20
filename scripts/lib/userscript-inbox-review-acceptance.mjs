@@ -10,7 +10,7 @@ const conversations = [
   { id: '303', title: 'Weekend makers and exceptionally long conversation names', username: null },
 ];
 
-function fixturePrelude() {
+export function inboxFixturePrelude() {
   return `<script>
     history.replaceState({}, '', '/direct/inbox/');
     const inboxRows = ${JSON.stringify(conversations)};
@@ -81,6 +81,7 @@ function fixturePrelude() {
     });
     for (const item of inboxRows) {
       const row = document.createElement('div');
+      row.dataset.fixtureThread = item.id;
       row.setAttribute('role', 'button'); row.tabIndex = 0;
       row.style.cssText = 'display:flex;align-items:center;gap:12px;min-height:48px';
       const avatar = document.createElement('img');
@@ -140,7 +141,7 @@ export async function acceptUserscriptInboxReview({
     let body = await readFile(file);
     if (url.pathname === '/userscript-fixture.html') {
       body = body.toString().replace('<script src="/userscripts/insta-toolbox.user.js">',
-        `${fixturePrelude()}<script src="/userscripts/insta-toolbox.user.js">`);
+        `${inboxFixturePrelude()}<script src="/userscripts/insta-toolbox.user.js">`);
     }
     return new Response(body, { headers: {
       'Content-Type': file.endsWith('.html') ? 'text/html' : 'text/javascript',

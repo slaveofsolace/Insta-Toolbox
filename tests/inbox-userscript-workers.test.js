@@ -81,10 +81,11 @@ test('manager opens only reviewed inactive worker tabs and Stop closes only owne
   const manager = bridge.createManager(review);
   const running = manager.start();
   while (opened.length < 2) await new Promise(resolve => setTimeout(resolve, 0));
-  assert.deepEqual(opened.map(value => value.url), [
+  assert.deepEqual(opened.map(value => value.url.split('#')[0]), [
     'https://www.instagram.com/direct/t/one/',
     'https://www.instagram.com/direct/t/two/',
   ]);
+  assert.ok(opened.every(value => new URL(value.url).hash.startsWith('#insta-toolbox-worker=')));
   assert.equal(opened.every(value => value.options.active === false), true);
   await manager.stop();
   const result = await running;
@@ -111,7 +112,7 @@ test('worker serializes verified removals through the shared mutation lane', asy
     nextActionAt: 0,
     pendingMutation: null,
     updatedAt: NOW,
-    tasks: [{ threadId: 'thread_1', index: 0, status: 'opening', messageRemovals: 0, reason: null }],
+    tasks: [{ threadId: 'thread_1', launchId: 'launch_1', index: 0, status: 'opening', messageRemovals: 0, reason: null }],
   });
   const calls = [];
   const runner = {
@@ -124,6 +125,7 @@ test('worker serializes verified removals through the shared mutation lane', asy
           candidate, threadId: 'thread_1', signal: new AbortController().signal,
           execute: async () => {
             assert.equal(workerAdapter.assertAction({ threadId: 'thread_1', candidate }), true);
+            await workerAdapter.onDispatch();
             calls.push(key);
             return { verified: true };
           },
@@ -142,7 +144,7 @@ test('worker serializes verified removals through the shared mutation lane', asy
   const bridge = createUserscriptGhostBridge({
     storage, locks: workerLocks, openTab: async () => null, runner,
     inspectContext: () => ({ accountId: 'iguser-v1-demo', threadId: 'thread_1', usable: true }),
-    location: { pathname: '/direct/t/thread_1/' },
+    location: { pathname: '/direct/t/thread_1/', hash: '#insta-toolbox-worker=job_1.launch_1' },
     now: () => clock,
     random: () => 0,
     randomId: () => `worker_${++id}`,
@@ -156,4 +158,132 @@ test('worker serializes verified removals through the shared mutation lane', asy
   assert.equal(outcome.status, 'completed');
   assert.equal(outcome.messageRemovals, 2);
   assert.equal(storage.value().pendingMutation, null);
+});
+
+function workerFixture({ readyAfter = 0, execute, hash = '#insta-toolbox-worker=job_1.launch_1' } = {}) {
+  let clock = NOW, inspections = 0, starts = 0;
+  const storage = sharedStorage({ version: 1, jobId: 'job_1', coordinatorId: 'coordinator_1',
+    accountId: 'demo', status: 'running', expiresAt: NOW + 120_000, nextActionAt: 0,
+    pendingMutation: null, tasks: [{ threadId: 'one', launchId: 'launch_1', status: 'opening',
+      messageRemovals: 0, openedAt: NOW }] });
+  const bridge = createUserscriptGhostBridge({ storage,
+    locks: { request: async (name, _options, callback) => callback(name.includes('ghost-coordinator:') ? null : {}) },
+    openTab: async () => null,
+    location: { pathname: '/direct/t/one/', hash },
+    now: () => clock, random: () => 0, randomId: () => 'worker_1',
+    inspectContext: () => ++inspections <= readyAfter ? { usable: false }
+      : { usable: true, accountId: 'demo', threadId: 'one' },
+    runner: { ...runnerStub, async start({ workerAdapter }) {
+      starts += 1;
+      return execute ? execute(workerAdapter, storage) : { status: 'completed', processed: 0 };
+    } },
+    setIntervalFn: () => 1, clearIntervalFn: () => {},
+    setTimeoutFn: (callback, ms) => { clock += ms; queueMicrotask(callback); return 1; },
+    clearTimeoutFn: () => {},
+  });
+  return { bridge, storage, get starts() { return starts; }, get clock() { return clock; } };
+}
+
+test('managed workers wait for the authenticated React pane instead of attaching only once', async () => {
+  const f = workerFixture({ readyAfter: 8 });
+  assert.equal((await f.bridge.attachWorker()).status, 'completed');
+  assert.equal(f.starts, 1);
+  assert.ok(f.clock >= NOW + 2_000);
+});
+
+test('ordinary, stale and forged launch tabs never claim a reviewed conversation', async () => {
+  for (const hash of ['', '#insta-toolbox-worker=job_1.old', '#insta-toolbox-worker=other.launch_1']) {
+    const f = workerFixture({ hash });
+    assert.equal(await f.bridge.attachWorker(), null);
+    assert.equal(f.starts, 0);
+    assert.equal(f.storage.value().tasks[0].status, 'opening');
+  }
+});
+
+test('a worker that never becomes ready has a bounded startup deadline', async () => {
+  const f = workerFixture({ readyAfter: Infinity });
+  assert.equal(await f.bridge.attachWorker(), null);
+  assert.equal(f.starts, 0);
+  assert.equal(f.clock, NOW + 60_000);
+});
+
+test('zero-click menu failures remain retryable and never become uncertain deletions', async () => {
+  const f = workerFixture({ async execute(adapter, storage) {
+    const candidate = { key: 'message', timestamp: null, ownershipVerified: true };
+    const action = execute => adapter.execute({ candidate, threadId: 'one', signal: adapter.signal, execute });
+    await assert.rejects(action(async () => { throw new Error('The message menu did not appear.'); }), /menu did not appear/);
+    assert.equal(storage.value().status, 'running');
+    assert.equal(storage.value().pendingMutation, null);
+    assert.equal(storage.value().tasks[0].messageRemovals, 0);
+    assert.equal((await action(async () => { await adapter.onDispatch(); return { verified: true }; })).verified, true);
+    return { status: 'completed', processed: 1 };
+  } });
+  assert.equal((await f.bridge.attachWorker()).messageRemovals, 1);
+});
+
+test('an exact retained target can retry, but an uncertain click is recorded without counting success', async () => {
+  const f = workerFixture({ async execute(adapter, storage) {
+    const candidate = { key: 'message', timestamp: null, ownershipVerified: true };
+    for (const code of ['DM_UNSEND_RETRYABLE', 'DM_OUTCOME_UNCERTAIN']) {
+      await assert.rejects(adapter.execute({ candidate, threadId: 'one', signal: adapter.signal,
+        execute: async () => { await adapter.onDispatch(); throw Object.assign(new Error(code), { code }); },
+      }), new RegExp(code));
+      assert.equal(storage.value().pendingMutation, null);
+      assert.equal(storage.value().tasks[0].messageRemovals, 0);
+    }
+    assert.equal(storage.value().tasks[0].uncertain, 1);
+    return { status: 'error', processed: 0, uncertain: 1 };
+  } });
+  assert.equal((await f.bridge.attachWorker()).status, 'uncertain');
+  assert.equal(f.storage.value().status, 'running', 'other reviewed conversations remain eligible');
+});
+
+test('runner exceptions settle the task instead of stranding a running worker', async () => {
+  const f = workerFixture({ execute: async () => { throw new Error('pane disappeared'); } });
+  const outcome = await f.bridge.attachWorker();
+  assert.equal(outcome.status, 'failed');
+  assert.equal(outcome.reason, 'pane disappeared');
+});
+
+test('a long Ghost inventory never grows beyond its configured tab pool', async () => {
+  let clock = NOW, sequence = 0, tick, live = 0, maximum = 0;
+  const opened = [], closed = [], storage = sharedStorage();
+  const bridge = createUserscriptGhostBridge({ storage, locks, runner: runnerStub,
+    inspectContext: () => ({ accountId: 'demo', usable: true }), location: { pathname: '/direct/inbox/' },
+    now: () => clock, randomId: () => `id_${++sequence}`,
+    setIntervalFn: callback => { tick = callback; return 1; }, clearIntervalFn: () => {},
+    openTab: async url => { opened.push(url); maximum = Math.max(maximum, ++live);
+      return { close: async () => { closed.push(url); live -= 1; } }; },
+  });
+  const manager = bridge.createManager(bridge.createReview({ accountId: 'demo',
+    threadIds: Array.from({ length: 8 }, (_, index) => `thread_${index}`), workerCount: 2 }));
+  const finished = manager.start();
+  while (opened.length < 2) await new Promise(resolve => setTimeout(resolve, 0));
+  while (storage.value().status === 'running') {
+    const job = storage.value();
+    for (const task of job.tasks) if (task.status === 'opening') task.status = 'completed';
+    await storage.set('', job);
+    clock += 3_000; tick();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  assert.equal((await finished).status, 'completed');
+  assert.equal(opened.length, 8); assert.equal(closed.length, 8); assert.equal(maximum, 2); assert.equal(live, 0);
+});
+
+test('an unopened conversation times out and the pool advances to the next reviewed thread', async () => {
+  let clock = NOW, sequence = 0, tick;
+  const storage = sharedStorage(), opened = [];
+  const bridge = createUserscriptGhostBridge({ storage, locks, runner: runnerStub,
+    inspectContext: () => ({ accountId: 'demo', usable: true }), location: { pathname: '/direct/inbox/' },
+    now: () => clock, randomId: () => `id_${++sequence}`,
+    setIntervalFn: callback => { tick = callback; return 1; }, clearIntervalFn: () => {},
+    openTab: async url => { opened.push(url); return { close: async () => {} }; },
+  });
+  const manager = bridge.createManager(bridge.createReview({ accountId: 'demo', threadIds: ['one', 'two'], workerCount: 1 }));
+  const finished = manager.start();
+  while (opened.length < 1) await new Promise(resolve => setTimeout(resolve, 0));
+  clock += 61_000; tick();
+  while (opened.length < 2) await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(storage.value().tasks[0].reason, 'conversation-load-timeout');
+  await manager.stop(); await finished;
 });

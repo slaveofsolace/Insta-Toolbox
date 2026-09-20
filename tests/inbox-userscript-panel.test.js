@@ -167,6 +167,7 @@ function fixture(options = {}) {
   };
   const container = document.createElement('section');
   const panel = mountUserscriptInboxPanel({ container, document, window, viewer, runner,
+    discoveryTiming: { routeTimeoutMs: 100, settleMs: 1 },
     confirmAction: async value => { confirmations.push(value); return options.confirm ? options.confirm(value) : null; },
     cancelConfirmation: () => options.onCancelConfirmation?.(),
     load: options.load,

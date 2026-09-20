@@ -288,6 +288,9 @@ test('voice-note payload removal changes the retained signature while message ac
   const removalEvidence = proof.removalEvidence(voiceNote);
   const before = runner.__test.retainedMessageSignature(voiceNote);
   assert.equal(proof.exactNativeTargetStillPresent(removalEvidence), true);
+  progress.attributes['aria-valuetext'] = '0:05 of 0:17';
+  progress.attributes['aria-valuenow'] = '5';
+  assert.equal(before, runner.__test.retainedMessageSignature(voiceNote), 'playback progress is not deletion evidence');
   waveform.remove();
   progress.remove();
   actions.children[0].attributes['aria-label'] = 'Options';
@@ -296,4 +299,17 @@ test('voice-note payload removal changes the retained signature while message ac
   assert.notEqual(after, before);
   assert.equal(proof.exactNativeTargetStillPresent(removalEvidence), false);
   assert.equal(after, runner.__test.retainedMessageSignature(voiceNote));
+});
+
+test('canvas-only voice notes have outgoing ownership without requiring a text or audio element', () => {
+  const { Element, root, proof, view, runner } = fixture();
+  const actions = new Element('div', { role: 'group', 'aria-label': 'Message actions' }, [new Element('button')]);
+  const lane = new Element('div', {}, [new Element('canvas'), actions],
+    { display: 'flex', flexDirection: 'row', justifyContent: 'flex-end' });
+  const group = new Element('div', { role: 'group' }, [lane]);
+  const row = new Element('div', {}, [new Element('span', { text: 'Timestamp' }), group]); root.append(row);
+  assert.equal(proof.sentByCurrentUser(row, view), true);
+  assert.deepEqual([...runner.__test.candidateRows(root)], [row], 'the last native message must not be mistaken for its payload children');
+  lane.style.justifyContent = 'flex-start';
+  assert.equal(proof.sentByCurrentUser(row, view), false);
 });

@@ -8,7 +8,7 @@ const viewerSource = await readFile(new URL('../extension/instagram-viewer.js', 
 const viewerContext = vm.createContext({ URL }); vm.runInContext(viewerSource, viewerContext);
 const accountKey = viewerContext.InstaToolboxInstagramViewer.accountKey;
 
-function fixture({ noRoute = false, onNavigate = null, unsupportedSection = false } = {}) {
+function fixture({ noRoute = false, onNavigate = null, unsupportedSection = false, messagesRoute = false } = {}) {
   let url = new URL('https://www.instagram.com/direct/inbox/'), account = 'fixture.owner', clicks = 0, pane = null;
   const listeners = new Map();
   const window = { get location() { return url; }, getComputedStyle: () => ({ overflowY: 'visible' }),
@@ -32,8 +32,11 @@ function fixture({ noRoute = false, onNavigate = null, unsupportedSection = fals
     querySelectorAll: (selector) => selector === '*' ? []
       : ['[role="tab"]', '[role="tab"][aria-selected="true"]'].includes(selector) ? unsupportedSection ? [] : [section] : [row] });
   const back = node({ getAttribute: () => '/direct/inbox/', click: () => { url = new URL('https://www.instagram.com/direct/inbox/'); replacePane(false); } });
+  const messages = node({ getAttribute: name => name === 'href' ? '/direct/t/999/' : null,
+    querySelector: selector => selector === '[aria-label="Messages"]' ? {} : null,
+    click: () => { url = new URL('https://www.instagram.com/direct/t/999/'); replacePane(true); } });
   const document = { documentElement: {}, querySelectorAll: (selector) => selector === '[aria-label="Thread list"]' ? [root]
-    : selector === '[role="tab"]' ? unsupportedSection ? [] : [section] : selector === 'a[href]' ? [back]
+    : selector === '[role="tab"]' ? unsupportedSection ? [] : [section] : selector === 'a[href]' ? messagesRoute ? [messages] : [back]
       : selector === '[data-pagelet="IGDMessagesList"]' ? pane ? [pane] : [] : [],
     addEventListener: window.addEventListener, removeEventListener: window.removeEventListener };
   const viewer = { accountKey, inspect: () => ({ accountId: account, accountVerified: true,
@@ -73,11 +76,25 @@ test('discovery requires read-receipt acknowledgment before navigation', async (
   assert.equal(f.clicks, 0);
 });
 
-test('unsupported native sections stay explicit and never default silently to Primary', async () => {
+test('a personal inbox without section tabs can discover its primary conversations', async () => {
   const f = fixture({ unsupportedSection: true });
   const result = await f.adapter.discover({ navigationAcknowledged: true });
-  assert.equal(result.status, 'needs-attention');
-  assert.equal(result.reason, 'section-control-unavailable'); assert.equal(f.clicks, 0);
+  assert.equal(result.status, 'ready');
+  assert.equal(result.inventory.conversations[0].threadId, '12345'); assert.equal(f.clicks, 1);
+});
+
+test('Find can enter the inbox through an observed native link from another Instagram route', async () => {
+  const f = fixture(); f.route('/fixture.owner/');
+  const result = await f.adapter.discover({ navigationAcknowledged: true });
+  assert.equal(result.status, 'ready');
+  assert.equal(result.inventory.conversations[0].threadId, '12345');
+});
+
+test('Messages may open the last thread with its inbox rail instead of an inbox-only route', async () => {
+  const f = fixture({ messagesRoute: true }); f.route('/');
+  const result = await f.adapter.discover({ navigationAcknowledged: true });
+  assert.equal(result.status, 'ready');
+  assert.deepEqual(result.inventory.conversations.map(row => row.threadId), ['12345']);
 });
 
 test('review cannot introduce an undiscovered thread or survive an account rename', async () => {
@@ -110,7 +127,7 @@ test('freeze and pagehide revoke discovery without automatic return navigation',
     const f = fixture({ onNavigate: (api) => api.fire(event) });
     const result = await f.adapter.discover({ navigationAcknowledged: true });
     assert.equal(result.inventory.stopped, true, event);
-    assert.equal(result.inventory.needsInboxReturn, true, event);
+    assert.equal(result.inventory.needsInboxReturn, false, event);
     assert.equal(f.clicks, 1, event); assert.equal(f.listeners.size, 0, event);
   }
 });

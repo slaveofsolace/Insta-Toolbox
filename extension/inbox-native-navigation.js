@@ -19,12 +19,13 @@ export function createNativeInboxDiscovery({
   accountId, resolveAccount, navigationAcknowledged = false,
   document = globalThis.document, window = globalThis.window,
   sections = ['primary'], expiresAt, now = Date.now, signal,
-  maxThreads = 1_000, maxSamples = 100, maxVisits = 2_000,
-  routeTimeoutMs = 8_000, settleMs = 400, proveTerminal = null, resolveSection = null, onProgress = null,
+  maxThreads = 1_000, maxSamples = 1_000, maxVisits = 20_000,
+  routeTimeoutMs = 8_000, settleMs = 400, paginationTimeoutMs = routeTimeoutMs,
+  proveTerminal = null, resolveSection = null, onProgress = null,
 } = {}) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(accountId || '') || typeof resolveAccount !== 'function') throw new Error('account-identity-required');
   if (!Array.isArray(sections) || !sections.length || sections.some((name) => !Object.hasOwn(SECTION_LABELS, name))) throw new Error('inbox-section-invalid');
-  for (const [value, ceiling] of [[maxThreads, 10_000], [maxSamples, 1_000], [maxVisits, 20_000], [routeTimeoutMs, 30_000], [settleMs, 5_000]]) {
+  for (const [value, ceiling] of [[maxThreads, 10_000], [maxSamples, 1_000], [maxVisits, 20_000], [routeTimeoutMs, 30_000], [paginationTimeoutMs, 30_000], [settleMs, 5_000]]) {
     if (!Number.isSafeInteger(value) || value < 1 || value > ceiling) throw new Error('discovery-bound-invalid');
   }
   if (!Number.isFinite(expiresAt) || expiresAt <= now()) throw new Error('discovery-expired');
@@ -41,9 +42,11 @@ export function createNativeInboxDiscovery({
   let started = false, finished = false, stopped = false, reason = null, visits = 0;
   let navigator = null;
   const href = () => String(window.location.href);
+  const inboxSurface = () => (inboxUrl(href()) || Boolean(inboxThreadId(href())))
+    && [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible).length === 1;
   const snapshot = () => ({
     version: 1, accountId, complete: !stopped && sectionState.every((state) => state.complete),
-    stopped, reason, visits, needsInboxReturn: !inboxUrl(href()),
+    stopped, reason, visits, needsInboxReturn: !inboxSurface(),
     sections: sectionState.map((state) => ({ ...state })),
     conversations: [...inventory].map(([threadId, names]) => ({ threadId, sections: [...names] })),
   });
@@ -227,13 +230,16 @@ export function createNativeInboxDiscovery({
     }
     await settle(context);
   }
-  async function returnToInbox(threadId, position, section, context = discoveryContext) {
+  async function returnToInbox(threadId, position, section, context = discoveryContext, retainList = false) {
     guard(context);
     if (inboxThreadId(href()) !== threadId) throw new Error('conversation-changed');
     const links = [...document.querySelectorAll('a[href]')].filter((node) => visible(node) && inboxUrl(node.getAttribute('href')));
-    if (!links.length) throw new Error('inbox-return-unavailable');
-    links[0].click();
-    await waitFor(() => inboxUrl(href()) && [...document.querySelectorAll('[aria-label="Thread list"]')].some(visible), routeTimeoutMs, context);
+    if (!links.length) {
+      if (!retainList || !inboxSurface()) throw new Error('inbox-return-unavailable');
+    } else {
+      links[0].click();
+      await waitFor(() => inboxUrl(href()) && [...document.querySelectorAll('[aria-label="Thread list"]')].some(visible), routeTimeoutMs, context);
+    }
     await selectSection(section, context);
     const scroll = scroller(listRoot()); scroll.scrollTop = position;
     await settle(context);
@@ -242,15 +248,18 @@ export function createNativeInboxDiscovery({
     await selectSection(state.section);
     let priorWindow = null;
     for (; state.samples < maxSamples;) {
-      guard(); if (!inboxUrl(href())) throw new Error('inbox-route-changed');
+      guard(); if (!inboxSurface()) throw new Error('inbox-route-changed');
       state.samples += 1; state.reason = 'partial';
       const root = listRoot(), scroll = scroller(root), position = scroll.scrollTop || 0;
-      const count = rows(root).length, windowIds = [];
-      for (let index = 0; index < count; index += 1) {
-        guard(); if (!inboxUrl(href())) throw new Error('inbox-route-changed');
+      const count = rows(root).length, windowIds = [], deferredRows = [];
+      for (let turn = 0; turn < count + deferredRows.length; turn += 1) {
+        const index = turn < count ? turn : deferredRows[turn - count];
+        guard(); if (!inboxSurface()) throw new Error('inbox-route-changed');
         if (visits >= maxVisits) throw new Error('visit-limit');
         const currentRoot = listRoot(), row = rows(currentRoot)[index];
         if (!row || !currentRoot.contains(row)) throw new Error('inbox-window-changed');
+        const previous = row.tagName === 'A' ? inboxThreadId(row.getAttribute('href')) : null;
+        if (previous && inventory.has(previous)) { windowIds.push(previous); continue; }
         // The position is only used to observe a row. Resulting route IDs,
         // never row positions or preview text, identify conversations.
         const evidence = { row, fingerprint: fingerprint(row), href: row.tagName === 'A' ? row.getAttribute('href') : null,
@@ -258,12 +267,24 @@ export function createNativeInboxDiscovery({
         const priorPanes = messagePanes();
         const priorActions = priorPanes.flatMap((pane) => [...pane.querySelectorAll('[aria-label="Message actions"]')]);
         const priorHeaders = [...document.querySelectorAll('[data-pagelet="IGDInboxHeaderOffMsys"]')];
+        const priorThread = inboxThreadId(href());
+        // The desktop inbox remains visible alongside an open conversation.
+        // A selected row may not change the URL. Revisit it after another row
+        // instead of attributing the previous URL to the row just clicked.
         visits += 1; row.click();
-        const threadId = await waitFor(() => {
-          const id = inboxThreadId(href());
-          if (!id && !inboxUrl(href())) throw new Error('unexpected-route');
-          return id;
-        });
+        let threadId;
+        try {
+          threadId = await waitFor(() => {
+            const id = inboxThreadId(href());
+            if (!id && !inboxUrl(href())) throw new Error('unexpected-route');
+            return id && id !== priorThread ? id : false;
+          });
+        } catch (error) {
+          if (error.message !== 'navigation-timeout' || !priorThread || !inboxSurface()) throw error;
+          if (turn < count && count > 1) deferredRows.push(index);
+          if (inventory.has(priorThread)) windowIds.push(priorThread);
+          continue;
+        }
         if (evidence.href && inboxThreadId(evidence.href) !== threadId) throw new Error('conversation-changed');
         if (!inventory.has(threadId)) {
           if (inventory.size >= maxThreads) throw new Error('thread-limit');
@@ -281,7 +302,7 @@ export function createNativeInboxDiscovery({
           if (error.message !== 'navigation-timeout') throw error;
         }
         windowIds.push(threadId); publish();
-        await returnToInbox(threadId, position, state.section);
+        await returnToInbox(threadId, position, state.section, discoveryContext, true);
       }
       guard();
       const nextRoot = listRoot();
@@ -292,11 +313,29 @@ export function createNativeInboxDiscovery({
         }
       }
       const signature = windowIds.join(',');
-      if (signature === priorWindow) { state.reason = 'repeated-window-unverified'; return; }
+      const repeated = signature === priorWindow;
       priorWindow = signature;
       const next = scroller(nextRoot), end = Math.max(0, next.scrollHeight - next.clientHeight);
       const destination = Math.min(end, (next.scrollTop || 0) + Math.max(1, Math.floor(next.clientHeight * 0.8)));
-      if (destination <= (next.scrollTop || 0)) { state.reason = 'end-unverified'; return; }
+      if (destination <= (next.scrollTop || 0)) {
+        const height = next.scrollHeight;
+        const mounted = rows(nextRoot).map(fingerprint).join('\n');
+        // Reaching the bottom triggers pagination; it is not itself the end.
+        // Keep the rail there while its next page loads and reacquire recycled
+        // containers. Only stop after a bounded quiet wait with no new window.
+        try {
+          await waitFor(() => {
+            const root = listRoot(), scroll = scroller(root);
+            return scroll.scrollHeight !== height || rows(root).map(fingerprint).join('\n') !== mounted;
+          }, paginationTimeoutMs);
+          priorWindow = null;
+          continue;
+        } catch (error) {
+          if (error.message !== 'navigation-timeout') throw error;
+          state.reason = repeated ? 'repeated-window-unverified' : 'end-unverified';
+          return;
+        }
+      }
       next.scrollTop = destination; await settle();
     }
     state.reason = 'sample-limit';
@@ -425,7 +464,7 @@ export function createNativeInboxDiscovery({
       started = true;
       if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');
       try {
-        guard(); if (!inboxUrl(href())) throw new Error('inbox-route-required');
+        guard(); if (!inboxSurface()) throw new Error('inbox-route-required');
         for (const state of sectionState) {
           try { await scan(state); }
           catch (error) { state.reason = error.message; throw error; }

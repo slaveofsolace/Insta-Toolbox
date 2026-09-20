@@ -46,7 +46,7 @@ function fixture(options = {}) {
     return next;
   };
   const scroll = node({ clientHeight: 100, scrollHeight: pages.length * 80 + 20, overflowY: 'auto' });
-  Object.defineProperty(scroll, 'scrollTop', { get: () => position, set: (value) => { position = value; } });
+  Object.defineProperty(scroll, 'scrollTop', { get: () => position, set: (value) => { position = value; options.onScroll?.(value, api); } });
   const root = node({ clientHeight: 100, scrollHeight: 100, scrollTop: 0, contains: (element) => Boolean(element?.inRoot), querySelectorAll: (selector) => {
     if (selector === '*') return [scroll];
     return pages[Math.min(pages.length - 1, Math.floor(position / 80))].map((id) => node({
@@ -153,7 +153,7 @@ test('temporary labels are cleared on Stop and account drift without changing st
 });
 
 test('optional label evidence has a shorter wait than execution when a chat has no ready pane', async () => {
-  const f = fixture({ pages: [['101']], noPane: true }), adapter = f.adapter({ routeTimeoutMs: 5_000 });
+  const f = fixture({ pages: [['101']], noPane: true }), adapter = f.adapter({ routeTimeoutMs: 5_000, paginationTimeoutMs: 75 });
   const started = Date.now(), result = await adapter.run();
   assert.ok(Date.now() - started < 4_000, 'display labels do not consume the full execution-pane deadline');
   assert.deepEqual(adapter.reviewLabels(), []);
@@ -193,15 +193,44 @@ test('expiry during route wait stops without another action', async () => {
   assert.equal(result.reason, 'discovery-expired'); assert.equal(f.returnClicks, 0);
 });
 
-test('missing observed inbox return link retains captured ID with needs-return status', async () => {
+test('a persistent desktop inbox rail continues without a separate inbox-return link', async () => {
   const f = fixture({ noReturn: true }), result = await f.adapter().run();
-  assert.equal(result.reason, 'inbox-return-unavailable'); assert.equal(result.needsInboxReturn, true);
-  assert.deepEqual(result.conversations.map((row) => row.threadId), ['101']);
+  assert.equal(result.reason, null); assert.equal(result.needsInboxReturn, false);
+  assert.deepEqual(result.conversations.map((row) => row.threadId), ['101', '102', '103']);
+  assert.equal(f.returnClicks, 0);
 });
 
-test('repeated virtualized window is partial, not complete', async () => {
+test('discovery revisits the initially selected row after observing another conversation', async () => {
+  const f = fixture({ noReturn: true, pages: [['101', '102']] });
+  f.win.location.href = 'https://www.instagram.com/direct/t/101/'; f.replacePane();
+  const result = await f.adapter().run();
+  assert.deepEqual(result.conversations.map(row => row.threadId), ['102', '101']);
+  assert.equal(result.reason, null); assert.equal(result.needsInboxReturn, false);
+});
+
+test('a failed row click on a persistent rail never captures the previous conversation as that row', async () => {
+  const f = fixture({ noReturn: true, noRoute: true, pages: [['101']] });
+  f.win.location.href = 'https://www.instagram.com/direct/t/999/'; f.replacePane();
+  const result = await f.adapter().run();
+  assert.deepEqual(result.conversations, []);
+  assert.equal(result.complete, false);
+});
+
+test('an overlapping virtualized window does not stop discovery before the next window', async () => {
   const f = fixture({ pages: [['101'], ['101'], ['102']] }), result = await f.adapter().run();
-  assert.equal(result.sections[0].reason, 'repeated-window-unverified'); assert.equal(result.complete, false);
+  assert.equal(result.sections[0].reason, 'end-unverified'); assert.equal(result.complete, false);
+  assert.deepEqual(result.conversations.map(value => value.threadId), ['101', '102']);
+});
+
+test('discovery waits at the bottom for a delayed inbox page and visits its conversations', async () => {
+  const pages = [['101'], ['102']]; let scheduled = false;
+  const f = fixture({ pages, onScroll(value, api) {
+    if (value < 80 || scheduled) return;
+    scheduled = true;
+    setTimeout(() => { pages.push(['103']); api.scroll.scrollHeight += 80; }, 100);
+  } });
+  const result = await f.adapter({ routeTimeoutMs: 250 }).run();
+  assert.deepEqual(result.conversations.map(value => value.threadId), ['101', '102', '103']);
 });
 
 test('unavailable additional section is explicitly unscanned or incomplete', async () => {

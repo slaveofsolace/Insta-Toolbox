@@ -33,6 +33,66 @@ function connect(parent, ...children) {
   return parent;
 }
 
+test('stories without URL slide IDs advance by active media and keep reactions bound to that slide', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/stories/person/' };
+  let source = '/fixture/slide-one.mp4';
+  const media = element();
+  media.getAttribute = name => name === 'src' ? source : null;
+  media.getBoundingClientRect = () => ({ top: 0, left: 0, bottom: 700, right: 400, width: 400, height: 700 });
+  const pause = element({ text: 'Pause' });
+  const next = element({ text: 'Next', click: () => { source = '/fixture/slide-two.mp4'; } });
+  const like = element({ text: 'Like', click() { this.textContent = 'Unlike'; } });
+  const viewer = connect(element({ children: { 'video,img': [media], button: [pause, next, like] } }), pause, next, like);
+  const doc = { documentElement: {}, body: viewer,
+    querySelectorAll: selector => selector === 'main' ? [viewer] : [] };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({ document: doc, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ display: 'block', opacity: '1' }), MutationObserver: Observer, timeoutMs: 500 });
+  const options = { signal: new AbortController().signal, assertCurrent: () => true };
+  const first = await actions.find('viewStories', options);
+  const oldReaction = await actions.find('reactStories', options);
+  assert.match(first.id, /^story-next:person:media-/);
+  assert.equal((await actions.execute('viewStories', first, options)).verified, true);
+  assert.equal(location.pathname, '/stories/person/', 'Instagram can change slides without changing the URL');
+  const second = await actions.find('viewStories', options);
+  assert.notEqual(second.id, first.id);
+  assert.equal((await actions.execute('reactStories', oldReaction, options)).skipped, true);
+  const reaction = await actions.find('reactStories', options);
+  assert.equal((await actions.execute('reactStories', reaction, options)).verified, true);
+});
+
+test('Presence closes the story before looking for feed controls rather than clicking behind the viewer', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/stories/person/one/' };
+  const calls = [];
+  const like = element({ text: 'Like' });
+  const article = element({ children: { 'a[href]': [element({ href: '/p/post/' })], button: [like] } });
+  const close = element({ text: 'Close', click() { calls.push('close'); location.pathname = '/'; this.isConnected = false; } });
+  const doc = { documentElement: {}, querySelectorAll: selector => selector === 'article' ? [article]
+    : selector === 'a[href],button,[role="button"]' ? [close] : [] };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({ document: doc, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ opacity: '1' }), MutationObserver: Observer, timeoutMs: 500 });
+  const candidate = await actions.find('likePosts', { signal: new AbortController().signal });
+  assert.deepEqual(calls, ['close']); assert.equal(candidate.id, 'post:post');
+});
+
+test('an open notification drawer without aria-expanded is not toggled shut while searching for requests', async () => {
+  let clicks = 0;
+  const notifications = element({ text: 'Notifications', click: () => { clicks += 1; } });
+  const close = element({ text: 'Close Notifications' });
+  const doc = { documentElement: {}, querySelectorAll: selector => selector === 'a[href],button,[role="button"]'
+    ? [notifications, close] : [] };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({ document: doc,
+    location: { origin: 'https://www.instagram.com', pathname: '/' },
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ opacity: '1' }), MutationObserver: Observer, timeoutMs: 500 });
+  assert.equal(await actions.find('acceptRequests', { signal: new AbortController().signal }), null);
+  assert.equal(clicks, 0);
+});
+
 test('Presence reaches a feed by clicking the observed Home control before acting', async () => {
   const location = { origin: 'https://www.instagram.com', pathname: '/direct/inbox/' };
   let homeClicks = 0;

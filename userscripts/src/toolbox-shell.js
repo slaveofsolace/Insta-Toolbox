@@ -1902,6 +1902,10 @@
         view: 'account',
       };
     }
+    if (preferences.view === 'account' && inspectPresenceAccount().accountVerified) {
+      return { tone: 'ready', title: 'Presence ready',
+        detail: 'Choose activities and start. Presence can move between Instagram pages.', view: 'account' };
+    }
 
     const path = location.pathname.toLowerCase();
     if (path.startsWith('/direct/t/')) {
@@ -3416,23 +3420,23 @@
     presenceSession = globalThis.InstaToolboxPresenceSession.create({
       nativeActions,
       locks: globalThis.navigator?.locks || null,
-      onUpdate: next => presencePanel?.render(next),
+      onUpdate: next => { presencePanel?.render(next); renderContext(); },
     });
     presencePanel = globalThis.InstaToolboxPresenceSessionPanel.mount({
       container: query('[data-role="presence-routine"]'), document, window,
       session: presenceSession,
-      inspectAccount: inspectPresenceAccount,
+      inspectAccount: () => nativeActions.inspectContext(),
       confirmAction: confirmRun,
       readPreferences: () => GM_getValue('instaToolboxPresenceSessionV1', null),
       writePreferences: value => GM_setValue('instaToolboxPresenceSessionV1', value),
       readLog: () => {
-        const account = inspectPresenceAccount();
+        const account = nativeActions.inspectContext();
         return account.accountKey
           ? GM_getValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, null)
           : null;
       },
       writeLog: value => {
-        const account = inspectPresenceAccount();
+        const account = nativeActions.inspectContext();
         if (!account.accountKey) throw new Error('presence-log-account-unverified');
         return GM_setValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, value);
       },

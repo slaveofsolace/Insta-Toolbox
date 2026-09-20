@@ -2,6 +2,15 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.1.5 - 2026-09-19
+
+- Ghost workers wait for the conversation to load, reuse a bounded tab pool, and keep progress when a conversation cannot be opened. Only tabs launched by the reviewed job can join it.
+- Ghost retries message-menu failures without misreporting them as deletions. Stop lets a dispatched removal settle before closing its tab.
+- Inbox discovery opens the native inbox automatically and waits for delayed pages instead of stopping at the first bottom edge or overlapping window.
+- All-message Unsend processes newly loaded rows as they arrive. Oldest and Newest selections retain their ordering. A failed row does not abandon the remaining history, and long runs have no message-count quota.
+- Voice-note ownership includes waveform-only messages. Playback progress no longer changes a message's identity, and reverse-layout scroll anchoring is handled during removal checks.
+- Presence recognizes loaded stories without slide IDs in their URLs, verifies same-URL story advances, closes stories and notifications before changing activities, and records results during the run.
+
 ## 4.1.4 - 2026-09-19
 
 - Recognize voice-note waveforms and playback controls as part of the exact message payload, so a removed voice message is not mistaken for an unchanged virtual row.

@@ -1,14 +1,14 @@
 # Release status
 
-Current version: **4.1.4**
+Current version: **4.1.5**
 
-Version 4.1.4 recognizes Instagram's duplicated Home navigation label and keeps
-the verified account bound while Presence moves through same-tab stories and
-full-screen views. Direct Unsend fingerprints voice-note playback and waveform
-payloads, retries an unchanged native message, accepts exact confirmed payload
-recycling, and checks the remaining conversation after a genuinely unprovable
-row. Only verified removals count as unsent. The stable update URL always
-resolves to the latest published release.
+Version 4.1.5 repairs Ghost worker startup, bounded tab reuse, and native inbox
+discovery. All-message Unsend processes eligible rows as history loads instead
+of repeatedly seeking the oldest boundary. Finite Oldest/Newest selections
+keep their ordering. Presence recognizes ID-less story URLs, follows slide
+changes without a route change, and closes overlays before changing activities.
+Only verified removals count as unsent. The stable update URL always resolves
+to the latest published release.
 Authenticated acceptance remains separate from fixture results. See
 [DM restoration](./DM_RESTORATION_4.0.1.md) for the native selection and
 removal-reporting history.
@@ -18,10 +18,10 @@ removal-reporting history.
 | Surface | File |
 | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` |
-| Chrome extension | `Insta-Toolbox-Extension-4.1.4.zip` |
-| Web/PWA | `insta-toolbox-web-4.1.4.zip` |
-| Windows | `Insta-Toolbox-Setup-4.1.4.exe` |
-| macOS | `Insta-Toolbox-4.1.4-universal.dmg` and `.zip` |
+| Chrome extension | `Insta-Toolbox-Extension-4.1.5.zip` |
+| Web/PWA | `insta-toolbox-web-4.1.5.zip` |
+| Windows | `Insta-Toolbox-Setup-4.1.5.exe` |
+| macOS | `Insta-Toolbox-4.1.5-universal.dmg` and `.zip` |
 | Integrity | `SHA256SUMS.txt`, SBOM, and GitHub provenance attestation |
 
 The stable userscript channel is:
@@ -34,11 +34,11 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 1012 automated tests at the shared Presence/Ghost integration checkpoint;
+- 1031 automated tests, including worker startup, retry, navigation, and story regressions;
 - complete generated-userscript and extension fixture acceptance;
 - 45 overlay screenshot states checked against the reviewed pixel thresholds;
 - 11 PWA screenshot states checked against the reviewed pixel thresholds;
-- service-worker cache generation `insta-toolbox-v414`.
+- service-worker cache generation `insta-toolbox-v415`.
 
 The native DM regression matrix covers sent replies, story replies, direct
 chats, group chats, id-less rows, unavailable account labels, retained virtual
@@ -80,13 +80,14 @@ The macOS application is ad-hoc signed for bundle integrity but is not Developer
 - Every mutation requires an action-specific confirmation and transient capability.
 - Follow / Unfollow revalidates the target and relationship.
 - DM Unsend revalidates the open thread, sent-message ownership, menu, dialog, and removal result.
-- Challenge, block, rate-limit, expiry, wrong-target, ambiguous-control, and uncertain-result states stop the runner.
+- Challenge, block, rate-limit, expiry, wrong-target, and revoked authority stop further mutations.
+- An ambiguous or unprovable DM row is not counted or blindly retried. All-message cleanup can continue with independently resolved rows and reports failures and unresolved outcomes at the end.
 - No build or test command performs a live Instagram action.
 
 ## Evidence and nonclaims
 
-The candidate record is [acceptance/4.1.4.md](./acceptance/4.1.4.md).
-Compatibility is tracked in [compatibility/4.1.4.md](./compatibility/4.1.4.md).
+The candidate record is [acceptance/4.1.5.md](./acceptance/4.1.5.md).
+Compatibility is tracked in [compatibility/4.1.5.md](./compatibility/4.1.5.md).
 
 Automated fixtures do not prove current authenticated Instagram selectors, human screen-reader use, persistent-profile behavior, SmartScreen trust, Gatekeeper trust, or notarization. Record those checks separately without committing usernames, messages, thread IDs, cookies, tokens, or private screenshots.
 

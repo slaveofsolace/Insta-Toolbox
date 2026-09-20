@@ -11,6 +11,7 @@ import { createAppServer } from './serve.mjs';
 import { instagramScriptOrder } from './instagram-script-order.mjs';
 import { acceptUserscriptPresence } from './lib/userscript-presence-acceptance.mjs';
 import { acceptUserscriptInboxReview } from './lib/userscript-inbox-review-acceptance.mjs';
+import { acceptUserscriptGhostWorkers } from './lib/userscript-ghost-workers-acceptance.mjs';
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(moduleDirectory, '..');
@@ -2856,10 +2857,25 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-action="confirm-accept"]')`,
     'userscript Unsend confirmation',
   );
+  await waitForPageValue(
+    webContents,
+    'globalThis.fixtureUnsentCount === 1',
+    'userscript first confirmed removal',
+  );
+  // First removal and history exhaustion are separate milestones. All mode
+  // waits for several stable empty passes; its completion budget must include
+  // those waits rather than reuse the ten-second control-readiness deadline.
   const confirmedUnsend = await waitForPageValue(
     webContents,
     `(() => {
       const snapshot = globalThis.InstaToolboxDmThreadUnsender?.snapshot?.();
+      if (['error', 'stopped'].includes(snapshot?.status)) {
+        throw new Error('Unexpected Unsend result: ' + JSON.stringify({
+          status: snapshot.status, processed: snapshot.processed,
+          failed: snapshot.failed, uncertain: snapshot.uncertain,
+          message: snapshot.message,
+        }));
+      }
       if (snapshot?.status !== 'completed' || globalThis.fixtureUnsentCount !== 1) return null;
       const shadow = document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot;
       return {
@@ -2872,6 +2888,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       };
     })()`,
     'userscript confirmed thread Unsend',
+    30_000,
   );
   assert.equal(confirmedUnsend.nativeConfirmCalls, 0);
   assert.equal(confirmedUnsend.runnerStarts, 1);
@@ -3135,6 +3152,10 @@ async function run() {
       assert.deepEqual(overlay.problems, [], 'userscript Ghost review browser problems');
       return;
     }
+    if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_GHOST_WORKERS_ONLY === '1') {
+      await acceptUserscriptGhostWorkers(presenceOptions);
+      return;
+    }
     if (process.env.INSTA_TOOLBOX_QA_USERSCRIPT_REACTION_ONLY === '1') {
       await acceptUserscriptReactionCleanup(presenceOptions);
       assert.deepEqual(overlay.problems, [], 'userscript reaction cleanup browser problems');
@@ -3216,6 +3237,7 @@ async function run() {
     await acceptUserscriptFieldSpacing(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptToolbox(overlay.window.webContents, overlayBaseUrl);
     await acceptUserscriptInboxReview(presenceOptions);
+    await acceptUserscriptGhostWorkers(presenceOptions);
     await acceptUserscriptPresence(presenceOptions);
     await acceptBackgroundComparison(background);
     await acceptPwaInstallability(pwa.window.webContents, pwaBaseUrl);
