@@ -2857,10 +2857,25 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
     `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-action="confirm-accept"]')`,
     'userscript Unsend confirmation',
   );
+  await waitForPageValue(
+    webContents,
+    'globalThis.fixtureUnsentCount === 1',
+    'userscript first confirmed removal',
+  );
+  // First removal and history exhaustion are separate milestones. All mode
+  // waits for several stable empty passes; its completion budget must include
+  // those waits rather than reuse the ten-second control-readiness deadline.
   const confirmedUnsend = await waitForPageValue(
     webContents,
     `(() => {
       const snapshot = globalThis.InstaToolboxDmThreadUnsender?.snapshot?.();
+      if (['error', 'stopped'].includes(snapshot?.status)) {
+        throw new Error('Unexpected Unsend result: ' + JSON.stringify({
+          status: snapshot.status, processed: snapshot.processed,
+          failed: snapshot.failed, uncertain: snapshot.uncertain,
+          message: snapshot.message,
+        }));
+      }
       if (snapshot?.status !== 'completed' || globalThis.fixtureUnsentCount !== 1) return null;
       const shadow = document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot;
       return {
@@ -2873,6 +2888,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
       };
     })()`,
     'userscript confirmed thread Unsend',
+    30_000,
   );
   assert.equal(confirmedUnsend.nativeConfirmCalls, 0);
   assert.equal(confirmedUnsend.runnerStarts, 1);
