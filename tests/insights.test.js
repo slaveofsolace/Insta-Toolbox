@@ -31,8 +31,8 @@ test('unknown media and missing dates are not invented and report stays inert', 
   const text = formatInsightsReport(report);
   assert.match(text, /1 loaded posts — not complete account history/);
   assert.match(text, /Date unavailable/);
-  assert.match(text, /https:\/\/www.instagram.com\/p\/abc\//);
-  assert.doesNotMatch(text, /<script>/);
+  assert.match(text, /https:\/\/www\.instagram\.com\/p\/abc\//);
+  assert.doesNotMatch(text, /<script>/i);
   assert.deepEqual(JSON.parse(JSON.stringify(report)), report);
 });
 

@@ -268,7 +268,7 @@ export async function acceptUserscriptPresence({
     assert.match(insights, /Date unavailable/);
     assert.doesNotMatch(insights, /2025/);
     assert.match(insights, /From loaded captions and comments/);
-    assert.match(insights, /https:\/\/www.instagram.com/);
+    assert.match(insights, /https:\/\/www\.instagram\.com\//);
     checks.push('read-only content insights analyse loaded posts with explicit sample coverage');
     await evaluate(`${rootExpression}.querySelector('[data-view="account"]').click()`);
 
