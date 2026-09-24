@@ -556,6 +556,9 @@
         const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
         const usernameOwner = accountKeyByUsername.get(accountUsername);
         if (usernameOwner && usernameOwner !== accountKey) {
+          // Later pages can omit an ID already supplied for this username.
+          // Keep the stronger record instead of treating that duplicate as a conflict.
+          if (!accountId && usernameOwner.startsWith('id:')) continue;
           if (usernameOwner === `username:${accountUsername}` && accountId) {
             accounts.delete(usernameOwner);
           } else {

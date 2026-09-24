@@ -19,6 +19,14 @@ export function inboxFixturePrelude() {
     const rail = document.createElement('nav');
     rail.innerHTML = '<a role="link" href="/">Home</a><a role="link" href="/reels/">Reels</a><a role="link" href="/direct/inbox/">Inbox</a><a role="link" href="/fixture.owner/"><img alt="fixture.owner&#39;s profile picture" width="24" height="24" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22/%3E"></a>';
     document.body.append(rail);
+    const notes = document.createElement('ul'), noteItem = document.createElement('li');
+    const note = document.createElement('div'); note.setAttribute('role', 'button'); note.tabIndex = 0;
+    note.innerHTML = '<img width="24" height="24" alt="Synthetic note profile">Your note';
+    note.querySelector('img').src = rail.querySelector('img').src;
+    globalThis.fixtureInboxNoteClicks = 0;
+    note.addEventListener('click', () => { globalThis.fixtureInboxNoteClicks += 1; });
+    noteItem.append(note); notes.append(noteItem);
+    surface.querySelector('[aria-label="Thread list"]').append(notes);
     globalThis.fixtureInboxVisits = [];
     globalThis.fixtureInboxReturns = 0;
     globalThis.fixtureInboxMessageActions = 0;
@@ -183,6 +191,7 @@ export async function acceptUserscriptInboxReview({
       return panel.querySelectorAll('.inbox-selection > label').length === 3
         && !${button('Find conversations')}.disabled;
     })()`, 'native Ghost discovery completed', 20_000);
+    assert.equal(await evaluate('globalThis.fixtureInboxNoteClicks'), 0, 'native Notes are not conversations');
     const discovered = await state();
     assert.deepEqual(discovered.rows.map(row => row.title), conversations.map(row => row.title), 'render native headers, not inbox previews');
     assert.match(discovered.rows[0].identity, /@alex\.example/);

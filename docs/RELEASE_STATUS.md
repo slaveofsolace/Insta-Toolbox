@@ -1,12 +1,11 @@
 # Release status
 
-Current version: **4.1.5**
+Current version: **4.1.6**
 
-Version 4.1.5 repairs Ghost worker startup, bounded tab reuse, and native inbox
-discovery. All-message Unsend processes eligible rows as history loads instead
-of repeatedly seeking the oldest boundary. Finite Oldest/Newest selections
-keep their ordering. Presence recognizes ID-less story URLs, follows slide
-changes without a route change, and closes overlays before changing activities.
+Version 4.1.6 repairs short, non-scrolling DM selection, reaction-popup account
+and message resolution, false removal results from edited messages, and mixed-ID
+duplicates in Mutual Checker. It also delivers the Ghost, streaming-history and
+Presence fixes from 4.1.5 through the stable release channel.
 Only verified removals count as unsent. The stable update URL always resolves
 to the latest published release.
 Authenticated acceptance remains separate from fixture results. See
@@ -18,10 +17,10 @@ removal-reporting history.
 | Surface | File |
 | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` |
-| Chrome extension | `Insta-Toolbox-Extension-4.1.5.zip` |
-| Web/PWA | `insta-toolbox-web-4.1.5.zip` |
-| Windows | `Insta-Toolbox-Setup-4.1.5.exe` |
-| macOS | `Insta-Toolbox-4.1.5-universal.dmg` and `.zip` |
+| Chrome extension | `Insta-Toolbox-Extension-4.1.6.zip` |
+| Web/PWA | `insta-toolbox-web-4.1.6.zip` |
+| Windows | `Insta-Toolbox-Setup-4.1.6.exe` |
+| macOS | `Insta-Toolbox-4.1.6-universal.dmg` and `.zip` |
 | Integrity | `SHA256SUMS.txt`, SBOM, and GitHub provenance attestation |
 
 The stable userscript channel is:
@@ -34,19 +33,19 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 The development matrix contains:
 
-- 1031 automated tests, including worker startup, retry, navigation, and story regressions;
+- 1044 automated tests, including short-chat, reaction-popup, native Notes, removal-proof and pagination regressions;
 - complete generated-userscript and extension fixture acceptance;
 - 45 overlay screenshot states checked against the reviewed pixel thresholds;
 - 11 PWA screenshot states checked against the reviewed pixel thresholds;
-- service-worker cache generation `insta-toolbox-v415`.
+- service-worker cache generation `insta-toolbox-v416`.
 
 The native DM regression matrix covers sent replies, story replies, direct
 chats, group chats, id-less rows, unavailable account labels, retained virtual
 groups, and exact unchanged-row retries through the generated userscript's
 primary action. A verified removal preserves whole-conversation progress while
 finite newest/oldest plans continue to re-enter from their reviewed edge.
-Read-only native selection passed; post-removal authenticated acceptance is
-still pending for the repaired candidate.
+The supplied native short thread was empty during inspection; post-removal
+authenticated acceptance remains separate from these fixtures.
 
 The optional userscript reaction pass is enabled in this branch candidate. Its
 generated-browser acceptance verifies confirmation, cancellation, exact
@@ -54,6 +53,10 @@ signed-in-account ownership, one reaction removal, message preservation,
 dialog closure, and an independent verified count. This does not establish
 current authenticated Instagram reaction compatibility; a disposable live
 reaction remains a separate gate.
+
+A two-action live Presence test passed after updating from the older published
+build: native story opening, Next and verified completion. No other account
+actions were enabled. The adapter is unchanged in this patch.
 
 The current source passes the complete extension/userscript acceptance suite,
 including responsive and true 200% zoom states, the 45-state overlay matrix,
@@ -86,8 +89,8 @@ The macOS application is ad-hoc signed for bundle integrity but is not Developer
 
 ## Evidence and nonclaims
 
-The candidate record is [acceptance/4.1.5.md](./acceptance/4.1.5.md).
-Compatibility is tracked in [compatibility/4.1.5.md](./compatibility/4.1.5.md).
+The candidate record is [acceptance/4.1.6.md](./acceptance/4.1.6.md).
+Compatibility is tracked in [compatibility/4.1.6.md](./compatibility/4.1.6.md).
 
 Automated fixtures do not prove current authenticated Instagram selectors, human screen-reader use, persistent-profile behavior, SmartScreen trust, Gatekeeper trust, or notarization. Record those checks separately without committing usernames, messages, thread IDs, cookies, tokens, or private screenshots.
 

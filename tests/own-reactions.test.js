@@ -173,6 +173,14 @@ test('own reaction on a received message is removed without removing the message
   assert.equal(f.counters.mutations, 1); assert.equal(f.row.isConnected, true);
   assert.equal(f.body.textContent, 'Disposable received message');
 });
+test('opening reaction details may aria-hide the conversation without changing message identity', async () => {
+  const f = fixture();
+  const show = f.badge.onclick;
+  f.badge.onclick = () => { show(); f.row.attrs['aria-hidden'] = 'true'; };
+  assert.equal((await f.remove()).verified, true);
+  assert.equal(f.counters.mutations, 1);
+  assert.equal(f.row.isConnected, true);
+});
 test('shared emoji retains other reactions and reopens closed details once', async () => {
   const f = fixture({ shared: true, behavior: 'close-shared' });
   assert.equal((await f.remove()).verified, true);

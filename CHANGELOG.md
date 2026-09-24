@@ -2,6 +2,15 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.1.6 - 2026-09-24
+
+- Keep Ghost discovery out of Instagram's Notes strip, including native HTML lists without an explicit ARIA role. Only conversation rows enter the inventory.
+- Find messages in short, non-scrolling conversations with deeply nested message containers. A three-message chat no longer finishes without selecting its messages.
+- Keep reaction cleanup working while Instagram hides the conversation behind its Reactions popup. Reaction badges remain separate from message content, and the signed-in account is rechecked without mistaking nested profile links for different accounts.
+- Do not count an edited or still-loading message as unsent after a confirmation closes. Actual payload removal and retained-slot replacements remain supported.
+- Keep Mutual Checker running when a later page repeats an account without its previously supplied numeric ID. Conflicting explicit IDs still produce an error.
+- Include the Ghost worker, history traversal, and Presence story-navigation repairs from 4.1.5 in the stable Tampermonkey release.
+
 ## 4.1.5 - 2026-09-19
 
 - Ghost workers wait for the conversation to load, reuse a bounded tab pool, and keep progress when a conversation cannot be opened. Only tabs launched by the reviewed job can join it.

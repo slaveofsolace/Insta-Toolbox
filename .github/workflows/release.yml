@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag:
-        description: Release tag, for example v4.1.5
+        description: Release tag, for example v4.1.6
         required: true
         type: string
 
@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           test "$RELEASE_TAG" = "v$version"
-          test "$version" = "4.1.5"
+          test "$version" = "4.1.6"
           mkdir -p release
           copy_exact() {
             local name="$1"
@@ -171,9 +171,9 @@ jobs:
             exit 1
           fi
           release_notes="$(cat <<'EOF'
-          Version 4.1.5 fixes Ghost worker startup and tab reuse, streams newly loaded DM history, and recognizes Instagram stories whose URLs do not expose a slide ID. Presence moves between native story, feed and notification surfaces and saves its activity as it runs.
+          Version 4.1.6 fixes Ghost discovery clicking Notes instead of conversations, short-chat Unsend, reaction cleanup behind Instagram's Reactions popup, false removal results from edited messages, and repeated Mutual Checker records with missing IDs.
 
-          Presence now begins by checking the loaded Instagram tab immediately, retries short empty startup sweeps before resting, and counts only verified actions toward each active burst. **Live like me** remains finite, review-bound, and serialized with Ghost in the same browser profile.
+          This release also delivers the Ghost worker, streaming-history and Presence story-navigation repairs from 4.1.5. A live two-story Presence session passed; live DM/reaction removal remains separate from automated fixture coverage. Partial mutual comparisons remain visible and downloadable when Instagram omits records.
 
           Mutual Checker and manual Follow / Unfollow remain available. Instagram restrictions, incomplete server responses, changed layouts, and ambiguous outcomes still stop the relevant workflow instead of guessing.
 
@@ -182,7 +182,7 @@ jobs:
           - The Windows installer is unsigned and may show a Microsoft SmartScreen warning.
           - The macOS packages are ad-hoc signed and are not Apple-notarized.
           - Ghost worker tabs must remain open and loaded. Tab discard, computer sleep, browser shutdown, or lost account evidence stops or pauses the job.
-          - Automated CI does not prove current authenticated Instagram mutation compatibility or a completed human screen-reader walkthrough. Consult the 4.1.5 acceptance record for separately recorded manual evidence.
+          - Automated CI does not prove current authenticated Instagram mutation compatibility or a completed human screen-reader walkthrough. Consult the 4.1.6 acceptance record for separately recorded manual evidence.
           EOF
           )"
           gh release create "$RELEASE_TAG" release/* \

@@ -1564,7 +1564,7 @@
   if (dmRunner?.createMessageWalker && globalThis.InstaToolboxReactionCleanup
     && globalThis.InstaToolboxInstagramViewer) {
     reactionCleanup = globalThis.InstaToolboxReactionCleanup.create({
-      inspectContext: () => globalThis.InstaToolboxInstagramViewer.inspect(),
+      inspectContext: () => globalThis.InstaToolboxInstagramViewer.inspect({ reactionDialog: true }),
     });
     reactionCleanup.subscribe((next) => {
       reactionSnapshot = next;

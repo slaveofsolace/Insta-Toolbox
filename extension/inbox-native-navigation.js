@@ -178,10 +178,11 @@ export function createNativeInboxDiscovery({
     return null;
   }
   function auxiliaryCollection(node, root) {
-    // Notes occupy a separate native role=list inside Thread list. Avatar
+    // Notes occupy a separate native list inside Thread list. Avatar
     // images alone do not distinguish those profile buttons from threads.
     for (let current = node; current && current !== root; current = current.parentElement) {
-      if (current.getAttribute?.('role') === 'list'
+      if (['UL', 'OL'].includes(String(current.tagName || '').toUpperCase())
+        || current.getAttribute?.('role') === 'list'
         || current.getAttribute?.('aria-roledescription')?.trim().toLowerCase() === 'carousel') return true;
     }
     return false;

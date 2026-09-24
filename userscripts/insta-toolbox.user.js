@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.1.5
+// @version      4.1.6
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -524,17 +524,20 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     consumed.add(plan);
   }
 
-  function badges(row) {
+  function reactionBadges(row) {
     return [...row?.querySelectorAll?.('[role="button"]') || []].filter((node) => (
-      visible(node) && node.getAttribute('tabindex') === '0'
+      node.isConnected && node.getAttribute('tabindex') === '0'
       && !node.getAttribute('aria-label') && !node.getAttribute('aria-haspopup')
       && !node.closest?.('[aria-label="Message actions"]')
       && node.querySelector?.('[role="none"]') && badgeEmoji(node)
     ));
   }
+  const badges = (row) => reactionBadges(row).filter(visible);
 
   function messageSignature(row) {
-    const reactions = badges(row);
+    // Instagram aria-hides the conversation while reaction details are open.
+    // That accessibility change must not turn the badge into message content.
+    const reactions = reactionBadges(row);
     const relevant = (node) => !node.closest?.('[aria-label="Message actions"]')
       && !reactions.some((badge) => badge === node || badge.contains(node));
     const ids = ['data-message-id', 'data-item-id'].map((name) => row.getAttribute?.(name) || '');
@@ -727,7 +730,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
             const dialogs = openDialogs();
             if (dialogs.length > 1) throw uncertain('Reaction details became ambiguous.');
             const current = dialogs[0];
-            const remainingBadges = badges(row);
+            const remainingBadges = reactionBadges(row);
             const matchingBadges = remainingBadges.filter((item) => badgeEmoji(item) === selectedEmoji);
             let removed = false;
             if (current) {
@@ -1230,18 +1233,21 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   function findScrollableChild(parent, view = globalThis) {
     if (!parent) return null;
     let best = null;
+    let fitted = null;
     const queue = [{ element: parent, depth: 0 }];
     while (queue.length) {
       const { element, depth } = queue.shift();
       if (depth > 10) continue;
       const style = view.getComputedStyle?.(element);
       const slack = Number(element.scrollHeight) - Number(element.clientHeight);
-      if ((style?.overflowY === 'auto' || style?.overflowY === 'scroll') && slack > 8) {
-        if (!best || slack > best.slack) best = { element, slack };
+      if (style?.overflowY === 'auto' || style?.overflowY === 'scroll') {
+        if (slack > 8 && (!best || slack > best.slack)) best = { element, slack };
+        else if (!fitted && Number(element.clientHeight) > 0
+          && element.querySelector?.('[aria-label="Message actions"]')) fitted = element;
       }
       for (const child of element.children || []) queue.push({ element: child, depth: depth + 1 });
     }
-    return best?.element || null;
+    return best?.element || fitted;
   }
 
   function threadContext() {
@@ -1270,10 +1276,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const isMessageRow = (element) => ['row', 'listitem'].includes(element?.getAttribute?.('role'))
       || Boolean(element?.getAttribute?.('data-message-id') || element?.getAttribute?.('data-item-id'))
       || element?.querySelectorAll?.('[aria-label="Message actions"]').length === 1;
-    const queue = [{ element: scroller, depth: 0 }];
+    const queue = [scroller];
     while (queue.length) {
-      const { element, depth } = queue.shift();
-      if (depth > 4) continue;
+      const element = queue.shift();
       const count = element?.children?.length || 0;
       const directMessages = [...element?.children || []].filter(isMessageRow).length;
       if (directMessages > messageCount) {
@@ -1285,7 +1290,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         bestCount = count;
       }
       for (const child of element?.children || []) {
-        if (!isMessageRow(child)) queue.push({ element: child, depth: depth + 1 });
+        if (!isMessageRow(child)) queue.push(child);
       }
     }
     // Real rows outrank header/card child counts, including after a removal
@@ -2427,9 +2432,12 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     const groups = nativeMessageGroups(root);
     const targets = groups.filter((group) => group === row || row?.contains?.(group));
     if (targets.length !== 1) return null;
+    const payload = [...targets[0].querySelectorAll?.('[dir="auto"], img, video, audio, canvas, [role="slider"]') || []]
+      .filter((element) => !element.closest?.('[aria-label="Message actions"]'));
     return {
       target: targets[0],
       row,
+      payload: payload.filter((element) => !payload.some((other) => other !== element && element.contains?.(other))),
       entries: groups.map((element) => ({ element, parent: element.parentElement, signature: retainedMessageSignature(element) })),
     };
   }
@@ -2521,7 +2529,14 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
   function dispatchedNativeRemovalProven(before) {
     const native = before?.native;
     if (!native || !before.root?.isConnected
-      || !before.parent?.isConnected || !removalScrollStayed(before)) return false;
+      || !before.parent?.isConnected || !removalScrollStayed(before)
+      || visibleLoader(before.root) || before.root.getAttribute?.('aria-busy') === 'true'
+      || before.root.closest?.('[hidden], [aria-hidden="true"]')) return false;
+
+    // A surviving logical message is not removed just because its text changed.
+    // Genuine unsent placeholders are handled by removalProven instead.
+    if (before.key && [...before.root.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
+      .some((element) => stableMessageKey(element) === before.key)) return false;
 
     const targetIndex = native.entries.findIndex(({ element }) => element === native.target);
     if (targetIndex < 0) return false;
@@ -2534,6 +2549,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     // while emptying or recycling the exact payload inside it. The clicked
     // payload must disappear; the wrapper node does not have to.
     if (native.target.isConnected && retainedMessageSignature(native.target) === targetSignature) return false;
+    if (native.target.isConnected && !before.key
+      && (!native.payload.length || native.payload.some((element) => element.isConnected
+        && native.target.contains?.(element)))) return false;
 
     // Instagram currently keeps the outer virtual-list slot mounted after a
     // confirmed Unsend while removing or recycling the exact native message
@@ -3991,6 +4009,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         const accountKey = accountId ? `id:${accountId}` : `username:${accountUsername}`;
         const usernameOwner = accountKeyByUsername.get(accountUsername);
         if (usernameOwner && usernameOwner !== accountKey) {
+          // Later pages can omit an ID already supplied for this username.
+          // Keep the stronger record instead of treating that duplicate as a conflict.
+          if (!accountId && usernameOwner.startsWith('id:')) continue;
           if (usernameOwner === `username:${accountUsername}` && accountId) {
             accounts.delete(usernameOwner);
           } else {
@@ -5981,34 +6002,50 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     } catch { return ''; }
   }
   function inspect({ document = globalThis.document, location = globalThis.location,
-    session = globalThis.InstaToolboxInstagramInspector?.inspectSession?.() || {} } = {}) {
+    session = globalThis.InstaToolboxInstagramInspector?.inspectSession?.() || {},
+    reactionDialog = false } = {}) {
     const unavailable = { accountVerified: false, usable: false, accountId: null, threadId: null };
     if (location?.origin !== origin) return { ...unavailable, reason: 'instagram-origin-required' };
     const threadId = String(location.pathname).match(/^\/direct\/t\/([0-9]+)\/?$/)?.[1] || null;
     const restriction = session.sessionExpired || session.challenge || session.actionBlocked || session.rateLimited;
     if (restriction) return { ...unavailable, threadId, restriction: true, reason: 'instagram-restricted' };
-    const lists = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
+    const rawLists = [...document.querySelectorAll('[aria-label="Thread list"]')];
+    const dialogs = reactionDialog ? [...document.querySelectorAll('[role="dialog"]')]
+      .filter(visible).filter(node => [...node.querySelectorAll('h1, h2, h3, [role="heading"]')]
+        .some(heading => String(heading.textContent || '').trim() === 'Reactions')) : [];
+    const shown = (node) => {
+      if (visible(node)) return true;
+      if (dialogs.length !== 1 || !node?.isConnected || node.closest?.('[hidden]')
+        || !node.getClientRects?.().length) return false;
+      // A native modal can hide the whole app from assistive technology while
+      // leaving its account controls mounted. Re-read those same controls;
+      // never retain an account name across an actual switch or disappearance.
+      const backdrop = node.closest?.('[aria-hidden="true"]');
+      return Boolean(backdrop && backdrop !== node && !backdrop.contains(dialogs[0])
+        && rawLists.some(list => backdrop.contains(list)));
+    };
+    const lists = rawLists.filter(shown);
     if (lists.length > 1 || (threadId && lists.length !== 1)) return { ...unavailable, threadId, reason: 'account-picker-unavailable' };
     const list = lists[0];
     const headings = [...(list?.querySelectorAll('h2') || [])].filter((heading) => {
       const picker = heading.closest('[role="button"][tabindex="0"]');
-      return visible(heading) && picker && list.contains(picker) && visible(picker);
+      return shown(heading) && picker && list.contains(picker) && shown(picker);
     });
     if (list && headings.length !== 1) return { ...unavailable, threadId, reason: 'account-picker-ambiguous' };
     const pickerAccount = list ? username(headings[0].textContent) : null;
     if (list && !pickerAccount) return { ...unavailable, threadId, reason: 'account-name-unavailable' };
     const profiles = [...document.querySelectorAll('a[role="link"][href]')].filter((link) => {
-      if (!visible(link) || list?.contains(link)
+      if (!shown(link) || list?.contains(link)
         || link.getAttribute('aria-label')?.startsWith('Open the profile page of')) return false;
       const match = pathOf(link).match(/^\/([a-z0-9._]+)\/?$/i);
       const accountId = match && username(match[1]);
       if (!accountId || (pickerAccount && accountId !== pickerAccount)) return false;
-      const pictures = [...link.querySelectorAll('img')].filter(visible);
+      const pictures = [...link.querySelectorAll('img')].filter(shown);
       if (pictures.length !== 1
         || String(pictures[0].getAttribute('alt')).toLowerCase() !== `${accountId}'s profile picture`) return false;
       for (let rail = link.parentElement; rail && rail !== document.body; rail = rail.parentElement) {
         if ((list && rail.contains(list)) || rail.querySelector?.('main, article, [data-pagelet="IGDMessagesList"]')) return false;
-        const links = [...rail.querySelectorAll('a[href]')].filter(visible);
+        const links = [...rail.querySelectorAll('a[href]')].filter(shown);
         const paths = new Set(links.map(pathOf));
         const messages = links.some(node => /^\/direct\/t\/\d+\/?$/.test(pathOf(node))
           && (node.getAttribute('aria-label') === 'Messages' || node.querySelector?.('[aria-label="Messages"]')));
@@ -6017,8 +6054,12 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       }
       return false;
     });
-    if (profiles.length !== 1) return { ...unavailable, threadId, reason: 'account-navigation-unavailable' };
-    const accountId = pickerAccount || username(pathOf(profiles[0]).split('/')[1]);
+    // Instagram sometimes nests a profile link around another identical link.
+    // That is one control, not two independent account identities.
+    const profileControls = profiles.filter(link => !profiles.some(other =>
+      other !== link && other.contains(link) && pathOf(other) === pathOf(link)));
+    if (profileControls.length !== 1) return { ...unavailable, threadId, reason: 'account-navigation-unavailable' };
+    const accountId = pickerAccount || username(pathOf(profileControls[0]).split('/')[1]);
     return { accountVerified: true, accountId, threadId, usable: Boolean(threadId),
       accountKey: accountKey(accountId), identityKind: 'verified-viewer-username',
       restriction: false, evidence: list ? 'visible-account-picker-and-navigation' : 'visible-account-navigation' };
@@ -6454,10 +6495,11 @@ function createNativeInboxDiscovery({
     return null;
   }
   function auxiliaryCollection(node, root) {
-    // Notes occupy a separate native role=list inside Thread list. Avatar
+    // Notes occupy a separate native list inside Thread list. Avatar
     // images alone do not distinguish those profile buttons from threads.
     for (let current = node; current && current !== root; current = current.parentElement) {
-      if (current.getAttribute?.('role') === 'list'
+      if (['UL', 'OL'].includes(String(current.tagName || '').toUpperCase())
+        || current.getAttribute?.('role') === 'list'
         || current.getAttribute?.('aria-roledescription')?.trim().toLowerCase() === 'carousel') return true;
     }
     return false;
@@ -12184,7 +12226,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
   if (dmRunner?.createMessageWalker && globalThis.InstaToolboxReactionCleanup
     && globalThis.InstaToolboxInstagramViewer) {
     reactionCleanup = globalThis.InstaToolboxReactionCleanup.create({
-      inspectContext: () => globalThis.InstaToolboxInstagramViewer.inspect(),
+      inspectContext: () => globalThis.InstaToolboxInstagramViewer.inspect({ reactionDialog: true }),
     });
     reactionCleanup.subscribe((next) => {
       reactionSnapshot = next;
