@@ -55,10 +55,11 @@ export function normalizePresenceSessionOptions(value = {}) {
     actions: Object.freeze(actions),
     mode,
     maxActions: mode === 'live'
-      ? boundedInteger(source.maxActions, { min: 1, max: MAX_LIVE_ACTIONS, fallback: 200 })
+      ? boundedInteger(source.maxActions, { min: 1, max: MAX_LIVE_ACTIONS, fallback: null })
       : count(source.maxActions),
     liveDurationMinutes: boundedInteger(source.liveDurationMinutes,
       { min: 30, max: 720, fallback: 120 }),
+    scheduledBreaks: source.scheduledBreaks === true,
     liveBurstActions: boundedInteger(source.liveBurstActions,
       { min: 1, max: 20, fallback: 5 }),
     quietMinutes: boundedInteger(source.quietMinutes,
@@ -198,6 +199,9 @@ export function createPresenceSession({
         context(review.accountId);
         return true;
       };
+      const reachedLimit = () => review.options.maxActions !== null
+        && state.completed >= review.options.maxActions;
+      const waitWithinReview = (ms) => sleep(Math.min(ms, Math.max(0, review.expiresAt - now())), signal);
       publish({
         status: 'running', reason: null, accountId: review.accountId, current: null,
         completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
@@ -205,7 +209,7 @@ export function createPresenceSession({
         results, canPause: true, canResume: false, canStop: true,
       });
       try {
-        while (!signal.aborted && state.completed < review.options.maxActions && now() < review.expiresAt) {
+        while (!signal.aborted && !reachedLimit() && now() < review.expiresAt) {
           await awaitResume(signal);
           context(review.accountId);
           const action = itinerary[cursor % itinerary.length];
@@ -236,11 +240,10 @@ export function createPresenceSession({
               emptySweeps += 1;
               if (emptySweeps < LIVE_STARTUP_SWEEPS) {
                 publish({ status: 'searching', current: null });
-                await sleep(LIVE_STARTUP_RETRY_MS, signal);
+                await waitWithinReview(LIVE_STARTUP_RETRY_MS);
               } else {
-                emptySweeps = 0;
-                publish({ status: 'quiet', current: null });
-                await sleep(review.options.quietMinutes * 60_000, signal);
+                publish({ status: 'searching', current: null });
+                await waitWithinReview(Math.min(30_000, 5_000 * (emptySweeps - 2)));
               }
               await awaitResume(signal);
               if (!signal.aborted && now() < review.expiresAt) publish({ status: 'running' });
@@ -288,19 +291,20 @@ export function createPresenceSession({
               canPause: false, canResume: false, canStop: false });
             return snapshot();
           }
-          if (state.completed >= review.options.maxActions) break;
+          if (reachedLimit()) break;
           if (review.options.mode === 'live'
+            && review.options.scheduledBreaks
             && verifiedInBurst >= review.options.liveBurstActions) {
             verifiedInBurst = 0;
             publish({ status: 'quiet', current: null });
-            await sleep(review.options.quietMinutes * 60_000, signal);
+            await waitWithinReview(review.options.quietMinutes * 60_000);
             await awaitResume(signal);
             if (!signal.aborted) publish({ status: 'running' });
             continue;
           }
           const delay = Math.round(minDelayMs + random() * (maxDelayMs - minDelayMs));
           publish({ status: 'waiting', current: null });
-          await sleep(delay, signal);
+          await waitWithinReview(delay);
           if (!signal.aborted && state.status !== 'paused') publish({ status: 'running' });
         }
         if (signal.aborted) throw new DOMException('Stopped', 'AbortError');

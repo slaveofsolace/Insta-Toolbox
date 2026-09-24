@@ -182,7 +182,7 @@ export async function acceptUserscriptInboxReview({
       const root = ${rootExpression}, panel = ${panelExpression};
       if (root.querySelector('.panel').hidden) root.querySelector('.launcher').click();
       root.querySelector('[data-view="messages"]').click();
-      panel.closest('details').open = true;
+      panel.querySelector('details').open = true;
       panel.querySelector('.inbox-choice input').click();
       ${button('Find conversations')}.click();
     })()`);
@@ -241,7 +241,7 @@ export async function acceptUserscriptInboxReview({
         const root = ${rootExpression}, theme = root.querySelector('[data-preference="theme"]');
         theme.value = ${JSON.stringify(viewport.theme)}; theme.dispatchEvent(new Event('change', {bubbles:true}));
         root.querySelector('[data-view="messages"]').click();
-        (${panelExpression}).closest('details').open = true;
+        (${panelExpression}).querySelector('details').open = true;
       })()`);
       await waitForPageValue(webContents, `getComputedStyle((${rootExpression}).querySelector('.panel')).color === ${JSON.stringify(viewport.theme === 'dark' ? 'rgb(243, 243, 243)' : 'rgb(23, 23, 23)')}`, 'Ghost rendered theme');
       const metrics = await evaluate(`(async () => {
@@ -284,7 +284,7 @@ export async function acceptUserscriptInboxReview({
           overflow:inbox.scrollWidth-inbox.clientWidth,scrollOverflow:scroll.scrollWidth-scroll.clientWidth,
           liveRegions:root.querySelectorAll('[aria-live]').length};
       })()`);
-      assert.equal(metrics.controls.length, 12, `${viewport.label}: populated review controls`);
+      assert.equal(metrics.controls.length, 13, `${viewport.label}: populated review controls`);
       assert.ok(metrics.controls.some(control => control.name === 'Managed worker tabs'),
         `${viewport.label}: managed worker count control`);
       assert.ok(metrics.controls.some(control => control.name === 'Worker tab opening'),

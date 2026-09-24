@@ -6,6 +6,7 @@ const MAX_TTL_MS = 12 * 60 * 60_000;
 const HEARTBEAT_MS = 3_000;
 const STALE_MS = 90_000;
 const OPENING_MS = 60_000;
+const MAX_OPEN_ATTEMPTS = 3;
 const SETTLEMENT_MS = 15_000;
 const TERMINAL = new Set(['completed', 'partial', 'skipped', 'failed', 'uncertain', 'stopped']);
 const reviews = new WeakSet();
@@ -177,9 +178,16 @@ export function createUserscriptGhostBridge({
       // Reuse a bounded tab pool, not one tab per conversation until the end.
       await closeSettled(await read());
       const launches = [];
+      const retired = [];
       const job = await update((value) => {
         if (!validJob(value) || value.jobId !== current?.jobId
           || value.coordinatorId !== coordinatorId || value.status !== 'running') return value;
+        const observed = inspectContext();
+        if (observed?.restriction || observed?.accountId !== value.accountId) {
+          value.status = 'paused';
+          value.reason = observed?.restriction ? 'instagram-restriction' : 'account-changed';
+          return value;
+        }
         if (now() >= value.expiresAt) {
           value.status = 'expired'; value.reason = 'approval-expired';
           for (const task of value.tasks) if (!TERMINAL.has(task.status)) task.status = 'stopped';
@@ -189,7 +197,12 @@ export function createUserscriptGhostBridge({
         for (const task of value.tasks) {
           if (task.status === 'opening' && (now() - task.openedAt >= OPENING_MS
             || handles.get(task.threadId)?.closed === true)) {
-            task.status = 'failed'; task.reason = 'conversation-load-timeout';
+            const closed = handles.get(task.threadId)?.closed === true;
+            task.status = !closed && task.openAttempts < MAX_OPEN_ATTEMPTS ? 'pending' : 'failed';
+            task.reason = closed ? 'worker-tab-closed' : 'conversation-load-timeout';
+            task.launchId = null;
+            task.retryAt = now() + 2_000 * (task.openAttempts || 1);
+            retired.push(task.threadId);
           }
         }
         const stale = value.tasks.find(task => task.status === 'running'
@@ -200,10 +213,13 @@ export function createUserscriptGhostBridge({
           return value;
         }
         const active = value.tasks.filter(task => ['opening', 'running'].includes(task.status)).length;
-        for (const task of value.tasks.filter(task => task.status === 'pending').slice(0, value.workerCount - active)) {
+        for (const task of value.tasks.filter(task => task.status === 'pending'
+          && (!task.retryAt || task.retryAt <= now())).slice(0, value.workerCount - active)) {
           task.status = 'opening';
           task.launchId = randomId();
           task.openedAt = now();
+          task.openAttempts = (task.openAttempts || 0) + 1;
+          task.reason = null;
           launches.push({ threadId: task.threadId, launchId: task.launchId });
         }
         if (value.tasks.every(task => TERMINAL.has(task.status))) {
@@ -212,6 +228,10 @@ export function createUserscriptGhostBridge({
         value.updatedAt = now();
         return value;
       });
+      for (const threadId of retired) {
+        try { await handles.get(threadId)?.close?.(); } catch {}
+        handles.delete(threadId);
+      }
       await closeSettled(job);
       publish(job);
       for (const launch of launches) {
@@ -220,6 +240,7 @@ export function createUserscriptGhostBridge({
           const handle = await openTab(`https://www.instagram.com/direct/t/${encodeURIComponent(launch.threadId)}/#insta-toolbox-worker=${job.jobId}.${launch.launchId}`, {
             active: !review.openInBackground, insert: true, setParent: true,
           });
+          if (!handle) throw new Error('tab-open-failed');
           handles.set(launch.threadId, handle);
           if (current?.status !== 'running') {
             await handle?.close?.(); handles.delete(launch.threadId);
@@ -229,7 +250,11 @@ export function createUserscriptGhostBridge({
             if (!validJob(value) || value.jobId !== current?.jobId) return value;
             const task = value.tasks.find(item => item.threadId === launch.threadId
               && item.launchId === launch.launchId && item.status === 'opening');
-            if (task) { task.status = 'failed'; task.reason = 'tab-open-failed'; }
+            if (task) {
+              task.status = task.openAttempts < MAX_OPEN_ATTEMPTS ? 'pending' : 'failed';
+              task.reason = 'tab-open-failed'; task.launchId = null;
+              task.retryAt = now() + 2_000 * task.openAttempts;
+            }
             value.updatedAt = now();
             return value;
           });
@@ -464,6 +489,7 @@ export function createUserscriptGhostBridge({
         row.status = outcome?.status === 'completed' ? 'completed'
           : outcome?.uncertain ? 'uncertain' : outcome?.processed > 0 ? 'partial' : 'failed';
         row.reason = outcome?.status === 'completed' ? null : outcome?.message || 'conversation-incomplete';
+        if (inspectContext()?.restriction) { value.status = 'paused'; value.reason = 'instagram-restriction'; }
         value.updatedAt = now();
         return value;
       });
@@ -476,6 +502,7 @@ export function createUserscriptGhostBridge({
           row.status = row.messageRemovals ? 'partial' : 'failed';
           row.reason = error?.message || 'conversation-incomplete';
         }
+        if (inspectContext()?.restriction) { value.status = 'paused'; value.reason = 'instagram-restriction'; }
         return value;
       });
       return clone(latest.tasks.find(item => item.threadId === threadId));

@@ -1678,7 +1678,7 @@ async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
         if (root.querySelector('.panel').hidden) root.querySelector('.launcher').click();
         root.querySelector('[data-view="messages"]').click();
         for (const details of root.querySelectorAll('[data-panel="messages"] details')) details.open = false;
-        root.querySelector('[data-role="inbox-cleanup"]').closest('details').open = true;
+        root.querySelector('[data-role="inbox-cleanup"]').querySelector('details').open = true;
         return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       })()`, true);
       await waitForPageValue(webContents, `(() => {
@@ -1693,7 +1693,7 @@ async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
         const panel = root.querySelector('.panel');
         const scroll = root.querySelector('.scroll');
         const inbox = root.querySelector('[data-role="inbox-cleanup"]');
-        const details = inbox.closest('details');
+        const details = inbox.querySelector('details');
         const summary = details.querySelector('summary');
         const visible = node => node.getClientRects().length && !node.closest('[hidden]')
           && getComputedStyle(node).visibility !== 'hidden';
@@ -1742,7 +1742,7 @@ async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
           confirmationOpen: root.querySelector('[data-role="action-confirmation"]').open };
       })()`, true);
       assert.deepEqual(metrics.controls.map(control => control.name), [
-        'Ghost mode', 'Inbox section', 'Opening conversations may mark them read.', 'Find conversations', 'Open inbox',
+        'Choose conversations and tabs', 'Start Ghost Mode', 'Inbox section', 'Opening conversations may mark them read.', 'Find conversations', 'Open inbox',
         'Managed worker tabs', 'Worker tab opening',
       ], `${viewport.label}: initial inbox controls`);
       assert.ok(metrics.controls.every(control => control.height >= 44 && control.width >= 44),
@@ -1770,7 +1770,7 @@ async function acceptUserscriptInboxPanelLayout(webContents, baseUrl) {
         await webContents.executeJavaScript(`(() => {
           const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
           const inbox = root.querySelector('[data-role="inbox-cleanup"]');
-          const target = ${JSON.stringify(position)} === 'heading' ? inbox.closest('details').querySelector('summary')
+          const target = ${JSON.stringify(position)} === 'heading' ? inbox.querySelector('[data-ghost-start]')
             : [...inbox.querySelectorAll('button')].find(button => button.textContent === 'Find conversations');
           target.scrollIntoView({ block: ${JSON.stringify(position === 'heading' ? 'start' : 'center')}, inline: 'nearest' });
           return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));

@@ -91,7 +91,7 @@ test('the panel names the current Instagram context for every handled state', ()
     'Presence paused',
     'Conversation open',
     'Inbox open',
-    'Nothing to work on here',
+    'Instagram open',
   ]) {
     assert.ok(shell.includes(state), `context state missing: ${state}`);
   }

@@ -287,3 +287,45 @@ test('an unopened conversation times out and the pool advances to the next revie
   assert.equal(storage.value().tasks[0].reason, 'conversation-load-timeout');
   await manager.stop(); await finished;
 });
+
+test('opening retries are bounded, back off, close old tabs and invalidate each old launch', { timeout: 5000 }, async () => {
+  let clock = NOW, sequence = 0, tick;
+  const storage = sharedStorage(), opened = [], closed = [];
+  const bridge = createUserscriptGhostBridge({ storage, locks, runner: runnerStub,
+    inspectContext: () => ({ accountId: 'demo', usable: true }), location: { pathname: '/direct/inbox/' },
+    now: () => clock, randomId: () => `retry_${++sequence}`,
+    setIntervalFn: callback => { tick = callback; return 1; }, clearIntervalFn: () => {},
+    openTab: async url => { opened.push(url); return { close: async () => { closed.push(url); } }; },
+  });
+  const manager = bridge.createManager(bridge.createReview({ accountId: 'demo', threadIds: ['one'], workerCount: 1 }));
+  const finished = manager.start();
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+  while (opened.length < 1) await flush();
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    clock += 61_000; tick(); await flush(); await flush();
+    assert.equal(storage.value().tasks[0].launchId, null);
+    assert.equal(closed.length, attempt);
+    if (attempt < 3) {
+      assert.equal(storage.value().tasks[0].status, 'pending');
+      assert.equal(opened.length, attempt, 'no immediate retry');
+      clock += 2_000 * attempt; tick(); await flush(); await flush();
+      assert.equal(opened.length, attempt + 1);
+      assert.equal(new Set(opened).size, attempt + 1, 'old URL cannot claim the new opening');
+    }
+  }
+  assert.equal((await finished).status, 'partial');
+  assert.equal(storage.value().tasks[0].openAttempts, 3);
+  assert.equal(storage.value().tasks[0].messageRemovals, 0);
+});
+
+test('coordinator account changes pause the entire pool before any new tab opens', async () => {
+  const storage = sharedStorage(); let opens = 0;
+  const bridge = createUserscriptGhostBridge({ storage, locks, runner: runnerStub,
+    inspectContext: () => ({ accountId: 'different', usable: true }), location: { pathname: '/direct/inbox/' },
+    now: () => NOW, setIntervalFn: () => 1, clearIntervalFn: () => {},
+    openTab: async () => { opens += 1; return {}; },
+  });
+  const manager = bridge.createManager(bridge.createReview({ accountId: 'demo', threadIds: ['one'] }));
+  const result = await manager.start();
+  assert.equal(result.status, 'paused'); assert.equal(result.reason, 'account-changed'); assert.equal(opens, 0);
+});

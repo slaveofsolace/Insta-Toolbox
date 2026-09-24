@@ -102,17 +102,12 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
     await evaluate(`(() => {
       const root=${ROOT}, panel=${PANEL};
       if(root.querySelector('.panel').hidden)root.querySelector('.launcher').click();
-      root.querySelector('[data-view="messages"]').click();panel.closest('details').open=true;
-      panel.querySelector('.inbox-choice input').click();${button('Find conversations')}.click();
-    })()`);
-    await waitForPageValue(web, `${PANEL}.querySelectorAll('.inbox-selection > label').length===3 && !${button('Find conversations')}.disabled`, 'Ghost discovery', 25_000);
-    await evaluate(`(() => {
-      const panel=${PANEL}; for(const input of panel.querySelectorAll('.inbox-selection input')){input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));}
+      root.querySelector('[data-view="messages"]').click();
       const workers=panel.querySelector('[aria-label="Managed worker tabs"]');workers.value='2';workers.dispatchEvent(new Event('change',{bubbles:true}));
       const mode=panel.querySelector('[aria-label="Worker tab opening"]');mode.value='background';mode.dispatchEvent(new Event('change',{bubbles:true}));
-      ${button('Review 3 conversations')}.click();
+      ${button('Start Ghost Mode')}.click();
     })()`);
-    await waitForPageValue(web, `${ROOT}.querySelector('[data-role="action-confirmation"]').open`, 'Ghost review dialog');
+    await waitForPageValue(web, `${ROOT}.querySelector('[data-role="action-confirmation"]').open`, 'Ghost discovery and review dialog', 25_000);
     assert.equal(opened.length, 0, 'review must not open execution tabs');
     const point = await evaluate(`(() => {const node=${ROOT}.querySelector('[data-action="confirm-accept"]');node.scrollIntoView({block:'center'});const r=node.getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)};})()`);
     web.focus();
