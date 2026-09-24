@@ -51,6 +51,38 @@ test('global account navigation can identify the viewer before opening the inbox
   assert.equal(f.inspect().accountVerified, false, 'a page-wide ancestor cannot turn a feed avatar into the account control');
 });
 
+test('nested identical profile links identify one native account control', () => {
+  const f = fixture();
+  const inner = f.node({ href: '/fixture_viewer/', role: 'link' });
+  inner.querySelectorAll = () => [f.picture]; inner.parentElement = f.profile;
+  f.profile.contains = node => node === inner || node === f.profile;
+  f.document.querySelectorAll = selector => selector === '[aria-label="Thread list"]' ? [f.list] : [f.profile, inner];
+  assert.equal(f.inspect().accountVerified, true);
+  inner.attributes.href = '/different_viewer/';
+  assert.equal(f.inspect().accountId, 'fixture_viewer');
+});
+
+test('a reaction modal may aria-hide the mounted account controls without revoking their identity', () => {
+  const f = fixture();
+  const backdrop = f.node(), dialog = f.node(), title = f.node();
+  title.textContent = 'Reactions'; dialog.querySelectorAll = () => [title];
+  backdrop.contains = node => node !== dialog;
+  const hiddenNodes = [f.list, f.heading, f.picker, f.profile, f.picture, ...f.links];
+  for (const node of hiddenNodes) {
+    const original = node.closest;
+    node.closest = selector => selector.includes('aria-hidden') ? backdrop : original.call(node, selector);
+  }
+  f.document.querySelectorAll = selector => selector === '[aria-label="Thread list"]' ? [f.list]
+    : selector === '[role="dialog"]' ? [dialog] : [f.profile];
+  assert.equal(f.inspect().accountVerified, false, 'ordinary inspection does not ignore hidden account UI');
+  f.options.reactionDialog = true;
+  assert.equal(f.inspect().accountVerified, true);
+  f.heading.textContent = 'different_viewer';
+  assert.equal(f.inspect().accountVerified, false, 'the account is still read afresh behind the modal');
+  f.heading.textContent = 'fixture_viewer'; title.textContent = 'Other dialog';
+  assert.equal(f.inspect().accountVerified, false);
+});
+
 test('versioned viewer keys preserve dotted usernames without claiming a numeric identity', () => {
   const context = vm.createContext({ URL, Object }); vm.runInContext(source, context);
   const key = context.InstaToolboxInstagramViewer.accountKey;

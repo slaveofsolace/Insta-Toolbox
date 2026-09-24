@@ -305,9 +305,11 @@ test('restriction or unverified account rejects navigation before selecting a ro
   }
 });
 
-test('Notes list and carousel profile buttons are excluded while sibling conversations resolve', async () => {
+for (const listTag of ['DIV', 'UL', 'OL']) {
+test(`Notes ${listTag} list and carousel buttons are excluded while conversations resolve`, async () => {
   const f = fixture({ pages: [['101']] }), original = f.root.querySelectorAll;
-  const noteList = { parentElement: f.root, getAttribute: (name) => name === 'role' ? 'list' : null };
+  const noteList = { tagName: listTag, parentElement: f.root,
+    getAttribute: (name) => name === 'role' && listTag === 'DIV' ? 'list' : null };
   const carousel = { parentElement: f.root, getAttribute: (name) => name === 'aria-roledescription' ? 'Carousel' : null };
   const note = (container) => ({ isConnected: true, tagName: 'DIV', parentElement: container, querySelector: () => ({}),
     getAttribute: () => null, click() { assert.fail('Notes/profile button clicked'); } });
@@ -315,6 +317,7 @@ test('Notes list and carousel profile buttons are excluded while sibling convers
   const result = await f.adapter().run();
   assert.deepEqual(result.conversations.map((row) => row.threadId), ['101']); assert.equal(result.visits, 1);
 });
+}
 
 test('overflowing visible layout is not confused with a real scroll owner', async () => {
   const f = fixture(), original = f.root.querySelectorAll;

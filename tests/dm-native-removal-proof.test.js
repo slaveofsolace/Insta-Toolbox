@@ -328,8 +328,8 @@ test('a confirmed Unsend accepts a retained virtual group after its exact payloa
   const { target, before, proof, root, Element } = fixture();
   const dialogButton = new Element('button', { text: 'Unsend' });
   root.append(dialogButton);
-  target.content.attributes.text = 'Replacement virtual payload';
-  target.group.children = [target.content];
+  target.content.remove();
+  target.group.append(new Element('span', { dir: 'auto', text: 'Replacement virtual payload' }));
   dialogButton.remove();
   assert.equal(proof.removalProven(target.row, before), false,
     'a generic DOM edit remains insufficient without the dispatched confirmation');
@@ -337,7 +337,7 @@ test('a confirmed Unsend accepts a retained virtual group after its exact payloa
     { dialogButton, timeoutMs: 220, stableMs: 75 }), true);
 });
 
-test('a confirmed Unsend accepts a recycled virtual group now holding a different exact payload', async () => {
+test('a closed confirmation does not turn an in-place message edit into removal proof', async () => {
   const { target, before, proof, root, Element } = fixture();
   const dialogButton = new Element('button', { text: 'Unsend' });
   root.append(dialogButton);
@@ -345,6 +345,45 @@ test('a confirmed Unsend accepts a recycled virtual group now holding a differen
   dialogButton.remove();
   assert.equal(proof.removalProven(target.row, before), false,
     'recycling remains insufficient without the dispatched confirmation');
+  assert.equal(await proof.waitForRemoval(target.row, before,
+    { dialogButton, timeoutMs: 220, stableMs: 75 }), false);
+});
+
+test('a closed confirmation cannot override a surviving message key or loading state', async () => {
+  for (const state of ['same-key', 'busy', 'loader']) {
+    const current = fixture();
+    const { target, proof, root, Element } = current;
+    if (state === 'same-key') target.row.attributes['data-message-id'] = 'exact-message';
+    const before = proof.removalEvidence(target.row);
+    const dialogButton = new Element('button', { text: 'Unsend' });
+    root.append(dialogButton);
+    target.content.remove();
+    target.group.append(new Element('span', { dir: 'auto', text: 'Changed payload' }));
+    if (state === 'busy') root.attributes['aria-busy'] = 'true';
+    if (state === 'loader') root.append(new Element('div', { role: 'progressbar' }));
+    dialogButton.remove();
+    assert.equal(await proof.waitForRemoval(target.row, before,
+      { dialogButton, timeoutMs: 150, stableMs: 25 }), false, state);
+  }
+});
+
+for (const shortMessages of [1, 2, 3]) {
+  test(`a closed confirmation cannot count an edit in a ${shortMessages}-message chat`, async () => {
+    const { target, before, proof, Element } = fixture({ shortMessages });
+    target.content.attributes.text = 'Edited, not unsent';
+    const dialogButton = new Element('button', { text: 'Unsend' });
+    assert.equal(await proof.waitForRemoval(target.row, before,
+      { dialogButton, timeoutMs: 150, stableMs: 25 }), false);
+  });
+}
+
+test('a retained slot with a different logical message key can prove the confirmed removal', async () => {
+  const { target, proof, Element } = fixture();
+  target.row.attributes['data-message-id'] = 'removed-message';
+  const before = proof.removalEvidence(target.row);
+  target.row.attributes['data-message-id'] = 'replacement-message';
+  target.content.attributes.text = 'New payload';
+  const dialogButton = new Element('button', { text: 'Unsend' });
   assert.equal(await proof.waitForRemoval(target.row, before,
     { dialogButton, timeoutMs: 220, stableMs: 75 }), true);
 });

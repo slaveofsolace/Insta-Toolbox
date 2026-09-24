@@ -907,6 +907,37 @@ test('Mutual Checker deduplicates a renamed account by stable Instagram ID', asy
   assert.equal(result.complete.followers, true);
 });
 
+for (const order of ['id-first', 'id-later', 'conflicting-ids']) {
+  test(`Mutual Checker reconciles repeated usernames across pages: ${order}`, async () => {
+    const records = order === 'id-first'
+      ? [{ pk: '1001', username: 'example' }, { username: 'example' }]
+      : order === 'id-later'
+        ? [{ username: 'example' }, { pk: '1001', username: 'example' }]
+        : [{ pk: '1001', username: 'example' }, { pk: '1002', username: 'example' }];
+    const pending = createInspector().fetchFollowerComparison({
+      username: 'target_name',
+      sleepImpl: async () => {},
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname.includes('topsearch')) return response({ users: [{ user: { pk: '77', username: 'target_name' } }] });
+        if (url.pathname.includes('web_profile_info')) return profileResponse({ followers: 1, following: 0 });
+        if (url.pathname.includes('/followers/')) return url.searchParams.has('max_id')
+          ? response({ users: [records[1]] })
+          : response({ users: [records[0]], next_max_id: 'second-page' });
+        return response({ users: [] });
+      },
+    });
+    if (order === 'conflicting-ids') {
+      await assert.rejects(pending, { code: 'invalid-response' });
+    } else {
+      const result = await pending;
+      assert.equal(result.followers.length, 1);
+      assert.equal(result.followers[0].instagramId, '1001');
+      assert.equal(result.complete.followers, true);
+    }
+  });
+}
+
 test('Mutual Checker marks a run partial when verified profile totals change during traversal', async () => {
   const inspector = createInspector();
   let profileReads = 0;

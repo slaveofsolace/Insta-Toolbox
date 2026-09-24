@@ -1,6 +1,6 @@
 {
   "name": "insta-toolbox",
-  "version": "4.1.5",
+  "version": "4.1.6",
   "private": true,
   "type": "module",
   "main": "desktop/main.mjs",

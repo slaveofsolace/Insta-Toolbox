@@ -43,17 +43,20 @@
     consumed.add(plan);
   }
 
-  function badges(row) {
+  function reactionBadges(row) {
     return [...row?.querySelectorAll?.('[role="button"]') || []].filter((node) => (
-      visible(node) && node.getAttribute('tabindex') === '0'
+      node.isConnected && node.getAttribute('tabindex') === '0'
       && !node.getAttribute('aria-label') && !node.getAttribute('aria-haspopup')
       && !node.closest?.('[aria-label="Message actions"]')
       && node.querySelector?.('[role="none"]') && badgeEmoji(node)
     ));
   }
+  const badges = (row) => reactionBadges(row).filter(visible);
 
   function messageSignature(row) {
-    const reactions = badges(row);
+    // Instagram aria-hides the conversation while reaction details are open.
+    // That accessibility change must not turn the badge into message content.
+    const reactions = reactionBadges(row);
     const relevant = (node) => !node.closest?.('[aria-label="Message actions"]')
       && !reactions.some((badge) => badge === node || badge.contains(node));
     const ids = ['data-message-id', 'data-item-id'].map((name) => row.getAttribute?.(name) || '');
@@ -246,7 +249,7 @@
             const dialogs = openDialogs();
             if (dialogs.length > 1) throw uncertain('Reaction details became ambiguous.');
             const current = dialogs[0];
-            const remainingBadges = badges(row);
+            const remainingBadges = reactionBadges(row);
             const matchingBadges = remainingBadges.filter((item) => badgeEmoji(item) === selectedEmoji);
             let removed = false;
             if (current) {

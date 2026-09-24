@@ -1165,6 +1165,7 @@ async function acceptPrimarySpeedEquivalence(webContents, baseUrl, {
 
 async function acceptShortNativeConversations(webContents, baseUrl) {
   for (const shortThread of [
+    { peer: 'direct', count: 3, wrappers: 7 },
     { peer: 'direct', count: 1 },
     { peer: 'group', count: 2, kind: 'reel' },
     { peer: 'unavailable', count: 2, kind: 'reel' },
@@ -1175,7 +1176,7 @@ async function acceptShortNativeConversations(webContents, baseUrl) {
       surfaces: ['userscript'], shortThread, uncertain: Boolean(shortThread.uncertain),
     });
   }
-  console.log('Accepted five short native-shaped thread fixtures; no authenticated account-state claim.');
+  console.log('Accepted six short native-shaped thread fixtures; no authenticated account-state claim.');
 }
 
 async function acceptThreadUnsendStop(webContents, baseUrl) {

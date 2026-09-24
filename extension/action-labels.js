@@ -449,18 +449,21 @@
   function findScrollableChild(parent, view = globalThis) {
     if (!parent) return null;
     let best = null;
+    let fitted = null;
     const queue = [{ element: parent, depth: 0 }];
     while (queue.length) {
       const { element, depth } = queue.shift();
       if (depth > 10) continue;
       const style = view.getComputedStyle?.(element);
       const slack = Number(element.scrollHeight) - Number(element.clientHeight);
-      if ((style?.overflowY === 'auto' || style?.overflowY === 'scroll') && slack > 8) {
-        if (!best || slack > best.slack) best = { element, slack };
+      if (style?.overflowY === 'auto' || style?.overflowY === 'scroll') {
+        if (slack > 8 && (!best || slack > best.slack)) best = { element, slack };
+        else if (!fitted && Number(element.clientHeight) > 0
+          && element.querySelector?.('[aria-label="Message actions"]')) fitted = element;
       }
       for (const child of element.children || []) queue.push({ element: child, depth: depth + 1 });
     }
-    return best?.element || null;
+    return best?.element || fitted;
   }
 
   function threadContext() {
@@ -489,10 +492,9 @@
     const isMessageRow = (element) => ['row', 'listitem'].includes(element?.getAttribute?.('role'))
       || Boolean(element?.getAttribute?.('data-message-id') || element?.getAttribute?.('data-item-id'))
       || element?.querySelectorAll?.('[aria-label="Message actions"]').length === 1;
-    const queue = [{ element: scroller, depth: 0 }];
+    const queue = [scroller];
     while (queue.length) {
-      const { element, depth } = queue.shift();
-      if (depth > 4) continue;
+      const element = queue.shift();
       const count = element?.children?.length || 0;
       const directMessages = [...element?.children || []].filter(isMessageRow).length;
       if (directMessages > messageCount) {
@@ -504,7 +506,7 @@
         bestCount = count;
       }
       for (const child of element?.children || []) {
-        if (!isMessageRow(child)) queue.push({ element: child, depth: depth + 1 });
+        if (!isMessageRow(child)) queue.push(child);
       }
     }
     // Real rows outrank header/card child counts, including after a removal
@@ -1646,9 +1648,12 @@
     const groups = nativeMessageGroups(root);
     const targets = groups.filter((group) => group === row || row?.contains?.(group));
     if (targets.length !== 1) return null;
+    const payload = [...targets[0].querySelectorAll?.('[dir="auto"], img, video, audio, canvas, [role="slider"]') || []]
+      .filter((element) => !element.closest?.('[aria-label="Message actions"]'));
     return {
       target: targets[0],
       row,
+      payload: payload.filter((element) => !payload.some((other) => other !== element && element.contains?.(other))),
       entries: groups.map((element) => ({ element, parent: element.parentElement, signature: retainedMessageSignature(element) })),
     };
   }
@@ -1740,7 +1745,14 @@
   function dispatchedNativeRemovalProven(before) {
     const native = before?.native;
     if (!native || !before.root?.isConnected
-      || !before.parent?.isConnected || !removalScrollStayed(before)) return false;
+      || !before.parent?.isConnected || !removalScrollStayed(before)
+      || visibleLoader(before.root) || before.root.getAttribute?.('aria-busy') === 'true'
+      || before.root.closest?.('[hidden], [aria-hidden="true"]')) return false;
+
+    // A surviving logical message is not removed just because its text changed.
+    // Genuine unsent placeholders are handled by removalProven instead.
+    if (before.key && [...before.root.querySelectorAll?.('[data-message-id], [data-item-id]') || []]
+      .some((element) => stableMessageKey(element) === before.key)) return false;
 
     const targetIndex = native.entries.findIndex(({ element }) => element === native.target);
     if (targetIndex < 0) return false;
@@ -1753,6 +1765,9 @@
     // while emptying or recycling the exact payload inside it. The clicked
     // payload must disappear; the wrapper node does not have to.
     if (native.target.isConnected && retainedMessageSignature(native.target) === targetSignature) return false;
+    if (native.target.isConnected && !before.key
+      && (!native.payload.length || native.payload.some((element) => element.isConnected
+        && native.target.contains?.(element)))) return false;
 
     // Instagram currently keeps the outer virtual-list slot mounted after a
     // confirmed Unsend while removing or recycling the exact native message

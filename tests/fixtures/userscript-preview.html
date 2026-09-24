@@ -239,6 +239,13 @@
       }
       const list = main.querySelector('[data-fixture-native-list]');
       const scroller = main.querySelector('[data-fixture-native-scroller]');
+      if (shortThread?.wrappers) {
+        for (let index = 0; index < shortThread.wrappers; index += 1) {
+          const wrapper = document.createElement('div');
+          list.parentElement.insertBefore(wrapper, list);
+          wrapper.append(list);
+        }
+      }
       const messageGroups = new Map();
       const slots = new Map();
       function addNativeMessage(id, { sent = false, kind = 'plain', prepend = false } = {}) {
@@ -404,6 +411,10 @@
         <a role="link" href="/demo_creator/"><img width="24" height="24" alt="demo_creator's profile picture" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'/%3E"></a>
         <a href="/">Home</a><a href="/reels/">Reels</a><a href="/direct/inbox/">Messages</a>`;
       document.body.append(accountPicker, navigation);
+      const app = document.createElement('div');
+      app.dataset.fixtureViewer = 'app';
+      document.body.append(app);
+      app.append(accountPicker, navigation, document.querySelector('main'));
       document.querySelector('main').innerHTML = `
         <section data-pagelet="IGDMessagesList">
           <header><h1>studio_friend</h1></header>
@@ -426,7 +437,7 @@
         close.type = 'button';
         close.setAttribute('aria-label', 'Close');
         close.textContent = 'Close';
-        close.addEventListener('click', () => dialog.remove());
+        close.addEventListener('click', () => { dialog.remove(); app.removeAttribute('aria-hidden'); });
         const mine = document.createElement('div');
         mine.setAttribute('role', 'button');
         mine.setAttribute('tabindex', '0');
@@ -449,6 +460,7 @@
           globalThis.fixtureReactionRemoved += 1;
         });
         dialog.append(heading, close, mine);
+        app.setAttribute('aria-hidden', 'true');
         document.body.append(dialog);
       });
       return { messageConnected: message.isConnected, badgeConnected: badge.isConnected };
