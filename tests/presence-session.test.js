@@ -57,6 +57,7 @@ test('normalizes a small session and makes story reactions include story viewing
   assert.equal(value.liveDurationMinutes, 120);
   assert.equal(value.liveBurstActions, 5);
   assert.equal(value.quietMinutes, 10);
+  assert.equal(value.scheduledBreaks, false);
   assert.equal(Object.isFrozen(value), true);
 });
 
@@ -72,6 +73,7 @@ test('Live like me remains finite and inserts reviewed quiet windows', async () 
   });
   const options = normalizePresenceSessionOptions({
     mode: 'live', maxActions: 3, liveDurationMinutes: 60,
+    scheduledBreaks: true,
     liveBurstActions: 2, quietMinutes: 7,
     actions: { likePosts: true },
   });
@@ -99,13 +101,13 @@ test('Live like me clamps copied unbounded settings and never exceeds twelve hou
     liveDurationMinutes: options.liveDurationMinutes,
     liveBurstActions: options.liveBurstActions,
     quietMinutes: options.quietMinutes,
-  }, { maxActions: 200, liveDurationMinutes: 120, liveBurstActions: 5, quietMinutes: 10 });
+  }, { maxActions: null, liveDurationMinutes: 120, liveBurstActions: 5, quietMinutes: 10 });
   const review = f.session.createReview({ accountId: 'viewer', options,
     expiresAt: NOW + 48 * 60 * 60_000 });
   assert.equal(review.expiresAt, NOW + 120 * 60_000);
 });
 
-test('Live like me rests and checks again instead of ending when no target is visible', async () => {
+test('continuous Presence backs off when empty, without minute-long scheduled rests or overshooting expiry', async () => {
   let clock = NOW;
   const waits = [];
   const updates = [];
@@ -128,12 +130,26 @@ test('Live like me rests and checks again instead of ending when no target is vi
   const result = await session.start(review);
   assert.equal(result.status, 'expired');
   assert.equal(result.completed, 0);
-  assert.deepEqual(waits, [2_000, 2_000, 30 * 60_000]);
-  const firstSearch = updates.findIndex(value => value.status === 'searching');
-  const firstRest = updates.findIndex(value => value.status === 'quiet');
-  assert.ok(firstSearch >= 0 && firstSearch < firstRest,
-    'the live run must visibly search before its first quiet window');
-  assert.equal(updates.some(value => value.status === 'quiet'), true);
+  assert.deepEqual(waits.slice(0, 5), [2_000, 2_000, 5_000, 10_000, 15_000]);
+  assert.ok(waits.every(ms => ms <= 30_000));
+  assert.equal(clock, review.expiresAt);
+  assert.equal(updates.some(value => value.status === 'quiet'), false);
+});
+
+test('continuous Presence passes the old burst and 200-action limits until Stop', async () => {
+  let f;
+  const waits = [];
+  f = fixture({ candidates: { likePosts: Array.from({ length: 205 }, (_, i) => candidate('likePosts', `post:${i}`)) },
+    wait: async ms => { waits.push(ms); if (f.session.snapshot().completed === 205) f.session.stop(); } });
+  const review = f.session.createReview({ accountId: 'viewer', options: {
+    mode: 'live', liveBurstActions: 2, quietMinutes: 30, actions: { likePosts: true },
+  } });
+  assert.equal(review.options.maxActions, null);
+  const result = await f.session.start(review);
+  assert.equal(result.completed, 205);
+  assert.equal(result.status, 'stopped');
+  assert.ok(waits.every(ms => ms === 0));
+  assert.equal(f.updates.some(value => value.status === 'quiet'), false);
 });
 
 test('skipped targets do not consume a live burst or trigger another quiet window', async () => {

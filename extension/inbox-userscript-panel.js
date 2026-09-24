@@ -27,6 +27,9 @@ export function mountUserscriptInboxPanel({
     return node;
   };
   const controls = create('div', null, 'toolbar');
+  const startGhost = create('button', 'Start Ghost Mode', 'button danger big');
+  startGhost.type = 'button';
+  startGhost.setAttribute('data-ghost-start', '');
   const find = create('button', 'Find conversations', 'button quiet');
   find.type = 'button';
   const section = create('select');
@@ -37,7 +40,9 @@ export function mountUserscriptInboxPanel({
   const acknowledgment = create('label', null, 'inbox-choice');
   const acknowledged = create('input'); acknowledged.type = 'checkbox';
   acknowledgment.append(acknowledged, document.createTextNode(' Opening conversations may mark them read.'));
-  const note = create('p', 'Find conversations, choose which to clean up, then start. Nothing is removed while finding chats.', 'lead');
+  const note = create('p', 'Find your conversations, then unsend your messages after one confirmation. Opening chats may mark them read.', 'lead');
+  const advanced = create('details', null, 'settings-inline');
+  advanced.append(create('summary', 'Choose conversations and tabs'));
   const workersLabel = create('label', 'Worker tabs', 'field');
   const workers = create('select');
   workers.setAttribute('aria-label', 'Managed worker tabs');
@@ -87,8 +92,9 @@ export function mountUserscriptInboxPanel({
   supportNote.hidden = !supportNote.textContent;
   controls.append(find, inbox);
   const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, resume, pause, skip, stop);
-  container.append(note, section, acknowledgment, controls, inventoryStatus, filterLabel, filterStatus,
-    list, workersLabel, workerModeLabel, workerNote, supportNote, recovery, actions, storageNote, results);
+  advanced.append(section, acknowledgment, controls, filterLabel, filterStatus,
+    list, workersLabel, workerModeLabel, workerNote);
+  container.append(startGhost, note, inventoryStatus, advanced, supportNote, recovery, actions, storageNote, results);
 
   function context() {
     const value = viewer.inspect({ document, location: window.location });
@@ -138,6 +144,9 @@ export function mountUserscriptInboxPanel({
     results.hidden = !checkpoint?.tasks?.length;
     storageNote.hidden = !storageNote.textContent;
     find.disabled = active || loading || loadFailed;
+    startGhost.hidden = active;
+    startGhost.disabled = loading || loadFailed || !window.navigator?.locks?.request
+      || (needsReconciliation && !reconciled.checked);
     section.disabled = active; acknowledged.disabled = active;
     workers.disabled = active || !workerTransport; workerMode.disabled = active || !workerTransport;
     selectAll.hidden = !inventory?.conversations.length; selectAll.disabled = active || !shown;
@@ -256,19 +265,34 @@ export function mountUserscriptInboxPanel({
     loadFailed = true;
     storageNote.textContent = 'Saved cleanup progress could not be read. Reload before starting another cleanup.';
   }).finally(() => { loading = false; updateControls(); });
-  find.addEventListener('click', async () => {
+  async function findConversations({ all = false } = {}) {
     if (active || loading || loadFailed || busy()) return;
-    if (!acknowledged.checked) { announce('Confirm that opening conversations may mark them read.'); acknowledged.focus(); return; }
+    if (!all && !acknowledged.checked) { announce('Confirm that opening conversations may mark them read.'); acknowledged.focus(); return; }
     const epoch = ++operationEpoch;
     active = true; inventory = null; selected.clear(); rows.clear(); filter.value = ''; list.replaceChildren(); unsubscribe?.(); controller = null; updateControls();
+    let found = null;
     try {
       await loadCheckpoint();
       if (epoch !== operationEpoch) return;
-      const sections = section.value === 'all' ? null : [section.value];
-      await discovery.discover({ navigationAcknowledged: true, sections });
+      const sections = all || section.value === 'all' ? null : [section.value];
+      found = await discovery.discover({ navigationAcknowledged: true, sections });
     }
     catch (error) { announce(friendlyReason(error.message)); }
     finally { active = false; updateControls(); }
+    if (epoch !== operationEpoch || found?.status !== 'ready') return null;
+    return found;
+  }
+  find.addEventListener('click', () => findConversations());
+  startGhost.addEventListener('click', async () => {
+    if (busy()) { announce('Stop the active Presence or Unsend run before starting Ghost Mode.'); return; }
+    if (active || loading || loadFailed || (needsReconciliation && !reconciled.checked)) return;
+    const found = await findConversations({ all: true });
+    if (!found) return;
+    const ids = found.inventory?.conversations.map(thread => thread.threadId) || [];
+    if (!ids.length) { announce('No conversations found. Nothing was removed.'); return; }
+    for (const id of ids) { selected.add(id); if (rows.has(id)) rows.get(id).input.checked = true; }
+    updateControls();
+    await startReview(ids);
   });
   selectAll.addEventListener('click', () => {
     if (active) return;

@@ -2,6 +2,15 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.2.0 - 2026-09-24
+
+- Keep Live like me running continuously for the selected duration. Scheduled breaks are optional and off by default; the hidden 200-action limit is removed. Empty feeds use short, bounded backoff instead of a long rest.
+- Add a visible **Start Ghost Mode** button. It discovers available conversations, confirms the exact inventory, then opens the selected number of managed worker tabs through the existing Unsend engine.
+- Retry an unopened worker tab at most twice with fresh launch identities. Never restart an already-active worker on a missing heartbeat. Account changes and restrictions pause the shared job.
+- Add read-only loaded-post insights alongside Mutual Checker: post links, linked hashtags, available media/date information, and text/JSON reports. Samples stay labelled; no extra Instagram requests or remote services are added.
+- Keep partial mutual comparisons visible and downloadable. The reviewed external collectors offer no verified way to recover records Instagram omits.
+
+
 ## 4.1.6 - 2026-09-24
 
 - Keep Ghost discovery out of Instagram's Notes strip, including native HTML lists without an explicit ARIA role. Only conversation rows enter the inventory.

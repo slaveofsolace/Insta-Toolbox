@@ -367,6 +367,36 @@ function interruptedCheckpoint(phase) {
   return state;
 }
 
+test('Start Ghost Mode discovers all sections and confirms the frozen inventory before any removal', { timeout: 15_000 }, async t => {
+  const f = fixture(); t.after(() => f.dispose()); await f.panel.ready;
+  const start = f.button('Start Ghost Mode');
+  assert.equal(start.hidden, false);
+  assert.equal(start.parentElement, f.container, 'primary action is not buried in a disclosure');
+  await start.click();
+  assert.equal(f.confirmations.length, 1);
+  assert.equal(f.confirmations[0].facts.find(item => item.label === 'Conversations').value, '101, 202');
+  assert.deepEqual(f.dispatches, []);
+  assert.equal(f.panel.busy(), false);
+  assert.equal(f.selection().children.length, 2, 'Cancel preserves the found inventory');
+});
+
+test('Start Ghost Mode uses the existing runner for every confirmed conversation', { timeout: 15_000 }, async t => {
+  const f = fixture({ confirm: value => ({ ...value.binding }) });
+  t.after(() => f.dispose()); await f.panel.ready;
+  await f.button('Start Ghost Mode').click();
+  assert.deepEqual(f.dispatches, ['101', '202']);
+  assert.equal(f.panel.snapshot().status, 'completed');
+  assert.equal(f.lockNames.size, 0);
+});
+
+test('Ghost explains an active Presence run instead of silently doing nothing', async t => {
+  const f = fixture({ busy: true }); t.after(() => f.dispose()); await f.panel.ready;
+  await f.button('Start Ghost Mode').click();
+  assert.match(f.statuses.at(-1), /Stop the active Presence or Unsend run/);
+  assert.deepEqual(f.navigation, []);
+  assert.deepEqual(f.confirmations, []);
+});
+
 test('loaded pending or uncertain checkpoints display history without restoring execution authority', { timeout: 10_000 }, async t => {
   for (const phase of ['prepared', 'dispatched', 'uncertain']) {
     const saved = interruptedCheckpoint(phase);

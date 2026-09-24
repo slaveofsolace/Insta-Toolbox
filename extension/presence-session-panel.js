@@ -55,7 +55,7 @@ export function mountPresenceSessionPanel({
     .presence-session .presence-run-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .presence-session .presence-limit{max-width:none}
     .presence-session .presence-limit input,.presence-session .presence-limit select{box-sizing:border-box;width:100%;min-height:44px;font:inherit;color:inherit;background:var(--insta-toolbox-bg-sunken);border:1px solid var(--insta-toolbox-line);border-radius:8px;padding:8px 34px 8px 10px}
-    .presence-session .presence-live-options{display:grid;grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:12px;border:1px solid var(--insta-toolbox-line);border-radius:10px;background:var(--insta-toolbox-bg-sunken)}
+    .presence-session .presence-live-options{display:grid;grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px;border:1px solid var(--insta-toolbox-line);border-radius:10px;background:var(--insta-toolbox-bg-sunken)}
     .presence-session .presence-controls{display:flex;flex-wrap:wrap;gap:8px}
     .presence-session .presence-controls .button{flex:1 1 132px;white-space:normal}
     .presence-session .presence-status{display:grid;gap:5px;padding:12px;border-left:3px solid var(--insta-toolbox-accent);background:var(--insta-toolbox-bg-sunken);border-radius:0 8px 8px 0}
@@ -114,6 +114,11 @@ export function mountPresenceSessionPanel({
     const option = create('option', label); option.value = String(value); duration.append(option);
   }
   durationLabel.append(duration);
+  const breaksLabel = create('label', null, 'presence-option');
+  const breaks = create('input');
+  breaks.type = 'checkbox';
+  breaks.setAttribute('data-presence-breaks', '');
+  breaksLabel.append(breaks, document.createTextNode('Take scheduled breaks'));
   const burstLabel = create('label', 'Pause after', 'presence-limit');
   const burst = create('select');
   for (const value of [3, 5, 8, 10]) {
@@ -126,7 +131,7 @@ export function mountPresenceSessionPanel({
     const option = create('option', `${value} minutes`); option.value = String(value); quiet.append(option);
   }
   quietLabel.append(quiet);
-  liveOptions.append(durationLabel, burstLabel, quietLabel);
+  liveOptions.append(durationLabel, breaksLabel, burstLabel, quietLabel);
   runGrid.append(modeLabel, limitLabel, liveOptions);
   const actions = create('div', null, 'presence-controls');
   const start = create('button', 'Start', 'button primary big');
@@ -186,8 +191,9 @@ export function mountPresenceSessionPanel({
     return normalizePresenceSessionOptions({
       actions: Object.fromEntries([...controls].map(([key, input]) => [key, input.checked])),
       mode: mode.value,
-      maxActions: mode.value === 'live' ? 200 : maxActions,
+      maxActions: mode.value === 'live' ? null : maxActions,
       liveDurationMinutes: Number(duration.value),
+      scheduledBreaks: breaks.checked,
       liveBurstActions: Number(burst.value),
       quietMinutes: Number(quiet.value),
     });
@@ -201,6 +207,7 @@ export function mountPresenceSessionPanel({
     mode.value = options.mode;
     if (options.mode === 'session') limit.value = String(options.maxActions);
     duration.value = String(options.liveDurationMinutes);
+    breaks.checked = options.scheduledBreaks;
     burst.value = String(options.liveBurstActions);
     quiet.value = String(options.quietMinutes);
     writePreferences({ ...structuredClone(options), sessionActions: Number(limit.value) });
@@ -217,6 +224,7 @@ export function mountPresenceSessionPanel({
     limit.value = String(Number.isInteger(sessionActions) && sessionActions >= 1 && sessionActions <= 50
       ? sessionActions : 10);
     duration.value = String(saved.liveDurationMinutes);
+    breaks.checked = saved.scheduledBreaks;
     burst.value = String(saved.liveBurstActions);
     quiet.value = String(saved.quietMinutes);
   }
@@ -225,8 +233,8 @@ export function mountPresenceSessionPanel({
     if (snapshot.status === 'idle') return ['Ready', 'Nothing happens until you confirm.'];
     if (snapshot.status === 'running') return [snapshot.current?.label || 'Presence is running', `${count} verified action${count === 1 ? '' : 's'}.`];
     if (snapshot.status === 'searching') return ['Looking for something to do', `${count} verified action${count === 1 ? '' : 's'}. Presence is checking the loaded Instagram tab now.`];
-    if (snapshot.status === 'waiting') return ['Taking a short pause', `${count} verified action${count === 1 ? '' : 's'}.`];
-    if (snapshot.status === 'quiet') return ['Resting', `${count} verified action${count === 1 ? '' : 's'}. Presence will continue in this loaded tab.`];
+    if (snapshot.status === 'waiting') return ['Presence is running', `${count} verified action${count === 1 ? '' : 's'}. Next action coming up.`];
+    if (snapshot.status === 'quiet') return ['Scheduled break', `${count} verified action${count === 1 ? '' : 's'}. Presence will continue in this loaded tab.`];
     if (snapshot.status === 'paused') return ['Paused', `${count} verified action${count === 1 ? '' : 's'}. Resume or stop when ready.`];
     if (snapshot.status === 'stopping') return ['Stopping', 'No new action will begin.'];
     if (snapshot.status === 'stopped') return ['Stopped', `${count} verified action${count === 1 ? '' : 's'}.`];
@@ -244,6 +252,8 @@ export function mountPresenceSessionPanel({
     runGrid.hidden = active;
     limitLabel.hidden = mode.value === 'live';
     liveOptions.hidden = mode.value !== 'live';
+    burstLabel.hidden = !breaks.checked;
+    quietLabel.hidden = !breaks.checked;
     statusBox.hidden = snapshot.status === 'idle';
     statusTitle.textContent = title;
     statusDetail.textContent = detail;
@@ -260,6 +270,7 @@ export function mountPresenceSessionPanel({
     limit.disabled = locked;
     mode.disabled = locked;
     duration.disabled = locked;
+    breaks.disabled = locked;
     burst.disabled = locked;
     quiet.disabled = locked;
     results.replaceChildren();
@@ -368,9 +379,11 @@ export function mountPresenceSessionPanel({
         { label: 'Account', value: `@${account.accountId}` },
         { label: 'Actions', value: enabled.map(([, label]) => label).join(', ') },
         { label: 'Run style', value: options.mode === 'live' ? 'Live like me' : 'One session' },
-        { label: 'Maximum', value: String(options.maxActions) },
+        ...(options.mode === 'session' ? [{ label: 'Maximum', value: String(options.maxActions) }] : []),
         ...(options.mode === 'live' ? [
-          { label: 'Rhythm', value: `${options.liveBurstActions} actions, then ${options.quietMinutes} minutes quiet` },
+          { label: 'Rhythm', value: options.scheduledBreaks
+            ? `${options.liveBurstActions} actions, then ${options.quietMinutes} minutes quiet`
+            : 'Continuous, with normal spacing between actions' },
         ] : []),
       ],
       binding: { action: 'presence', accountId: account.accountId, expiresAt,
@@ -422,7 +435,7 @@ export function mountPresenceSessionPanel({
   listen(stop, 'click', () => { if (session.stop()) { const state = session.snapshot(); appendLog({ eventId: `${state.runId}:stopped:${now()}`, at: now(), kind: 'session', outcome: 'stopped', detail: 'Stop requested' }); render(); onStatus('Stopping Presence.'); } });
   for (const input of controls.values()) listen(input, 'change', () => { save(); render(); });
   listen(limit, 'change', () => { save(); render(); });
-  for (const input of [mode, duration, burst, quiet]) listen(input, 'change', () => { save(); render(); });
+  for (const input of [mode, duration, breaks, burst, quiet]) listen(input, 'change', () => { save(); render(); });
   listen(openLog, 'click', () => {
     logWindow = window?.open?.('', 'insta-toolbox-presence-log', 'popup=yes,width=620,height=760,resizable=yes,scrollbars=yes') || null;
     if (!logWindow) { onStatus('Allow pop-ups to open the Presence log window.'); return; }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.1.6
+// @version      4.2.0
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -7706,6 +7706,7 @@ const MAX_TTL_MS = 12 * 60 * 60_000;
 const HEARTBEAT_MS = 3_000;
 const STALE_MS = 90_000;
 const OPENING_MS = 60_000;
+const MAX_OPEN_ATTEMPTS = 3;
 const SETTLEMENT_MS = 15_000;
 const TERMINAL = new Set(['completed', 'partial', 'skipped', 'failed', 'uncertain', 'stopped']);
 const reviews = new WeakSet();
@@ -7877,9 +7878,16 @@ function createUserscriptGhostBridge({
       // Reuse a bounded tab pool, not one tab per conversation until the end.
       await closeSettled(await read());
       const launches = [];
+      const retired = [];
       const job = await update((value) => {
         if (!validJob(value) || value.jobId !== current?.jobId
           || value.coordinatorId !== coordinatorId || value.status !== 'running') return value;
+        const observed = inspectContext();
+        if (observed?.restriction || observed?.accountId !== value.accountId) {
+          value.status = 'paused';
+          value.reason = observed?.restriction ? 'instagram-restriction' : 'account-changed';
+          return value;
+        }
         if (now() >= value.expiresAt) {
           value.status = 'expired'; value.reason = 'approval-expired';
           for (const task of value.tasks) if (!TERMINAL.has(task.status)) task.status = 'stopped';
@@ -7889,7 +7897,12 @@ function createUserscriptGhostBridge({
         for (const task of value.tasks) {
           if (task.status === 'opening' && (now() - task.openedAt >= OPENING_MS
             || handles.get(task.threadId)?.closed === true)) {
-            task.status = 'failed'; task.reason = 'conversation-load-timeout';
+            const closed = handles.get(task.threadId)?.closed === true;
+            task.status = !closed && task.openAttempts < MAX_OPEN_ATTEMPTS ? 'pending' : 'failed';
+            task.reason = closed ? 'worker-tab-closed' : 'conversation-load-timeout';
+            task.launchId = null;
+            task.retryAt = now() + 2_000 * (task.openAttempts || 1);
+            retired.push(task.threadId);
           }
         }
         const stale = value.tasks.find(task => task.status === 'running'
@@ -7900,10 +7913,13 @@ function createUserscriptGhostBridge({
           return value;
         }
         const active = value.tasks.filter(task => ['opening', 'running'].includes(task.status)).length;
-        for (const task of value.tasks.filter(task => task.status === 'pending').slice(0, value.workerCount - active)) {
+        for (const task of value.tasks.filter(task => task.status === 'pending'
+          && (!task.retryAt || task.retryAt <= now())).slice(0, value.workerCount - active)) {
           task.status = 'opening';
           task.launchId = randomId();
           task.openedAt = now();
+          task.openAttempts = (task.openAttempts || 0) + 1;
+          task.reason = null;
           launches.push({ threadId: task.threadId, launchId: task.launchId });
         }
         if (value.tasks.every(task => TERMINAL.has(task.status))) {
@@ -7912,6 +7928,10 @@ function createUserscriptGhostBridge({
         value.updatedAt = now();
         return value;
       });
+      for (const threadId of retired) {
+        try { await handles.get(threadId)?.close?.(); } catch {}
+        handles.delete(threadId);
+      }
       await closeSettled(job);
       publish(job);
       for (const launch of launches) {
@@ -7920,6 +7940,7 @@ function createUserscriptGhostBridge({
           const handle = await openTab(`https://www.instagram.com/direct/t/${encodeURIComponent(launch.threadId)}/#insta-toolbox-worker=${job.jobId}.${launch.launchId}`, {
             active: !review.openInBackground, insert: true, setParent: true,
           });
+          if (!handle) throw new Error('tab-open-failed');
           handles.set(launch.threadId, handle);
           if (current?.status !== 'running') {
             await handle?.close?.(); handles.delete(launch.threadId);
@@ -7929,7 +7950,11 @@ function createUserscriptGhostBridge({
             if (!validJob(value) || value.jobId !== current?.jobId) return value;
             const task = value.tasks.find(item => item.threadId === launch.threadId
               && item.launchId === launch.launchId && item.status === 'opening');
-            if (task) { task.status = 'failed'; task.reason = 'tab-open-failed'; }
+            if (task) {
+              task.status = task.openAttempts < MAX_OPEN_ATTEMPTS ? 'pending' : 'failed';
+              task.reason = 'tab-open-failed'; task.launchId = null;
+              task.retryAt = now() + 2_000 * task.openAttempts;
+            }
             value.updatedAt = now();
             return value;
           });
@@ -8164,6 +8189,7 @@ function createUserscriptGhostBridge({
         row.status = outcome?.status === 'completed' ? 'completed'
           : outcome?.uncertain ? 'uncertain' : outcome?.processed > 0 ? 'partial' : 'failed';
         row.reason = outcome?.status === 'completed' ? null : outcome?.message || 'conversation-incomplete';
+        if (inspectContext()?.restriction) { value.status = 'paused'; value.reason = 'instagram-restriction'; }
         value.updatedAt = now();
         return value;
       });
@@ -8176,6 +8202,7 @@ function createUserscriptGhostBridge({
           row.status = row.messageRemovals ? 'partial' : 'failed';
           row.reason = error?.message || 'conversation-incomplete';
         }
+        if (inspectContext()?.restriction) { value.status = 'paused'; value.reason = 'instagram-restriction'; }
         return value;
       });
       return clone(latest.tasks.find(item => item.threadId === threadId));
@@ -8231,6 +8258,9 @@ function mountUserscriptInboxPanel({
     return node;
   };
   const controls = create('div', null, 'toolbar');
+  const startGhost = create('button', 'Start Ghost Mode', 'button danger big');
+  startGhost.type = 'button';
+  startGhost.setAttribute('data-ghost-start', '');
   const find = create('button', 'Find conversations', 'button quiet');
   find.type = 'button';
   const section = create('select');
@@ -8241,7 +8271,9 @@ function mountUserscriptInboxPanel({
   const acknowledgment = create('label', null, 'inbox-choice');
   const acknowledged = create('input'); acknowledged.type = 'checkbox';
   acknowledgment.append(acknowledged, document.createTextNode(' Opening conversations may mark them read.'));
-  const note = create('p', 'Find conversations, choose which to clean up, then start. Nothing is removed while finding chats.', 'lead');
+  const note = create('p', 'Find your conversations, then unsend your messages after one confirmation. Opening chats may mark them read.', 'lead');
+  const advanced = create('details', null, 'settings-inline');
+  advanced.append(create('summary', 'Choose conversations and tabs'));
   const workersLabel = create('label', 'Worker tabs', 'field');
   const workers = create('select');
   workers.setAttribute('aria-label', 'Managed worker tabs');
@@ -8291,8 +8323,9 @@ function mountUserscriptInboxPanel({
   supportNote.hidden = !supportNote.textContent;
   controls.append(find, inbox);
   const actions = create('div', null, 'toolbar'); actions.append(selectAll, review, resume, pause, skip, stop);
-  container.append(note, section, acknowledgment, controls, inventoryStatus, filterLabel, filterStatus,
-    list, workersLabel, workerModeLabel, workerNote, supportNote, recovery, actions, storageNote, results);
+  advanced.append(section, acknowledgment, controls, filterLabel, filterStatus,
+    list, workersLabel, workerModeLabel, workerNote);
+  container.append(startGhost, note, inventoryStatus, advanced, supportNote, recovery, actions, storageNote, results);
 
   function context() {
     const value = viewer.inspect({ document, location: window.location });
@@ -8342,6 +8375,9 @@ function mountUserscriptInboxPanel({
     results.hidden = !checkpoint?.tasks?.length;
     storageNote.hidden = !storageNote.textContent;
     find.disabled = active || loading || loadFailed;
+    startGhost.hidden = active;
+    startGhost.disabled = loading || loadFailed || !window.navigator?.locks?.request
+      || (needsReconciliation && !reconciled.checked);
     section.disabled = active; acknowledged.disabled = active;
     workers.disabled = active || !workerTransport; workerMode.disabled = active || !workerTransport;
     selectAll.hidden = !inventory?.conversations.length; selectAll.disabled = active || !shown;
@@ -8460,19 +8496,34 @@ function mountUserscriptInboxPanel({
     loadFailed = true;
     storageNote.textContent = 'Saved cleanup progress could not be read. Reload before starting another cleanup.';
   }).finally(() => { loading = false; updateControls(); });
-  find.addEventListener('click', async () => {
+  async function findConversations({ all = false } = {}) {
     if (active || loading || loadFailed || busy()) return;
-    if (!acknowledged.checked) { announce('Confirm that opening conversations may mark them read.'); acknowledged.focus(); return; }
+    if (!all && !acknowledged.checked) { announce('Confirm that opening conversations may mark them read.'); acknowledged.focus(); return; }
     const epoch = ++operationEpoch;
     active = true; inventory = null; selected.clear(); rows.clear(); filter.value = ''; list.replaceChildren(); unsubscribe?.(); controller = null; updateControls();
+    let found = null;
     try {
       await loadCheckpoint();
       if (epoch !== operationEpoch) return;
-      const sections = section.value === 'all' ? null : [section.value];
-      await discovery.discover({ navigationAcknowledged: true, sections });
+      const sections = all || section.value === 'all' ? null : [section.value];
+      found = await discovery.discover({ navigationAcknowledged: true, sections });
     }
     catch (error) { announce(friendlyReason(error.message)); }
     finally { active = false; updateControls(); }
+    if (epoch !== operationEpoch || found?.status !== 'ready') return null;
+    return found;
+  }
+  find.addEventListener('click', () => findConversations());
+  startGhost.addEventListener('click', async () => {
+    if (busy()) { announce('Stop the active Presence or Unsend run before starting Ghost Mode.'); return; }
+    if (active || loading || loadFailed || (needsReconciliation && !reconciled.checked)) return;
+    const found = await findConversations({ all: true });
+    if (!found) return;
+    const ids = found.inventory?.conversations.map(thread => thread.threadId) || [];
+    if (!ids.length) { announce('No conversations found. Nothing was removed.'); return; }
+    for (const id of ids) { selected.add(id); if (rows.has(id)) rows.get(id).input.checked = true; }
+    updateControls();
+    await startReview(ids);
   });
   selectAll.addEventListener('click', () => {
     if (active) return;
@@ -9768,10 +9819,11 @@ function normalizePresenceSessionOptions(value = {}) {
     actions: Object.freeze(actions),
     mode,
     maxActions: mode === 'live'
-      ? boundedInteger(source.maxActions, { min: 1, max: MAX_LIVE_ACTIONS, fallback: 200 })
+      ? boundedInteger(source.maxActions, { min: 1, max: MAX_LIVE_ACTIONS, fallback: null })
       : count(source.maxActions),
     liveDurationMinutes: boundedInteger(source.liveDurationMinutes,
       { min: 30, max: 720, fallback: 120 }),
+    scheduledBreaks: source.scheduledBreaks === true,
     liveBurstActions: boundedInteger(source.liveBurstActions,
       { min: 1, max: 20, fallback: 5 }),
     quietMinutes: boundedInteger(source.quietMinutes,
@@ -9911,6 +9963,9 @@ function createPresenceSession({
         context(review.accountId);
         return true;
       };
+      const reachedLimit = () => review.options.maxActions !== null
+        && state.completed >= review.options.maxActions;
+      const waitWithinReview = (ms) => sleep(Math.min(ms, Math.max(0, review.expiresAt - now())), signal);
       publish({
         status: 'running', reason: null, accountId: review.accountId, current: null,
         completed: 0, skipped: 0, uncertain: 0, maxActions: review.options.maxActions,
@@ -9918,7 +9973,7 @@ function createPresenceSession({
         results, canPause: true, canResume: false, canStop: true,
       });
       try {
-        while (!signal.aborted && state.completed < review.options.maxActions && now() < review.expiresAt) {
+        while (!signal.aborted && !reachedLimit() && now() < review.expiresAt) {
           await awaitResume(signal);
           context(review.accountId);
           const action = itinerary[cursor % itinerary.length];
@@ -9949,11 +10004,10 @@ function createPresenceSession({
               emptySweeps += 1;
               if (emptySweeps < LIVE_STARTUP_SWEEPS) {
                 publish({ status: 'searching', current: null });
-                await sleep(LIVE_STARTUP_RETRY_MS, signal);
+                await waitWithinReview(LIVE_STARTUP_RETRY_MS);
               } else {
-                emptySweeps = 0;
-                publish({ status: 'quiet', current: null });
-                await sleep(review.options.quietMinutes * 60_000, signal);
+                publish({ status: 'searching', current: null });
+                await waitWithinReview(Math.min(30_000, 5_000 * (emptySweeps - 2)));
               }
               await awaitResume(signal);
               if (!signal.aborted && now() < review.expiresAt) publish({ status: 'running' });
@@ -10001,19 +10055,20 @@ function createPresenceSession({
               canPause: false, canResume: false, canStop: false });
             return snapshot();
           }
-          if (state.completed >= review.options.maxActions) break;
+          if (reachedLimit()) break;
           if (review.options.mode === 'live'
+            && review.options.scheduledBreaks
             && verifiedInBurst >= review.options.liveBurstActions) {
             verifiedInBurst = 0;
             publish({ status: 'quiet', current: null });
-            await sleep(review.options.quietMinutes * 60_000, signal);
+            await waitWithinReview(review.options.quietMinutes * 60_000);
             await awaitResume(signal);
             if (!signal.aborted) publish({ status: 'running' });
             continue;
           }
           const delay = Math.round(minDelayMs + random() * (maxDelayMs - minDelayMs));
           publish({ status: 'waiting', current: null });
-          await sleep(delay, signal);
+          await waitWithinReview(delay);
           if (!signal.aborted && state.status !== 'paused') publish({ status: 'running' });
         }
         if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
@@ -10252,7 +10307,7 @@ function mountPresenceSessionPanel({
     .presence-session .presence-run-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .presence-session .presence-limit{max-width:none}
     .presence-session .presence-limit input,.presence-session .presence-limit select{box-sizing:border-box;width:100%;min-height:44px;font:inherit;color:inherit;background:var(--insta-toolbox-bg-sunken);border:1px solid var(--insta-toolbox-line);border-radius:8px;padding:8px 34px 8px 10px}
-    .presence-session .presence-live-options{display:grid;grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:12px;border:1px solid var(--insta-toolbox-line);border-radius:10px;background:var(--insta-toolbox-bg-sunken)}
+    .presence-session .presence-live-options{display:grid;grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px;border:1px solid var(--insta-toolbox-line);border-radius:10px;background:var(--insta-toolbox-bg-sunken)}
     .presence-session .presence-controls{display:flex;flex-wrap:wrap;gap:8px}
     .presence-session .presence-controls .button{flex:1 1 132px;white-space:normal}
     .presence-session .presence-status{display:grid;gap:5px;padding:12px;border-left:3px solid var(--insta-toolbox-accent);background:var(--insta-toolbox-bg-sunken);border-radius:0 8px 8px 0}
@@ -10311,6 +10366,11 @@ function mountPresenceSessionPanel({
     const option = create('option', label); option.value = String(value); duration.append(option);
   }
   durationLabel.append(duration);
+  const breaksLabel = create('label', null, 'presence-option');
+  const breaks = create('input');
+  breaks.type = 'checkbox';
+  breaks.setAttribute('data-presence-breaks', '');
+  breaksLabel.append(breaks, document.createTextNode('Take scheduled breaks'));
   const burstLabel = create('label', 'Pause after', 'presence-limit');
   const burst = create('select');
   for (const value of [3, 5, 8, 10]) {
@@ -10323,7 +10383,7 @@ function mountPresenceSessionPanel({
     const option = create('option', `${value} minutes`); option.value = String(value); quiet.append(option);
   }
   quietLabel.append(quiet);
-  liveOptions.append(durationLabel, burstLabel, quietLabel);
+  liveOptions.append(durationLabel, breaksLabel, burstLabel, quietLabel);
   runGrid.append(modeLabel, limitLabel, liveOptions);
   const actions = create('div', null, 'presence-controls');
   const start = create('button', 'Start', 'button primary big');
@@ -10383,8 +10443,9 @@ function mountPresenceSessionPanel({
     return normalizePresenceSessionOptions({
       actions: Object.fromEntries([...controls].map(([key, input]) => [key, input.checked])),
       mode: mode.value,
-      maxActions: mode.value === 'live' ? 200 : maxActions,
+      maxActions: mode.value === 'live' ? null : maxActions,
       liveDurationMinutes: Number(duration.value),
+      scheduledBreaks: breaks.checked,
       liveBurstActions: Number(burst.value),
       quietMinutes: Number(quiet.value),
     });
@@ -10398,6 +10459,7 @@ function mountPresenceSessionPanel({
     mode.value = options.mode;
     if (options.mode === 'session') limit.value = String(options.maxActions);
     duration.value = String(options.liveDurationMinutes);
+    breaks.checked = options.scheduledBreaks;
     burst.value = String(options.liveBurstActions);
     quiet.value = String(options.quietMinutes);
     writePreferences({ ...structuredClone(options), sessionActions: Number(limit.value) });
@@ -10414,6 +10476,7 @@ function mountPresenceSessionPanel({
     limit.value = String(Number.isInteger(sessionActions) && sessionActions >= 1 && sessionActions <= 50
       ? sessionActions : 10);
     duration.value = String(saved.liveDurationMinutes);
+    breaks.checked = saved.scheduledBreaks;
     burst.value = String(saved.liveBurstActions);
     quiet.value = String(saved.quietMinutes);
   }
@@ -10422,8 +10485,8 @@ function mountPresenceSessionPanel({
     if (snapshot.status === 'idle') return ['Ready', 'Nothing happens until you confirm.'];
     if (snapshot.status === 'running') return [snapshot.current?.label || 'Presence is running', `${count} verified action${count === 1 ? '' : 's'}.`];
     if (snapshot.status === 'searching') return ['Looking for something to do', `${count} verified action${count === 1 ? '' : 's'}. Presence is checking the loaded Instagram tab now.`];
-    if (snapshot.status === 'waiting') return ['Taking a short pause', `${count} verified action${count === 1 ? '' : 's'}.`];
-    if (snapshot.status === 'quiet') return ['Resting', `${count} verified action${count === 1 ? '' : 's'}. Presence will continue in this loaded tab.`];
+    if (snapshot.status === 'waiting') return ['Presence is running', `${count} verified action${count === 1 ? '' : 's'}. Next action coming up.`];
+    if (snapshot.status === 'quiet') return ['Scheduled break', `${count} verified action${count === 1 ? '' : 's'}. Presence will continue in this loaded tab.`];
     if (snapshot.status === 'paused') return ['Paused', `${count} verified action${count === 1 ? '' : 's'}. Resume or stop when ready.`];
     if (snapshot.status === 'stopping') return ['Stopping', 'No new action will begin.'];
     if (snapshot.status === 'stopped') return ['Stopped', `${count} verified action${count === 1 ? '' : 's'}.`];
@@ -10441,6 +10504,8 @@ function mountPresenceSessionPanel({
     runGrid.hidden = active;
     limitLabel.hidden = mode.value === 'live';
     liveOptions.hidden = mode.value !== 'live';
+    burstLabel.hidden = !breaks.checked;
+    quietLabel.hidden = !breaks.checked;
     statusBox.hidden = snapshot.status === 'idle';
     statusTitle.textContent = title;
     statusDetail.textContent = detail;
@@ -10457,6 +10522,7 @@ function mountPresenceSessionPanel({
     limit.disabled = locked;
     mode.disabled = locked;
     duration.disabled = locked;
+    breaks.disabled = locked;
     burst.disabled = locked;
     quiet.disabled = locked;
     results.replaceChildren();
@@ -10565,9 +10631,11 @@ function mountPresenceSessionPanel({
         { label: 'Account', value: `@${account.accountId}` },
         { label: 'Actions', value: enabled.map(([, label]) => label).join(', ') },
         { label: 'Run style', value: options.mode === 'live' ? 'Live like me' : 'One session' },
-        { label: 'Maximum', value: String(options.maxActions) },
+        ...(options.mode === 'session' ? [{ label: 'Maximum', value: String(options.maxActions) }] : []),
         ...(options.mode === 'live' ? [
-          { label: 'Rhythm', value: `${options.liveBurstActions} actions, then ${options.quietMinutes} minutes quiet` },
+          { label: 'Rhythm', value: options.scheduledBreaks
+            ? `${options.liveBurstActions} actions, then ${options.quietMinutes} minutes quiet`
+            : 'Continuous, with normal spacing between actions' },
         ] : []),
       ],
       binding: { action: 'presence', accountId: account.accountId, expiresAt,
@@ -10619,7 +10687,7 @@ function mountPresenceSessionPanel({
   listen(stop, 'click', () => { if (session.stop()) { const state = session.snapshot(); appendLog({ eventId: `${state.runId}:stopped:${now()}`, at: now(), kind: 'session', outcome: 'stopped', detail: 'Stop requested' }); render(); onStatus('Stopping Presence.'); } });
   for (const input of controls.values()) listen(input, 'change', () => { save(); render(); });
   listen(limit, 'change', () => { save(); render(); });
-  for (const input of [mode, duration, burst, quiet]) listen(input, 'change', () => { save(); render(); });
+  for (const input of [mode, duration, breaks, burst, quiet]) listen(input, 'change', () => { save(); render(); });
   listen(openLog, 'click', () => {
     logWindow = window?.open?.('', 'insta-toolbox-presence-log', 'popup=yes,width=620,height=760,resizable=yes,scrollbars=yes') || null;
     if (!logWindow) { onStatus('Allow pop-ups to open the Presence log window.'); return; }
@@ -10653,6 +10721,169 @@ function mountPresenceSessionPanel({
 
 return Object.freeze({ mountPresenceSessionPanel });
 })();
+localModules["extension/insights.js"] = (() => {
+
+const ORIGIN = 'https://www.instagram.com';
+const clean = (value, limit = 160) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, limit);
+const visible = node => Boolean(node?.isConnected && node.getClientRects?.().length
+  && !node.closest?.('[hidden], [aria-hidden="true"]'));
+const route = href => {
+  if (typeof href !== 'string' || !href.trim()) return null;
+  try { const url = new URL(href, ORIGIN); return url.origin === ORIGIN ? url.pathname : null; }
+  catch { return null; }
+};
+
+function summarizeLoadedPosts(observations, { sourceUrl, capturedAt = new Date().toISOString() } = {}) {
+  if (!Array.isArray(observations) || observations.length > 1000) throw new Error('Too many loaded posts.');
+  const source = route(sourceUrl);
+  if (!source) throw new Error('Open Instagram first.');
+  const posts = new Map();
+  for (const observation of observations) {
+    const path = route(observation.url);
+    const match = path?.match(/^\/(p|reel|reels)\/([\w-]+)\/?$/);
+    if (!match) continue;
+    const id = match[2];
+    const timestamp = Date.parse(observation.publishedAt);
+    const hashtags = [...new Set((observation.hashtags || []).map(tag => clean(tag, 100).replace(/^#/, '').toLowerCase())
+      .filter(tag => /^[\p{L}\p{M}\p{N}_]+$/u.test(tag)))];
+    const previous = posts.get(id);
+    posts.set(id, { id, url: `${ORIGIN}/p/${id}/`,
+      type: ['photo', 'video', 'carousel'].includes(observation.type) ? observation.type : previous?.type || 'unknown',
+      publishedAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : previous?.publishedAt || null,
+      hashtags: [...new Set([...(previous?.hashtags || []), ...hashtags])],
+    });
+  }
+  const counts = { photo: 0, video: 0, carousel: 0, unknown: 0 };
+  const tags = new Map();
+  const weekdays = Array(7).fill(0);
+  let datedPosts = 0;
+  for (const post of posts.values()) {
+    counts[post.type] += 1;
+    for (const tag of post.hashtags) tags.set(tag, (tags.get(tag) || 0) + 1);
+    if (post.publishedAt) { weekdays[new Date(post.publishedAt).getUTCDay()] += 1; datedPosts += 1; }
+  }
+  return { schema: 1, kind: 'insta-toolbox-loaded-insights', sourceUrl: `${ORIGIN}${source}`,
+    capturedAt, coverage: 'loaded-posts-only', hashtagSource: 'post-or-comment-links', timezone: 'UTC', posts: [...posts.values()], counts,
+    hashtags: [...tags].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([tag, posts]) => ({ tag, posts })), weekdays, datedPosts };
+}
+
+function readLoadedInsights({ document = globalThis.document, location = globalThis.location,
+  now = () => new Date().toISOString() } = {}) {
+  if (location.origin !== ORIGIN) throw new Error('Open Instagram first.');
+  if (String(location.pathname).startsWith('/direct')) throw new Error('Open a profile or feed to inspect posts.');
+  const articles = [...document.querySelectorAll('article')].filter(visible).slice(0, 1000);
+  const observations = articles.flatMap(article => {
+    const paths = [...article.querySelectorAll('a[href]')].filter(visible)
+      .map(link => route(link.getAttribute('href'))).filter(Boolean);
+    const identities = new Map(paths.map(path => {
+      const match = path.match(/^\/(p|reel|reels)\/([\w-]+)\/?$/);
+      return match ? [match[2], path] : null;
+    }).filter(Boolean));
+    if (identities.size !== 1) return [];
+    const hashtags = paths.filter(path => path.startsWith('/explore/tags/')).flatMap(path => {
+      try { return [decodeURIComponent(path.split('/')[3])]; } catch { return []; }
+    });
+    const carousel = [...article.querySelectorAll('[aria-label]')].some(node => visible(node)
+      && /^(?:carousel|slide \d+ of \d+)$/i.test(node.getAttribute('aria-label') || ''));
+    const type = carousel ? 'carousel' : article.querySelector('video') ? 'video' : 'unknown';
+    const times = [...article.querySelectorAll('time[datetime]')].filter(node => {
+      const path = route(node.closest('a[href]')?.getAttribute('href'));
+      return path && identities.has(path.match(/^\/(?:p|reel|reels)\/([\w-]+)\/?$/)?.[1]);
+    }).map(node => node.getAttribute('datetime'));
+    return [{ url: `${ORIGIN}${[...identities.values()][0]}`, type, hashtags,
+      publishedAt: new Set(times).size === 1 ? times[0] : null }];
+  });
+  for (const link of document.querySelectorAll('main a[href]')) {
+    if (!visible(link) || link.closest('article') || observations.length >= 1000) continue;
+    const path = route(link.getAttribute('href'));
+    if (!/^\/(p|reel|reels)\/[\w-]+\/?$/.test(path || '')) continue;
+    observations.push({ url: `${ORIGIN}${path}`, type: 'unknown', hashtags: [] });
+  }
+  const report = summarizeLoadedPosts(observations, { sourceUrl: location.href, capturedAt: now() });
+  const username = String(location.pathname).match(/^\/([a-zA-Z0-9_.]{1,30})\/?$/)?.[1];
+  report.profile = null;
+  if (username) {
+    const headers = [...document.querySelectorAll('main header')].filter(visible).filter(header =>
+      [...header.querySelectorAll('a[href]')].some(link => route(link.getAttribute('href')) === `/${username}/followers/`));
+    if (headers.length === 1) {
+      const count = list => {
+        const links = [...headers[0].querySelectorAll('a[href]')].filter(visible)
+          .filter(link => route(link.getAttribute('href')) === `/${username}/${list}/`);
+        return links.length === 1 ? clean(links[0].textContent) : null;
+      };
+      report.profile = { username, followers: count('followers'), following: count('following') };
+    }
+  }
+  return report;
+}
+
+function formatInsightsReport(report) {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return ['Insta Toolbox · Loaded post insights', `Page: ${report.sourceUrl}`, `Captured: ${report.capturedAt}`,
+    `Sample: ${report.posts.length} loaded posts — not complete account history.`,
+    ...(report.profile ? [`Profile: @${report.profile.username}`, report.profile.followers, report.profile.following].filter(Boolean) : []),
+    '', 'MEDIA', ...Object.entries(report.counts).map(([type, count]) => `${type}: ${count}`),
+    '', 'LINKED HASHTAGS · sampled posts containing the link',
+    'Links may be in captions or comments; they are not attributed to the post author.',
+    ...report.hashtags.map(item => `#${item.tag}: ${item.posts}`),
+    '', `POSTING DAYS · UTC · ${report.datedPosts} dated posts`, ...report.weekdays.map((n, i) => `${days[i]}: ${n}`),
+    '', 'POSTS', ...report.posts.map((post, index) => `${index + 1}. ${post.url} · ${post.type} · ${post.publishedAt || 'Date unavailable'}`),
+    '', 'Missing types and dates are unknown, not zero. No additional Instagram requests were made.', ''].join('\n');
+}
+
+function mountLoadedInsights({ container, document = globalThis.document, window = globalThis.window,
+  onStatus = () => {} } = {}) {
+  const create = (tag, text, className) => {
+    const node = document.createElement(tag); if (text) node.textContent = text;
+    if (className) node.className = className; return node;
+  };
+  const details = create('details', null, 'settings-inline');
+  details.append(create('summary', 'Profile and content insights'));
+  const note = create('p', 'Summarize posts already loaded on this page. No extra requests.', 'lead');
+  const read = create('button', 'Read loaded posts', 'button quiet'); read.type = 'button';
+  const output = create('div', null, 'card'); output.hidden = true;
+  const download = create('button', 'Download report', 'button quiet'); download.type = 'button'; download.hidden = true;
+  const json = create('button', 'Download JSON', 'button quiet'); json.type = 'button'; json.hidden = true;
+  const actions = create('div', null, 'toolbar'); actions.append(read, download, json);
+  details.append(note, actions, output); container.replaceChildren(details);
+  let report = null;
+  read.addEventListener('click', () => {
+    try {
+      report = readLoadedInsights({ document, location: window.location });
+      output.replaceChildren(create('strong', `${report.posts.length} loaded posts`),
+        create('p', 'A sample of this page, not the account’s complete history.', 'lead'),
+        create('p', `${report.sourceUrl} · ${new Date(report.capturedAt).toLocaleString()}`, 'lead'));
+      if (report.profile) output.append(create('p', `@${report.profile.username} · ${[report.profile.followers, report.profile.following].filter(Boolean).join(' · ')}`));
+      output.append(create('p', Object.entries(report.counts).filter(([, n]) => n > 0).map(([type, n]) => `${n} ${type}`).join(' · ') || 'Open a post or scroll your feed, then read again.'));
+      if (report.hashtags.length) output.append(create('strong', 'Linked hashtags'),
+        create('p', 'From loaded captions and comments; not attributed to the post author.', 'lead'),
+        create('p', report.hashtags.slice(0, 30).map(item => `#${item.tag} (${item.posts})`).join(' · ')));
+      const list = create('ul', null, 'list list--compact');
+      for (const post of report.posts.slice(0, 50)) {
+        const row = create('li'); const link = create('a', `Post ${post.id}`);
+        link.href = post.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        row.append(link, create('span', ` · ${post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : 'Date unavailable'}`));
+        list.append(row);
+      }
+      output.append(list); output.hidden = false;
+      download.hidden = json.hidden = false;
+      onStatus(`Read ${report.posts.length} loaded posts. No additional requests.`);
+    } catch (error) { onStatus(`${error.message}${report ? ' Previous sample shown below.' : ''}`); }
+  });
+  const save = type => {
+    if (!report) return;
+    const data = type === 'json' ? `${JSON.stringify(report, null, 2)}\n` : formatInsightsReport(report);
+    const url = window.URL.createObjectURL(new window.Blob([data], { type: type === 'json' ? 'application/json' : 'text/plain;charset=utf-8' }));
+    const link = create('a'); link.href = url; link.download = `insta-toolbox-insights.${type}`; link.click();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+  };
+  download.addEventListener('click', () => save('txt')); json.addEventListener('click', () => save('json'));
+  return Object.freeze({ dispose: () => details.remove() });
+}
+
+return Object.freeze({ summarizeLoadedPosts, readLoadedInsights, formatInsightsReport, mountLoadedInsights });
+})();
 globalThis.InstaToolboxInboxDiscovery = Object.freeze({ create: localModules['extension/inbox-userscript-discovery.js'].createUserscriptInboxDiscovery });
 globalThis.InstaToolboxInboxPanel = Object.freeze({ mount: localModules['extension/inbox-userscript-panel.js'].mountUserscriptInboxPanel });
 globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['extension/inbox-checkpoint-store.js'].createInboxCheckpointStore });
@@ -10660,6 +10891,7 @@ globalThis.InstaToolboxPresenceInputs = Object.freeze({ create: localModules['ex
 globalThis.InstaToolboxPresenceNativeActions = Object.freeze({ create: localModules['extension/presence-native-actions.js'].createPresenceNativeActions });
 globalThis.InstaToolboxPresenceSession = Object.freeze({ create: localModules['extension/presence-session.js'].createPresenceSession });
 globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModules['extension/presence-session-panel.js'].mountPresenceSessionPanel });
+globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension/insights.js'].mountLoadedInsights });
 (async () => {
   'use strict';
 
@@ -11468,7 +11700,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       .view > .settings-inline { margin-bottom: 16px; }
       .settings-inline > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--insta-toolbox-text, #1b211c); -webkit-text-fill-color: currentColor; cursor: pointer; list-style: none; }
       .settings-inline > summary::-webkit-details-marker { display: none; }
-      .settings-inline > summary::after { content: ""; flex: 0 0 auto; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 7px solid currentColor; color: var(--insta-toolbox-text-muted, #687068); transition: transform var(--insta-toolbox-motion-fast, 120ms) var(--insta-toolbox-ease, ease); }
+      .settings-inline > summary::after { content: ""; flex: 0 0 auto; width: 0; height: 0; margin-inline-end: 2px; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 7px solid currentColor; color: var(--insta-toolbox-text-muted, #687068); transition: transform var(--insta-toolbox-motion-fast, 120ms) var(--insta-toolbox-ease, ease); }
       .settings-inline[open] > summary::after { transform: rotate(90deg); }
       .header, .context, .tabs, .run-panel, .footer { flex: 0 0 auto; }
       .header, .footer { position: relative; z-index: 1; }
@@ -11510,6 +11742,8 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       [data-role="inbox-cleanup"] { display:grid; gap:12px; margin-top:12px; }
       [data-role="inbox-cleanup"] > .field { margin:0; gap:6px; }
       [data-role="inbox-cleanup"] > .lead { margin:0; }
+      [data-role="inbox-cleanup"] > details { margin:0; }
+      [data-role="inbox-cleanup"] > details > :not(summary) { margin-block:12px 0; }
       [data-role="inbox-cleanup"] select { width:100%; padding-right:34px; }
       .inbox-selection { display:grid; gap:4px; max-height:240px; overflow:auto; }
       .inbox-choice { position:relative; display:flex; flex:none; align-items:center; gap:12px; width:100%; min-height:44px; padding:4px 8px; line-height:20px; scroll-margin-block:12px; }
@@ -11567,13 +11801,14 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
         <section id="insta-toolbox-panel-checker" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-checker" data-panel="checker" hidden><section class="card" aria-labelledby="insta-toolbox-checker-account-title"><h2 id="insta-toolbox-checker-account-title">Check mutuals</h2><p>Read-only. Uses the Instagram session in this tab.</p><div class="field"><label for="insta-toolbox-checker-username">Instagram username</label><input id="insta-toolbox-checker-username" type="text" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="your_username" data-role="checker-username"></div><div class="toolbar"><button class="button primary" type="button" data-action="check-account-relationships" data-role="checker-run">Check mutuals</button></div></section>
           <div class="scan-progress" data-role="scan-progress" hidden><div class="run-bar" data-role="scan-bar" role="progressbar" aria-label="Mutual check progress" aria-describedby="insta-toolbox-scan-detail" aria-valuemin="0" aria-valuemax="100"><span data-role="scan-fill"></span></div><p id="insta-toolbox-scan-detail" class="lead" data-role="scan-detail"></p></div>
           <div class="card" data-role="comparison"></div>
+          <div data-role="loaded-insights"></div>
           <section class="card comparison-browser" data-role="comparison-browser" aria-labelledby="insta-toolbox-comparison-browser-title" hidden><h2 id="insta-toolbox-comparison-browser-title">Comparison list</h2><div class="comparison-controls"><div class="field"><label for="insta-toolbox-comparison-category">Show accounts</label><select id="insta-toolbox-comparison-category" data-role="comparison-category" aria-controls="insta-toolbox-comparison-list"><option value="not-following-me-back">Don't follow you back</option><option value="i-do-not-follow-back">You don't follow back</option><option value="mutuals">Mutuals</option></select></div><div class="field"><label for="insta-toolbox-filter">Find a username</label><input id="insta-toolbox-filter" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search usernames" data-role="result-filter" aria-controls="insta-toolbox-comparison-list"></div></div><p id="insta-toolbox-comparison-count" class="comparison-count" data-role="comparison-count" tabindex="-1"></p><ul id="insta-toolbox-comparison-list" class="list comparison-list" data-role="comparison-list" aria-describedby="insta-toolbox-comparison-count"></ul><button class="button quiet comparison-more" type="button" data-action="show-more-comparison" data-role="comparison-more" hidden>Show more</button></section>
           <details class="settings-inline"><summary>Capture lists and export</summary><p class="lead">If the account check fails, open Followers or Following and scan that list.</p><ol class="steps" data-role="checker-steps"><li class="step" data-step="following"><span class="step-num">1</span><div class="step-body"><strong>Scan Following</strong><span data-role="step-following">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-following">Scan Following</button></li><li class="step" data-step="followers"><span class="step-num">2</span><div class="step-body"><strong>Scan Followers</strong><span data-role="step-followers">Not scanned yet</span></div><button class="button quiet" type="button" data-action="scan-followers">Scan Followers</button></li><li class="step" data-step="compare"><span class="step-num">3</span><div class="step-body"><strong>Compare</strong><span data-role="step-compare">Scan both lists first</span></div></li></ol><ul class="list" data-role="capture-list"></ul><div class="toolbar"><button class="button quiet" type="button" data-action="capture">Capture visible rows</button><button class="button quiet" type="button" data-action="download-list">Download raw list</button><button class="button quiet" type="button" data-action="download-comparison-json">Download JSON</button><button class="button quiet" type="button" data-action="clear-capture">Clear checker</button></div><div class="field"><label for="insta-toolbox-list-type">Raw list</label><select id="insta-toolbox-list-type" data-role="list-type"><option value="following">Following</option><option value="followers">Followers</option></select></div></details></section>
         <section id="insta-toolbox-panel-account" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-account" data-panel="account" hidden><div class="card" data-role="presence-routine"></div></section>
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions afterward</label></div>
-          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><details class="settings-inline"><summary>Ghost mode</summary><div data-role="inbox-cleanup"></div></details></section>
+          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><section class="card" aria-label="Ghost Mode"><div data-role="inbox-cleanup"></div></section></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
@@ -12179,6 +12414,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
   let reactionCleanup = null;
   let reactionSnapshot = null;
   let inboxPanel = null;
+  let insightsPanel = null;
   let presencePanel = null;
   let presenceSession = null;
   let presenceCapture = null;
@@ -12579,7 +12815,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       };
     }
     if (path.startsWith('/direct')) {
-      return { tone: 'warning', title: 'Inbox open', detail: 'Open a single conversation to use Unsend.' };
+      return { tone: 'ready', title: 'Inbox open', detail: 'Use Ghost Mode for multiple conversations, or open a chat to use Unsend.' };
     }
     const followerList = openFollowerListContext();
     if (followerList) {
@@ -12600,9 +12836,9 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
       };
     }
     return {
-      tone: 'warning',
-      title: 'Nothing to work on here',
-      detail: 'Open your profile, a follower list, or a conversation.',
+      tone: 'ready',
+      title: 'Instagram open',
+      detail: 'Use Presence here, or open your profile to check mutuals.',
     };
   }
 
@@ -14059,6 +14295,7 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
     globalThis.visualViewport?.removeEventListener?.('resize', clampLayoutToViewport);
     confirmationController?.destroy();
     inboxPanel?.dispose();
+    insightsPanel?.dispose();
     presencePanel?.dispose();
     presenceSession?.stop();
     invalidatePresence();
@@ -14108,6 +14345,11 @@ globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModule
     });
     window.addEventListener('pagehide', stopPresenceSession);
     document.addEventListener('freeze', stopPresenceSession);
+  }
+  if (globalThis.InstaToolboxInsights) {
+    insightsPanel = globalThis.InstaToolboxInsights.mount({
+      container: query('[data-role="loaded-insights"]'), document, window, onStatus: status,
+    });
   }
   if (globalThis.InstaToolboxInboxPanel) {
     const inspectInboxAccount = () => {

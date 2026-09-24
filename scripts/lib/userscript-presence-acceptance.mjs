@@ -149,7 +149,7 @@ export async function acceptUserscriptPresence({
     const layout = await evaluate(`(() => {
       const root=${rootExpression}, panel=root.querySelector('.presence-session');
       return {tab:root.querySelector('[data-view="account"]').textContent,
-        labels:[...panel.querySelectorAll('.presence-option')].map(node=>node.textContent.trim()),
+        labels:[...panel.querySelectorAll('.presence-options .presence-option')].map(node=>node.textContent.trim()),
         plans:panel.textContent.includes('Build my plan') || panel.textContent.includes('Plan choices'),
         manual:Boolean(root.querySelector('[data-role="manual-account-disclosure"]')?.textContent.includes('Manual Follow / Unfollow')),
         liveRegions:root.querySelectorAll('[aria-live]').length};
@@ -239,6 +239,39 @@ export async function acceptUserscriptPresence({
     assert.equal(await evaluate('globalThis.fixturePresenceClicks.length'), countBeforeCancel);
     checks.push('cancel changes nothing');
 
+    await evaluate(`(() => {
+      globalThis.fixturePresenceSurface('post');
+      document.querySelector('main').innerHTML = Array.from({length:8},(_,i)=>'<article><a href="/p/continuous-'+i+'/">Post'+(i ? '<time datetime="2026-09-21T12:00:00Z">Monday</time>' : '')+'</a><a href="/explore/tags/test/">#test</a><time datetime="2025-01-01T12:00:00Z">Comment date</time><button aria-label="Like">Like</button></article>').join('');
+      const root=${rootExpression}, mode=root.querySelector('[data-presence-mode]');
+      mode.value='live'; mode.dispatchEvent(new Event('change',{bubbles:true}));
+    })()`);
+    assert.equal(await evaluate(`${rootExpression}.querySelector('[data-presence-breaks]').checked`), false);
+    const continuousBefore = await evaluate('globalThis.fixturePresenceClicks.length');
+    await evaluate(`${rootExpression}.querySelector('[data-presence-start]').click()`);
+    await waitForPageValue(webContents, `${rootExpression}.querySelector('[data-role="action-confirmation"]').open`, 'continuous Presence review');
+    assert.match(await evaluate(`${rootExpression}.querySelector('[data-role="action-confirmation"]').textContent`), /Continuous, with normal spacing/);
+    await trustedClick(webContents, `${rootExpression}.querySelector('[data-action="confirm-accept"]')`, 'continuous Presence confirmation');
+    await waitForPageValue(webContents, `globalThis.fixturePresenceClicks.length >= ${continuousBefore + 6}`, 'continuous Likes beyond old five-action burst', 45_000);
+    assert.notEqual(await evaluate(`${rootExpression}.querySelector('.presence-status strong').textContent`), 'Scheduled break');
+    await evaluate(`${rootExpression}.querySelector('[data-presence-stop]').click()`);
+    await waitForPageValue(webContents, `${rootExpression}.querySelector('.presence-status strong').textContent === 'Stopped'`, 'continuous Presence stop');
+    checks.push('continuous Likes pass the old five-action burst without scheduled breaks and Stop settles cleanly');
+
+    await evaluate(`(() => {
+      const root=${rootExpression}; root.querySelector('[data-view="checker"]').click();
+      const insights=root.querySelector('[data-role="loaded-insights"]'); insights.querySelector('details').open=true;
+      [...insights.querySelectorAll('button')].find(n=>n.textContent==='Read loaded posts').click();
+    })()`);
+    const insights = await evaluate(`${rootExpression}.querySelector('[data-role="loaded-insights"]').textContent`);
+    assert.match(insights, /8 loaded posts/); assert.match(insights, /#test \(8\)/);
+    assert.match(insights, /not the account’s complete history/);
+    assert.match(insights, /Date unavailable/);
+    assert.doesNotMatch(insights, /2025/);
+    assert.match(insights, /From loaded captions and comments/);
+    assert.match(insights, /https:\/\/www\.instagram\.com\//);
+    checks.push('read-only content insights analyse loaded posts with explicit sample coverage');
+    await evaluate(`${rootExpression}.querySelector('[data-view="account"]').click()`);
+
     const viewports = [
       {label:'desktop-dark',width:1200,height:800,zoom:1,theme:'dark'},
       {label:'desktop-light',width:1200,height:800,zoom:1,theme:'light'},
@@ -281,6 +314,19 @@ export async function acceptUserscriptPresence({
       await withTimeout(new Promise(resolve => { webContents.once('paint', resolve); webContents.invalidate(); }), 'Presence screenshot paint');
       const filename=`${viewport.label}.png`;
       await writeFile(path.join(screenshotRoot, filename), (await webContents.capturePage()).toPNG());
+      await evaluate(`(() => {
+        const root=${rootExpression}; root.querySelector('[data-view="checker"]').click();
+        root.querySelector('[data-role="loaded-insights"] summary').scrollIntoView({block:'start'});
+        return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      })()`);
+      const insightsOverflow = await evaluate(`(() => {
+        const root=${rootExpression}, sample=root.querySelector('[data-role="loaded-insights"]');
+        return Math.max(sample.scrollWidth-sample.clientWidth, root.querySelector('.scroll').scrollWidth-root.querySelector('.scroll').clientWidth);
+      })()`);
+      assert.ok(insightsOverflow <= 1, `${viewport.label}: insights horizontal overflow`);
+      await withTimeout(new Promise(resolve => { webContents.once('paint', resolve); webContents.invalidate(); }), 'Insights screenshot paint');
+      await writeFile(path.join(screenshotRoot, `insights-${viewport.label}.png`), (await webContents.capturePage()).toPNG());
+      await evaluate(`${rootExpression}.querySelector('[data-view="account"]').click()`);
       states.push({viewport,metrics,screenshot:filename});
     }
     checks.push('responsive layout and true 200% zoom');
