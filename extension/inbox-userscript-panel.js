@@ -12,6 +12,7 @@ export function mountUserscriptInboxPanel({
   defaultWorkerCount = 2,
   openWorkersInBackground = true,
   discoveryTiming = {},
+  messageOptions = () => ({ scope: 'all', limit: null }),
   busy = () => false, onStatus = () => {},
 }) {
   if (!container || typeof confirmAction !== 'function' || typeof save !== 'function') throw new Error('inbox-panel-unavailable');
@@ -309,12 +310,14 @@ export function mountUserscriptInboxPanel({
     active = true; updateControls();
     let threadNavigator = null;
     try {
-      const captured = discovery.review({ threadIds, scope: 'all' });
+      const options = messageOptions();
+      const captured = discovery.review({ threadIds, scope: options.scope, limit: options.limit });
       if (ghostBridge) {
         const account = context();
         const plan = ghostBridge.createReview({
           accountId: account.accountId,
           threadIds: captured.threadIds,
+          scope: captured.scope, limit: captured.limit,
           workerCount: Number(workers.value),
           openInBackground: workerMode.value === 'background',
           expiresAt: Date.now() + 12 * 60 * 60_000,
@@ -322,14 +325,16 @@ export function mountUserscriptInboxPanel({
         const key = userscriptGhostReviewKey(plan);
         const confirmed = await confirmAction({
           title: `Clean up ${plan.threadIds.length} conversation${plan.threadIds.length === 1 ? '' : 's'}?`,
-          message: 'Permanently unsend your messages in the selected conversations.',
+          message: plan.scope === 'all' ? 'Permanently unsend your messages in the selected conversations.'
+            : `Permanently unsend the ${plan.scope} ${plan.limit} message${plan.limit === 1 ? '' : 's'} you sent in each selected conversation?`,
           detail: 'Keep the inbox tab and worker tabs open. Worker tabs prepare conversations in parallel; removals stay account-paced and stop together.',
           confirmLabel: 'Start Ghost mode',
           facts: [{ label: 'Account', value: account.accountLabel ? `@${account.accountLabel}` : 'Current signed-in account' },
             { label: 'Conversations', value: String(plan.threadIds.length) },
             { label: 'Worker tabs', value: String(plan.workerCount) },
             { label: 'Open tabs', value: plan.openInBackground ? 'In the background' : 'In front' },
-            { label: 'Messages', value: 'All messages you sent' }],
+            { label: 'Messages', value: plan.scope === 'all' ? 'All messages you sent'
+              : `${plan.scope === 'newest' ? 'Newest' : 'Oldest'} ${plan.limit} in each conversation` }],
           binding: { action: 'inbox-unsend-workers', reviewKey: key },
         });
         if (!confirmed || epoch !== operationEpoch) { announce('Canceled. Nothing was removed.'); return; }

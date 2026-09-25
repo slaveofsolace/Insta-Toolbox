@@ -196,7 +196,8 @@ export async function acceptUserscriptInboxReview({
     assert.deepEqual(discovered.rows.map(row => row.title), conversations.map(row => row.title), 'render native headers, not inbox previews');
     assert.match(discovered.rows[0].identity, /@alex\.example/);
     assert.ok(discovered.rows.slice(1).every(row => !row.identity.includes('@')), 'chat names never become inferred usernames');
-    assert.deepEqual(discovered.visits, ['101', '202', '303']); assert.equal(discovered.returns, 3);
+    assert.deepEqual(discovered.visits, ['101', '202', '303']);
+    assert.equal(discovered.returns, 0, 'keep the desktop inbox rail instead of racing return navigation');
     assert.ok(discovered.rows.every(row => !row.selected));
     assert.match(discovered.text, /This may not include your whole inbox/);
     checks.push('native discovery renders exact headers and verified profile links without claiming a complete inbox');
@@ -368,7 +369,8 @@ export async function acceptUserscriptInboxReview({
     assert.deepEqual(execution.trace, ['101', '303'].flatMap(thread =>
       ['menu', 'choose-unsend', 'confirm-unsend'].map(action => ({thread,message:'sent',action}))));
     assert.equal(execution.nativeClicks, 6); assert.equal(execution.removals, 2);
-    assert.deepEqual(execution.visits, ['101', '202', '303', '101', '303']); assert.equal(execution.returns, 4);
+    assert.deepEqual(execution.visits, ['101', '202', '303', '101', '303']);
+    assert.equal(execution.returns, 2, 'execution re-enters each reviewed chat; discovery does not bounce through the inbox');
     for (const thread of ['101', '303']) {
       assert.deepEqual(execution.messages[thread].map(message => message.removed), [false, true, false]);
     }

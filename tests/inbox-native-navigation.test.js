@@ -52,7 +52,8 @@ function fixture(options = {}) {
     return pages[Math.min(pages.length - 1, Math.floor(position / 80))].map((id) => node({
       inRoot: true, tagName: options.linkRows ? 'A' : 'DIV', parentElement: { closest: () => null }, querySelector: () => ({}),
       textContent: options.preview?.(id) || `Conversation ${id} preview`,
-      getAttribute: (name) => name === 'href' && options.linkRows ? `/direct/t/${id}/` : null,
+      getAttribute: (name) => name === 'href' && options.linkRows ? `/direct/t/${id}/`
+        : name === 'aria-pressed' && options.selectedMarker && win.location.href.endsWith(`/t/${id}/`) ? 'true' : null,
       click() { rowClicks += 1; options.onClick?.(id, api); if (!options.noRoute) win.location.href = `https://www.instagram.com/direct/t/${id}/`;
         if (!options.noPane) replacePane(); },
     }));
@@ -78,11 +79,11 @@ function fixture(options = {}) {
   return api;
 }
 
-test('button rows resolve exact IDs, deduplicate recycled windows, return and remain partial', async () => {
+test('button rows resolve exact IDs and retain the desktop inbox rail across recycled windows', async () => {
   const f = fixture(), result = await f.adapter().run();
   assert.deepEqual(result.conversations.map((row) => row.threadId), ['101', '102', '103']);
   assert.equal(result.complete, false); assert.equal(result.sections[0].reason, 'end-unverified');
-  assert.equal(f.rowClicks, 4); assert.equal(f.returnClicks, 4); assert.equal(result.needsInboxReturn, false);
+  assert.equal(f.rowClicks, 5); assert.equal(f.returnClicks, 0); assert.equal(result.needsInboxReturn, false);
   assert.deepEqual(Object.keys(result.conversations[0]), ['threadId', 'sections']);
 });
 
@@ -92,7 +93,7 @@ test('fresh native chat-header labels are temporary and separate from ID-only sn
   const result = await adapter.run();
   assert.deepEqual(adapter.reviewLabels(), [{ threadId: '101', title: 'Synthetic friend', username: 'fixture.friend',
     kind: 'profile', source: 'native-conversation-header' }]);
-  assert.equal(f.rowClicks, 1); assert.equal(f.returnClicks, 1, 'labels never open an additional conversation');
+  assert.equal(f.rowClicks, 1); assert.equal(f.returnClicks, 0, 'labels never open an additional conversation');
   assert.equal(JSON.stringify({ result, progress }).includes('Synthetic friend'), false);
   assert.equal(JSON.stringify({ result, progress }).includes('fixture.friend'), false);
   const copy = adapter.reviewLabels(); copy[0].title = 'Changed';
@@ -158,7 +159,7 @@ test('optional label evidence has a shorter wait than execution when a chat has 
   assert.ok(Date.now() - started < 4_000, 'display labels do not consume the full execution-pane deadline');
   assert.deepEqual(adapter.reviewLabels(), []);
   assert.deepEqual(result.conversations.map(value => value.threadId), ['101']);
-  assert.equal(f.rowClicks, 1); assert.equal(f.returnClicks, 1);
+  assert.equal(f.rowClicks, 1); assert.equal(f.returnClicks, 0);
 });
 
 test('opening unread conversations requires explicit navigation acknowledgment', async () => {
@@ -198,6 +199,36 @@ test('a persistent desktop inbox rail continues without a separate inbox-return 
   assert.equal(result.reason, null); assert.equal(result.needsInboxReturn, false);
   assert.deepEqual(result.conversations.map((row) => row.threadId), ['101', '102', '103']);
   assert.equal(f.returnClicks, 0);
+});
+
+test('discovery starts at the top of a previously scrolled inbox', async () => {
+  const f = fixture(); f.scroll.scrollTop = 80;
+  const result = await f.adapter().run();
+  assert.deepEqual(result.conversations.map(row => row.threadId), ['101', '102', '103']);
+  assert.equal(f.returnClicks, 0);
+});
+
+test('the one native selected row binds an already-open conversation without a timeout or extra click', async () => {
+  const f = fixture({ selectedMarker: true, pages: [['101']] });
+  f.win.location.href = 'https://www.instagram.com/direct/t/101/'; f.replacePane();
+  const result = await f.adapter().run();
+  assert.deepEqual(result.conversations.map(row => row.threadId), ['101']);
+  assert.equal(result.reason, null);
+  assert.equal(f.rowClicks, 0); assert.equal(f.returnClicks, 0);
+});
+
+test('retaining the native inbox rail never triggers a delayed return-to-last-chat route', async () => {
+  const f = fixture({ selectedMarker: true });
+  const query = f.doc.querySelectorAll;
+  f.doc.querySelectorAll = selector => selector === 'a[href]' ? [{
+    isConnected: true, getClientRects: () => [{}], closest: () => null,
+    getAttribute: () => '/direct/inbox/',
+    click() { throw new Error('unnecessary-inbox-navigation'); },
+  }] : query(selector);
+  const result = await f.adapter().run();
+  assert.equal(result.reason, null);
+  assert.deepEqual(result.conversations.map(row => row.threadId), ['101', '102', '103']);
+  assert.equal(f.rowClicks, 3);
 });
 
 test('discovery revisits the initially selected row after observing another conversation', async () => {
@@ -354,7 +385,7 @@ test('observer setup failure disconnects the partial observer without another na
   };
   const result = await f.adapter({ settleMs: 30 }).run();
   assert.equal(result.reason, 'observer-unavailable');
-  assert.equal(disconnected, 1); assert.equal(f.rowClicks, 1); assert.equal(f.returnClicks, 0);
+  assert.equal(disconnected, 1); assert.equal(f.rowClicks, 0); assert.equal(f.returnClicks, 0);
 });
 
 test('captured navigation requires a completed inventory and an explicit finite new expiry', async () => {
@@ -495,6 +526,7 @@ test('observed request labels support the native count suffix without accepting 
 test('route-before-pane transition never verifies the previous conversation pane', async () => {
   const options = { pages: [['101']] }, f = fixture(options), adapter = f.adapter({ routeTimeoutMs: 150 });
   await adapter.run();
+  f.win.location.href = 'https://www.instagram.com/direct/inbox/';
   const old = f.replacePane(), navigator = adapter.createNavigator({ expiresAt: Date.now() + 10_000 });
   options.noPane = true;
   let clicked;
@@ -604,6 +636,7 @@ test('fresh wrappers do not verify transplanted old message controls or still-co
   for (const transplant of [true, false]) {
     const options = { pages: [['101']] }, f = fixture(options), adapter = f.adapter({ routeTimeoutMs: 40 });
     await adapter.run(); options.noPane = true;
+    f.win.location.href = 'https://www.instagram.com/direct/inbox/';
     const old = f.replacePane();
     options.onClick = () => {
       const replacement = f.createPane();

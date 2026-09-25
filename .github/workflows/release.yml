@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag:
-        description: Release tag, for example v4.2.0
+        description: Release tag, for example v4.2.1
         required: true
         type: string
 
@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           test "$RELEASE_TAG" = "v$version"
-          test "$version" = "4.2.0"
+          test "$version" = "4.2.1"
           mkdir -p release
           copy_exact() {
             local name="$1"
@@ -171,7 +171,7 @@ jobs:
             exit 1
           fi
           release_notes="$(cat <<'EOF'
-          Version 4.2.0 keeps Presence running continuously, adds a direct Start Ghost Mode button, retries unopened worker tabs, and adds read-only loaded-post insights with text and JSON reports.
+          Version 4.2.1 repairs inbox discovery navigation, waits for Presence feed readiness, and preserves finite message choices across Ghost worker tabs. Message options also include an optional own-reaction count.
 
           Scheduled Presence breaks are optional and off by default. Ghost discovers available conversations, confirms that exact inventory, and uses the existing Unsend engine in managed tabs. Insights reads only loaded posts; no paid data service, credentials, model download, or extra Instagram requests are added. Partial mutual comparisons remain visible and downloadable when Instagram omits records.
 
@@ -182,7 +182,7 @@ jobs:
           - The Windows installer is unsigned and may show a Microsoft SmartScreen warning.
           - The macOS packages are ad-hoc signed and are not Apple-notarized.
           - Ghost worker tabs must remain open and loaded. Tab discard, computer sleep, browser shutdown, or lost account evidence stops or pauses the job.
-          - Automated CI does not prove current authenticated Instagram mutation compatibility or a completed human screen-reader walkthrough. Consult the 4.2.0 acceptance record for separately recorded manual evidence.
+          - Automated CI does not prove current authenticated Instagram mutation compatibility or a completed human screen-reader walkthrough. Consult the 4.2.1 acceptance record for separately recorded manual evidence.
           EOF
           )"
           gh release create "$RELEASE_TAG" release/* \

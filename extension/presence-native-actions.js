@@ -1,6 +1,6 @@
 const PROFILE_PATH = /^\/([A-Za-z0-9._]{1,30})\/?$/;
 const STORY_PATH = /^\/stories\/([A-Za-z0-9._]{1,30})(?:\/([^/?#]+))?\/?$/;
-const CONTENT_PATH = /^\/(?:p|reel)\/([^/?#]+)\/?/;
+const CONTENT_PATH = /^\/(?:p|reels?)\/([^/?#]+)\/?/;
 const STORY_TILE_LABEL = /^story by ([A-Za-z0-9._]{1,30})(?:,|$)/i;
 const RESERVED = new Set(['accounts', 'about', 'api', 'direct', 'explore', 'reels', 'settings', 'stories', 'web']);
 
@@ -260,7 +260,7 @@ export function createPresenceNativeActions({
     if (['viewStories', 'likePosts'].includes(action) && location.pathname !== '/') {
       control = routeControl(new Set(['/']), new Set(['home']));
       ready = () => location.pathname === '/'
-        && (action !== 'viewStories' || candidates('viewStories').length > 0);
+        && candidates(action).length > 0;
     } else if (action === 'followPeople' && !String(location.pathname).startsWith('/explore')) {
       control = routeControl(new Set(['/explore/', '/explore']), new Set(['explore']));
       ready = () => String(location.pathname).startsWith('/explore');

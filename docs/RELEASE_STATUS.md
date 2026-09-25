@@ -1,9 +1,10 @@
 # Release status
 
-Current version: **4.2.0**
+Candidate version: **4.2.1**. Latest published release: **4.2.0**.
 
-Version 4.2.0 adds continuous Presence, a direct Start Ghost Mode workflow,
-bounded worker-opening retries, and read-only loaded-post insights.
+Version 4.2.1 repairs native inbox discovery and Presence feed readiness,
+preserves finite Ghost message selections, resolves grouped reaction badges,
+and adds an optional reaction count and separate reaction retry.
 It preserves the short-chat, reaction-popup, streaming-history and removal-proof
 repairs from 4.1.6. The userscript remains the primary in-page surface.
 Only verified removals count as unsent. The stable update URL always resolves
@@ -17,10 +18,10 @@ removal-reporting history.
 | Surface | File |
 | --- | --- |
 | Tampermonkey | `insta-toolbox.user.js` |
-| Chrome extension | `Insta-Toolbox-Extension-4.2.0.zip` |
-| Web/PWA | `insta-toolbox-web-4.2.0.zip` |
-| Windows | `Insta-Toolbox-Setup-4.2.0.exe` |
-| macOS | `Insta-Toolbox-4.2.0-universal.dmg` and `.zip` |
+| Chrome extension | `Insta-Toolbox-Extension-4.2.1.zip` |
+| Web/PWA | `insta-toolbox-web-4.2.1.zip` |
+| Windows | `Insta-Toolbox-Setup-4.2.1.exe` |
+| macOS | `Insta-Toolbox-4.2.1-universal.dmg` and `.zip` |
 | Integrity | `SHA256SUMS.txt`, SBOM, and GitHub provenance attestation |
 
 The stable userscript channel is:
@@ -31,21 +32,29 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 ## Candidate gates
 
-The development matrix contains:
+Completed local candidate checks:
 
-- 1,054 automated tests, including continuous scheduling, Ghost launch/retry, short-chat, reaction-popup, removal-proof and pagination regressions;
-- complete generated-userscript and extension fixture acceptance;
+- assembly and 1,071 automated tests;
+- focused generated-userscript inbox, managed-worker, reaction and Presence acceptance;
 - 45 overlay screenshot states checked against the reviewed pixel thresholds;
 - 11 PWA screenshot states checked against the reviewed pixel thresholds;
-- service-worker cache generation `insta-toolbox-v420`.
+- real Chrome extension/PWA pairing and installability;
+- dependency audit with no vulnerabilities;
+- reaction-only popup-transition acceptance and 18 cleanup-label layout/theme states;
+- service-worker cache generation `insta-toolbox-v421`.
+
+The full cross-platform browser/package matrix passed at `451a9f2`; the subsequent
+reaction and theme fixes need an exact-commit CI pass. One live newest-message
+Unsend passed on the installed candidate. Its follow-up reaction pass stopped
+before removal; corrected live reaction and managed-worker checks remain pending.
+See the acceptance record for each check's exact scope.
 
 The native DM regression matrix covers sent replies, story replies, direct
 chats, group chats, id-less rows, unavailable account labels, retained virtual
 groups, and exact unchanged-row retries through the generated userscript's
 primary action. A verified removal preserves whole-conversation progress while
 finite newest/oldest plans continue to re-enter from their reviewed edge.
-The supplied native short thread was empty during inspection; post-removal
-authenticated acceptance remains separate from these fixtures.
+Authenticated acceptance remains separate from these fixtures.
 
 The optional userscript reaction pass is available. Its
 generated-browser acceptance verifies confirmation, cancellation, exact
@@ -55,7 +64,7 @@ current authenticated Instagram reaction compatibility; a disposable live
 reaction remains a separate gate.
 
 A two-action live Presence test passed on 4.1.5: native story opening,
-Next and verified completion. That is historical evidence, not a live 4.2.0
+Next and verified completion. That is historical evidence, not a live 4.2.1
 continuous-run result. The action adapter remains unchanged; scheduling and UI
 are updated in 4.2.0.
 
@@ -90,8 +99,8 @@ The macOS application is ad-hoc signed for bundle integrity but is not Developer
 
 ## Evidence and nonclaims
 
-The candidate record is [acceptance/4.2.0.md](./acceptance/4.2.0.md).
-Compatibility is tracked in [compatibility/4.2.0.md](./compatibility/4.2.0.md).
+The candidate record is [acceptance/4.2.1.md](./acceptance/4.2.1.md).
+Compatibility is tracked in [compatibility/4.2.1.md](./compatibility/4.2.1.md).
 
 Automated fixtures do not prove current authenticated Instagram selectors, human screen-reader use, persistent-profile behavior, SmartScreen trust, Gatekeeper trust, or notarization. Record those checks separately without committing usernames, messages, thread IDs, cookies, tokens, or private screenshots.
 

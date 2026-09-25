@@ -3,16 +3,18 @@
 
   if (globalThis.InstaToolboxOwnReactions) return;
 
-  const emojiOnly = /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\uFE0F|\u200D)+$/u;
+  const emojiOnly = /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\uFE0F|\u200D|[0-9#*]\uFE0F?\u20E3)+$/u;
+  const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
   const text = (node) => String(node?.textContent || '').trim().replace(/\s+/g, ' ');
   const visible = (node) => Boolean(node && node.isConnected !== false
     && !node.closest?.('[hidden], [aria-hidden="true"]')
     && (!node.getClientRects || node.getClientRects().length));
   const uncertain = (message) => Object.assign(new Error(message), { code: 'REACTION_OUTCOME_UNCERTAIN' });
   const badgeEmoji = (node) => {
-    const value = text(node).replace(/\s*[0-9]{1,6}$/, '').trim();
+    const value = text(node).replace(/\s*[0-9]{1,6}$/, '').replace(/\s/g, '');
     return emojiOnly.test(value) ? value : null;
   };
+  const badgeEmojis = node => [...graphemes.segment(badgeEmoji(node) || '')].map(value => value.segment);
   const badgeCount = (node) => Number(text(node).match(/([0-9]{1,6})$/)?.[1] || 1);
   const plans = new WeakSet();
   const consumed = new WeakSet();
@@ -92,7 +94,7 @@
     function reactionRows(dialog, expectedEmoji = null) {
       return [...dialog.querySelectorAll('[role="button"]')].filter((row) => visible(row)
         && row.getAttribute('tabindex') === '0'
-        && (expectedEmoji ? emoji(row).includes(expectedEmoji) : emoji(row).length));
+        && (expectedEmoji ? emoji(row).some(value => (Array.isArray(expectedEmoji) ? expectedEmoji : [expectedEmoji]).includes(value)) : emoji(row).length));
     }
     function ownRows(dialog, expectedEmoji) {
       const isColumn = (node) => {
@@ -125,11 +127,19 @@
       if (controls.length !== 1) throw new Error('reaction-close-unavailable');
       controls[0].click();
     }
-    function guard(threadId, accountId, signal, dispatched = false) {
+    function guard(threadId, accountId, signal, dispatched = false, settling = false) {
       const context = inspectContext();
-      if (context?.threadId !== threadId || context?.accountId !== accountId
-        || context?.accountVerified !== true || context?.usable !== true
-        || context?.restriction) throw new Error('reaction-context-changed');
+      if (signal?.aborted && !dispatched) throw new DOMException('Stopped', 'AbortError');
+      if (context?.threadId !== threadId || context?.restriction
+        || (context?.accountId && context.accountId !== accountId)) throw new Error('reaction-context-changed');
+      if (context?.accountId !== accountId || context.accountVerified !== true || context.usable !== true) {
+        // Native modals hide the app before their own account-proof fallback
+        // is mounted. Wait only at read-only readiness boundaries; every click
+        // still requires fresh account, thread and authority checks.
+        if (settling && context.accountId === null && context.accountVerified === false
+          && ['account-picker-unavailable', 'account-navigation-unavailable'].includes(context.reason)) return false;
+        throw new Error('reaction-context-changed');
+      }
       if (!dispatched) {
         if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
         const authorized = assertAuthorized({ threadId, accountId, kind: 'reaction' });
@@ -140,6 +150,7 @@
           throw new Error('reaction-authorization-required');
         }
       }
+      return true;
     }
     function wait(check, signal) {
       return new Promise((resolve, reject) => {
@@ -182,9 +193,9 @@
         guard(threadId, accountId, signal);
         if (!row?.isConnected || row.querySelectorAll('[aria-label="Message actions"]').length !== 1
           || !badges(row).includes(badge)) throw new Error('reaction-target-unavailable');
-        const selectedEmoji = badgeEmoji(badge), signature = messageSignature(row);
+        const selectedEmojis = badgeEmojis(badge), signature = messageSignature(row);
         const attemptKey = JSON.stringify([accountId, threadId,
-          messageIdentity(row) || fingerprint(signature), selectedEmoji]);
+          messageIdentity(row) || fingerprint(signature)]);
         if (unresolvedAttempts.has(attemptKey)) throw new Error('reaction-already-attempted');
         if (openDialogs().length) throw new Error('reaction-dialog-already-open');
         const unchanged = () => row.isConnected && messageSignature(row) === signature;
@@ -193,7 +204,7 @@
           guard(threadId, accountId, signal);
           badge.click();
           dialog = await wait(() => {
-            guard(threadId, accountId, signal);
+            if (!guard(threadId, accountId, signal, false, true)) return false;
             if (!unchanged()) throw new Error('reaction-message-changed');
             const dialogs = openDialogs();
             if (dialogs.length > 1) throw new Error('reaction-dialog-ambiguous');
@@ -201,13 +212,13 @@
           }, signal);
           let readySince = null, readySignature = null;
           await wait(() => {
-            guard(threadId, accountId, signal);
+            if (!guard(threadId, accountId, signal, false, true)) { readySince = null; return false; }
             if (!unchanged() || !visible(dialog) || openDialogs().length !== 1) {
               throw new Error('reaction-message-changed');
             }
             const rows = reactionRows(dialog);
             if (busy(dialog) || !rows.length
-              || reactionRows(dialog, selectedEmoji).length < badgeCount(badge)) {
+              || reactionRows(dialog, selectedEmojis).length < badgeCount(badge)) {
               readySince = null; return false;
             }
             const current = JSON.stringify(rows.map(text).sort());
@@ -216,7 +227,7 @@
             }
             return now() - readySince >= stableMs;
           }, signal);
-          const own = ownRows(dialog, selectedEmoji);
+          const own = ownRows(dialog, selectedEmojis);
           if (own.length !== 1) {
             try {
               close(dialog, threadId, accountId, signal);
@@ -230,6 +241,9 @@
             }
             return { verified: false, skipped: true, reason: own.length ? 'ownership-ambiguous' : 'not-my-reaction' };
           }
+          const ownedEmojis = emoji(own[0]).filter(value => selectedEmojis.includes(value));
+          if (ownedEmojis.length !== 1) throw new Error('reaction-emoji-ambiguous');
+          const selectedEmoji = ownedEmojis[0];
           const others = JSON.stringify(otherRows(dialog, selectedEmoji));
           guard(threadId, accountId, signal);
           if (!unchanged() || !visible(own[0])) throw new Error('reaction-message-changed');
@@ -244,13 +258,13 @@
           await wait(() => {
             // A dispatched removal must settle even after Stop. Stop cannot
             // turn an uncertain click into zero removals or a safe retry.
-            guard(threadId, accountId, null, true);
+            if (!guard(threadId, accountId, null, true, true)) { stableSince = null; return false; }
             if (!unchanged()) throw uncertain('The message changed while checking its reaction.');
             const dialogs = openDialogs();
             if (dialogs.length > 1) throw uncertain('Reaction details became ambiguous.');
             const current = dialogs[0];
             const remainingBadges = reactionBadges(row);
-            const matchingBadges = remainingBadges.filter((item) => badgeEmoji(item) === selectedEmoji);
+            const matchingBadges = remainingBadges.filter((item) => badgeEmojis(item).includes(selectedEmoji));
             let removed = false;
             if (current) {
               if (busy(current)) { stableSince = null; return false; }

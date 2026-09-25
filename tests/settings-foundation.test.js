@@ -54,7 +54,8 @@ test('userscript cleanup copy stays concise and reaction cleanup is selectable',
 
 test('userscript disclosure text paints with its selected theme and system contrast colors', () => {
   assert.match(userscript, /\.settings-inline > summary \{[^}]+color: var\(--insta-toolbox-text, #1b211c\); -webkit-text-fill-color: currentColor;/);
-  assert.match(userscript, /@media \(forced-colors: active\) \{ \.settings-inline > summary \{ color: CanvasText; \} \}/);
+  assert.match(userscript, /@media \(forced-colors: active\) \{ \.settings-inline > summary, \.settings-section > label, \.setting-option > label \{ color: CanvasText; \} \}/);
+  assert.match(userscript, /\.setting-option > label \{[^}]+color:var\(--insta-toolbox-text\); -webkit-text-fill-color:currentColor;/);
 });
 
 test('tool views leave configurable panel blur to the shell', () => {

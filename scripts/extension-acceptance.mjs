@@ -1603,6 +1603,9 @@ async function acceptUserscriptFieldSpacing(webContents, baseUrl) {
             width: innerWidth, right: rect.right, left: rect.left,
             reactionDisabled: reaction.disabled, reactionLabel: reaction.closest('label').textContent.trim(),
             textColor: getComputedStyle(area).color, linkText,
+            optionLabels: [...area.querySelectorAll('.setting-option > label')].filter(e => e.getClientRects().length)
+              .map(e => ({ text: e.textContent.trim(), color: getComputedStyle(e).color,
+                textFill: getComputedStyle(e).webkitTextFillColor })),
             summaries: [...area.querySelectorAll('summary')].filter(e => e.getClientRects().length)
               .map(e => ({ text: e.textContent.trim(), color: getComputedStyle(e).color,
                 textFill: getComputedStyle(e).webkitTextFillColor })),
@@ -1624,6 +1627,12 @@ async function acceptUserscriptFieldSpacing(webContents, baseUrl) {
           `${viewport.label}/${state}: disclosure text color ${JSON.stringify(metrics)}`);
         assert.ok(metrics.summaries.every(summary => summary.textFill === summary.color),
           `${viewport.label}/${state}: disclosure text fill ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.optionLabels.every(label => viewport.forcedColors
+          ? label.color === metrics.textColor || label.color === metrics.linkText
+          : label.color === expectedSummaryColor),
+          `${viewport.label}/${state}: option label color ${JSON.stringify(metrics)}`);
+        assert.ok(metrics.optionLabels.every(label => label.textFill === label.color),
+          `${viewport.label}/${state}: option label text fill ${JSON.stringify(metrics)}`);
         assert.equal(metrics.liveRegions, 1);
         assert.equal(metrics.reducedMotion, 'none');
         assert.ok(metrics.fields.every(field => !/scope|default n/i.test(field.name)), 'technical field labels remain');
@@ -1829,6 +1838,7 @@ async function acceptUserscriptReactionCleanup({ window, isolatedSession, fixtur
     const checkbox = root.querySelector('[data-role="unsend-reactions"]');
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    root.querySelector('[data-role="reaction-limit"]').value = '1';
     root.querySelector('[data-role="unsend-primary"]').click();
   })()`, true);
   const gate = await waitForPageValue(webContents, `(() => {
@@ -1844,6 +1854,7 @@ async function acceptUserscriptReactionCleanup({ window, isolatedSession, fixtur
     return root.querySelector('[data-role="action-confirmation"]').textContent;
   })()`, true);
   assert.match(review, /Remove reactions added by @demo_creator/);
+  assert.match(review, /up to 1 of your reactions/);
   await trustedClick(webContents,
     `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="confirm-cancel"]')`,
     'reaction cleanup cancel');
@@ -1878,6 +1889,42 @@ async function acceptUserscriptReactionCleanup({ window, isolatedSession, fixtur
   assert.equal(result.badgeClicks, 1);
   assert.equal(result.openDialogs, 0);
   console.log('Accepted generated userscript reaction cleanup: Cancel stayed safe, one exact owned reaction was removed, and the received message remained.');
+  await webContents.executeJavaScript(`(() => {
+    globalThis.fixtureSetReactionMessages({ dialogDelayMs: 300 });
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    root.querySelector('[data-role="unsend-reactions"]').checked = false;
+    root.querySelector('[data-role="reaction-limit"]').value = '1';
+    root.querySelector('[data-role="reactions-only"]').closest('details').open = true;
+  })()`, true);
+  await trustedClick(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="reactions-only"]')`,
+    'reaction-only action');
+  const standaloneReview = await waitForPageValue(webContents, `(() => {
+    const dialog = document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="action-confirmation"]');
+    return dialog.open && dialog.textContent;
+  })()`, 'reaction-only review');
+  assert.match(standaloneReview, /Remove up to 1 of your reactions/);
+  assert.match(standaloneReview, /Messages stay unchanged/);
+  await trustedClick(webContents,
+    `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="confirm-accept"]')`,
+    'reaction-only confirmed start');
+  const standaloneResult = await waitForPageValue(webContents, `(() => {
+    const root = document.querySelector('#insta-toolbox-userscript-root').shadowRoot;
+    const title = root.querySelector('[data-role="dm-summary-title"]')?.textContent || '';
+    if (globalThis.fixtureReactionRemoved !== 1 || !title.includes('1 reaction removed')) return null;
+    return {
+      title,
+      messageRetained: Boolean(document.querySelector('#fixture-reaction-row')),
+      badgeClicks: globalThis.fixtureReactionBadgeClicks,
+      openDialogs: document.querySelectorAll('[role="dialog"][aria-modal="true"]').length,
+      hiddenApp: document.querySelector('[data-fixture-viewer="app"]').getAttribute('aria-hidden'),
+    };
+  })()`, 'reaction-only verified summary', 20_000);
+  assert.equal(standaloneResult.messageRetained, true);
+  assert.equal(standaloneResult.badgeClicks, 1);
+  assert.equal(standaloneResult.openDialogs, 0);
+  assert.equal(standaloneResult.hiddenApp, null);
+  console.log('Accepted reaction-only retry through a delayed native popup: one owned reaction removed, no message removed.');
   } finally {
     isolatedSession.protocol.unhandle('https');
     isolatedSession.protocol.unhandle('http');
