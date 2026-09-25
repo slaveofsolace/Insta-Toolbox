@@ -9,6 +9,8 @@ This project uses [Semantic Versioning](https://semver.org/).
 - Apply newest/oldest message choices to each Ghost worker and name the count in its confirmation.
 - Add an optional reaction count under Message options; leave it blank to remove all your reactions.
 - Resolve individual reactions inside mixed-emoji badges instead of waiting for a combined emoji that no participant selected. Preserve exact flag, keycap and skin-tone variants.
+- Wait for the native reaction popup to finish opening before rechecking the account. Add **Remove reactions only** under Message options to retry without unsending another message.
+- Keep cleanup checkbox labels readable after switching between light and dark themes.
 
 ## 4.2.0 - 2026-09-24
 

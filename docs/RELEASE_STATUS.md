@@ -4,7 +4,7 @@ Candidate version: **4.2.1**. Latest published release: **4.2.0**.
 
 Version 4.2.1 repairs native inbox discovery and Presence feed readiness,
 preserves finite Ghost message selections, resolves grouped reaction badges,
-and adds an optional reaction count.
+and adds an optional reaction count and separate reaction retry.
 It preserves the short-chat, reaction-popup, streaming-history and removal-proof
 repairs from 4.1.6. The userscript remains the primary in-page surface.
 Only verified removals count as unsent. The stable update URL always resolves
@@ -34,16 +34,20 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 Completed local candidate checks:
 
-- assembly and 1,064 automated tests;
+- assembly and 1,071 automated tests;
 - focused generated-userscript inbox, managed-worker, reaction and Presence acceptance;
 - 45 overlay screenshot states checked against the reviewed pixel thresholds;
 - 11 PWA screenshot states checked against the reviewed pixel thresholds;
 - real Chrome extension/PWA pairing and installability;
 - dependency audit with no vulnerabilities;
+- reaction-only popup-transition acceptance and 18 cleanup-label layout/theme states;
 - service-worker cache generation `insta-toolbox-v421`.
 
-The full cross-platform browser/package matrix and authenticated candidate
-checks remain pending. See the acceptance record for each check's exact scope.
+The full cross-platform browser/package matrix passed at `451a9f2`; the subsequent
+reaction and theme fixes need an exact-commit CI pass. One live newest-message
+Unsend passed on the installed candidate. Its follow-up reaction pass stopped
+before removal; corrected live reaction and managed-worker checks remain pending.
+See the acceptance record for each check's exact scope.
 
 The native DM regression matrix covers sent replies, story replies, direct
 chats, group chats, id-less rows, unavailable account labels, retained virtual

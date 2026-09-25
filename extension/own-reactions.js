@@ -127,11 +127,19 @@
       if (controls.length !== 1) throw new Error('reaction-close-unavailable');
       controls[0].click();
     }
-    function guard(threadId, accountId, signal, dispatched = false) {
+    function guard(threadId, accountId, signal, dispatched = false, settling = false) {
       const context = inspectContext();
-      if (context?.threadId !== threadId || context?.accountId !== accountId
-        || context?.accountVerified !== true || context?.usable !== true
-        || context?.restriction) throw new Error('reaction-context-changed');
+      if (signal?.aborted && !dispatched) throw new DOMException('Stopped', 'AbortError');
+      if (context?.threadId !== threadId || context?.restriction
+        || (context?.accountId && context.accountId !== accountId)) throw new Error('reaction-context-changed');
+      if (context?.accountId !== accountId || context.accountVerified !== true || context.usable !== true) {
+        // Native modals hide the app before their own account-proof fallback
+        // is mounted. Wait only at read-only readiness boundaries; every click
+        // still requires fresh account, thread and authority checks.
+        if (settling && context.accountId === null && context.accountVerified === false
+          && ['account-picker-unavailable', 'account-navigation-unavailable'].includes(context.reason)) return false;
+        throw new Error('reaction-context-changed');
+      }
       if (!dispatched) {
         if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
         const authorized = assertAuthorized({ threadId, accountId, kind: 'reaction' });
@@ -142,6 +150,7 @@
           throw new Error('reaction-authorization-required');
         }
       }
+      return true;
     }
     function wait(check, signal) {
       return new Promise((resolve, reject) => {
@@ -195,7 +204,7 @@
           guard(threadId, accountId, signal);
           badge.click();
           dialog = await wait(() => {
-            guard(threadId, accountId, signal);
+            if (!guard(threadId, accountId, signal, false, true)) return false;
             if (!unchanged()) throw new Error('reaction-message-changed');
             const dialogs = openDialogs();
             if (dialogs.length > 1) throw new Error('reaction-dialog-ambiguous');
@@ -203,7 +212,7 @@
           }, signal);
           let readySince = null, readySignature = null;
           await wait(() => {
-            guard(threadId, accountId, signal);
+            if (!guard(threadId, accountId, signal, false, true)) { readySince = null; return false; }
             if (!unchanged() || !visible(dialog) || openDialogs().length !== 1) {
               throw new Error('reaction-message-changed');
             }
@@ -249,7 +258,7 @@
           await wait(() => {
             // A dispatched removal must settle even after Stop. Stop cannot
             // turn an uncertain click into zero removals or a safe retry.
-            guard(threadId, accountId, null, true);
+            if (!guard(threadId, accountId, null, true, true)) { stableSince = null; return false; }
             if (!unchanged()) throw uncertain('The message changed while checking its reaction.');
             const dialogs = openDialogs();
             if (dialogs.length > 1) throw uncertain('Reaction details became ambiguous.');

@@ -869,7 +869,7 @@
       .settings-section .field label { min-height:0; line-height:20px; }
       .settings-section select, .settings-section input:not([type="checkbox"]), .settings-section button { min-height:44px; box-sizing:border-box; }
       .settings-section select, .settings-section input { max-width:100%; }
-      .settings-section > label, .setting-option > label { display:flex; align-items:center; gap:8px; min-height:44px; font-size:13px; }
+      .settings-section > label, .setting-option > label { display:flex; align-items:center; gap:8px; min-height:44px; font-size:13px; color:var(--insta-toolbox-text); -webkit-text-fill-color:currentColor; }
       .setting-option { display:grid; gap:4px; }
       .settings-section .settings-inline { margin:0; padding:0; }
       .settings-section.settings-inline { margin:0; padding:0; row-gap:0; }
@@ -881,7 +881,7 @@
       @keyframes insta-toolbox-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
       @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog,.settings-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog,.settings-dialog { border:2px solid CanvasText; } .tab:focus-visible { outline:2px solid Highlight; outline-offset:-3px; box-shadow:none; } }
-      @media (forced-colors: active) { .settings-inline > summary { color: CanvasText; } }
+      @media (forced-colors: active) { .settings-inline > summary, .settings-section > label, .setting-option > label { color: CanvasText; } }
     </style>
     <button class="launcher" type="button" data-action="open" aria-label="Open Insta Toolbox; drag or use arrow keys to move" aria-expanded="false" title="Drag to move · Click to open">IT</button>
     <aside class="panel" aria-label="Insta Toolbox" hidden>
@@ -914,7 +914,7 @@
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions afterward</label></div>
-          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="field"><label for="insta-toolbox-reaction-limit">Reactions to remove</label><input id="insta-toolbox-reaction-limit" type="number" min="1" max="5000" placeholder="All" data-role="reaction-limit"><small>Leave blank for all your reactions.</small></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><section class="card" aria-label="Ghost Mode"><div data-role="inbox-cleanup"></div></section></section>
+          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="field"><label for="insta-toolbox-reaction-limit">Reactions to remove</label><input id="insta-toolbox-reaction-limit" type="number" min="1" max="5000" placeholder="All" data-role="reaction-limit"><small>Leave blank for all your reactions.</small></div><div class="toolbar"><button class="button quiet" type="button" data-action="run-reactions" data-role="reactions-only" hidden>Remove reactions only</button><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><section class="card" aria-label="Ghost Mode"><div data-role="inbox-cleanup"></div></section></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
@@ -1137,6 +1137,7 @@
     const effective = cleanupSettings.effective(cleanupPreferences, 'userscript');
     const reactionsSupported = cleanupSettings.capabilities('userscript').reactions;
     query('[data-role="unsend-reactions-option"]').hidden = !reactionsSupported;
+    query('[data-role="reactions-only"]').hidden = !reactionsSupported;
     query('[data-role="unsend-reactions"]').disabled = !reactionsSupported;
     query('[data-cleanup-preference="removeOwnReactions"]').disabled = !reactionsSupported;
     query('#insta-toolbox-reactions-note').hidden = reactionsSupported;
@@ -2534,6 +2535,7 @@
     const active = Boolean(dmCleanupController)
       || ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
     if (summary) {
+      summary.dataset.reactionReason = reactionSnapshot?.reason || '';
       const finished = dmRunnerSnapshot?.status === 'completed';
       const needsAttention = dmRunnerSnapshot?.status === 'needs-attention';
       const failed = dmRunnerSnapshot?.status === 'error';
@@ -2598,6 +2600,71 @@
     const limit = Number(value);
     if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) throw new Error('Choose a whole reaction count from 1 to 5,000, or leave it blank for all.');
     return limit;
+  }
+
+  async function performReactionCleanup(plan, controller) {
+    let recordedReactions = 0;
+    return reactionCleanup.start({ plan, signal: controller.signal,
+      onVerifiedRemoval: async ({ removed }) => {
+        const increment = Math.max(0, removed - recordedReactions);
+        if (!increment) return;
+        const ledger = state.ledger?.day === today()
+          ? state.ledger : { day: today(), actions: 0, unsends: 0 };
+        ledger.reactions = Number(ledger.reactions || 0) + increment;
+        state.ledger = ledger;
+        recordedReactions = removed;
+        await saveState();
+      },
+    });
+  }
+
+  async function runReactionsOnly() {
+    if (inboxPanel?.busy() || (typeof presencePanel !== 'undefined' && presencePanel?.busy())) {
+      status('Stop the current run before removing reactions.'); return;
+    }
+    if (stopDmCleanup() || confirmationController?.isPending()) return;
+    if (dmRunner?.snapshot().canStop) { status('Stop DM Unsend first.'); return; }
+    if (!cleanupSettings.capabilities('userscript').reactions || !reactionCleanup) {
+      throw new Error('Reaction cleanup is not available in this installation.');
+    }
+    const viewer = globalThis.InstaToolboxInstagramViewer?.inspect();
+    if (!viewer?.accountVerified || !viewer.usable || !viewer.threadId || viewer.restriction) {
+      throw new Error('Open a conversation and close any Instagram popup first.');
+    }
+    const plan = globalThis.InstaToolboxOwnReactions.createPlan({
+      threadId: viewer.threadId, accountUsername: viewer.accountId,
+      expiresAt: Date.now() + DM_PLAN_CAPABILITY_MS, limit: reactionRemovalLimit(),
+    });
+    if (!plan) throw new Error('Reaction cleanup could not be prepared.');
+    const confirmation = await confirmRun({
+      title: 'Remove your reactions?',
+      message: `Remove ${plan.limit === null ? 'all your reactions' : `up to ${plan.limit} of your reactions`} in this conversation?`,
+      detail: 'Messages stay unchanged. Stop stays available.',
+      confirmLabel: 'Remove reactions',
+      facts: [{ label: 'Conversation', value: `Thread ${plan.threadId}` },
+        { label: 'Account', value: `@${plan.accountUsername}` }],
+      binding: { kind: 'reactions-only', threadId: plan.threadId, accountUsername: plan.accountUsername,
+        limit: plan.limit, expiresAt: plan.expiresAt },
+    });
+    if (!confirmation) { status('Canceled. Nothing was changed.'); return; }
+    const current = globalThis.InstaToolboxInstagramViewer?.inspect();
+    if (!current?.accountVerified || !current.usable || current.restriction
+      || current.accountId !== plan.accountUsername || current.threadId !== plan.threadId
+      || plan.expiresAt <= Date.now() || reactionRemovalLimit() !== plan.limit
+      || confirmation.kind !== 'reactions-only' || confirmation.threadId !== plan.threadId
+      || confirmation.accountUsername !== plan.accountUsername || confirmation.limit !== plan.limit
+      || confirmation.expiresAt !== plan.expiresAt) {
+      status('The conversation or reaction selection changed. Nothing was removed.'); return;
+    }
+    const controller = new AbortController();
+    dmCleanupController = controller;
+    reactionSnapshot = null;
+    renderDmSummary();
+    try { await performReactionCleanup(plan, controller); }
+    finally {
+      if (dmCleanupController === controller) dmCleanupController = null;
+      renderDmSummary();
+    }
   }
 
   async function runDmUnsend() {
@@ -2728,19 +2795,7 @@
       });
       finalizeUnsendOutcome(plan, outcome);
       if (reactionPlan && outcome.status === 'completed' && !controller.signal.aborted) {
-        let recordedReactions = 0;
-        await reactionCleanup.start({ plan: reactionPlan, signal: controller.signal,
-          onVerifiedRemoval: async ({ removed }) => {
-            const increment = Math.max(0, removed - recordedReactions);
-            if (!increment) return;
-            const ledger = state.ledger?.day === today()
-              ? state.ledger : { day: today(), actions: 0, unsends: 0 };
-            ledger.reactions = Number(ledger.reactions || 0) + increment;
-            state.ledger = ledger;
-            recordedReactions = removed;
-            await saveState();
-          },
-        });
+        await performReactionCleanup(reactionPlan, controller);
       }
     } finally {
       activeUnsendCapability = null;
@@ -2960,6 +3015,7 @@
       await startAccountRun({ action: approved.action, usernames: approved.items.map((item) => item.username) });
     },
     'run-unsend': () => runDmUnsend(),
+    'run-reactions': () => runReactionsOnly(),
     'save-limits': () => {
       state.limits = {
         ...(state.limits || {}),
