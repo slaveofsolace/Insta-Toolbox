@@ -1829,6 +1829,7 @@ async function acceptUserscriptReactionCleanup({ window, isolatedSession, fixtur
     const checkbox = root.querySelector('[data-role="unsend-reactions"]');
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    root.querySelector('[data-role="reaction-limit"]').value = '1';
     root.querySelector('[data-role="unsend-primary"]').click();
   })()`, true);
   const gate = await waitForPageValue(webContents, `(() => {
@@ -1844,6 +1845,7 @@ async function acceptUserscriptReactionCleanup({ window, isolatedSession, fixtur
     return root.querySelector('[data-role="action-confirmation"]').textContent;
   })()`, true);
   assert.match(review, /Remove reactions added by @demo_creator/);
+  assert.match(review, /up to 1 of your reactions/);
   await trustedClick(webContents,
     `document.querySelector('#insta-toolbox-userscript-root').shadowRoot.querySelector('[data-role="confirm-cancel"]')`,
     'reaction cleanup cancel');

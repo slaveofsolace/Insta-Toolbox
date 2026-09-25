@@ -3,7 +3,8 @@
 Candidate version: **4.2.1**. Latest published release: **4.2.0**.
 
 Version 4.2.1 repairs native inbox discovery and Presence feed readiness,
-preserves finite Ghost message selections, and adds an optional reaction count.
+preserves finite Ghost message selections, resolves grouped reaction badges,
+and adds an optional reaction count.
 It preserves the short-chat, reaction-popup, streaming-history and removal-proof
 repairs from 4.1.6. The userscript remains the primary in-page surface.
 Only verified removals count as unsent. The stable update URL always resolves
@@ -31,24 +32,25 @@ Version 4 keeps the userscript identity and local data introduced in 3.0. Tamper
 
 ## Candidate gates
 
-The development matrix contains:
+Completed local candidate checks:
 
-- 1,061 automated tests passed before the final finite-worker regression was added; the exact final count is recorded in the acceptance record;
-- complete generated-userscript and extension fixture acceptance;
+- assembly and 1,064 automated tests;
+- focused generated-userscript inbox, managed-worker, reaction and Presence acceptance;
 - 45 overlay screenshot states checked against the reviewed pixel thresholds;
 - 11 PWA screenshot states checked against the reviewed pixel thresholds;
+- real Chrome extension/PWA pairing and installability;
+- dependency audit with no vulnerabilities;
 - service-worker cache generation `insta-toolbox-v421`.
 
-The 4.2.1 browser, visual and package gates are pending. The listed matrices
-describe required coverage, not completed candidate acceptance.
+The full cross-platform browser/package matrix and authenticated candidate
+checks remain pending. See the acceptance record for each check's exact scope.
 
 The native DM regression matrix covers sent replies, story replies, direct
 chats, group chats, id-less rows, unavailable account labels, retained virtual
 groups, and exact unchanged-row retries through the generated userscript's
 primary action. A verified removal preserves whole-conversation progress while
 finite newest/oldest plans continue to re-enter from their reviewed edge.
-The supplied native short thread was empty during inspection; post-removal
-authenticated acceptance remains separate from these fixtures.
+Authenticated acceptance remains separate from these fixtures.
 
 The optional userscript reaction pass is available. Its
 generated-browser acceptance verifies confirmation, cancellation, exact
@@ -58,7 +60,7 @@ current authenticated Instagram reaction compatibility; a disposable live
 reaction remains a separate gate.
 
 A two-action live Presence test passed on 4.1.5: native story opening,
-Next and verified completion. That is historical evidence, not a live 4.2.0
+Next and verified completion. That is historical evidence, not a live 4.2.1
 continuous-run result. The action adapter remains unchanged; scheduling and UI
 are updated in 4.2.0.
 

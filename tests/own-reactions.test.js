@@ -173,6 +173,24 @@ test('own reaction on a received message is removed without removing the message
   assert.equal(f.counters.mutations, 1); assert.equal(f.row.isConnected, true);
   assert.equal(f.body.textContent, 'Disposable received message');
 });
+
+test('a grouped badge resolves my individual emoji instead of waiting for a combined emoji reactor', async () => {
+  const f = fixture({ emoji: '👍', otherEmoji: '❤️', shared: true, count: '2' });
+  f.extraBadge.remove();
+  f.badge.children[0].value = '👍 ❤️ 3';
+  const result = await f.remove();
+  assert.equal(result.verified, true);
+  assert.equal(f.counters.mutations, 1);
+  assert.equal(f.row.isConnected, true);
+});
+
+test('flag, keycap and skin-tone reaction variants preserve the exact selected emoji', async () => {
+  for (const emoji of ['🇵🇸', '1️⃣', '👍🏽', '👩🏽‍💻']) {
+    const f = fixture({ emoji });
+    assert.equal((await f.remove()).verified, true, emoji);
+    assert.equal(f.counters.mutations, 1);
+  }
+});
 test('opening reaction details may aria-hide the conversation without changing message identity', async () => {
   const f = fixture();
   const show = f.badge.onclick;

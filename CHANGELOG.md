@@ -8,6 +8,7 @@ This project uses [Semantic Versioning](https://semver.org/).
 - Wait for the Home feed to load before Presence looks for posts. Support native reels links and skip temporarily empty activities while other selected activities continue.
 - Apply newest/oldest message choices to each Ghost worker and name the count in its confirmation.
 - Add an optional reaction count under Message options; leave it blank to remove all your reactions.
+- Resolve individual reactions inside mixed-emoji badges instead of waiting for a combined emoji that no participant selected. Preserve exact flag, keycap and skin-tone variants.
 
 ## 4.2.0 - 2026-09-24
 

@@ -484,16 +484,18 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
 
   if (globalThis.InstaToolboxOwnReactions) return;
 
-  const emojiOnly = /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\uFE0F|\u200D)+$/u;
+  const emojiOnly = /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\uFE0F|\u200D|[0-9#*]\uFE0F?\u20E3)+$/u;
+  const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
   const text = (node) => String(node?.textContent || '').trim().replace(/\s+/g, ' ');
   const visible = (node) => Boolean(node && node.isConnected !== false
     && !node.closest?.('[hidden], [aria-hidden="true"]')
     && (!node.getClientRects || node.getClientRects().length));
   const uncertain = (message) => Object.assign(new Error(message), { code: 'REACTION_OUTCOME_UNCERTAIN' });
   const badgeEmoji = (node) => {
-    const value = text(node).replace(/\s*[0-9]{1,6}$/, '').trim();
+    const value = text(node).replace(/\s*[0-9]{1,6}$/, '').replace(/\s/g, '');
     return emojiOnly.test(value) ? value : null;
   };
+  const badgeEmojis = node => [...graphemes.segment(badgeEmoji(node) || '')].map(value => value.segment);
   const badgeCount = (node) => Number(text(node).match(/([0-9]{1,6})$/)?.[1] || 1);
   const plans = new WeakSet();
   const consumed = new WeakSet();
@@ -573,7 +575,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
     function reactionRows(dialog, expectedEmoji = null) {
       return [...dialog.querySelectorAll('[role="button"]')].filter((row) => visible(row)
         && row.getAttribute('tabindex') === '0'
-        && (expectedEmoji ? emoji(row).includes(expectedEmoji) : emoji(row).length));
+        && (expectedEmoji ? emoji(row).some(value => (Array.isArray(expectedEmoji) ? expectedEmoji : [expectedEmoji]).includes(value)) : emoji(row).length));
     }
     function ownRows(dialog, expectedEmoji) {
       const isColumn = (node) => {
@@ -663,9 +665,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
         guard(threadId, accountId, signal);
         if (!row?.isConnected || row.querySelectorAll('[aria-label="Message actions"]').length !== 1
           || !badges(row).includes(badge)) throw new Error('reaction-target-unavailable');
-        const selectedEmoji = badgeEmoji(badge), signature = messageSignature(row);
+        const selectedEmojis = badgeEmojis(badge), signature = messageSignature(row);
         const attemptKey = JSON.stringify([accountId, threadId,
-          messageIdentity(row) || fingerprint(signature), selectedEmoji]);
+          messageIdentity(row) || fingerprint(signature)]);
         if (unresolvedAttempts.has(attemptKey)) throw new Error('reaction-already-attempted');
         if (openDialogs().length) throw new Error('reaction-dialog-already-open');
         const unchanged = () => row.isConnected && messageSignature(row) === signature;
@@ -688,7 +690,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
             }
             const rows = reactionRows(dialog);
             if (busy(dialog) || !rows.length
-              || reactionRows(dialog, selectedEmoji).length < badgeCount(badge)) {
+              || reactionRows(dialog, selectedEmojis).length < badgeCount(badge)) {
               readySince = null; return false;
             }
             const current = JSON.stringify(rows.map(text).sort());
@@ -697,7 +699,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
             }
             return now() - readySince >= stableMs;
           }, signal);
-          const own = ownRows(dialog, selectedEmoji);
+          const own = ownRows(dialog, selectedEmojis);
           if (own.length !== 1) {
             try {
               close(dialog, threadId, accountId, signal);
@@ -711,6 +713,9 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
             }
             return { verified: false, skipped: true, reason: own.length ? 'ownership-ambiguous' : 'not-my-reaction' };
           }
+          const ownedEmojis = emoji(own[0]).filter(value => selectedEmojis.includes(value));
+          if (ownedEmojis.length !== 1) throw new Error('reaction-emoji-ambiguous');
+          const selectedEmoji = ownedEmojis[0];
           const others = JSON.stringify(otherRows(dialog, selectedEmoji));
           guard(threadId, accountId, signal);
           if (!unchanged() || !visible(own[0])) throw new Error('reaction-message-changed');
@@ -731,7 +736,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
             if (dialogs.length > 1) throw uncertain('Reaction details became ambiguous.');
             const current = dialogs[0];
             const remainingBadges = reactionBadges(row);
-            const matchingBadges = remainingBadges.filter((item) => badgeEmoji(item) === selectedEmoji);
+            const matchingBadges = remainingBadges.filter((item) => badgeEmojis(item).includes(selectedEmoji));
             let removed = false;
             if (current) {
               if (busy(current)) { stableSince = null; return false; }
