@@ -20,11 +20,15 @@ export function createUserscriptGhostReview({
   threadIds,
   workerCount = 2,
   openInBackground = true,
+  scope = 'all',
+  limit = null,
   expiresAt,
 } = {}, now = Date.now()) {
   if (!identity(accountId) || !Array.isArray(threadIds) || !threadIds.length
     || threadIds.length > MAX_THREADS || !threadIds.every(identity)) fail('ghost-review-invalid');
   const unique = [...new Set(threadIds)];
+  if (!['all', 'newest', 'oldest'].includes(scope)
+    || (scope !== 'all' && (!Number.isInteger(limit) || limit < 1 || limit > 5_000))) fail('ghost-message-options-invalid');
   if (!Number.isInteger(workerCount) || workerCount < 1 || workerCount > MAX_WORKERS) {
     fail('ghost-worker-count-invalid');
   }
@@ -36,7 +40,8 @@ export function createUserscriptGhostReview({
     threadIds: Object.freeze(unique),
     workerCount: Math.min(workerCount, unique.length),
     openInBackground: openInBackground !== false,
-    scope: 'all',
+    scope,
+    limit: scope === 'all' ? null : limit,
     reviewedAt: now,
     expiresAt: expiry,
   });
@@ -284,6 +289,7 @@ export function createUserscriptGhostBridge({
           version: VERSION, jobId, coordinatorId, accountId: review.accountId,
           status: 'running', reason: null, workerCount: review.workerCount,
           openInBackground: review.openInBackground,
+          scope: review.scope, limit: review.limit,
           expiresAt: review.expiresAt, reviewedAt: review.reviewedAt,
           reviewKey: userscriptGhostReviewKey(review), coordinatorHeartbeatAt: now(),
           nextActionAt: 0, pendingMutation: null, updatedAt: now(),
@@ -479,7 +485,8 @@ export function createUserscriptGhostBridge({
         }),
     });
     try {
-      const plan = runner.createPlan({ threadId, scope: 'all', expiresAt: latest.expiresAt });
+      const plan = runner.createPlan({ threadId, scope: latest.scope ?? 'all', limit: latest.limit,
+        expiresAt: latest.expiresAt });
       if (!plan) fail('ghost-thread-plan-invalid');
       const outcome = await runner.start({ plan, workerAdapter: adapter });
       latest = await update((value) => {

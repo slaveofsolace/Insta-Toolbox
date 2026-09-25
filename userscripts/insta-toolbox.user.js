@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.2.0
+// @version      4.2.1
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -6551,6 +6551,10 @@ function createNativeInboxDiscovery({
   async function returnToInbox(threadId, position, section, context = discoveryContext, retainList = false) {
     guard(context);
     if (inboxThreadId(href()) !== threadId) throw new Error('conversation-changed');
+    // Desktop keeps the inbox rail mounted beside the conversation. Clicking
+    // Messages again can asynchronously restore the last chat after the next
+    // row has opened. Keep that rail in place instead of racing two routes.
+    if (retainList && inboxSurface()) return;
     const links = [...document.querySelectorAll('a[href]')].filter((node) => visible(node) && inboxUrl(node.getAttribute('href')));
     if (!links.length) {
       if (!retainList || !inboxSurface()) throw new Error('inbox-return-unavailable');
@@ -6564,6 +6568,10 @@ function createNativeInboxDiscovery({
   }
   async function scan(state) {
     await selectSection(state.section);
+    // A previous visit can leave the virtual rail halfway down the inbox.
+    // Discovery always starts at its beginning, not at that saved viewport.
+    scroller(listRoot()).scrollTop = 0;
+    await settle();
     let priorWindow = null;
     for (; state.samples < maxSamples;) {
       guard(); if (!inboxSurface()) throw new Error('inbox-route-changed');
@@ -6589,14 +6597,20 @@ function createNativeInboxDiscovery({
         // The desktop inbox remains visible alongside an open conversation.
         // A selected row may not change the URL. Revisit it after another row
         // instead of attributing the previous URL to the row just clicked.
-        visits += 1; row.click();
+        const alreadySelected = priorThread && row.getAttribute('aria-pressed') === 'true'
+          && rows(currentRoot).filter(node => node.getAttribute('aria-pressed') === 'true').length === 1
+          && readyMessagePane();
         let threadId;
         try {
-          threadId = await waitFor(() => {
+          if (alreadySelected) threadId = priorThread;
+          else {
+            visits += 1; row.click();
+            threadId = await waitFor(() => {
             const id = inboxThreadId(href());
             if (!id && !inboxUrl(href())) throw new Error('unexpected-route');
             return id && id !== priorThread ? id : false;
-          });
+            });
+          }
         } catch (error) {
           if (error.message !== 'navigation-timeout' || !priorThread || !inboxSurface()) throw error;
           if (turn < count && count > 1) deferredRows.push(index);
@@ -6612,8 +6626,8 @@ function createNativeInboxDiscovery({
         const captures = navigationEvidence.get(threadId) || new Map();
         captures.set(state.section, evidence); navigationEvidence.set(threadId, captures);
         try {
-          const ready = await freshMessagePane(threadId, priorPanes, priorActions, discoveryContext, Math.min(routeTimeoutMs, 1_500));
-          const label = nativeDisplayLabel(ready.pane, priorHeaders);
+          const ready = alreadySelected || await freshMessagePane(threadId, priorPanes, priorActions, discoveryContext, Math.min(routeTimeoutMs, 1_500));
+          const label = nativeDisplayLabel(ready.pane, alreadySelected ? [] : priorHeaders);
           if (label) displayLabels.set(threadId, label); else displayLabels.delete(threadId);
         } catch (error) {
           displayLabels.delete(threadId);
@@ -7720,11 +7734,15 @@ function createUserscriptGhostReview({
   threadIds,
   workerCount = 2,
   openInBackground = true,
+  scope = 'all',
+  limit = null,
   expiresAt,
 } = {}, now = Date.now()) {
   if (!identity(accountId) || !Array.isArray(threadIds) || !threadIds.length
     || threadIds.length > MAX_THREADS || !threadIds.every(identity)) fail('ghost-review-invalid');
   const unique = [...new Set(threadIds)];
+  if (!['all', 'newest', 'oldest'].includes(scope)
+    || (scope !== 'all' && (!Number.isInteger(limit) || limit < 1 || limit > 5_000))) fail('ghost-message-options-invalid');
   if (!Number.isInteger(workerCount) || workerCount < 1 || workerCount > MAX_WORKERS) {
     fail('ghost-worker-count-invalid');
   }
@@ -7736,7 +7754,8 @@ function createUserscriptGhostReview({
     threadIds: Object.freeze(unique),
     workerCount: Math.min(workerCount, unique.length),
     openInBackground: openInBackground !== false,
-    scope: 'all',
+    scope,
+    limit: scope === 'all' ? null : limit,
     reviewedAt: now,
     expiresAt: expiry,
   });
@@ -7984,6 +8003,7 @@ function createUserscriptGhostBridge({
           version: VERSION, jobId, coordinatorId, accountId: review.accountId,
           status: 'running', reason: null, workerCount: review.workerCount,
           openInBackground: review.openInBackground,
+          scope: review.scope, limit: review.limit,
           expiresAt: review.expiresAt, reviewedAt: review.reviewedAt,
           reviewKey: userscriptGhostReviewKey(review), coordinatorHeartbeatAt: now(),
           nextActionAt: 0, pendingMutation: null, updatedAt: now(),
@@ -8179,7 +8199,8 @@ function createUserscriptGhostBridge({
         }),
     });
     try {
-      const plan = runner.createPlan({ threadId, scope: 'all', expiresAt: latest.expiresAt });
+      const plan = runner.createPlan({ threadId, scope: latest.scope ?? 'all', limit: latest.limit,
+        expiresAt: latest.expiresAt });
       if (!plan) fail('ghost-thread-plan-invalid');
       const outcome = await runner.start({ plan, workerAdapter: adapter });
       latest = await update((value) => {
@@ -8243,6 +8264,7 @@ function mountUserscriptInboxPanel({
   defaultWorkerCount = 2,
   openWorkersInBackground = true,
   discoveryTiming = {},
+  messageOptions = () => ({ scope: 'all', limit: null }),
   busy = () => false, onStatus = () => {},
 }) {
   if (!container || typeof confirmAction !== 'function' || typeof save !== 'function') throw new Error('inbox-panel-unavailable');
@@ -8540,12 +8562,14 @@ function mountUserscriptInboxPanel({
     active = true; updateControls();
     let threadNavigator = null;
     try {
-      const captured = discovery.review({ threadIds, scope: 'all' });
+      const options = messageOptions();
+      const captured = discovery.review({ threadIds, scope: options.scope, limit: options.limit });
       if (ghostBridge) {
         const account = context();
         const plan = ghostBridge.createReview({
           accountId: account.accountId,
           threadIds: captured.threadIds,
+          scope: captured.scope, limit: captured.limit,
           workerCount: Number(workers.value),
           openInBackground: workerMode.value === 'background',
           expiresAt: Date.now() + 12 * 60 * 60_000,
@@ -8553,14 +8577,16 @@ function mountUserscriptInboxPanel({
         const key = userscriptGhostReviewKey(plan);
         const confirmed = await confirmAction({
           title: `Clean up ${plan.threadIds.length} conversation${plan.threadIds.length === 1 ? '' : 's'}?`,
-          message: 'Permanently unsend your messages in the selected conversations.',
+          message: plan.scope === 'all' ? 'Permanently unsend your messages in the selected conversations.'
+            : `Permanently unsend the ${plan.scope} ${plan.limit} message${plan.limit === 1 ? '' : 's'} you sent in each selected conversation?`,
           detail: 'Keep the inbox tab and worker tabs open. Worker tabs prepare conversations in parallel; removals stay account-paced and stop together.',
           confirmLabel: 'Start Ghost mode',
           facts: [{ label: 'Account', value: account.accountLabel ? `@${account.accountLabel}` : 'Current signed-in account' },
             { label: 'Conversations', value: String(plan.threadIds.length) },
             { label: 'Worker tabs', value: String(plan.workerCount) },
             { label: 'Open tabs', value: plan.openInBackground ? 'In the background' : 'In front' },
-            { label: 'Messages', value: 'All messages you sent' }],
+            { label: 'Messages', value: plan.scope === 'all' ? 'All messages you sent'
+              : `${plan.scope === 'newest' ? 'Newest' : 'Oldest'} ${plan.limit} in each conversation` }],
           binding: { action: 'inbox-unsend-workers', reviewKey: key },
         });
         if (!confirmed || epoch !== operationEpoch) { announce('Canceled. Nothing was removed.'); return; }
@@ -9272,7 +9298,7 @@ localModules["extension/presence-native-actions.js"] = (() => {
 
 const PROFILE_PATH = /^\/([A-Za-z0-9._]{1,30})\/?$/;
 const STORY_PATH = /^\/stories\/([A-Za-z0-9._]{1,30})(?:\/([^/?#]+))?\/?$/;
-const CONTENT_PATH = /^\/(?:p|reel)\/([^/?#]+)\/?/;
+const CONTENT_PATH = /^\/(?:p|reels?)\/([^/?#]+)\/?/;
 const STORY_TILE_LABEL = /^story by ([A-Za-z0-9._]{1,30})(?:,|$)/i;
 const RESERVED = new Set(['accounts', 'about', 'api', 'direct', 'explore', 'reels', 'settings', 'stories', 'web']);
 
@@ -9532,7 +9558,7 @@ function createPresenceNativeActions({
     if (['viewStories', 'likePosts'].includes(action) && location.pathname !== '/') {
       control = routeControl(new Set(['/']), new Set(['home']));
       ready = () => location.pathname === '/'
-        && (action !== 'viewStories' || candidates('viewStories').length > 0);
+        && candidates(action).length > 0;
     } else if (action === 'followPeople' && !String(location.pathname).startsWith('/explore')) {
       control = routeControl(new Set(['/explore/', '/explore']), new Set(['explore']));
       ready = () => String(location.pathname).startsWith('/explore');
@@ -9783,8 +9809,6 @@ const LIVE_REVIEW_TTL_MS = 12 * 60 * 60_000;
 const MAX_ACTIONS = 50;
 const MAX_LIVE_ACTIONS = 500;
 const MIN_ACTIONS = 1;
-const LIVE_STARTUP_SWEEPS = 3;
-const LIVE_STARTUP_RETRY_MS = 2_000;
 const reviews = new WeakSet();
 const consumed = new WeakSet();
 
@@ -9940,11 +9964,11 @@ function createPresenceSession({
       const { signal } = controller;
       const results = [];
       const seen = new Set();
-      const empty = new Set();
+      const unavailableUntil = new Map();
+      const emptyAttempts = new Map();
       const runId = `${now()}:${++runSequence}`;
       let resultSequence = 0;
       let cursor = 0;
-      let emptySweeps = 0;
       let verifiedInBurst = 0;
       // Stay on a surface for a short visit instead of bouncing between feed,
       // stories and notifications after every click. Story reactions follow
@@ -9978,6 +10002,17 @@ function createPresenceSession({
           context(review.accountId);
           const action = itinerary[cursor % itinerary.length];
           cursor += 1;
+          if ((unavailableUntil.get(action) || 0) > now()) {
+            // An empty activity must not make every other activity wait for
+            // another identical navigation/readiness timeout in this burst.
+            if (review.enabledActions.every(value => (unavailableUntil.get(value) || 0) > now())) {
+              if (review.options.mode !== 'live') break;
+              const next = Math.min(...review.enabledActions.map(value => unavailableUntil.get(value)));
+              publish({ status: 'searching', current: null });
+              await waitWithinReview(next - now());
+            }
+            continue;
+          }
           publish({
             status: 'searching',
             current: { action, id: null, label: PRESENCE_ACTION_LABELS[action] },
@@ -9997,28 +10032,16 @@ function createPresenceSession({
           if (signal.aborted || now() >= review.expiresAt) break;
           assertCurrent();
           if (!candidate) {
-            empty.add(action);
-            if (empty.size === review.enabledActions.length) {
-              if (review.options.mode !== 'live') break;
-              empty.clear();
-              emptySweeps += 1;
-              if (emptySweeps < LIVE_STARTUP_SWEEPS) {
-                publish({ status: 'searching', current: null });
-                await waitWithinReview(LIVE_STARTUP_RETRY_MS);
-              } else {
-                publish({ status: 'searching', current: null });
-                await waitWithinReview(Math.min(30_000, 5_000 * (emptySweeps - 2)));
-              }
-              await awaitResume(signal);
-              if (!signal.aborted && now() < review.expiresAt) publish({ status: 'running' });
-            }
+            const misses = (emptyAttempts.get(action) || 0) + 1;
+            emptyAttempts.set(action, misses);
+            unavailableUntil.set(action, now() + Math.min(30_000, 2_000 * 2 ** Math.min(misses - 1, 4)));
             continue;
           }
           if (!text(candidate.id) || candidate.action !== action || seen.has(candidate.id)) {
             fail('presence-target-invalid');
           }
-          empty.delete(action);
-          emptySweeps = 0;
+          unavailableUntil.delete(action);
+          emptyAttempts.delete(action);
           const actionId = `${action}:${candidate.id}`;
           publish({ status: 'running', current: { action, id: candidate.id,
             label: text(candidate.label) || PRESENCE_ACTION_LABELS[action] } });
@@ -10036,6 +10059,10 @@ function createPresenceSession({
           }
           seen.add(candidate.id);
           if (outcome?.verified === true) {
+            if (action === 'viewStories') {
+              unavailableUntil.delete('reactStories');
+              emptyAttempts.delete('reactStories');
+            }
             results.unshift({ action, id: candidate.id, label: text(outcome.label) || text(candidate.label),
               status: 'completed', reason: text(outcome.reason), at: now(),
               eventId: `${runId}:${++resultSequence}` });
@@ -11808,7 +11835,7 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions afterward</label></div>
-          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><section class="card" aria-label="Ghost Mode"><div data-role="inbox-cleanup"></div></section></section>
+          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="field"><label for="insta-toolbox-reaction-limit">Reactions to remove</label><input id="insta-toolbox-reaction-limit" type="number" min="1" max="5000" placeholder="All" data-role="reaction-limit"><small>Leave blank for all your reactions.</small></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><section class="card" aria-label="Ghost Mode"><div data-role="inbox-cleanup"></div></section></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
@@ -13486,6 +13513,14 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
     return outcome;
   }
 
+  function reactionRemovalLimit() {
+    const value = query('[data-role="reaction-limit"]')?.value.trim();
+    if (!value) return null;
+    const limit = Number(value);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) throw new Error('Choose a whole reaction count from 1 to 5,000, or leave it blank for all.');
+    return limit;
+  }
+
   async function runDmUnsend() {
     if (inboxPanel?.busy()) { inboxPanel.stop(); return; }
     if (typeof presencePanel !== 'undefined' && presencePanel?.busy()) {
@@ -13524,6 +13559,7 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
     if (!plan) throw new Error('The Unsend plan could not be created. Keep this conversation open and try again.');
     const reactionPlan = removeReactions ? globalThis.InstaToolboxOwnReactions.createPlan({
       threadId: plan.threadId, accountUsername: viewer.accountId, expiresAt: plan.expiresAt,
+      limit: reactionRemovalLimit(),
     }) : null;
     if (removeReactions && !reactionPlan) throw new Error('Reaction cleanup could not be prepared.');
     const scopeLabel = scope === 'all'
@@ -13533,7 +13569,7 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
       title: 'Unsend DMs?',
       message: `Permanently unsend ${scopeLabel} in this conversation?`,
       detail: removeReactions
-        ? 'Then remove your reactions from messages left in this conversation. This cannot be undone. Stop stays available.'
+        ? `Then remove ${reactionPlan.limit === null ? 'your reactions' : `up to ${reactionPlan.limit} of your reactions`} from messages left in this conversation. This cannot be undone. Stop stays available.`
         : 'This cannot be undone. Stop stays available while it runs.',
       confirmLabel: scope === 'all' ? 'Unsend all my messages' : `Unsend ${limit} message${limit === 1 ? '' : 's'}`,
       facts: [
@@ -13551,6 +13587,7 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
         scope: plan.scope,
         threadId: plan.threadId,
         removeReactions,
+        reactionLimit: reactionPlan?.limit ?? null,
         reactionAccount: viewer?.accountId || null,
       },
     });
@@ -13578,6 +13615,8 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
       || confirmedScope !== plan.scope
       || confirmedLimit !== plan.limit
       || confirmation.removeReactions !== removeReactions
+      || (removeReactions && (confirmation.reactionLimit !== reactionPlan.limit
+        || reactionRemovalLimit() !== reactionPlan.limit))
       || (cleanupSettings.capabilities('userscript').reactions
         && query('[data-role="unsend-reactions"]')?.checked === true) !== removeReactions
       || (removeReactions && (confirmation.reactionAccount !== viewer.accountId
@@ -14388,6 +14427,11 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
           openTab: (url, options) => GM_openInTab(url, options),
         } : null,
       defaultWorkerCount: cleanupSettings.effective(cleanupPreferences, 'userscript').workerCount,
+      messageOptions: () => {
+        const scope = query('[data-role="unsend-scope"]')?.value || 'all';
+        return { scope, limit: scope === 'all' ? null
+          : Math.max(1, Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1)) };
+      },
       openWorkersInBackground: cleanupSettings.effective(cleanupPreferences, 'userscript').execution === 'background',
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
         || relationshipController || state.run?.status === 'running' || presencePanel?.busy()),

@@ -179,6 +179,28 @@ test('Presence recognizes Instagram navigation whose icon and caption duplicate 
   assert.equal(candidate.id, 'post:live-feed-post');
 });
 
+test('Presence waits for the feed to mount after Home navigation and accepts native reels links', async () => {
+  const location = { origin: 'https://www.instagram.com', pathname: '/direct/inbox/' };
+  let mounted = false, scrolls = 0;
+  const article = element({ children: {
+    'a[href]': [element({ href: '/reels/fixture-reel/' })], button: [element({ text: 'Like' })],
+  } });
+  const home = element({ text: 'Home', href: '/', click() {
+    location.pathname = '/'; setTimeout(() => { mounted = true; }, 60);
+  } });
+  const doc = { documentElement: {}, scrollingElement: { scrollBy() { scrolls += 1; } },
+    querySelectorAll: selector => selector === 'article' ? mounted ? [article] : []
+      : selector === 'a[href],button,[role="button"]' ? [home] : [],
+  };
+  class Observer { observe() {} disconnect() {} }
+  const actions = createPresenceNativeActions({ document: doc, location,
+    inspectViewer: () => ({ accountVerified: true, usable: true, accountId: 'viewer' }),
+    getStyle: () => ({ opacity: '1' }), MutationObserver: Observer, timeoutMs: 500 });
+  const result = await actions.find('likePosts', { seen: new Set(), signal: new AbortController().signal });
+  assert.equal(result.id, 'post:fixture-reel');
+  assert.equal(scrolls, 0, 'initial feed loading must not be mistaken for an exhausted viewport');
+});
+
 test('Presence never manufactures a destination when the matching native control is absent', async () => {
   const location = { origin: 'https://www.instagram.com', pathname: '/direct/inbox/' };
   const documentFixture = {

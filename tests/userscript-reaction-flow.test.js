@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const source = await readFile(new URL('../userscripts/src/toolbox-shell.js', import.meta.url), 'utf8');
-const start = source.indexOf('  async function runDmUnsend()');
+const start = source.indexOf('  function reactionRemovalLimit()');
 const end = source.indexOf('  // --- Section 7:', start);
 assert.ok(start > 0 && end > start, 'actual DM handlers must be present');
 const handlers = source.slice(start, end);
@@ -16,6 +16,7 @@ function fixture(options = {}) {
   const controls = {
     'unsend-scope': { value: 'all' }, 'unsend-count': { value: '3' },
     'unsend-reactions': { checked: options.selected ?? false },
+    'reaction-limit': { value: options.reactionLimit ?? '' },
   };
   const inspection = { ready: true, threadId: '12345' };
   const viewer = { accountId: 'fixture_owner', accountVerified: true, usable: true, threadId: '12345' };
@@ -123,6 +124,21 @@ test('Cancel dispatches neither Unsend nor reactions and reserves nothing', asyn
   assert.equal(f.calls.reservations, 0);
   assert.equal(f.calls.saves, 0);
   assert.match(f.calls.statuses[0][0], /Canceled/);
+});
+
+test('a selected reaction limit is named, confirmed, and passed unchanged to the runner', async () => {
+  const f = fixture({ supported: true, selected: true, reactionLimit: '1' });
+  await f.run();
+  assert.equal(f.calls.reactions[0].plan.limit, 1);
+  assert.equal(f.calls.confirmations[0].binding.reactionLimit, 1);
+  assert.match(f.calls.confirmations[0].detail, /up to 1 of your reactions/);
+  const changed = fixture({ supported: true, selected: true, reactionLimit: '1', confirm(request, api) {
+    api.controls['reaction-limit'].value = '';
+    return request.binding;
+  } });
+  await changed.run();
+  assert.equal(changed.calls.dm.length, 0);
+  assert.equal(changed.calls.reactions.length, 0);
 });
 
 test('changed account, thread, expiry, or reaction choice invalidates confirmation', async () => {

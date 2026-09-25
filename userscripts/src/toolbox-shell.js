@@ -914,7 +914,7 @@
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions afterward</label></div>
-          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><section class="card" aria-label="Ghost Mode"><div data-role="inbox-cleanup"></div></section></section>
+          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="field"><label for="insta-toolbox-reaction-limit">Reactions to remove</label><input id="insta-toolbox-reaction-limit" type="number" min="1" max="5000" placeholder="All" data-role="reaction-limit"><small>Leave blank for all your reactions.</small></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><section class="card" aria-label="Ghost Mode"><div data-role="inbox-cleanup"></div></section></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
@@ -2592,6 +2592,14 @@
     return outcome;
   }
 
+  function reactionRemovalLimit() {
+    const value = query('[data-role="reaction-limit"]')?.value.trim();
+    if (!value) return null;
+    const limit = Number(value);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) throw new Error('Choose a whole reaction count from 1 to 5,000, or leave it blank for all.');
+    return limit;
+  }
+
   async function runDmUnsend() {
     if (inboxPanel?.busy()) { inboxPanel.stop(); return; }
     if (typeof presencePanel !== 'undefined' && presencePanel?.busy()) {
@@ -2630,6 +2638,7 @@
     if (!plan) throw new Error('The Unsend plan could not be created. Keep this conversation open and try again.');
     const reactionPlan = removeReactions ? globalThis.InstaToolboxOwnReactions.createPlan({
       threadId: plan.threadId, accountUsername: viewer.accountId, expiresAt: plan.expiresAt,
+      limit: reactionRemovalLimit(),
     }) : null;
     if (removeReactions && !reactionPlan) throw new Error('Reaction cleanup could not be prepared.');
     const scopeLabel = scope === 'all'
@@ -2639,7 +2648,7 @@
       title: 'Unsend DMs?',
       message: `Permanently unsend ${scopeLabel} in this conversation?`,
       detail: removeReactions
-        ? 'Then remove your reactions from messages left in this conversation. This cannot be undone. Stop stays available.'
+        ? `Then remove ${reactionPlan.limit === null ? 'your reactions' : `up to ${reactionPlan.limit} of your reactions`} from messages left in this conversation. This cannot be undone. Stop stays available.`
         : 'This cannot be undone. Stop stays available while it runs.',
       confirmLabel: scope === 'all' ? 'Unsend all my messages' : `Unsend ${limit} message${limit === 1 ? '' : 's'}`,
       facts: [
@@ -2657,6 +2666,7 @@
         scope: plan.scope,
         threadId: plan.threadId,
         removeReactions,
+        reactionLimit: reactionPlan?.limit ?? null,
         reactionAccount: viewer?.accountId || null,
       },
     });
@@ -2684,6 +2694,8 @@
       || confirmedScope !== plan.scope
       || confirmedLimit !== plan.limit
       || confirmation.removeReactions !== removeReactions
+      || (removeReactions && (confirmation.reactionLimit !== reactionPlan.limit
+        || reactionRemovalLimit() !== reactionPlan.limit))
       || (cleanupSettings.capabilities('userscript').reactions
         && query('[data-role="unsend-reactions"]')?.checked === true) !== removeReactions
       || (removeReactions && (confirmation.reactionAccount !== viewer.accountId
@@ -3494,6 +3506,11 @@
           openTab: (url, options) => GM_openInTab(url, options),
         } : null,
       defaultWorkerCount: cleanupSettings.effective(cleanupPreferences, 'userscript').workerCount,
+      messageOptions: () => {
+        const scope = query('[data-role="unsend-scope"]')?.value || 'all';
+        return { scope, limit: scope === 'all' ? null
+          : Math.max(1, Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1)) };
+      },
       openWorkersInBackground: cleanupSettings.effective(cleanupPreferences, 'userscript').execution === 'background',
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
         || relationshipController || state.run?.status === 'running' || presencePanel?.busy()),

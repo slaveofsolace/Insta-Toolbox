@@ -130,10 +130,21 @@ test('continuous Presence backs off when empty, without minute-long scheduled re
   const result = await session.start(review);
   assert.equal(result.status, 'expired');
   assert.equal(result.completed, 0);
-  assert.deepEqual(waits.slice(0, 5), [2_000, 2_000, 5_000, 10_000, 15_000]);
+  assert.deepEqual(waits.slice(0, 5), [2_000, 4_000, 8_000, 16_000, 30_000]);
   assert.ok(waits.every(ms => ms <= 30_000));
   assert.equal(clock, review.expiresAt);
   assert.equal(updates.some(value => value.status === 'quiet'), false);
+});
+
+test('an empty activity is tried once while available activities keep running', async () => {
+  const f = fixture({ candidates: { likePosts: [1, 2, 3].map(id => candidate('likePosts', `post:${id}`)) } });
+  const review = f.session.createReview({ accountId: 'viewer', options: {
+    maxActions: 3, actions: { viewStories: true, likePosts: true, acceptRequests: true },
+  } });
+  const result = await f.session.start(review);
+  assert.equal(result.completed, 3);
+  assert.equal(f.calls.filter(([kind, action]) => kind === 'find' && action === 'viewStories').length, 1);
+  assert.equal(f.calls.filter(([kind]) => kind === 'execute').length, 3);
 });
 
 test('continuous Presence passes the old burst and 200-action limits until Stop', async () => {

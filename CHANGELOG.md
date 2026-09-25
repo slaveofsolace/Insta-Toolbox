@@ -2,6 +2,13 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.2.1 - 2026-09-25
+
+- Start inbox discovery at the top and keep the desktop conversation rail in place. Recognize the selected conversation without waiting for an unnecessary route change.
+- Wait for the Home feed to load before Presence looks for posts. Support native reels links and skip temporarily empty activities while other selected activities continue.
+- Apply newest/oldest message choices to each Ghost worker and name the count in its confirmation.
+- Add an optional reaction count under Message options; leave it blank to remove all your reactions.
+
 ## 4.2.0 - 2026-09-24
 
 - Keep Live like me running continuously for the selected duration. Scheduled breaks are optional and off by default; the hidden 200-action limit is removed. Empty feeds use short, bounded backoff instead of a long rest.

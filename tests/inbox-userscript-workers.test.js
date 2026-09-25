@@ -53,6 +53,18 @@ test('Ghost review can explicitly keep managed tabs in front', () => {
   assert.equal(review.openInBackground, false);
 });
 
+test('Ghost freezes per-conversation message options instead of widening a finite selection', () => {
+  for (const scope of ['newest', 'oldest']) {
+    const review = createUserscriptGhostReview({ accountId: 'demo', threadIds: ['one', 'two'], scope, limit: 1 }, NOW);
+    assert.equal(review.scope, scope); assert.equal(review.limit, 1);
+    assert.equal(Object.isFrozen(review), true);
+    assert.match(userscriptGhostReviewKey(review), /"limit":1/);
+  }
+  for (const limit of [null, 0, -1, 0.5, 5001, Infinity]) {
+    assert.throws(() => createUserscriptGhostReview({ accountId: 'demo', threadIds: ['one'], scope: 'newest', limit }, NOW), /message-options-invalid/);
+  }
+});
+
 test('manager opens only reviewed inactive worker tabs and Stop closes only owned tabs', async () => {
   let id = 0;
   const storage = sharedStorage();
@@ -160,11 +172,12 @@ test('worker serializes verified removals through the shared mutation lane', asy
   assert.equal(storage.value().pendingMutation, null);
 });
 
-function workerFixture({ readyAfter = 0, execute, hash = '#insta-toolbox-worker=job_1.launch_1' } = {}) {
+function workerFixture({ readyAfter = 0, execute, hash = '#insta-toolbox-worker=job_1.launch_1', messageOptions = {} } = {}) {
   let clock = NOW, inspections = 0, starts = 0;
+  const plans = [];
   const storage = sharedStorage({ version: 1, jobId: 'job_1', coordinatorId: 'coordinator_1',
     accountId: 'demo', status: 'running', expiresAt: NOW + 120_000, nextActionAt: 0,
-    pendingMutation: null, tasks: [{ threadId: 'one', launchId: 'launch_1', status: 'opening',
+    pendingMutation: null, ...messageOptions, tasks: [{ threadId: 'one', launchId: 'launch_1', status: 'opening',
       messageRemovals: 0, openedAt: NOW }] });
   const bridge = createUserscriptGhostBridge({ storage,
     locks: { request: async (name, _options, callback) => callback(name.includes('ghost-coordinator:') ? null : {}) },
@@ -173,7 +186,8 @@ function workerFixture({ readyAfter = 0, execute, hash = '#insta-toolbox-worker=
     now: () => clock, random: () => 0, randomId: () => 'worker_1',
     inspectContext: () => ++inspections <= readyAfter ? { usable: false }
       : { usable: true, accountId: 'demo', threadId: 'one' },
-    runner: { ...runnerStub, async start({ workerAdapter }) {
+    runner: { ...runnerStub, async start({ workerAdapter, plan }) {
+      plans.push(plan);
       starts += 1;
       return execute ? execute(workerAdapter, storage) : { status: 'completed', processed: 0 };
     } },
@@ -181,8 +195,14 @@ function workerFixture({ readyAfter = 0, execute, hash = '#insta-toolbox-worker=
     setTimeoutFn: (callback, ms) => { clock += ms; queueMicrotask(callback); return 1; },
     clearTimeoutFn: () => {},
   });
-  return { bridge, storage, get starts() { return starts; }, get clock() { return clock; } };
+  return { bridge, storage, plans, get starts() { return starts; }, get clock() { return clock; } };
 }
+
+test('worker dispatch preserves the reviewed per-conversation newest count', async () => {
+  const f = workerFixture({ messageOptions: { scope: 'newest', limit: 1 } });
+  assert.equal((await f.bridge.attachWorker()).status, 'completed');
+  assert.equal(f.plans[0].scope, 'newest'); assert.equal(f.plans[0].limit, 1);
+});
 
 test('managed workers wait for the authenticated React pane instead of attaching only once', async () => {
   const f = workerFixture({ readyAfter: 8 });
