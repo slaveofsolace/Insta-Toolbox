@@ -5,7 +5,7 @@ const ACTIONS = Object.freeze([
   ['viewStories', 'View stories'],
   ['reactStories', 'React to stories'],
   ['likePosts', 'Like posts'],
-  ['followPeople', 'Follow visible Explore accounts'],
+  ['followPeople', 'Follow on Explore'],
   ['acceptRequests', 'Accept incoming requests'],
 ]);
 

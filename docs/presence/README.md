@@ -9,7 +9,7 @@ The current userscript exposes five activities:
 - View stories
 - React to stories
 - Like posts
-- Follow people
+- Follow on Explore
 - Accept incoming requests
 
 Choose the allowed activities and either run one session of 1 to 50 actions or
