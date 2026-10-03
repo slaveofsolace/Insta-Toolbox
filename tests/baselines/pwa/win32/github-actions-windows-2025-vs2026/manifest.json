@@ -7,7 +7,7 @@
   "captureTimestamp": "2026-09-25T00:00:00.000Z",
   "validationNote": "Existing CI renderer images retained unchanged for 4.2.1. Original capture provenance is preserved; exact-commit CI validation remains required.",
   "platform": "win32",
-  "electron": "43.2.0",
+  "electron": "43.5.0",
   "deviceScaleFactor": 1,
   "viewports": [
     {

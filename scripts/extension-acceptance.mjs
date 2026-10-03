@@ -2710,7 +2710,7 @@ async function acceptUserscriptToolbox(webContents, baseUrl) {
   })()`, true);
   assert.deepEqual(presenceSurface, {
     clicks: 0,
-    heading: 'Presence',
+    heading: 'Browse and interact',
     startDisabled: false,
     manualDisclosure: false,
   });

@@ -10937,7 +10937,7 @@ function mountPresenceGrowthPanel({
   const dueList = make('p');
   const style = make('style', `
     .presence-growth{border-top:1px solid var(--insta-toolbox-line);padding-top:8px;min-width:0}
-    .presence-growth>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700}
+    .presence-growth>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700;-webkit-text-fill-color:currentColor}
     .presence-growth>summary::after{content:'▾';margin-left:auto;font-size:16px}
     .presence-growth:not([open])>summary::after{content:'▸'}
     .presence-growth>p{margin:4px 0 12px;line-height:1.45}
@@ -10949,7 +10949,7 @@ function mountPresenceGrowthPanel({
     .presence-growth-candidates input{margin-right:8px;flex:none}
     .presence-growth [hidden]{display:none!important}
     .presence-growth :focus-visible{outline:2px solid var(--insta-toolbox-accent,Highlight);outline-offset:2px}
-    @media(forced-colors:active){.presence-growth input,.presence-growth select{border-color:CanvasText}}
+    @media(forced-colors:active){.presence-growth input,.presence-growth select{border-color:CanvasText}.presence-growth>summary{color:LinkText;-webkit-text-fill-color:LinkText}}
   `);
   root.append(style, summary, note, seedLabel, daysLabel, find, cancel, progress,
     candidatesList, follow, dueList, due);
