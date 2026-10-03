@@ -8,7 +8,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const lockfile = await readFile(path.join(projectRoot, "pnpm-lock.yaml"), "utf8");
 const workspaceConfig = await readFile(path.join(projectRoot, "pnpm-workspace.yaml"), "utf8");
 const requireFromProject = createRequire(path.join(projectRoot, "package.json"));
-const expectedVersions = ["1.1.18", "2.1.4", "5.0.9"];
+const expectedVersions = ["1.1.21", "2.1.7", "5.0.12"];
 
 for (const version of expectedVersions) {
   assert.match(
@@ -49,8 +49,8 @@ for (const version of expectedVersions) {
 const patchedBuildDependencies = [
   {
     name: "fast-uri",
-    version: "3.1.6",
-    override: '"fast-uri@<3.1.6": 3.1.6',
+    version: "3.1.8",
+    override: '"fast-uri@<3.1.8": 3.1.8',
   },
   {
     name: "js-yaml",
@@ -89,5 +89,5 @@ for (const dependency of patchedBuildDependencies) {
 }
 
 console.log(
-  `Dependency verification passed: brace-expansion ${expectedVersions.join(", ")} enforce the CVE-2026-14257 length bound; fast-uri 3.1.6, js-yaml 4.3.2, and xmldom 0.8.15 are patched.`,
+  `Dependency verification passed: brace-expansion ${expectedVersions.join(", ")} enforce the expansion bound; fast-uri 3.1.8, js-yaml 4.3.2, and xmldom 0.8.15 are patched.`,
 );
