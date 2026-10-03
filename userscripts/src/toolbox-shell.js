@@ -208,6 +208,8 @@
       capabilityDigest: accountCapabilityDigest(action, approvedTargets),
       capabilityExpiresAt,
       capabilityId,
+      growthCampaignId: safeText(value.growthCampaignId),
+      growthAccount: normalizeUsername(value.growthAccount),
       nextAt: Number(value.nextAt) > Date.now() ? Number(value.nextAt) : null,
       results: (Array.isArray(value.results) ? value.results : []).slice(0, 40).map((item) => ({
         label: safeText(item?.label),
@@ -1523,6 +1525,7 @@
   let inboxPanel = null;
   let insightsPanel = null;
   let presencePanel = null;
+  let presenceGrowthPanel = null;
   let presenceSession = null;
   let presenceCapture = null;
 
@@ -1707,6 +1710,53 @@
     renderAll();
   }
 
+  function growthCampaignKey(account) {
+    const owner = normalizeUsername(account);
+    if (!owner) throw new Error('growth-account-unverified');
+    return `instaToolboxPresenceGrowthV1:${owner}`;
+  }
+
+  function readGrowthCampaigns(account) {
+    if (!normalizeUsername(account)) return [];
+    const saved = GM_getValue(growthCampaignKey(account), []);
+    return Array.isArray(saved) ? saved.slice(-100) : [];
+  }
+
+  function writeGrowthCampaigns(account, campaigns) {
+    if (!Array.isArray(campaigns) || campaigns.some((campaign) => campaign?.account !== account)) {
+      throw new Error('growth-account-mismatch');
+    }
+    GM_setValue(growthCampaignKey(account), campaigns.slice(-100));
+  }
+
+  function recordVerifiedGrowthAction(run, username) {
+    if (!run?.growthCampaignId) return;
+    const owner = normalizeUsername(engine.detectAuthenticatedUsername?.());
+    if (!owner || owner !== run.growthAccount) throw new Error('growth-account-changed');
+    const campaigns = readGrowthCampaigns(owner);
+    const index = campaigns.findIndex((campaign) => campaign.id === run.growthCampaignId);
+    if (index < 0 || campaigns[index].account !== owner) throw new Error('growth-campaign-missing');
+    const updated = globalThis.InstaToolboxPresenceGrowth.recordGrowthOutcome(campaigns[index], {
+      action: run.action, username, verifiedAt: Date.now(),
+    });
+    if (updated === campaigns[index]) throw new Error('growth-target-not-recorded');
+    campaigns[index] = updated;
+    writeGrowthCampaigns(owner, campaigns);
+  }
+
+  function growthRunStillApproved(run) {
+    if (!run.growthCampaignId) return true;
+    const campaign = readGrowthCampaigns(run.growthAccount)
+      .find((item) => item?.id === run.growthCampaignId && item.account === run.growthAccount);
+    if (!campaign || !Array.isArray(campaign.targets)
+      || !run.approvedTargets.every((target) => campaign.targets.includes(target))) return false;
+    if (run.action !== 'unfollow') return true;
+    const due = globalThis.InstaToolboxPresenceGrowth.dueGrowthUnfollows(campaign, {
+      account: run.growthAccount, now: Date.now(),
+    });
+    return run.queue.every((target) => due.includes(target));
+  }
+
   async function runOneAccount(username, action) {
     const observation = engine.inspectProfile(username);
     const stop = sessionStop(observation);
@@ -1761,6 +1811,17 @@
       stopForExpiredCapability();
       return;
     }
+    if (run.growthCampaignId
+      && normalizeUsername(engine.detectAuthenticatedUsername?.()) !== run.growthAccount) {
+      setRun({ status: 'stopped', stopReason: 'signed-in account changed', current: '', queue: [] });
+      status('Campaign stopped because the signed-in account could not be verified.');
+      return;
+    }
+    if (run.growthCampaignId && !growthRunStillApproved(run)) {
+      setRun({ status: 'stopped', stopReason: 'campaign targets changed', current: '', queue: [] });
+      status('Campaign targets changed. Review them again before any further action.');
+      return;
+    }
     const username = run.queue[0];
     const onTarget = engine.normalizeUsername(location.pathname) === username;
 
@@ -1777,6 +1838,15 @@
       outcome = await runOneAccount(username, run.action);
     } catch (error) {
       outcome = { status: 'failed', reason: error.message, fatal: false };
+    }
+
+    if (outcome.status === 'completed' && run.growthCampaignId
+      && globalThis.InstaToolboxPresenceGrowth.growthOutcomeVerified(run.action, outcome.reason)) {
+      try { recordVerifiedGrowthAction(run, username); }
+      catch {
+        outcome = { status: 'completed', fatal: true,
+          reason: 'Action verified, but the campaign record could not be saved. Check this profile before continuing.' };
+      }
     }
 
     const current = state.run || {};
@@ -1813,7 +1883,11 @@
     await continueAccountRun();
   }
 
-  async function startAccountRun({ action, usernames }) {
+  async function startAccountRun({ action, usernames, growthCampaignId = '', growthAccount = '' }) {
+    if (growthCampaignId && normalizeUsername(engine.detectAuthenticatedUsername?.()) !== growthAccount) {
+      status('Campaign account changed. No account action started.');
+      return;
+    }
     if (!managerTabStorageAvailable) {
       status('This userscript manager cannot keep a run active while opening profiles. Account batches are unavailable; scans and no-click checks still work.');
       return;
@@ -1841,6 +1915,8 @@
       capabilityDigest: accountCapabilityDigest(action, queue),
       capabilityExpiresAt: Date.now() + RUN_CAPABILITY_MS,
       capabilityId,
+      growthCampaignId,
+      growthAccount,
       results: [],
     });
     await continueAccountRun();
@@ -3471,6 +3547,7 @@
     inboxPanel?.dispose();
     insightsPanel?.dispose();
     presencePanel?.dispose();
+    presenceGrowthPanel?.dispose();
     presenceSession?.stop();
     invalidatePresence();
     window.removeEventListener('pagehide', stopPresenceSession);
@@ -3514,9 +3591,36 @@
         return GM_setValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, value);
       },
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
-        || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()),
+        || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()
+        || presenceGrowthPanel?.busy()),
       onStatus: status,
     });
+    if (globalThis.InstaToolboxPresenceGrowthPanel && globalThis.InstaToolboxPresenceGrowth) {
+      try {
+        presenceGrowthPanel = globalThis.InstaToolboxPresenceGrowthPanel.mount({
+        container: query('[data-role="presence-routine"]'), document,
+        inspectAccount: inspectPresenceAccount,
+        readFollowing: () => state.capture.subjectUsername === inspectPresenceAccount().accountId
+          && state.capture.verified?.following === true ? state.capture.following : [],
+        readFollowers: () => state.capture.subjectUsername === inspectPresenceAccount().accountId
+          && state.capture.verified?.followers === true ? state.capture.followers : [],
+        scanSeed: (username, signal, onProgress) => engine.fetchFollowerComparison({
+          username, signal, onProgress, maxAccounts: 2_000,
+          maxDurationMs: 4 * 60_000, retryRateLimits: false,
+        }),
+        readCampaigns: () => readGrowthCampaigns(inspectPresenceAccount().accountId),
+        writeCampaigns: (campaigns) => writeGrowthCampaigns(inspectPresenceAccount().accountId, campaigns),
+        confirmAction: confirmRun,
+        runBatch: startAccountRun,
+        canRunBatch: () => managerTabStorageAvailable,
+        busy: () => Boolean(presencePanel?.busy() || inboxPanel?.busy()
+          || relationshipController || dmCleanupController || state.run?.status === 'running'),
+        onStatus: status,
+        });
+      } catch {
+        status('Growth campaign controls could not load. Other tools remain available.');
+      }
+    }
     window.addEventListener('pagehide', stopPresenceSession);
     document.addEventListener('freeze', stopPresenceSession);
   }

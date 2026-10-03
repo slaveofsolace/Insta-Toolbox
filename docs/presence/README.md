@@ -4,7 +4,7 @@ Presence runs a small, reviewed Instagram session from the userscript.
 
 ## Development status
 
-The 4.1.4 candidate exposes five choices:
+The current userscript exposes five activities:
 
 - View stories
 - React to stories
@@ -22,6 +22,30 @@ session runs.
 This is a userscript-first development build. Deterministic browser fixtures
 pass, but current authenticated Instagram compatibility still requires
 disposable-target acceptance before release.
+
+## Grow through mutuals
+
+This development branch adds a separate reviewed campaign inside Presence:
+
+1. Check your own Following list in Mutual Checker, then enter up to three of
+   those accounts as seeds.
+2. Presence reads each seed's Followers and Following. A candidate appears only
+   when both lists positively show a two-way connection with that seed. More
+   independently observed seed connections rank higher. Existing follows,
+   known followers, the selected seeds, and your own account are excluded.
+3. Select up to 25 exact candidates. One confirmation starts the existing
+   Follow batch, which rechecks each profile and records only verified follows.
+4. Choose seven to fourteen days. When the time arrives, the verified follows
+   appear as due. Reopen Instagram and confirm that exact Unfollow batch; each
+   relationship is checked again before the action.
+
+Instagram may return partial lists. Missing records are unknown; they cannot
+establish a candidate connection. The campaign stores usernames and verified
+action times locally, not message bodies or credentials. It cannot run while
+the browser is closed, and it does not silently restore action authority weeks
+later. Automatic unattended unfollow is **not implemented** in this branch.
+This is a candidate workflow until the browser fixture and authenticated
+disposable-target checks pass; it is not a released or proven growth strategy.
 
 ## Runtime behavior
 
@@ -65,6 +89,8 @@ The log stores no message bodies, cookies, session data, or reusable authority.
 | `extension/presence-native-actions.js` | Exact visible-DOM candidates and postconditions for the five activities. |
 | `extension/presence-session-panel.js` | Compact choices, confirmation, progress, and controls. |
 | `extension/presence-activity-log.js` | Bounded sanitized activity history and the separate read-only log window. |
+| `extension/presence-growth.js` | Positive-evidence candidate ranking and verified follow/unfollow schedule. |
+| `extension/presence-growth-panel.js` | Seed selection, candidate review, and due-unfollow review. |
 | `userscripts/src/toolbox-shell.js` | Userscript integration and overlap prevention with other tools. |
 | `tests/presence-session.test.js` | Controller, authority, interruption, and restriction coverage. |
 | `scripts/lib/userscript-presence-acceptance.mjs` | Generated-userscript interaction and responsive browser acceptance. |

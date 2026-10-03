@@ -10298,7 +10298,7 @@ const ACTIONS = Object.freeze([
   ['viewStories', 'View stories'],
   ['reactStories', 'React to stories'],
   ['likePosts', 'Like posts'],
-  ['followPeople', 'Follow people'],
+  ['followPeople', 'Follow visible Explore accounts'],
   ['acceptRequests', 'Accept incoming requests'],
 ]);
 
@@ -10367,9 +10367,9 @@ function mountPresenceSessionPanel({
     @media(max-width:600px){.presence-session .presence-options,.presence-session .presence-run-grid,.presence-session .presence-live-options{grid-template-columns:1fr}.presence-session .presence-option:last-child:nth-child(odd){grid-column:auto}}
     @media(forced-colors:active){.presence-session .presence-option,.presence-session .presence-limit input,.presence-session .presence-limit select,.presence-session .presence-status{border:1px solid CanvasText}.presence-session .presence-log>summary{color:LinkText;-webkit-text-fill-color:LinkText}.presence-session :focus-visible{outline-color:Highlight}}
   `);
-  const heading = create('h2', 'Presence');
+  const heading = create('h2', 'Browse and interact');
   heading.id = 'insta-toolbox-presence-title';
-  const intro = create('p', 'Choose what Presence can do.', 'lead');
+  const intro = create('p', 'Choose the activities for this session.', 'lead');
   const options = create('div', null, 'presence-options');
   const controls = new Map();
   for (const [key, label] of ACTIONS) {
@@ -10762,6 +10762,377 @@ function mountPresenceSessionPanel({
 
 return Object.freeze({ mountPresenceSessionPanel });
 })();
+localModules["extension/presence-growth.js"] = (() => {
+
+const DAY_MS = 86_400_000;
+const USERNAME = /^[a-z0-9._]{1,30}$/;
+const RESERVED = new Set(['about', 'accounts', 'api', 'developer', 'direct', 'emails',
+  'explore', 'legal', 'privacy', 'reels', 'settings', 'stories', 'terms', 'web']);
+
+function growthUsername(value) {
+  const name = String(value ?? '').trim().replace(/^@/, '').toLowerCase();
+  return USERNAME.test(name) && !RESERVED.has(name) ? name : '';
+}
+
+const names = (rows) => new Set((Array.isArray(rows) ? rows : [])
+  .map((row) => growthUsername(typeof row === 'string' ? row : row?.username))
+  .filter(Boolean));
+
+function observedAccounts(rows) {
+  const accounts = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const username = growthUsername(typeof row === 'string' ? row : row?.username);
+    if (!username) continue;
+    const id = typeof row === 'object' && row !== null
+      && /^[1-9]\d{0,29}$/.test(String(row.instagramId || '')) ? String(row.instagramId) : '';
+    const prior = accounts.get(username);
+    accounts.set(username, prior === null || (prior && id && prior !== id) ? null : prior || id);
+  }
+  return accounts;
+}
+
+// A candidate needs an observed two-way relationship with a selected seed.
+// Missing rows in a partial Instagram list are unknown, never negative proof.
+function rankGrowthCandidates({ account, seeds, following = [], followers = [], limit = 50 } = {}) {
+  const self = growthUsername(account);
+  const alreadyFollowing = names(following);
+  const alreadyFollowers = names(followers);
+  const seenSeeds = new Set();
+  const selectedSeeds = new Set((Array.isArray(seeds) ? seeds : [])
+    .map((source) => growthUsername(source?.username)).filter(Boolean));
+  const candidates = new Map();
+  for (const source of Array.isArray(seeds) ? seeds.slice(0, 3) : []) {
+    const seed = growthUsername(source?.username);
+    if (!seed || seed === self || seenSeeds.has(seed) || !alreadyFollowing.has(seed)) continue;
+    seenSeeds.add(seed);
+    const seedFollowers = observedAccounts(source.followers);
+    for (const [candidate, followingId] of observedAccounts(source.following)) {
+      const followerId = seedFollowers.get(candidate);
+      if (followerId === undefined || followerId === null || followingId === null
+        || (followerId && followingId && followerId !== followingId)
+        || candidate === self || selectedSeeds.has(candidate)
+        || alreadyFollowing.has(candidate) || alreadyFollowers.has(candidate)) continue;
+      const identity = followingId || followerId;
+      const item = candidates.get(candidate) || { username: candidate, via: [], instagramId: identity };
+      if (item.invalid || (item.instagramId && identity && item.instagramId !== identity)) {
+        candidates.set(candidate, { ...item, invalid: true });
+        continue;
+      }
+      if (!item.instagramId) item.instagramId = identity;
+      item.via.push(seed);
+      candidates.set(candidate, item);
+    }
+  }
+  return [...candidates.values()].filter((item) => !item.invalid)
+    .map(({ username, via }) => Object.freeze({ username, via: Object.freeze(via.sort()) }))
+    .sort((a, b) => b.via.length - a.via.length || a.username.localeCompare(b.username))
+    .slice(0, Math.max(1, Math.min(50, Number(limit) || 50)));
+}
+
+function createGrowthCampaign({ account, targets, delayDays, createdAt = Date.now(), id } = {}) {
+  const owner = growthUsername(account);
+  const days = Number(delayDays);
+  const unique = [...names(targets)];
+  if (!owner || !Number.isInteger(days) || days < 7 || days > 14
+    || !unique.length || unique.length > 50 || unique.includes(owner)
+    || !Number.isSafeInteger(createdAt) || createdAt <= 0 || !String(id || '').trim()) {
+    throw new Error('growth-campaign-invalid');
+  }
+  return {
+    schemaVersion: 1,
+    id: String(id),
+    account: owner,
+    createdAt,
+    delayDays: days,
+    targets: unique,
+    followed: {},
+    unfollowed: {},
+  };
+}
+
+function recordGrowthOutcome(campaign, { action, username, verifiedAt = Date.now() } = {}) {
+  const target = growthUsername(username);
+  if (!campaign || !target || !campaign.targets?.includes(target)
+    || !Number.isSafeInteger(verifiedAt) || verifiedAt <= 0) return campaign;
+  if (action === 'follow') {
+    if (campaign.followed?.[target]) return campaign;
+    return { ...campaign, followed: { ...campaign.followed, [target]: verifiedAt } };
+  }
+  if (action === 'unfollow' && campaign.followed?.[target] && !campaign.unfollowed?.[target]) {
+    return { ...campaign, unfollowed: { ...campaign.unfollowed, [target]: verifiedAt } };
+  }
+  return campaign;
+}
+
+function growthOutcomeVerified(action, result) {
+  return (action === 'follow' && result === 'followed')
+    || (action === 'unfollow' && result === 'unfollowed');
+}
+
+function dueGrowthUnfollows(campaign, { account, now = Date.now() } = {}) {
+  if (!campaign || growthUsername(account) !== campaign.account || !Number.isFinite(now)) return [];
+  return (campaign.targets || []).filter((target) => {
+    const followedAt = Number(campaign.followed?.[target]);
+    return Number.isSafeInteger(followedAt) && followedAt > 0
+      && followedAt + campaign.delayDays * DAY_MS <= now && !campaign.unfollowed?.[target];
+  });
+}
+
+return Object.freeze({ growthUsername, rankGrowthCandidates, createGrowthCampaign, recordGrowthOutcome, growthOutcomeVerified, dueGrowthUnfollows });
+})();
+localModules["extension/presence-growth-panel.js"] = (() => {
+const { createGrowthCampaign, dueGrowthUnfollows, growthUsername, rankGrowthCandidates } = localModules["extension/presence-growth.js"];
+
+const label = (name) => `@${name}`;
+
+function mountPresenceGrowthPanel({
+  container, inspectAccount, readFollowing, readFollowers, scanSeed,
+  readCampaigns, writeCampaigns, confirmAction, runBatch,
+  canRunBatch = () => true,
+  busy = () => false, onStatus = () => {}, document = globalThis.document,
+  now = Date.now,
+} = {}) {
+  if (!container || !document?.createElement || ![inspectAccount, readFollowing, readFollowers,
+    scanSeed, readCampaigns, writeCampaigns, confirmAction, runBatch].every((fn) => typeof fn === 'function')) {
+    throw new Error('presence-growth-adapter-required');
+  }
+  const make = (tag, text) => {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const root = make('details');
+  root.className = 'presence-growth';
+  root.open = true;
+  const summary = make('summary', 'Grow through mutuals');
+  const note = make('p', 'Choose up to three accounts from your Following list.');
+  const seedLabel = make('label', 'Accounts you follow');
+  const seedInput = make('input');
+  seedInput.type = 'text';
+  seedInput.placeholder = '@first, @second';
+  seedInput.autocomplete = 'off';
+  seedInput.setAttribute('aria-label', 'Accounts you follow, separated by commas');
+  seedLabel.append(seedInput);
+  const daysLabel = make('label', 'Review unfollows after');
+  const days = make('select');
+  for (let count = 7; count <= 14; count += 1) {
+    const option = make('option', `${count} days`);
+    option.value = String(count);
+    days.append(option);
+  }
+  days.value = '7';
+  daysLabel.append(days);
+  const find = make('button', 'Find mutual connections');
+  const cancel = make('button', 'Stop search');
+  const follow = make('button', 'Review follows');
+  const due = make('button', 'Review due unfollows');
+  for (const button of [find, cancel, follow, due]) button.type = 'button';
+  find.className = 'button primary';
+  cancel.className = 'button quiet';
+  follow.className = 'button primary';
+  due.className = 'button quiet';
+  const progress = make('p', 'Check your Following list in Mutual Checker first.');
+  const candidatesList = make('div');
+  candidatesList.className = 'presence-growth-candidates';
+  const dueList = make('p');
+  const style = make('style', `
+    .presence-growth{border-top:1px solid var(--insta-toolbox-line);padding-top:8px;min-width:0}
+    .presence-growth>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700}
+    .presence-growth>summary::after{content:'▾';margin-left:auto;font-size:16px}
+    .presence-growth:not([open])>summary::after{content:'▸'}
+    .presence-growth>p{margin:4px 0 12px;line-height:1.45}
+    .presence-growth label{display:grid;gap:6px;margin:0 0 12px}
+    .presence-growth input:not([type=checkbox]),.presence-growth select{box-sizing:border-box;width:100%;min-height:44px;padding:8px 10px;border:1px solid var(--insta-toolbox-line);border-radius:8px;color:var(--insta-toolbox-text);background:var(--insta-toolbox-bg-sunken);font:inherit}
+    .presence-growth button{margin:0 8px 8px 0;white-space:normal}
+    .presence-growth-candidates{display:grid;gap:4px;max-height:220px;overflow:auto;margin:8px 0}
+    .presence-growth-candidates label{display:flex;align-items:center;min-height:44px;margin:0;padding:6px;border-bottom:1px solid var(--insta-toolbox-line);overflow-wrap:anywhere}
+    .presence-growth-candidates input{margin-right:8px;flex:none}
+    .presence-growth [hidden]{display:none!important}
+    .presence-growth :focus-visible{outline:2px solid var(--insta-toolbox-accent,Highlight);outline-offset:2px}
+    @media(forced-colors:active){.presence-growth input,.presence-growth select{border-color:CanvasText}}
+  `);
+  root.append(style, summary, note, seedLabel, daysLabel, find, cancel, progress,
+    candidatesList, follow, dueList, due);
+  container.prepend(root);
+
+  let controller = null;
+  let candidates = [];
+  let selectedSeeds = [];
+  let incompleteSeeds = [];
+  const setProgress = (message) => { progress.textContent = message; onStatus(message); };
+  const account = () => {
+    const value = inspectAccount();
+    return value?.accountVerified === true && value.usable === true
+      ? growthUsername(value.accountId) : '';
+  };
+  const campaigns = () => {
+    const saved = readCampaigns();
+    return (Array.isArray(saved) ? saved : [])
+    .filter((item) => item?.schemaVersion === 1 && item.account === account()
+      && typeof item.id === 'string' && item.id.length > 0 && item.id.length <= 100
+      && Number.isInteger(item.delayDays) && item.delayDays >= 7 && item.delayDays <= 14
+      && Array.isArray(item.targets) && item.targets.length > 0 && item.targets.length <= 50
+      && item.targets.every((target) => growthUsername(target) === target)
+      && item.followed && typeof item.followed === 'object'
+      && item.unfollowed && typeof item.unfollowed === 'object').slice(-100);
+  };
+
+  function render() {
+    const owner = account();
+    const savedCampaigns = campaigns();
+    const nextDue = savedCampaigns.map((campaign) => ({ campaign,
+      targets: dueGrowthUnfollows(campaign, { account: owner, now: now() }) }))
+      .find(({ targets }) => targets.length);
+    dueList.hidden = savedCampaigns.length === 0;
+    due.hidden = !nextDue;
+    daysLabel.hidden = candidates.length === 0;
+    follow.hidden = candidates.length === 0;
+    dueList.textContent = nextDue
+      ? `${nextDue.targets.length} campaign follow${nextDue.targets.length === 1 ? '' : 's'} due for review.`
+      : 'No campaign unfollows due yet. Reopen Instagram after your chosen wait to review them.';
+    due.disabled = !nextDue || Boolean(controller) || busy() || !canRunBatch();
+    cancel.hidden = !controller;
+    find.disabled = Boolean(controller) || busy();
+    follow.disabled = !candidates.length || Boolean(controller) || busy() || !canRunBatch();
+  }
+
+  function renderCandidates() {
+    candidatesList.replaceChildren();
+    for (const [index, candidate] of candidates.entries()) {
+      const row = make('label');
+      const checkbox = make('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = candidate.username;
+      checkbox.checked = index < 10;
+      row.append(checkbox, document.createTextNode(
+        `${label(candidate.username)} · mutual with ${candidate.via.map(label).join(', ')}`));
+      candidatesList.append(row);
+    }
+    render();
+  }
+
+  async function findCandidates() {
+    if (controller || busy()) return;
+    const owner = account();
+    const following = readFollowing();
+    const followingNames = new Set((Array.isArray(following) ? following : [])
+      .map((entry) => growthUsername(entry?.username || entry)).filter(Boolean));
+    const seeds = [...new Set(seedInput.value.split(/[\s,]+/).map(growthUsername).filter(Boolean))];
+    if (!owner || !followingNames.size) {
+      setProgress('Check your own Following list in Mutual Checker first.'); return;
+    }
+    if (!seeds.length || seeds.length > 3 || seeds.some((name) => !followingNames.has(name))) {
+      setProgress('Enter one to three accounts found in your captured Following list.'); return;
+    }
+    const active = new AbortController();
+    controller = active;
+    candidates = [];
+    selectedSeeds = [];
+    incompleteSeeds = [];
+    renderCandidates();
+    try {
+      for (const [index, seed] of seeds.entries()) {
+        setProgress(`Checking ${label(seed)} (${index + 1} of ${seeds.length})…`);
+        const result = await scanSeed(seed, active.signal, (update) => {
+          if (active.signal.aborted) return;
+          const part = update?.listType === 'followers' || update?.listType === 'following'
+            ? `${update.listType}: ${Math.max(0, Number(update.found) || 0)} read`
+            : 'resolving profile';
+          setProgress(`Checking ${label(seed)} (${index + 1} of ${seeds.length}) · ${part}`);
+        });
+        if (active.signal.aborted || account() !== owner) throw new Error('Search stopped or account changed.');
+        selectedSeeds.push({ username: seed, followers: result.followers, following: result.following });
+        if (result.complete?.followers !== true || result.complete?.following !== true) {
+          incompleteSeeds.push(seed);
+        }
+      }
+      candidates = rankGrowthCandidates({ account: owner, seeds: selectedSeeds,
+        following, followers: readFollowers() });
+      renderCandidates();
+      const partial = incompleteSeeds.length
+        ? ` Partial lists: ${incompleteSeeds.map(label).join(', ')}; other connections may be missing.` : '';
+      setProgress(candidates.length
+        ? `${candidates.length} observed mutual connections. Select exact accounts to review.${partial}`
+        : `No observed mutual connections to review.${partial}`);
+    } catch (error) {
+      setProgress(active.signal.aborted ? 'Search stopped.' : String(error?.message || 'Search failed.'));
+    } finally {
+      controller = null;
+      render();
+    }
+  }
+
+  async function reviewFollow() {
+    const owner = account();
+    const targets = [...candidatesList.querySelectorAll('input:checked')].map((input) => input.value);
+    if (!owner || busy() || !canRunBatch() || !targets.length || targets.length > 25) {
+      setProgress('Select 1 to 25 candidates and stop other runs first.'); return;
+    }
+    const waitDays = Number(days.value);
+    const expiresAt = now() + 15 * 60_000;
+    const binding = { action: 'presence-growth-follow', account: owner,
+      targets: JSON.stringify(targets), delayDays: waitDays, expiresAt };
+    const approval = await confirmAction({ title: `Follow ${targets.length} accounts?`,
+      message: 'Each profile is checked again before following.',
+      detail: `After ${waitDays} days, these verified follows will appear here for unfollow review.`,
+      confirmLabel: 'Start following', items: targets.map(label),
+      facts: [{ label: 'Account', value: label(owner) }, { label: 'Targets', value: String(targets.length) }],
+      binding });
+    const currentTargets = [...candidatesList.querySelectorAll('input:checked')].map((input) => input.value);
+    if (!approval || account() !== owner || busy() || !canRunBatch()
+      || JSON.stringify(currentTargets) !== binding.targets || Number(days.value) !== waitDays
+      || Object.keys(binding).some((key) => approval[key] !== binding[key])
+      || expiresAt <= now()) return;
+    const campaign = createGrowthCampaign({ account: owner, targets, delayDays: waitDays,
+      createdAt: now(), id: globalThis.crypto?.randomUUID?.() || `growth-${now()}` });
+    writeCampaigns([...campaigns(), campaign].slice(-100));
+    setProgress(`Following ${targets.length} reviewed accounts. Use Stop in the run bar to end the batch.`);
+    await runBatch({ action: 'follow', usernames: targets, growthCampaignId: campaign.id,
+      growthAccount: owner });
+    render();
+  }
+
+  async function reviewDue() {
+    const owner = account();
+    const entry = campaigns().map((campaign) => ({ campaign,
+      targets: dueGrowthUnfollows(campaign, { account: owner, now: now() }) }))
+      .find(({ targets }) => targets.length);
+    if (!entry || busy() || !canRunBatch()) return;
+    const targets = entry.targets.slice(0, 25);
+    const expiresAt = now() + 15 * 60_000;
+    const binding = { action: 'presence-growth-unfollow', account: owner,
+      campaignId: entry.campaign.id, targets: JSON.stringify(targets), expiresAt };
+    const approval = await confirmAction({ title: `Unfollow ${targets.length} campaign accounts?`,
+      message: 'Only verified follows from this campaign are listed. Each relationship is checked again.',
+      confirmLabel: 'Start unfollowing', items: targets.map(label),
+      facts: [{ label: 'Account', value: label(owner) }, { label: 'Targets', value: String(targets.length) }],
+      binding });
+    const fresh = campaigns().find((campaign) => campaign.id === entry.campaign.id);
+    if (!approval || account() !== owner || busy() || !canRunBatch() || !fresh
+      || JSON.stringify(dueGrowthUnfollows(fresh, { account: owner, now: now() }).slice(0, 25)) !== binding.targets
+      || Object.keys(binding).some((key) => approval[key] !== binding[key])
+      || expiresAt <= now()) return;
+    setProgress(`Unfollowing ${targets.length} reviewed campaign accounts.`);
+    await runBatch({ action: 'unfollow', usernames: targets,
+      growthCampaignId: entry.campaign.id, growthAccount: owner });
+    render();
+  }
+
+  const launch = (operation) => {
+    void operation().catch((error) => setProgress(String(error?.message || 'Campaign could not start.')));
+  };
+  find.addEventListener('click', () => launch(findCandidates));
+  cancel.addEventListener('click', () => controller?.abort());
+  follow.addEventListener('click', () => launch(reviewFollow));
+  due.addEventListener('click', () => launch(reviewDue));
+  render();
+  return Object.freeze({ render, findCandidates, reviewFollow, reviewDue,
+    busy: () => Boolean(controller),
+    dispose() { controller?.abort(); root.remove(); } });
+}
+
+return Object.freeze({ mountPresenceGrowthPanel });
+})();
 localModules["extension/insights.js"] = (() => {
 
 const ORIGIN = 'https://www.instagram.com';
@@ -10932,6 +11303,8 @@ globalThis.InstaToolboxPresenceInputs = Object.freeze({ create: localModules['ex
 globalThis.InstaToolboxPresenceNativeActions = Object.freeze({ create: localModules['extension/presence-native-actions.js'].createPresenceNativeActions });
 globalThis.InstaToolboxPresenceSession = Object.freeze({ create: localModules['extension/presence-session.js'].createPresenceSession });
 globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModules['extension/presence-session-panel.js'].mountPresenceSessionPanel });
+globalThis.InstaToolboxPresenceGrowth = Object.freeze({ ...localModules['extension/presence-growth.js'] });
+globalThis.InstaToolboxPresenceGrowthPanel = Object.freeze({ mount: localModules['extension/presence-growth-panel.js'].mountPresenceGrowthPanel });
 globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension/insights.js'].mountLoadedInsights });
 (async () => {
   'use strict';
@@ -11143,6 +11516,8 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
       capabilityDigest: accountCapabilityDigest(action, approvedTargets),
       capabilityExpiresAt,
       capabilityId,
+      growthCampaignId: safeText(value.growthCampaignId),
+      growthAccount: normalizeUsername(value.growthAccount),
       nextAt: Number(value.nextAt) > Date.now() ? Number(value.nextAt) : null,
       results: (Array.isArray(value.results) ? value.results : []).slice(0, 40).map((item) => ({
         label: safeText(item?.label),
@@ -12458,6 +12833,7 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
   let inboxPanel = null;
   let insightsPanel = null;
   let presencePanel = null;
+  let presenceGrowthPanel = null;
   let presenceSession = null;
   let presenceCapture = null;
 
@@ -12642,6 +13018,53 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
     renderAll();
   }
 
+  function growthCampaignKey(account) {
+    const owner = normalizeUsername(account);
+    if (!owner) throw new Error('growth-account-unverified');
+    return `instaToolboxPresenceGrowthV1:${owner}`;
+  }
+
+  function readGrowthCampaigns(account) {
+    if (!normalizeUsername(account)) return [];
+    const saved = GM_getValue(growthCampaignKey(account), []);
+    return Array.isArray(saved) ? saved.slice(-100) : [];
+  }
+
+  function writeGrowthCampaigns(account, campaigns) {
+    if (!Array.isArray(campaigns) || campaigns.some((campaign) => campaign?.account !== account)) {
+      throw new Error('growth-account-mismatch');
+    }
+    GM_setValue(growthCampaignKey(account), campaigns.slice(-100));
+  }
+
+  function recordVerifiedGrowthAction(run, username) {
+    if (!run?.growthCampaignId) return;
+    const owner = normalizeUsername(engine.detectAuthenticatedUsername?.());
+    if (!owner || owner !== run.growthAccount) throw new Error('growth-account-changed');
+    const campaigns = readGrowthCampaigns(owner);
+    const index = campaigns.findIndex((campaign) => campaign.id === run.growthCampaignId);
+    if (index < 0 || campaigns[index].account !== owner) throw new Error('growth-campaign-missing');
+    const updated = globalThis.InstaToolboxPresenceGrowth.recordGrowthOutcome(campaigns[index], {
+      action: run.action, username, verifiedAt: Date.now(),
+    });
+    if (updated === campaigns[index]) throw new Error('growth-target-not-recorded');
+    campaigns[index] = updated;
+    writeGrowthCampaigns(owner, campaigns);
+  }
+
+  function growthRunStillApproved(run) {
+    if (!run.growthCampaignId) return true;
+    const campaign = readGrowthCampaigns(run.growthAccount)
+      .find((item) => item?.id === run.growthCampaignId && item.account === run.growthAccount);
+    if (!campaign || !Array.isArray(campaign.targets)
+      || !run.approvedTargets.every((target) => campaign.targets.includes(target))) return false;
+    if (run.action !== 'unfollow') return true;
+    const due = globalThis.InstaToolboxPresenceGrowth.dueGrowthUnfollows(campaign, {
+      account: run.growthAccount, now: Date.now(),
+    });
+    return run.queue.every((target) => due.includes(target));
+  }
+
   async function runOneAccount(username, action) {
     const observation = engine.inspectProfile(username);
     const stop = sessionStop(observation);
@@ -12696,6 +13119,17 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
       stopForExpiredCapability();
       return;
     }
+    if (run.growthCampaignId
+      && normalizeUsername(engine.detectAuthenticatedUsername?.()) !== run.growthAccount) {
+      setRun({ status: 'stopped', stopReason: 'signed-in account changed', current: '', queue: [] });
+      status('Campaign stopped because the signed-in account could not be verified.');
+      return;
+    }
+    if (run.growthCampaignId && !growthRunStillApproved(run)) {
+      setRun({ status: 'stopped', stopReason: 'campaign targets changed', current: '', queue: [] });
+      status('Campaign targets changed. Review them again before any further action.');
+      return;
+    }
     const username = run.queue[0];
     const onTarget = engine.normalizeUsername(location.pathname) === username;
 
@@ -12712,6 +13146,15 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
       outcome = await runOneAccount(username, run.action);
     } catch (error) {
       outcome = { status: 'failed', reason: error.message, fatal: false };
+    }
+
+    if (outcome.status === 'completed' && run.growthCampaignId
+      && globalThis.InstaToolboxPresenceGrowth.growthOutcomeVerified(run.action, outcome.reason)) {
+      try { recordVerifiedGrowthAction(run, username); }
+      catch {
+        outcome = { status: 'completed', fatal: true,
+          reason: 'Action verified, but the campaign record could not be saved. Check this profile before continuing.' };
+      }
     }
 
     const current = state.run || {};
@@ -12748,7 +13191,11 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
     await continueAccountRun();
   }
 
-  async function startAccountRun({ action, usernames }) {
+  async function startAccountRun({ action, usernames, growthCampaignId = '', growthAccount = '' }) {
+    if (growthCampaignId && normalizeUsername(engine.detectAuthenticatedUsername?.()) !== growthAccount) {
+      status('Campaign account changed. No account action started.');
+      return;
+    }
     if (!managerTabStorageAvailable) {
       status('This userscript manager cannot keep a run active while opening profiles. Account batches are unavailable; scans and no-click checks still work.');
       return;
@@ -12776,6 +13223,8 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
       capabilityDigest: accountCapabilityDigest(action, queue),
       capabilityExpiresAt: Date.now() + RUN_CAPABILITY_MS,
       capabilityId,
+      growthCampaignId,
+      growthAccount,
       results: [],
     });
     await continueAccountRun();
@@ -14406,6 +14855,7 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
     inboxPanel?.dispose();
     insightsPanel?.dispose();
     presencePanel?.dispose();
+    presenceGrowthPanel?.dispose();
     presenceSession?.stop();
     invalidatePresence();
     window.removeEventListener('pagehide', stopPresenceSession);
@@ -14449,9 +14899,36 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
         return GM_setValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, value);
       },
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
-        || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()),
+        || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()
+        || presenceGrowthPanel?.busy()),
       onStatus: status,
     });
+    if (globalThis.InstaToolboxPresenceGrowthPanel && globalThis.InstaToolboxPresenceGrowth) {
+      try {
+        presenceGrowthPanel = globalThis.InstaToolboxPresenceGrowthPanel.mount({
+        container: query('[data-role="presence-routine"]'), document,
+        inspectAccount: inspectPresenceAccount,
+        readFollowing: () => state.capture.subjectUsername === inspectPresenceAccount().accountId
+          && state.capture.verified?.following === true ? state.capture.following : [],
+        readFollowers: () => state.capture.subjectUsername === inspectPresenceAccount().accountId
+          && state.capture.verified?.followers === true ? state.capture.followers : [],
+        scanSeed: (username, signal, onProgress) => engine.fetchFollowerComparison({
+          username, signal, onProgress, maxAccounts: 2_000,
+          maxDurationMs: 4 * 60_000, retryRateLimits: false,
+        }),
+        readCampaigns: () => readGrowthCampaigns(inspectPresenceAccount().accountId),
+        writeCampaigns: (campaigns) => writeGrowthCampaigns(inspectPresenceAccount().accountId, campaigns),
+        confirmAction: confirmRun,
+        runBatch: startAccountRun,
+        canRunBatch: () => managerTabStorageAvailable,
+        busy: () => Boolean(presencePanel?.busy() || inboxPanel?.busy()
+          || relationshipController || dmCleanupController || state.run?.status === 'running'),
+        onStatus: status,
+        });
+      } catch {
+        status('Growth campaign controls could not load. Other tools remain available.');
+      }
+    }
     window.addEventListener('pagehide', stopPresenceSession);
     document.addEventListener('freeze', stopPresenceSession);
   }

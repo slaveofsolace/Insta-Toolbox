@@ -155,7 +155,7 @@ export async function acceptUserscriptPresence({
         liveRegions:root.querySelectorAll('[aria-live]').length};
     })()`);
     assert.equal(layout.tab, 'Presence');
-    assert.deepEqual(layout.labels, ['View stories','React to stories','Like posts','Follow people','Accept incoming requests']);
+    assert.deepEqual(layout.labels, ['View stories','React to stories','Like posts','Follow visible Explore accounts','Accept incoming requests']);
     assert.equal(layout.plans, false);
     assert.equal(layout.manual, false);
     assert.equal(layout.liveRegions, 1, 'the toolbox keeps one polite live region');
