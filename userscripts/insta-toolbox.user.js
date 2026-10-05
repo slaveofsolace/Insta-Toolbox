@@ -6452,10 +6452,44 @@ function createNativeInboxDiscovery({
       } catch (error) { finish(error); }
     });
   }
-  const settle = async (context = discoveryContext) => {
-    const until = now() + settleMs;
-    await waitFor(() => now() >= until, settleMs + 100, context);
-  };
+  const settle = (context = discoveryContext) => new Promise((resolve, reject) => {
+    let timer, observer, settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      observer?.disconnect();
+      window.removeEventListener?.('popstate', checkContext);
+      window.removeEventListener?.('hashchange', checkContext);
+      context.signal?.removeEventListener('abort', inspect);
+      context.controller.signal.removeEventListener('abort', inspect);
+      error ? reject(error) : resolve();
+    };
+    function inspect() {
+      try { guard(context); finish(); }
+      catch (error) { finish(error); }
+    }
+    function checkContext() {
+      try { guard(context); }
+      catch (error) { finish(error); }
+    }
+    try {
+      guard(context);
+      if (window.MutationObserver) {
+        observer = new window.MutationObserver(checkContext);
+        observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+      }
+      window.addEventListener?.('popstate', checkContext);
+      window.addEventListener?.('hashchange', checkContext);
+      context.signal?.addEventListener('abort', inspect, { once: true });
+      context.controller.signal.addEventListener('abort', inspect, { once: true });
+      // A layout delay is a minimum wait, not a navigation deadline. A busy
+      // background renderer may deliver its timer late; revalidate authority
+      // on wake instead of misreporting a valid route as navigation-timeout.
+      timer = setTimeout(inspect, settleMs);
+      if (context.signal?.aborted || context.controller.signal.aborted) inspect();
+    } catch (error) { finish(error); }
+  });
   function listRoot() {
     const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
     if (roots.length !== 1) throw new Error('inbox-container-unavailable');

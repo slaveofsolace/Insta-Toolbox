@@ -87,6 +87,41 @@ test('button rows resolve exact IDs and retain the desktop inbox rail across rec
   assert.deepEqual(Object.keys(result.conversations[0]), ['threadId', 'sections']);
 });
 
+test('delayed layout timers do not turn an exact worker navigation into a timeout', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let clock = 0;
+  const started = Date.now();
+  const f = fixture({ pages: [['101']] });
+  const pending = f.adapter({ now: () => Date.now() - started + clock, expiresAt: 10_000, targetThreadId: '101' }).run();
+  await new Promise(resolve => setImmediate(resolve));
+  clock = 1_000; t.mock.timers.tick(1);
+  await new Promise(resolve => setImmediate(resolve));
+  t.mock.timers.tick(1);
+  const result = await pending;
+  assert.equal(result.stopped, false, result.reason);
+  assert.deepEqual(result.conversations.map(item => item.threadId), ['101']);
+  assert.equal(f.rowClicks, 1);
+});
+
+test('Stop during a layout delay prevents the first native conversation click', async () => {
+  const controller = new AbortController(), f = fixture({ pages: [['101']] });
+  const pending = f.adapter({ signal: controller.signal, settleMs: 20, targetThreadId: '101' }).run();
+  controller.abort();
+  const result = await pending;
+  assert.equal(result.reason, 'cancelled'); assert.equal(f.rowClicks, 0);
+});
+
+test('authority expiry still rejects a delayed layout timer before any native click', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let clock = 0;
+  const f = fixture({ pages: [['101']] });
+  const pending = f.adapter({ now: () => clock, expiresAt: 1_000, targetThreadId: '101' }).run();
+  await new Promise(resolve => setImmediate(resolve));
+  clock = 1_000; t.mock.timers.tick(1);
+  const result = await pending;
+  assert.equal(result.reason, 'discovery-expired'); assert.equal(f.rowClicks, 0);
+});
+
 test('fresh native chat-header labels are temporary and separate from ID-only snapshots', async () => {
   const f = fixture({ pages: [['101']], label: { title: 'Synthetic friend', href: '/Fixture.Friend/' } });
   const progress = [], adapter = f.adapter({ onProgress: value => progress.push(value) });

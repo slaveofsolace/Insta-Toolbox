@@ -61,6 +61,7 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
     assert.ok(worker && worker !== coordinator, 'only a managed worker may close');
     const outcome = await worker.webContents.executeJavaScript(`({
       path:location.pathname, removals:fixtureUnsentCount,
+      visits:globalThis.fixtureInboxVisits,
       receivedIntact:Object.values(fixtureInboxMessages).flat().filter(item=>!item.sent).every(item=>!item.removed)
     })`, true);
     outcomes.push(outcome); tabEvents.push({ action: 'close', path: outcome.path });
@@ -152,6 +153,7 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
           panel:document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot?.querySelector('[data-role="inbox-cleanup"]')?.textContent})`,true));
       }
       console.error('Synthetic Ghost worker diagnostics:',JSON.stringify(diagnostics));
+      console.error('Closed synthetic Ghost workers:',JSON.stringify(outcomes));
     }
     assert.equal(job?.status, 'completed', JSON.stringify(job));
     assert.equal(windows.size, 1); assert.equal(peakWorkers, 10);

@@ -4,6 +4,9 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ## 4.3.1 - 2026-10-05
 
+- Keep worker navigation valid after delayed background layout callbacks; Stop
+  and approval expiry still prevent further actions.
+
 - Ghost workers recover when Instagram redirects a new conversation tab to the inbox. They find the assigned conversation through native rows before starting Unsend.
 - Worker launch correlation survives same-tab navigation. Failed navigation reports a cause instead of leaving an idle worker.
 - Finished ten-tab batches close before the next opens; Stop cancels conversation loading as well as cleanup.
