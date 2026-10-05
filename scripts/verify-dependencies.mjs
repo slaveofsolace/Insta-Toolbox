@@ -48,6 +48,16 @@ for (const version of expectedVersions) {
 
 const patchedBuildDependencies = [
   {
+    name: "http-cache-semantics",
+    version: "4.3.0",
+    override: '"http-cache-semantics@<4.3.0": 4.3.0',
+  },
+  {
+    name: "undici",
+    version: "6.29.0",
+    override: '"undici@^6.0.0": 6.29.0',
+  },
+  {
     name: "fast-uri",
     version: "3.1.8",
     override: '"fast-uri@<3.1.8": 3.1.8',

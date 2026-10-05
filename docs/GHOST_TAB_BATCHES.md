@@ -33,15 +33,15 @@ screenshots, previously saved copies or content outside Instagram.
 Focused tests cover 25 conversations in groups of ten, ten and five, strict
 close-before-open ordering, retry exhaustion, Stop, pending removal settlement,
 native close failure, Stop during group closure, and primary-button confirmation.
-The full suite passes 1,093 tests. All 45 reviewed Windows overlay baselines pass without changed
+The full suite includes focused batch regressions. All 45 reviewed Windows overlay baselines pass without changed
 thresholds or baseline replacement.
 
 The generated-userscript browser fixture removes one synthetic sent message in
 each of twelve conversations, preserves received messages, and closes the first
 ten windows before opening the final two. It uses actual renderer windows and
 Web Locks, with a synthetic Instagram page and userscript-manager transport.
-These fixtures do not establish authenticated ten-tab compatibility. The
-candidate remains separate from the published release until native acceptance.
+These fixtures do not establish authenticated ten-tab compatibility. See
+[4.3.0 acceptance](acceptance/4.3.0.md) for current evidence and nonclaims.
 
 ## Implementation
 

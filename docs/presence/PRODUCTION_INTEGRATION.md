@@ -1,6 +1,6 @@
 # Presence userscript integration
 
-## Available in the development build
+## Available in the userscript
 
 Presence is the primary account tab in the generated userscript. It has five
 direct choices:
@@ -12,8 +12,8 @@ direct choices:
 - Accept incoming requests
 
 One session has a finite maximum from 1 to 50. **Live like me** has a reviewed
-30-minute to 12-hour window, a finite 500-action ceiling, and selected burst and
-rest lengths. Start opens one review naming the verified signed-in account and
+30-minute to 12-hour window. It runs continuously by default; scheduled breaks
+are optional. Start opens one review naming the verified signed-in account and
 exact choices. Pause, Resume, and Stop operate on the same in-memory session.
 
 The session controller processes one candidate at a time. Before each click it
@@ -47,8 +47,9 @@ endpoints, bypass restrictions, or restore authority after a reload.
 - Verified and non-success outcomes are copied to a bounded per-account local
   log. The separate log window is read-only except for Download and Clear and
   contains no action controls.
-- Reviews and action authority exist only in the current runtime, are one-use,
-  are account-bound, and expire within 15 minutes.
+- Reviews and action authority exist only in the current runtime, are one-use
+  and account-bound. Sessions expire within 15 minutes; Live like me ends at
+  the reviewed window, at most 12 hours.
 - Imported files, saved comparisons, and old Presence planner preferences
   cannot create action authority.
 - Page freeze, pagehide, Stop, account change, session restriction, expiry, or
@@ -67,8 +68,8 @@ cancellation, the separate log window, narrow and short layouts, light and dark
 themes, and true 200% zoom.
 
 Those checks use deterministic Instagram-shaped fixtures. They do not establish
-current authenticated compatibility. Before release, verify each enabled
-adapter against a specifically approved disposable target. The same-tab
+current authenticated compatibility. Verify each enabled
+adapter against a specifically approved disposable target before claiming native acceptance. The same-tab
 account lane is implemented and fixture-tested. Ghost has a separate reviewed
 userscript worker-tab coordinator, but Presence remains in its loaded tab.
 Frozen, discarded, closed, or signed-out tabs must stop or require attention;

@@ -293,7 +293,7 @@ export async function acceptUserscriptInboxReview({
         `${viewport.label}: worker opening control`);
       assert.ok(metrics.controls.every(control => control.height >= 44 && control.width >= 44), `${viewport.label}: undersized controls ${JSON.stringify(metrics)}`);
       assert.ok(metrics.controls.every(control => control.reachable && control.receivesPointer), `${viewport.label}: inaccessible controls ${JSON.stringify(metrics)}`);
-      assert.ok(metrics.controls.every(control => control.left >= metrics.panel.left - 1 && control.right <= metrics.panel.right + 1));
+      assert.ok(metrics.controls.every(control => control.left >= metrics.panel.left - 1 && control.right <= metrics.panel.right + 1), `${viewport.label}: controls outside panel ${JSON.stringify(metrics)}`);
       assert.ok(metrics.panel.left >= -1 && metrics.panel.top >= -1 && metrics.panel.right <= metrics.width + 1 && metrics.panel.bottom <= metrics.height + 1);
       assert.ok(metrics.overflow <= 1 && metrics.scrollOverflow <= 1, `${viewport.label}: horizontal overflow`);
       assert.equal(metrics.overlap, false); assert.equal(metrics.liveRegions, 1);

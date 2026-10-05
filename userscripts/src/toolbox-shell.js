@@ -747,7 +747,8 @@
       .metric span, .metric strong { display: block; }
       .metric span { color: var(--insta-toolbox-text-muted, #687068); font-size: 11px; }
       .metric strong { margin-top: 2px; font-size: 21px; }
-      .field { display: grid; gap: 8px; margin: 16px 0; }
+      .field { display: grid; grid-template-columns: minmax(0,1fr); min-width: 0; gap: 8px; margin: 16px 0; }
+      .field > input:not([type="checkbox"]), .field > select { width: 100%; min-width: 0; max-width: 100%; }
       .field label { color: var(--insta-toolbox-text-muted, #687068); font-size: 12px; }
       select, input[type="range"] { width: 100%; }
       select { min-height: 44px; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: 8px; padding: 8px; background: var(--insta-toolbox-bg, #fff); color: var(--insta-toolbox-text, #1b211c); }

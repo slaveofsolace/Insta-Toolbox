@@ -7,7 +7,8 @@ overrides:
   "brace-expansion@^2.0.0": 2.1.7
   "brace-expansion@^5.0.0": 5.0.12
   "fast-uri@<3.1.8": 3.1.8
-  "undici@^6.0.0": 6.28.1
   "undici@^7.0.0": 7.29.1
   "js-yaml@<4.3.2": 4.3.2
   "@xmldom/xmldom@<0.8.15": 0.8.15
+  "http-cache-semantics@<4.3.0": 4.3.0
+  "undici@^6.0.0": 6.29.0

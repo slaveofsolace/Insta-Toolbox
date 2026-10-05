@@ -2,11 +2,14 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 4.3.0 - 2026-10-05
 
 - Run **Start Ghost Mode** in groups of ten conversation tabs. Finish and close each group before opening the next; a smaller final group runs automatically.
 - Show batch progress and keep selected cleanup sizes configurable from one to ten without changing saved preferences.
 - Pause before opening another group if a managed tab cannot close. Keep retries and unfinished outcomes visible.
+- Review growth candidates from selected accounts' mutuals and track verified follows for a later 7–14 day Unfollow review.
+- Keep narrow Ghost review fields inside the panel, including macOS and 200% zoom.
+- Update installation downloads and all delivery versions together; patch the build-time HTTP cache dependency.
 
 ## 4.2.1 - 2026-09-25
 
