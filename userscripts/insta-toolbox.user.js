@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Insta Toolbox
 // @namespace    https://github.com/slaveofsolace/Insta-Toolbox
-// @version      4.3.0
+// @version      4.3.1
 // @description  Mutual Checker, Presence, and DM Unsend on Instagram.
 // @author       @slaveofsolace
 // @homepageURL  https://github.com/slaveofsolace/Insta-Toolbox
@@ -19,7 +19,7 @@
 // @grant        GM_removeValueChangeListener
 // @grant        GM_saveTab
 // @grant        GM_setValue
-// @run-at       document-idle
+// @run-at       document-start
 // ==/UserScript==
 // ---------------------------------------------------------------------------
 // Generated file. Do not edit.
@@ -55,8 +55,29 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-(() => {
+(async () => {
   'use strict';
+  // Capture the worker correlation before Instagram replaces its startup URL.
+  // Manager-tab storage survives same-tab navigation; the reviewed private job,
+  // not this correlation, remains the authority for every action.
+  const workerMatch = location.hash.match(/^#insta-toolbox-worker=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
+  const workerLaunch = await new Promise(resolve => {
+    let settled = false;
+    const finish = tab => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      if (workerMatch && tab && typeof GM_saveTab === 'function') {
+        tab.instaToolboxGhostLaunchV1 = [workerMatch[1], workerMatch[2]];
+        try { GM_saveTab(tab); } catch {}
+      }
+      resolve(workerMatch ? [workerMatch[1], workerMatch[2]] : tab?.instaToolboxGhostLaunchV1 || null);
+    };
+    const timer = setTimeout(() => finish(null), 1_000);
+    try { typeof GM_getTab === 'function' ? GM_getTab(finish) : finish(null); }
+    catch { finish(null); }
+  });
+  if (document.readyState === 'loading') await new Promise(resolve =>
+    document.addEventListener('DOMContentLoaded', resolve, { once: true }));
   const rootId = 'insta-toolbox-userscript-root';
   const extensionRootId = 'insta-toolbox-sidecar-root';
   const claimId = 'insta-toolbox-userscript-claim';
@@ -6353,6 +6374,7 @@ function createNativeInboxDiscovery({
   maxThreads = 1_000, maxSamples = 1_000, maxVisits = 20_000,
   routeTimeoutMs = 8_000, settleMs = 400, paginationTimeoutMs = routeTimeoutMs,
   proveTerminal = null, resolveSection = null, onProgress = null,
+  targetThreadId = null,
 } = {}) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(accountId || '') || typeof resolveAccount !== 'function') throw new Error('account-identity-required');
   if (!Array.isArray(sections) || !sections.length || sections.some((name) => !Object.hasOwn(SECTION_LABELS, name))) throw new Error('inbox-section-invalid');
@@ -6363,6 +6385,7 @@ function createNativeInboxDiscovery({
   if (proveTerminal !== null && typeof proveTerminal !== 'function') throw new Error('terminal-adapter-invalid');
   if (resolveSection !== null && typeof resolveSection !== 'function') throw new Error('section-adapter-invalid');
   if (onProgress !== null && typeof onProgress !== 'function') throw new Error('progress-adapter-invalid');
+  if (targetThreadId !== null && !/^[A-Za-z0-9_-]{1,128}$/.test(targetThreadId)) throw new Error('thread-identity-invalid');
   const sectionState = [...new Set(sections)].map((section) => ({ section, samples: 0, complete: false, reason: 'not-scanned' }));
   const inventory = new Map();
   // Native row evidence is private to this instance; snapshots never retain it.
@@ -6640,14 +6663,18 @@ function createNativeInboxDiscovery({
         const captures = navigationEvidence.get(threadId) || new Map();
         captures.set(state.section, evidence); navigationEvidence.set(threadId, captures);
         try {
-          const ready = alreadySelected || await freshMessagePane(threadId, priorPanes, priorActions, discoveryContext, Math.min(routeTimeoutMs, 1_500));
+          const ready = alreadySelected || await freshMessagePane(threadId, priorPanes, priorActions,
+            discoveryContext, threadId === targetThreadId ? routeTimeoutMs : Math.min(routeTimeoutMs, 1_500));
           const label = nativeDisplayLabel(ready.pane, alreadySelected ? [] : priorHeaders);
           if (label) displayLabels.set(threadId, label); else displayLabels.delete(threadId);
         } catch (error) {
           displayLabels.delete(threadId);
-          if (error.message !== 'navigation-timeout') throw error;
+          if (threadId === targetThreadId || error.message !== 'navigation-timeout') throw error;
         }
         windowIds.push(threadId); publish();
+        // A worker only needs to find its assigned conversation. Do not make
+        // every worker rescan the entire inbox before it can begin.
+        if (threadId === targetThreadId) return;
         await returnToInbox(threadId, position, state.section, discoveryContext, true);
       }
       guard();
@@ -6815,6 +6842,7 @@ function createNativeInboxDiscovery({
           try { await scan(state); }
           catch (error) { state.reason = error.message; throw error; }
           publish();
+          if (targetThreadId && inventory.has(targetThreadId)) break;
         }
       } catch (error) { stopped = true; reason = error.message; }
       finished = true;
@@ -7336,7 +7364,8 @@ function createUserscriptInboxDiscovery({
       if (state.inventory && current.accountId !== state.inventory.accountId) return rejectContext('inbox-account-changed');
       return (active || captured)?.reviewLabels() || [];
     },
-    async discover({ navigationAcknowledged = false, sections = null, expiresAt = now() + 20 * 60_000 } = {}) {
+    async discover({ navigationAcknowledged = false, sections = null, expiresAt = now() + 20 * 60_000,
+      targetThreadId = null, signal = null } = {}) {
       if (active || opening) throw new Error('inbox-discovery-active');
       if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');
       if (!Number.isFinite(expiresAt) || expiresAt <= now() || expiresAt > now() + 20 * 60_000) throw new Error('discovery-expired');
@@ -7379,6 +7408,7 @@ function createUserscriptInboxDiscovery({
         accountId: identity.accountId, resolveAccount: context,
         navigationAcknowledged, document, window, sections, expiresAt, now,
         routeTimeoutMs, settleMs, resolveSection: section,
+        targetThreadId, signal,
         onProgress: (value) => publish({ inventory: value }),
       });
       active = operation;
@@ -7796,6 +7826,8 @@ function createUserscriptGhostBridge({
   clearIntervalFn = globalThis.clearInterval,
   setTimeoutFn = globalThis.setTimeout,
   clearTimeoutFn = globalThis.clearTimeout,
+  workerLaunch = null,
+  navigateThread = null,
 } = {}) {
   if (typeof storage?.get !== 'function' || typeof storage?.set !== 'function'
     || typeof storage?.listen !== 'function' || typeof storage?.unlisten !== 'function'
@@ -8130,35 +8162,62 @@ function createUserscriptGhostBridge({
   }
 
   async function attachWorker() {
-    const threadId = threadFromLocation();
-    const launch = String(location?.hash || '').match(/^#insta-toolbox-worker=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
-    if (!threadId || !launch) return null;
+    const fragment = String(location?.hash || '').match(/^#insta-toolbox-worker=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
+    const savedLaunch = typeof workerLaunch === 'function' ? await workerLaunch() : null;
+    const launch = fragment ? [fragment[1], fragment[2]] : savedLaunch;
+    if (!Array.isArray(launch) || launch.length !== 2 || !launch.every(identity)) return null;
     const workerId = randomId();
     let latest = await read();
+    const assigned = latest?.tasks?.find(item => item.status === 'opening' && item.launchId === launch[1]);
+    if (!activeJob(latest) || latest.jobId !== launch[0] || !assigned) return null;
+    const threadId = assigned.threadId;
     const deadline = now() + OPENING_MS;
     let context;
+    let navigated = false;
+    const navigationController = new AbortController();
+    const navigationListener = storage.listen(JOB_KEY, value => {
+      const task = value?.tasks?.find(item => item.threadId === threadId);
+      if (!activeJob(value) || value.jobId !== launch[0] || task?.status !== 'opening'
+        || task.launchId !== launch[1]) navigationController.abort('ghost-worker-revoked');
+    });
     // The userscript starts before React mounts the authenticated message pane.
     // A launch fragment is correlation only; the private reviewed job grants
     // authority. An ordinary Instagram tab must never become a worker.
-    while (true) {
+    try { while (true) {
       latest = await read();
       const opening = latest?.tasks?.find(item => item.threadId === threadId
-        && item.status === 'opening' && item.launchId === launch[2]);
-      if (!activeJob(latest) || latest.jobId !== launch[1] || !opening
-        || threadFromLocation() !== threadId || !await coordinatorPresent(latest)) return null;
+        && item.status === 'opening' && item.launchId === launch[1]);
+      if (!activeJob(latest) || latest.jobId !== launch[0] || !opening
+        || navigationController.signal.aborted || !await coordinatorPresent(latest)) return null;
       context = inspectContext();
       if (context?.restriction || (context?.accountId && context.accountId !== latest.accountId)) return null;
+      if (context?.accountId === latest.accountId && threadFromLocation() !== threadId
+        && typeof navigateThread === 'function' && !navigated) {
+        navigated = true;
+        await navigateThread(threadId, { signal: navigationController.signal,
+          expiresAt: Math.min(deadline, latest.expiresAt) });
+        continue;
+      }
       const messageView = typeof runner.inspect === 'function' ? runner.inspect() : null;
       if (context?.accountId === latest.accountId && context?.threadId === threadId
         && context?.usable === true && (typeof runner.inspect !== 'function'
           || (messageView?.ready === true && messageView.threadId === threadId))) break;
       if (now() >= deadline) return null;
       await sleep(250);
-    }
+    } } catch (error) {
+      await update(value => {
+        if (!validJob(value) || value.jobId !== launch[0]) return value;
+        const task = value.tasks.find(item => item.threadId === threadId
+          && item.launchId === launch[1] && item.status === 'opening');
+        if (task) { task.status = 'failed'; task.reason = error?.message || 'conversation-load-failed'; }
+        return value;
+      });
+      throw error;
+    } finally { storage.unlisten(navigationListener); }
     latest = await update((value) => {
       if (!activeJob(value) || value.accountId !== context.accountId) return value;
       const task = value.tasks.find(item => item.threadId === threadId && item.status === 'opening'
-        && value.jobId === launch[1] && item.launchId === launch[2]);
+        && value.jobId === launch[0] && item.launchId === launch[1]);
       if (!task) return value;
       task.status = 'running'; task.workerId = workerId; task.workerHeartbeatAt = now();
       value.updatedAt = now();
@@ -8422,6 +8481,19 @@ function mountUserscriptInboxPanel({
     runner,
     inspectContext: context,
     location: window.location,
+    workerLaunch: workerTransport.workerLaunch,
+    navigateThread: async (threadId, { signal, expiresAt }) => {
+      announce('Opening the assigned conversation…');
+      const found = await discovery.discover({ navigationAcknowledged: true,
+        targetThreadId: threadId, signal, expiresAt });
+      if (signal.aborted) throw new Error('cancelled');
+      if (found.status !== 'ready' || !found.inventory?.conversations.some(item => item.threadId === threadId)) {
+        throw new Error(found.reason || 'conversation-not-found');
+      }
+      // Targeted discovery leaves the exact, freshly mounted thread open.
+      // The bridge checks that thread and the shared runner's readiness again.
+      return { threadId, verified: true };
+    },
   }) : null;
   const workerStartup = ghostBridge?.attachWorker().catch((error) => {
     announce(friendlyReason(error?.message || 'worker-start-failed'));
@@ -8529,6 +8601,8 @@ function mountUserscriptInboxPanel({
       'worker-lost': 'A worker tab stopped responding. Review the conversation before continuing.',
       'tab-open-failed': 'A worker tab could not be opened. Check the userscript pop-up permission.',
       'worker-tab-close-failed': 'A finished worker tab could not close. Cleanup paused before opening the next batch.',
+      'conversation-not-found': 'The assigned conversation could not be found in this inbox.',
+      'conversation-load-timeout': 'The assigned conversation did not finish loading.',
       'removal-not-proven': 'Instagram did not confirm the last removal. Review the conversation before continuing.',
       'approval-expired': 'This cleanup approval expired. Review the conversations again.',
       cancelled: 'Stopped.', 'end-unverified': '', 'repeated-window-unverified': '',
@@ -15028,6 +15102,7 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
             unlisten: id => GM_removeValueChangeListener(id),
           },
           openTab: (url, options) => GM_openInTab(url, options),
+          workerLaunch: () => workerLaunch,
         } : null,
       defaultWorkerCount: cleanupSettings.effective(cleanupPreferences, 'userscript').workerCount,
       messageOptions: () => {

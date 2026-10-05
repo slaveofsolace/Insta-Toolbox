@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       tag:
-        description: Release tag, for example v4.3.0
+        description: Release tag, for example v4.3.1
         required: true
         type: string
 
@@ -53,7 +53,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Check out the tested source identity
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.ci.outputs.sha }}
           persist-credentials: false
@@ -64,7 +64,7 @@ jobs:
           package-manager-cache: false
 
       - name: Download tested browser companions
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-browser-companions-${{ steps.ci.outputs.sha }}
           path: incoming/browser
@@ -72,7 +72,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download tested web app
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-web-${{ steps.ci.outputs.sha }}
           path: incoming/web
@@ -80,7 +80,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download verified Windows packages
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-windows-${{ steps.ci.outputs.sha }}
           path: incoming/windows
@@ -88,7 +88,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download verified macOS packages
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-macos-${{ steps.ci.outputs.sha }}
           path: incoming/macos
@@ -96,7 +96,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download release checksums
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: insta-toolbox-checksums-${{ steps.ci.outputs.sha }}
           path: incoming/checksums
@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           test "$RELEASE_TAG" = "v$version"
-          test "$version" = "4.3.0"
+          test "$version" = "4.3.1"
           mkdir -p release
           copy_exact() {
             local name="$1"
@@ -137,7 +137,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Generate SBOM for promoted files
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: release
           format: spdx-json
@@ -154,7 +154,7 @@ jobs:
           sha256sum --check --strict SHA256SUMS.txt
 
       - name: Attest promoted release files
-        uses: actions/attest-build-provenance@62fc1d596301d0ab9914e1fec14dc5c8d93f65cd # v3.2.0
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
           subject-checksums: release/SHA256SUMS.txt
 
@@ -171,7 +171,7 @@ jobs:
             exit 1
           fi
           release_notes="$(cat <<'EOF'
-          Version 4.3.0 runs Ghost Mode in groups of ten conversation tabs. Each group finishes and closes before the next opens. Selected cleanup can use smaller groups; all Unsend clicks share account pacing.
+          Version 4.3.1 fixes Ghost workers that land on the inbox instead of their assigned thread. Workers recover through native conversation rows and start the shared Unsend runner. Finished ten-tab groups close before the next opens; all Unsend clicks share account pacing. Desktop dependencies and pinned GitHub Actions are also updated.
 
           Presence growth reviews candidates from selected accounts' mutuals and tracks verified follows for a later 7–14 day Unfollow review. It does not perform unattended browser-closed follow/unfollow cycles.
 
@@ -184,7 +184,7 @@ jobs:
           - The Windows installer is unsigned and may show a Microsoft SmartScreen warning.
           - The macOS packages are ad-hoc signed and are not Apple-notarized.
           - Ghost worker tabs must remain open and loaded. Tab discard, computer sleep, browser shutdown, or lost account evidence stops or pauses the job.
-          - Automated CI does not prove current authenticated Instagram mutation compatibility or a completed human screen-reader walkthrough. Consult the 4.3.0 acceptance record for separately recorded manual evidence.
+          - Automated CI does not prove current authenticated Instagram mutation compatibility or a completed human screen-reader walkthrough. Consult the 4.3.1 acceptance record for separately recorded manual evidence.
           EOF
           )"
           gh release create "$RELEASE_TAG" release/* \

@@ -1,9 +1,13 @@
 # Release status
 
-Version: **4.3.0**.
+Version: **4.3.1**.
 
 ## Changes
 
+- Workers recover inbox redirects, open their exact assigned conversation, and
+  report navigation failures. Launch correlation survives same-tab navigation.
+- Electron and archive tooling are updated with compatible verification;
+  GitHub Actions remain pinned to reviewed commit SHAs.
 - Ghost Mode opens ten conversation tabs per group, closes the finished group,
   then opens the next. Selected cleanup supports smaller groups.
 - Presence growth reviews candidates from selected accounts' mutuals and records
@@ -34,8 +38,8 @@ archive inspection and checksum generation. Visual thresholds remain unchanged.
 Release promotion uses exact artifacts from one successful current `main` CI
 run; it does not rebuild them. GitHub Pages uses that run's web artifact.
 
-See [4.3.0 acceptance](acceptance/4.3.0.md) and
-[compatibility](compatibility/4.3.0.md) for verified scope and nonclaims.
+See [4.3.1 acceptance](acceptance/4.3.1.md) and
+[compatibility](compatibility/4.3.1.md) for verified scope and nonclaims.
 Historical evidence keeps its original version.
 
 ## Runtime limits

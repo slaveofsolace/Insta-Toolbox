@@ -31,6 +31,62 @@ const runnerStub = {
   stop: () => true,
 };
 
+function redirectedWorker({ navigation, mutateJob = null, saved = ['job', 'launch'] } = {}) {
+  const storage = sharedStorage({ version: 1, jobId: 'job', accountId: 'demo',
+    status: 'running', expiresAt: NOW + 60_000, pendingMutation: null,
+    tasks: [{ threadId: 'one', launchId: 'launch', status: 'opening', messageRemovals: 0 }] });
+  const location = { pathname: '/direct/inbox/', hash: '' };
+  let starts = 0;
+  const bridge = createUserscriptGhostBridge({ storage,
+    locks: { request: async (name, _options, callback) => callback(name.includes('ghost-coordinator:') ? null : {}) },
+    openTab: async () => null,
+    runner: { ...runnerStub, start: async () => { starts += 1; return { status: 'completed' }; } },
+    inspectContext: () => ({ accountId: 'demo', threadId: location.pathname.match(/\/t\/(\w+)/)?.[1], usable: true }),
+    workerLaunch: () => saved,
+    navigateThread: async (threadId, options) => {
+      if (mutateJob) await storage.set('job', mutateJob(storage.value()));
+      if (navigation) await navigation(threadId, options, location);
+      else location.pathname = `/direct/t/${threadId}/`;
+    },
+    location, now: () => NOW,
+    setIntervalFn: () => 1, clearIntervalFn: () => {},
+  });
+  return { bridge, storage, starts: () => starts };
+}
+
+test('a redirected inbox worker recovers its exact assigned thread from private tab correlation', async () => {
+  let assigned;
+  const worker = redirectedWorker({ navigation: async (id, options, location) => {
+    assigned = id; assert.equal(options.signal.aborted, false);
+    location.pathname = `/direct/t/${id}/`;
+  } });
+  assert.equal((await worker.bridge.attachWorker()).status, 'completed');
+  assert.equal(assigned, 'one'); assert.equal(worker.starts(), 1);
+});
+
+test('unknown saved launch correlations cannot navigate or start Unsend', async () => {
+  for (const saved of [['job', 'unknown'], ['other', 'launch'], ['job'], null]) {
+    const worker = redirectedWorker({ saved, navigation: () => assert.fail('must not navigate') });
+    assert.equal(await worker.bridge.attachWorker(), null);
+    assert.equal(worker.starts(), 0);
+  }
+});
+
+test('Stop during worker navigation aborts that navigation and never starts Unsend', async () => {
+  const worker = redirectedWorker({ mutateJob: value => ({ ...value, status: 'stopped' }),
+    navigation: async (_id, options) => { assert.equal(options.signal.aborted, true); } });
+  assert.equal(await worker.bridge.attachWorker(), null);
+  assert.equal(worker.starts(), 0);
+});
+
+test('failed worker navigation records the cause instead of leaving an idle inbox tab', async () => {
+  const worker = redirectedWorker({ navigation: async () => { throw new Error('conversation-not-found'); } });
+  await assert.rejects(worker.bridge.attachWorker(), /conversation-not-found/);
+  assert.equal(worker.starts(), 0);
+  assert.equal(worker.storage.value().tasks[0].status, 'failed');
+  assert.equal(worker.storage.value().tasks[0].reason, 'conversation-not-found');
+});
+
 test('Ghost review freezes exact threads, worker count and a bounded expiry', () => {
   const review = createUserscriptGhostReview({
     accountId: 'iguser-v1-demo',

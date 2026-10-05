@@ -111,6 +111,19 @@ export function mountUserscriptInboxPanel({
     runner,
     inspectContext: context,
     location: window.location,
+    workerLaunch: workerTransport.workerLaunch,
+    navigateThread: async (threadId, { signal, expiresAt }) => {
+      announce('Opening the assigned conversation…');
+      const found = await discovery.discover({ navigationAcknowledged: true,
+        targetThreadId: threadId, signal, expiresAt });
+      if (signal.aborted) throw new Error('cancelled');
+      if (found.status !== 'ready' || !found.inventory?.conversations.some(item => item.threadId === threadId)) {
+        throw new Error(found.reason || 'conversation-not-found');
+      }
+      // Targeted discovery leaves the exact, freshly mounted thread open.
+      // The bridge checks that thread and the shared runner's readiness again.
+      return { threadId, verified: true };
+    },
   }) : null;
   const workerStartup = ghostBridge?.attachWorker().catch((error) => {
     announce(friendlyReason(error?.message || 'worker-start-failed'));
@@ -218,6 +231,8 @@ export function mountUserscriptInboxPanel({
       'worker-lost': 'A worker tab stopped responding. Review the conversation before continuing.',
       'tab-open-failed': 'A worker tab could not be opened. Check the userscript pop-up permission.',
       'worker-tab-close-failed': 'A finished worker tab could not close. Cleanup paused before opening the next batch.',
+      'conversation-not-found': 'The assigned conversation could not be found in this inbox.',
+      'conversation-load-timeout': 'The assigned conversation did not finish loading.',
       'removal-not-proven': 'Instagram did not confirm the last removal. Review the conversation before continuing.',
       'approval-expired': 'This cleanup approval expired. Review the conversations again.',
       cancelled: 'Stopped.', 'end-unverified': '', 'repeated-window-unverified': '',

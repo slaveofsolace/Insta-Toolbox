@@ -68,6 +68,8 @@ export function createUserscriptGhostBridge({
   clearIntervalFn = globalThis.clearInterval,
   setTimeoutFn = globalThis.setTimeout,
   clearTimeoutFn = globalThis.clearTimeout,
+  workerLaunch = null,
+  navigateThread = null,
 } = {}) {
   if (typeof storage?.get !== 'function' || typeof storage?.set !== 'function'
     || typeof storage?.listen !== 'function' || typeof storage?.unlisten !== 'function'
@@ -402,35 +404,62 @@ export function createUserscriptGhostBridge({
   }
 
   async function attachWorker() {
-    const threadId = threadFromLocation();
-    const launch = String(location?.hash || '').match(/^#insta-toolbox-worker=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
-    if (!threadId || !launch) return null;
+    const fragment = String(location?.hash || '').match(/^#insta-toolbox-worker=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
+    const savedLaunch = typeof workerLaunch === 'function' ? await workerLaunch() : null;
+    const launch = fragment ? [fragment[1], fragment[2]] : savedLaunch;
+    if (!Array.isArray(launch) || launch.length !== 2 || !launch.every(identity)) return null;
     const workerId = randomId();
     let latest = await read();
+    const assigned = latest?.tasks?.find(item => item.status === 'opening' && item.launchId === launch[1]);
+    if (!activeJob(latest) || latest.jobId !== launch[0] || !assigned) return null;
+    const threadId = assigned.threadId;
     const deadline = now() + OPENING_MS;
     let context;
+    let navigated = false;
+    const navigationController = new AbortController();
+    const navigationListener = storage.listen(JOB_KEY, value => {
+      const task = value?.tasks?.find(item => item.threadId === threadId);
+      if (!activeJob(value) || value.jobId !== launch[0] || task?.status !== 'opening'
+        || task.launchId !== launch[1]) navigationController.abort('ghost-worker-revoked');
+    });
     // The userscript starts before React mounts the authenticated message pane.
     // A launch fragment is correlation only; the private reviewed job grants
     // authority. An ordinary Instagram tab must never become a worker.
-    while (true) {
+    try { while (true) {
       latest = await read();
       const opening = latest?.tasks?.find(item => item.threadId === threadId
-        && item.status === 'opening' && item.launchId === launch[2]);
-      if (!activeJob(latest) || latest.jobId !== launch[1] || !opening
-        || threadFromLocation() !== threadId || !await coordinatorPresent(latest)) return null;
+        && item.status === 'opening' && item.launchId === launch[1]);
+      if (!activeJob(latest) || latest.jobId !== launch[0] || !opening
+        || navigationController.signal.aborted || !await coordinatorPresent(latest)) return null;
       context = inspectContext();
       if (context?.restriction || (context?.accountId && context.accountId !== latest.accountId)) return null;
+      if (context?.accountId === latest.accountId && threadFromLocation() !== threadId
+        && typeof navigateThread === 'function' && !navigated) {
+        navigated = true;
+        await navigateThread(threadId, { signal: navigationController.signal,
+          expiresAt: Math.min(deadline, latest.expiresAt) });
+        continue;
+      }
       const messageView = typeof runner.inspect === 'function' ? runner.inspect() : null;
       if (context?.accountId === latest.accountId && context?.threadId === threadId
         && context?.usable === true && (typeof runner.inspect !== 'function'
           || (messageView?.ready === true && messageView.threadId === threadId))) break;
       if (now() >= deadline) return null;
       await sleep(250);
-    }
+    } } catch (error) {
+      await update(value => {
+        if (!validJob(value) || value.jobId !== launch[0]) return value;
+        const task = value.tasks.find(item => item.threadId === threadId
+          && item.launchId === launch[1] && item.status === 'opening');
+        if (task) { task.status = 'failed'; task.reason = error?.message || 'conversation-load-failed'; }
+        return value;
+      });
+      throw error;
+    } finally { storage.unlisten(navigationListener); }
     latest = await update((value) => {
       if (!activeJob(value) || value.accountId !== context.accountId) return value;
       const task = value.tasks.find(item => item.threadId === threadId && item.status === 'opening'
-        && value.jobId === launch[1] && item.launchId === launch[2]);
+        && value.jobId === launch[0] && item.launchId === launch[1]);
       if (!task) return value;
       task.status = 'running'; task.workerId = workerId; task.workerHeartbeatAt = now();
       value.updatedAt = now();

@@ -3665,6 +3665,7 @@
             unlisten: id => GM_removeValueChangeListener(id),
           },
           openTab: (url, options) => GM_openInTab(url, options),
+          workerLaunch: () => workerLaunch,
         } : null,
       defaultWorkerCount: cleanupSettings.effective(cleanupPreferences, 'userscript').workerCount,
       messageOptions: () => {

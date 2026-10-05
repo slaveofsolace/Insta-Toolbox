@@ -14,6 +14,7 @@ const button = label => `[...(${PANEL}).querySelectorAll('button')].find(node=>n
 export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot, releaseVersion, withTimeout, waitForPageValue }) {
   const isolated = session.fromPartition(`insta-toolbox-ghost-windows-${process.pid}`);
   const windows = new Map(), store = new Map(), outcomes = [], opened = [], tabEvents = [];
+  const tabStorage = new Map();
   const conversations = Array.from({ length: 12 }, (_, index) => ({
     id: String(101 + index), title: `Synthetic conversation ${index + 1}`, username: null,
   }));
@@ -39,6 +40,9 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
     event.returnValue = null;
   };
   ipcMain.on('fixture-ghost:get', get); ipcMain.on('fixture-ghost:set', set);
+  const getTab = event => { assertSender(event); event.returnValue = tabStorage.get(event.sender.id) || {}; };
+  const saveTab = (event, value) => { assertSender(event); tabStorage.set(event.sender.id, structuredClone(value)); event.returnValue = null; };
+  ipcMain.on('fixture-ghost:get-tab', getTab); ipcMain.on('fixture-ghost:save-tab', saveTab);
   ipcMain.handle('fixture-ghost:open', async (event, url, options) => {
     assertSender(event); assert.equal(event.sender, coordinator.webContents);
     const target = new URL(url);
@@ -66,7 +70,8 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
   await isolated.protocol.handle('https', async request => {
     const url = new URL(request.url);
     if (url.origin !== 'https://www.instagram.com') return new Response('', { status: 403 });
-    const page = url.pathname === '/userscript-fixture.html' || /^\/direct\/t\/\d+\/$/.test(url.pathname);
+    const page = url.pathname === '/userscript-fixture.html' || url.pathname === '/direct/inbox/'
+      || /^\/direct\/t\/\d+\/$/.test(url.pathname);
     const file = fixtureAssets.get(page ? '/userscript-fixture.html' : url.pathname);
     if (!file) return new Response('', { status: 404 });
     let body = await readFile(file);
@@ -79,6 +84,8 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
         let listenerId=0; const listeners=new Map();
         GM_getValue=(key,fallback)=>fixtureGhostTransport.get(key,Object.hasOwn(fixtureGmStore,key)?fixtureGmStore[key]:fallback);
         GM_setValue=(key,value)=>fixtureGhostTransport.set(key,value);
+        GM_getTab=callback=>callback(fixtureGhostTransport.getTab());
+        GM_saveTab=value=>fixtureGhostTransport.saveTab(value);
         globalThis.GM_addValueChangeListener=(key,callback)=>{const id=++listenerId;listeners.set(id,{key,callback});return id;};
         globalThis.GM_removeValueChangeListener=id=>listeners.delete(id);
         fixtureGhostTransport.listen((key,previous,next)=>{for(const item of listeners.values())if(item.key===key)item.callback(key,previous,next,true);});
@@ -86,11 +93,11 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
         const fixtureThread=new URL(fixtureLaunchHref).pathname.match(/^\\/direct\\/t\\/(\\d+)\\/$/)?.[1];
         if(fixtureThread){
           history.replaceState({},'',fixtureLaunchHref);
-          setTimeout(()=>{
-            document.querySelector('[data-fixture-thread="'+fixtureThread+'"]').click();
-            history.replaceState({},'',fixtureLaunchHref);
-          },350);
-        }else history.replaceState({},'','/');
+          // Instagram may restore the inbox instead of honoring a new-tab
+          // deep link. Only production navigation may open the assigned row.
+          setTimeout(()=>Number(fixtureThread)%2
+            ? location.replace('/direct/inbox/') : history.replaceState({},'','/direct/inbox/'),20);
+        }else history.replaceState({},'',new URL(fixtureLaunchHref).pathname==='/direct/inbox/' ? '/direct/inbox/' : '/');
       </script>`;
       body = body.toString().replace('<head>', '<head><script>const fixtureLaunchHref=location.href;</script>')
         .replace('<script src="/userscripts/insta-toolbox.user.js">', `${setup}<script src="/userscripts/insta-toolbox.user.js">`);
@@ -147,10 +154,11 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
     await writeFile(path.join(directory, 'result.json'), JSON.stringify({ version: releaseVersion, fixtureOnly: true,
       transport: 'fixture GM API shim; real renderer windows and Web Locks', peakWorkers, opened, tabEvents, outcomes,
       tasks: job.tasks.map(({ threadId, status, messageRemovals }) => ({ threadId, status, messageRemovals })) }, null, 2));
-    console.log('Accepted generated userscript Ghost: 12 conversations in ten-then-two tab batches, closed-group boundaries, delayed mounts, real Web Locks, verified removals, received messages preserved.');
+    console.log('Accepted generated userscript Ghost: redirected inbox workers recover exact threads through native rows, 12 conversations in ten-then-two batches, verified removals and received messages preserved.');
   } finally {
     for (const window of windows.values()) if (!window.isDestroyed()) window.destroy();
     ipcMain.removeListener('fixture-ghost:get', get); ipcMain.removeListener('fixture-ghost:set', set);
+    ipcMain.removeListener('fixture-ghost:get-tab', getTab); ipcMain.removeListener('fixture-ghost:save-tab', saveTab);
     ipcMain.removeHandler('fixture-ghost:open'); ipcMain.removeHandler('fixture-ghost:close');
     isolated.protocol.unhandle('http'); isolated.protocol.unhandle('https');
   }

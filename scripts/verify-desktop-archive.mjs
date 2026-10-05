@@ -3,7 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import asar from '@electron/asar';
+import * as asar from '@electron/asar';
 
 import { webRuntimeFiles } from './web-package-files.mjs';
 

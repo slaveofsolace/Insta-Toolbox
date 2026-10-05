@@ -60,8 +60,29 @@ const [metadata, license, ...sources] = await Promise.all([
 
 const licenseBanner = `/*\n${license.trim().split(/\r?\n/).map((line) => (line ? ` * ${line}` : ' *')).join('\n')}\n */\n`;
 
-const singletonGuardStart = `(() => {
+const singletonGuardStart = `(async () => {
   'use strict';
+  // Capture the worker correlation before Instagram replaces its startup URL.
+  // Manager-tab storage survives same-tab navigation; the reviewed private job,
+  // not this correlation, remains the authority for every action.
+  const workerMatch = location.hash.match(/^#insta-toolbox-worker=([A-Za-z0-9_-]+)\\.([A-Za-z0-9_-]+)$/);
+  const workerLaunch = await new Promise(resolve => {
+    let settled = false;
+    const finish = tab => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      if (workerMatch && tab && typeof GM_saveTab === 'function') {
+        tab.instaToolboxGhostLaunchV1 = [workerMatch[1], workerMatch[2]];
+        try { GM_saveTab(tab); } catch {}
+      }
+      resolve(workerMatch ? [workerMatch[1], workerMatch[2]] : tab?.instaToolboxGhostLaunchV1 || null);
+    };
+    const timer = setTimeout(() => finish(null), 1_000);
+    try { typeof GM_getTab === 'function' ? GM_getTab(finish) : finish(null); }
+    catch { finish(null); }
+  });
+  if (document.readyState === 'loading') await new Promise(resolve =>
+    document.addEventListener('DOMContentLoaded', resolve, { once: true }));
   const rootId = 'insta-toolbox-userscript-root';
   const extensionRootId = 'insta-toolbox-sidecar-root';
   const claimId = 'insta-toolbox-userscript-claim';
