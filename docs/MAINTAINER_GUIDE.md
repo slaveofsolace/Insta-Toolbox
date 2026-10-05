@@ -1,5 +1,13 @@
 # Maintainer guide
 
+## Development focus
+
+Tampermonkey is the active update channel. All other packages are **On hold
+after 4.3.1**: Chrome extension, Windows/macOS desktop and web/PWA. Preserve
+their code, local data and published downloads. Complete the existing 4.3.1
+release gates; do not remove package checks or shared-engine coverage as part
+of this status change. Future feature work focuses on the userscript.
+
 ## Invariants
 
 - Preserve the PWA, migrations, userscript, tests, and data contracts.

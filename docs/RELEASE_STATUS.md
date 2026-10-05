@@ -2,6 +2,13 @@
 
 Version: **4.3.1**.
 
+## Development focus
+
+Tampermonkey is the active development and update channel. Chrome extension,
+Windows/macOS desktop and web/PWA packages are **On hold after 4.3.1**.
+Their code, local data and 4.3.1 downloads remain intact. The current release
+still completes all package checks; future feature work focuses on Tampermonkey.
+
 ## Changes
 
 - Workers recover inbox redirects, open their exact assigned conversation, and
@@ -20,7 +27,7 @@ Version: **4.3.1**.
 
 [Install or update Tampermonkey](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js).
 
-The [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest)
+The [4.3.1 release](https://github.com/slaveofsolace/Insta-Toolbox/releases/tag/v4.3.1)
 provides the extension ZIP, web ZIP, Windows installer, universal macOS DMG/ZIP,
 `SHA256SUMS.txt`, SBOM and provenance attestation. See
 [installation](INSTALLATION.md) for direct links and instructions.

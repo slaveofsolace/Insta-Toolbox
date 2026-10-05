@@ -181,6 +181,7 @@ jobs:
 
           ## Distribution notes
 
+          - Tampermonkey is the active update channel. Chrome extension, Windows/macOS desktop and web/PWA packages are on hold after 4.3.1; their code and downloads remain available.
           - The Windows installer is unsigned and may show a Microsoft SmartScreen warning.
           - The macOS packages are ad-hoc signed and are not Apple-notarized.
           - Ghost worker tabs must remain open and loaded. Tab discard, computer sleep, browser shutdown, or lost account evidence stops or pauses the job.

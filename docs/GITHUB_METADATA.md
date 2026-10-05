@@ -1,10 +1,10 @@
 # GitHub repository settings
 
-Use these public settings for the 3.1 release.
+Use these public settings for the 4.3.1 release.
 
 ## Description
 
-> Drop a local toolbox into Instagram—check mutuals, review follow/unfollow targets, and clean up sent DMs with Tampermonkey, Chrome, desktop, or PWA.
+> Drop a local toolbox into Instagram with Tampermonkey—check mutuals, review follows, and clean up sent DMs. Extension, desktop and web packages are on hold after 4.3.1.
 
 ## Homepage
 

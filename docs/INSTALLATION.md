@@ -1,6 +1,8 @@
 # Install Insta Toolbox 4.3.1
 
-The Tampermonkey link always installs the latest published release. The package links below use the same release.
+**Tampermonkey is the active update channel.** Chrome extension, Windows/macOS desktop and web/PWA packages are **On hold after 4.3.1**. Existing downloads and local data remain available.
+
+The Tampermonkey link always installs the latest published release. Other package links stay pinned to 4.3.1.
 
 Tampermonkey is the quickest way to put the toolbox on Instagram. Desktop and web builds provide the larger local workspace for imports, comparisons, reviewed plans, ledgers, and exports.
 
@@ -48,7 +50,7 @@ Open the Tampermonkey dashboard, locate **Insta Toolbox**, and choose **Delete**
 
 ## Chrome extension
 
-1. [Download the extension ZIP](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/Insta-Toolbox-Extension-4.3.1.zip).
+1. [Download the extension ZIP](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/Insta-Toolbox-Extension-4.3.1.zip).
 2. Verify its SHA-256 checksum as described below.
 3. Extract the ZIP to a permanent folder.
 4. Open `chrome://extensions` and enable **Developer mode**.
@@ -61,7 +63,7 @@ To remove it, open `chrome://extensions`, select **Remove**, and delete the extr
 
 ## Windows desktop app
 
-1. [Download the Windows installer](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/Insta-Toolbox-Setup-4.3.1.exe) and [checksums](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/SHA256SUMS.txt).
+1. [Download the Windows installer](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/Insta-Toolbox-Setup-4.3.1.exe) and [checksums](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/SHA256SUMS.txt).
 2. Verify the checksum.
 3. Double-click the installer.
 
@@ -74,13 +76,13 @@ Uninstall from **Settings > Apps > Installed apps > Insta Toolbox**.
 
 ## macOS desktop app
 
-1. [Download the macOS DMG](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/Insta-Toolbox-4.3.1-universal.dmg) and [checksums](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/SHA256SUMS.txt).
+1. [Download the macOS DMG](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/Insta-Toolbox-4.3.1-universal.dmg) and [checksums](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/SHA256SUMS.txt).
 2. Verify the checksum.
 3. Open the DMG and drag **Insta Toolbox** to Applications.
 
 The universal package targets Intel and Apple Silicon. Public builds are not notarized unless the release notes explicitly say they are. On first launch, control-click the app, choose **Open**, then confirm the macOS warning.
 
-The release also includes `Insta-Toolbox-4.3.1-universal.zip` as a portable alternative. Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
+The release also includes a [portable macOS ZIP](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/Insta-Toolbox-4.3.1-universal.zip). Verify its checksum, extract it, and move **Insta Toolbox** to Applications. It contains the same universal app and has the same signing and notarization limits as the DMG.
 
 To remove it, quit the app and move **Insta Toolbox** from Applications to Trash. Remove its application data separately only if you want to erase local workspace history.
 
@@ -94,7 +96,7 @@ Use the browser's **Install app** command for a standalone PWA window. Browser w
 
 To self-host it:
 
-1. [Download the web package](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox-web-4.3.1.zip).
+1. [Download the web package](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/insta-toolbox-web-4.3.1.zip).
 2. Verify its checksum.
 3. Extract the ZIP.
 4. Serve the extracted `insta-toolbox-web` directory over HTTPS or a loopback HTTP origin.

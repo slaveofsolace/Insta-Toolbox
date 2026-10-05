@@ -52,7 +52,11 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
     assert.equal(options.active, false);
     const worker = createWindow(); opened.push(target.pathname); tabEvents.push({ action: 'open', path: target.pathname });
     peakWorkers = Math.max(peakWorkers, windows.size - 1);
-    await worker.loadURL(url);
+    // GM_openInTab returns a handle immediately. A same-tab startup redirect
+    // can abort the initial navigation without failing the tab creation.
+    void worker.loadURL(url).catch(error => {
+      if (error.code !== 'ERR_ABORTED' && error.errno !== -3) problems.push('worker-load-failed');
+    });
     return worker.webContents.id;
   });
   ipcMain.handle('fixture-ghost:close', async (event, id) => {
