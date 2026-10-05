@@ -9,7 +9,7 @@ export function mountUserscriptInboxPanel({
   runner = globalThis.InstaToolboxDmThreadUnsender,
   confirmAction, cancelConfirmation = () => {}, save, load = async () => null,
   workerTransport = null,
-  defaultWorkerCount = 2,
+  defaultWorkerCount = 10,
   openWorkersInBackground = true,
   discoveryTiming = {},
   messageOptions = () => ({ scope: 'all', limit: null }),
@@ -41,18 +41,18 @@ export function mountUserscriptInboxPanel({
   const acknowledgment = create('label', null, 'inbox-choice');
   const acknowledged = create('input'); acknowledged.type = 'checkbox';
   acknowledgment.append(acknowledged, document.createTextNode(' Opening conversations may mark them read.'));
-  const note = create('p', 'Find your conversations, then unsend your messages after one confirmation. Opening chats may mark them read.', 'lead');
+  const note = create('p', 'Clean up your inbox in batches of ten tabs. Opening chats may mark them read.', 'lead');
   const advanced = create('details', null, 'settings-inline');
   advanced.append(create('summary', 'Choose conversations and tabs'));
-  const workersLabel = create('label', 'Worker tabs', 'field');
+  const workersLabel = create('label', 'Selected cleanup batch size', 'field');
   const workers = create('select');
   workers.setAttribute('aria-label', 'Managed worker tabs');
-  for (let value = 1; value <= 5; value += 1) {
+  for (let value = 1; value <= 10; value += 1) {
     const option = create('option', `${value}`); option.value = String(value); workers.append(option);
   }
   workers.value = String(Number.isInteger(Number(defaultWorkerCount))
-    && Number(defaultWorkerCount) >= 1 && Number(defaultWorkerCount) <= 5
-    ? Number(defaultWorkerCount) : 2);
+    && Number(defaultWorkerCount) >= 1 && Number(defaultWorkerCount) <= 10
+    ? Number(defaultWorkerCount) : 10);
   workersLabel.append(workers);
   const workerModeLabel = create('label', 'Open worker tabs', 'field');
   const workerMode = create('select');
@@ -63,7 +63,7 @@ export function mountUserscriptInboxPanel({
   workerMode.value = openWorkersInBackground === false ? 'foreground' : 'background';
   workerModeLabel.append(workerMode);
   const workerNote = create('p', workerTransport
-    ? 'Worker tabs prepare conversations together. Removals run one conversation at a time.'
+    ? 'Each batch finishes and closes before the next opens. Unsend clicks share the account pacing.'
     : 'Multiple worker tabs are unavailable in this userscript manager.', 'lead');
   workers.disabled = !workerTransport; workerMode.disabled = !workerTransport;
   const inbox = create('a', 'Open inbox', 'button quiet');
@@ -217,6 +217,7 @@ export function mountUserscriptInboxPanel({
       'ghost-coordinator-lost': 'The Ghost mode manager closed. No new removal will begin.',
       'worker-lost': 'A worker tab stopped responding. Review the conversation before continuing.',
       'tab-open-failed': 'A worker tab could not be opened. Check the userscript pop-up permission.',
+      'worker-tab-close-failed': 'A finished worker tab could not close. Cleanup paused before opening the next batch.',
       'removal-not-proven': 'Instagram did not confirm the last removal. Review the conversation before continuing.',
       'approval-expired': 'This cleanup approval expired. Review the conversations again.',
       cancelled: 'Stopped.', 'end-unverified': '', 'repeated-window-unverified': '',
@@ -225,6 +226,14 @@ export function mountUserscriptInboxPanel({
   }
   function renderCheckpoint(value) {
     checkpoint = structuredClone(value);
+    if (value.scheduling === 'batches' && value.tasks?.length) {
+      const batchCount = Math.ceil(value.tasks.length / value.workerCount);
+      const remaining = value.tasks.find(task => !['completed', 'partial', 'skipped', 'failed', 'uncertain', 'stopped'].includes(task.status));
+      inventoryStatus.textContent = value.status === 'running' && remaining
+        ? `Batch ${Math.floor(remaining.index / value.workerCount) + 1} of ${batchCount} · ${value.tasks.filter(task => task.status === 'completed').length} conversations finished`
+        : `${value.tasks.filter(task => task.status === 'completed').length} of ${value.tasks.length} conversations finished · ${value.status}`;
+      inventoryStatus.hidden = false;
+    }
     results.hidden = !value.tasks?.length;
     results.replaceChildren(...(value.tasks || []).map(task => {
       const count = Number(task.messageRemovals) || 0;
@@ -293,7 +302,7 @@ export function mountUserscriptInboxPanel({
     if (!ids.length) { announce('No conversations found. Nothing was removed.'); return; }
     for (const id of ids) { selected.add(id); if (rows.has(id)) rows.get(id).input.checked = true; }
     updateControls();
-    await startReview(ids);
+    await startReview(ids, { workerCount: 10 });
   });
   selectAll.addEventListener('click', () => {
     if (active) return;
@@ -303,7 +312,7 @@ export function mountUserscriptInboxPanel({
     }
     updateControls();
   });
-  async function startReview(threadIds) {
+  async function startReview(threadIds, { workerCount = Number(workers.value) } = {}) {
     if (active || loading || loadFailed || busy() || !threadIds.length
       || (needsReconciliation && !reconciled.checked)) return;
     const epoch = ++operationEpoch;
@@ -318,7 +327,8 @@ export function mountUserscriptInboxPanel({
           accountId: account.accountId,
           threadIds: captured.threadIds,
           scope: captured.scope, limit: captured.limit,
-          workerCount: Number(workers.value),
+          workerCount,
+          scheduling: 'batches',
           openInBackground: workerMode.value === 'background',
           expiresAt: Date.now() + 12 * 60 * 60_000,
         });
@@ -327,7 +337,7 @@ export function mountUserscriptInboxPanel({
           title: `Clean up ${plan.threadIds.length} conversation${plan.threadIds.length === 1 ? '' : 's'}?`,
           message: plan.scope === 'all' ? 'Permanently unsend your messages in the selected conversations.'
             : `Permanently unsend the ${plan.scope} ${plan.limit} message${plan.limit === 1 ? '' : 's'} you sent in each selected conversation?`,
-          detail: 'Keep the inbox tab and worker tabs open. Worker tabs prepare conversations in parallel; removals stay account-paced and stop together.',
+          detail: `Keep the inbox tab open. Up to ${plan.workerCount} conversation tabs open together, finish, and close before the next batch. Unsend clicks share the account pacing.`,
           confirmLabel: 'Start Ghost mode',
           facts: [{ label: 'Account', value: account.accountLabel ? `@${account.accountLabel}` : 'Current signed-in account' },
             { label: 'Conversations', value: String(plan.threadIds.length) },

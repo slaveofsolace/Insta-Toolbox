@@ -48,7 +48,7 @@ test('userscript cleanup copy stays concise and reaction cleanup is selectable',
   assert.match(userscript, /conversation or message selection changed after review/);
   assert.doesNotMatch(userscript, /Own-reaction removal has not been verified|<strong>DM Unsend\.<\/strong>|>Scope<\/label>|>Default N<\/label>/);
   assert.match(userscript, />Open in background<\/option>/);
-  assert.match(userscript, />Tabs to prepare<\/label>/);
+  assert.match(userscript, />Selected cleanup batch size<\/label>/);
   assert.doesNotMatch(userscript, /Multiple tabs are not available yet|Background — not available yet/);
 });
 

@@ -10,10 +10,10 @@ const conversations = [
   { id: '303', title: 'Weekend makers and exceptionally long conversation names', username: null },
 ];
 
-export function inboxFixturePrelude() {
+export function inboxFixturePrelude({ rows = conversations } = {}) {
   return `<script>
     history.replaceState({}, '', '/direct/inbox/');
-    const inboxRows = ${JSON.stringify(conversations)};
+    const inboxRows = ${JSON.stringify(rows)};
     const surface = document.querySelector('main');
     surface.innerHTML = '<section aria-label="Thread list" style="height:310px;overflow:auto"><div role="button" tabindex="0"><h2>fixture.owner</h2></div><div role="tab" aria-selected="true">Primary</div></section>';
     const rail = document.createElement('nav');
@@ -99,6 +99,7 @@ export function inboxFixturePrelude() {
       const preview = document.createElement('span'); preview.textContent = 'Inbox preview ' + item.id;
       row.append(avatar, preview);
       row.addEventListener('click', () => {
+        for (const other of surface.querySelectorAll('[data-fixture-thread]')) other.setAttribute('aria-pressed', String(other === row));
         chat?.remove(); chat = document.createElement('section');
         const header = document.createElement('div'); header.setAttribute('data-pagelet', 'IGDInboxHeaderOffMsys');
         const heading = document.createElement('h2'); heading.textContent = item.title;

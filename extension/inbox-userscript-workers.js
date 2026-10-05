@@ -1,7 +1,7 @@
 const JOB_KEY = 'instaToolboxGhostJobV1';
 const VERSION = 1;
 const MAX_THREADS = 1_000;
-const MAX_WORKERS = 5;
+const MAX_WORKERS = 10;
 const MAX_TTL_MS = 12 * 60 * 60_000;
 const HEARTBEAT_MS = 3_000;
 const STALE_MS = 90_000;
@@ -19,6 +19,7 @@ export function createUserscriptGhostReview({
   accountId,
   threadIds,
   workerCount = 2,
+  scheduling = 'rolling',
   openInBackground = true,
   scope = 'all',
   limit = null,
@@ -32,6 +33,7 @@ export function createUserscriptGhostReview({
   if (!Number.isInteger(workerCount) || workerCount < 1 || workerCount > MAX_WORKERS) {
     fail('ghost-worker-count-invalid');
   }
+  if (!['rolling', 'batches'].includes(scheduling)) fail('ghost-scheduling-invalid');
   const expiry = Math.min(Number(expiresAt) || (now + MAX_TTL_MS), now + MAX_TTL_MS);
   if (!Number.isFinite(expiry) || expiry <= now) fail('ghost-review-expired');
   const review = Object.freeze({
@@ -39,6 +41,7 @@ export function createUserscriptGhostReview({
     accountId,
     threadIds: Object.freeze(unique),
     workerCount: Math.min(workerCount, unique.length),
+    scheduling,
     openInBackground: openInBackground !== false,
     scope,
     limit: scope === 'all' ? null : limit,
@@ -121,6 +124,7 @@ export function createUserscriptGhostBridge({
     const coordinatorId = randomId();
     const listeners = new Set();
     const handles = new Map();
+    const closing = new Map();
     let storageListener = null;
     let heartbeat = null;
     let current = null;
@@ -133,6 +137,16 @@ export function createUserscriptGhostBridge({
     let resolveFinished = null;
     const finished = new Promise(resolve => { resolveFinished = resolve; });
     const snapshot = () => current ? clone(current) : null;
+    const closeOwned = threadId => {
+      if (closing.has(threadId)) return closing.get(threadId);
+      const handle = handles.get(threadId);
+      if (!handle) return Promise.resolve();
+      const pending = Promise.resolve().then(() => handle.close()).then(() => {
+        if (handles.get(threadId) === handle) handles.delete(threadId);
+      }).finally(() => closing.delete(threadId));
+      closing.set(threadId, pending);
+      return pending;
+    };
     const publish = (job) => {
       current = job ? clone(job) : null;
       const value = snapshot();
@@ -160,9 +174,9 @@ export function createUserscriptGhostBridge({
         releaseActivityLock?.();
         releaseActivityLock = null;
         await Promise.resolve(activityLockPromise).catch(() => {});
-        for (const [threadId, handle] of handles) {
+        for (const [threadId] of handles) {
           if (current?.pendingMutation?.threadId === threadId) continue;
-          try { await handle?.close?.(); } catch {}
+          try { await closeOwned(threadId); } catch {}
         }
         handles.clear();
         resolveFinished(snapshot());
@@ -171,16 +185,33 @@ export function createUserscriptGhostBridge({
       return finishing;
     };
     const closeSettled = async saved => {
+      if (saved?.jobId !== current?.jobId || finishing) return;
+      if (saved?.scheduling === 'batches') {
+        const batchFor = task => Math.floor(task.index / saved.workerCount);
+        const ownedBatches = new Set(saved.tasks.filter(task => handles.has(task.threadId)).map(batchFor));
+        for (const batch of ownedBatches) {
+          const group = saved.tasks.filter(task => batchFor(task) === batch);
+          if (!group.every(task => TERMINAL.has(task.status))
+            || group.some(task => task.threadId === saved.pendingMutation?.threadId)) continue;
+          for (const task of group) {
+            const handle = handles.get(task.threadId);
+            if (!handle) continue;
+            try { await closeOwned(task.threadId); }
+            catch { fail('worker-tab-close-failed'); }
+          }
+        }
+        return;
+      }
       if (saved?.jobId === current?.jobId) for (const [threadId, handle] of handles) {
         const task = saved.tasks.find(item => item.threadId === threadId);
         if (task && TERMINAL.has(task.status) && saved.pendingMutation?.threadId !== threadId) {
-          try { await handle?.close?.(); } catch {}
+          try { await closeOwned(threadId); } catch {}
           handles.delete(threadId);
         }
       }
     };
     const runTick = async () => {
-      // Reuse a bounded tab pool, not one tab per conversation until the end.
+      // Close a settled batch before opening any conversation in the next one.
       await closeSettled(await read());
       const launches = [];
       const retired = [];
@@ -217,8 +248,14 @@ export function createUserscriptGhostBridge({
           value.status = 'paused'; value.reason = 'worker-lost';
           return value;
         }
+        const firstRemaining = value.tasks.find(task => !TERMINAL.has(task.status)
+          || task.threadId === value.pendingMutation?.threadId);
+        const batchIndex = firstRemaining ? Math.floor(firstRemaining.index / value.workerCount) : null;
+        const batchTasks = value.scheduling === 'batches'
+          ? value.tasks.filter(task => Math.floor(task.index / value.workerCount) === batchIndex)
+          : value.tasks;
         const active = value.tasks.filter(task => ['opening', 'running'].includes(task.status)).length;
-        for (const task of value.tasks.filter(task => task.status === 'pending'
+        for (const task of batchTasks.filter(task => task.status === 'pending'
           && (!task.retryAt || task.retryAt <= now())).slice(0, value.workerCount - active)) {
           task.status = 'opening';
           task.launchId = randomId();
@@ -227,14 +264,15 @@ export function createUserscriptGhostBridge({
           task.reason = null;
           launches.push({ threadId: task.threadId, launchId: task.launchId });
         }
-        if (value.tasks.every(task => TERMINAL.has(task.status))) {
+        if (value.tasks.every(task => TERMINAL.has(task.status)) && !value.pendingMutation) {
           value.status = value.tasks.every(task => task.status === 'completed') ? 'completed' : 'partial';
         }
         value.updatedAt = now();
         return value;
       });
       for (const threadId of retired) {
-        try { await handles.get(threadId)?.close?.(); } catch {}
+        try { await closeOwned(threadId); }
+        catch { fail('worker-tab-close-failed'); }
         handles.delete(threadId);
       }
       await closeSettled(job);
@@ -248,7 +286,7 @@ export function createUserscriptGhostBridge({
           if (!handle) throw new Error('tab-open-failed');
           handles.set(launch.threadId, handle);
           if (current?.status !== 'running') {
-            await handle?.close?.(); handles.delete(launch.threadId);
+            await closeOwned(launch.threadId);
           }
         } catch {
           const failed = await update((value) => {
@@ -288,6 +326,7 @@ export function createUserscriptGhostBridge({
         current = {
           version: VERSION, jobId, coordinatorId, accountId: review.accountId,
           status: 'running', reason: null, workerCount: review.workerCount,
+          scheduling: review.scheduling,
           openInBackground: review.openInBackground,
           scope: review.scope, limit: review.limit,
           expiresAt: review.expiresAt, reviewedAt: review.reviewedAt,
@@ -327,9 +366,15 @@ export function createUserscriptGhostBridge({
             if (!validJob(value) || value.jobId !== current?.jobId) return;
             publish(value);
           });
-          heartbeat = setIntervalFn(() => { void tick().catch(error => {
-            current.status = 'paused'; current.reason = error?.message || 'ghost-storage-failed';
-            publish(current);
+          heartbeat = setIntervalFn(() => { void tick().catch(async error => {
+            const reason = error?.message || 'ghost-storage-failed';
+            const paused = await update(value => {
+              if (!validJob(value) || value.jobId !== current?.jobId) return null;
+              value.status = 'paused'; value.reason = reason; value.updatedAt = now();
+              return value;
+            }).catch(() => null);
+            if (paused?.jobId === current?.jobId) publish(paused);
+            else publish({ ...current, status: 'paused', reason });
           }); }, HEARTBEAT_MS);
           await tick();
           return finished;

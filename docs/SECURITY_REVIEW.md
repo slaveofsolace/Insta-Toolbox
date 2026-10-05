@@ -55,8 +55,9 @@ The restored runner retains bounded menu readiness and adaptive 1–2 second suc
 Page freeze and page exit revoke current action authority. Already-dispatched removals settle as verified or uncertain; the next mutation is not dispatched. Resuming the page does not restore authority. Ordinary focus changes do not themselves revoke a run, but reliable inactive-tab execution still needs separate acceptance. Waits release listeners, observers, and timers on settlement.
 
 Extension managed-tab modules are not registered for live execution. The
-userscript's reviewed Ghost adapter can open one to five exact worker tabs. Tabs
-prepare concurrently, but mutations remain serialized through one account lane
+userscript's reviewed Ghost adapter opens groups of ten exact worker tabs; selected
+cleanups may use smaller groups. A group finishes and closes before the next opens.
+Tabs prepare concurrently, but mutations remain serialized through one account lane
 and one pacing clock. Worker messages cannot restore action authority; manager
 loss, wrong context, expiry, restrictions, storage failure, or uncertainty stop
 new work. Fixture results do not establish crash-safe external execution or

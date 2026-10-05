@@ -37,7 +37,7 @@ See [Installation](docs/INSTALLATION.md) for the extension, desktop apps, web ap
 
 - **Mutual Checker** compares the accounts Instagram returns. Browse, search, or download the results even when a list is partial. Partial results use “Not found” labels: a missing account may still be a mutual. [Why lists can be partial](docs/MUTUAL_CHECKER_PARTIAL_RESULTS.md).
 - **Presence** can view stories, react to stories, like posts, follow people, and accept incoming requests through Instagram's visible controls. Live sessions keep going for the chosen duration with normal action spacing; scheduled breaks are optional. Pause, Stop, and a private activity log stay available.
-- **DM Unsend** removes your messages from the open conversation. **Start Ghost Mode** finds available conversations, asks for one confirmation, and runs the same cleanup in one to five managed tabs. Tabs prepare conversations together; removals run one conversation at a time. Keep those tabs open and loaded.
+- **DM Unsend** removes your messages from the open conversation. **Start Ghost Mode** finds available conversations, asks for one confirmation, then cleans up ten conversations at a time. Each group of tabs finishes and closes before the next ten open. Keep the inbox tab open; Unsend clicks share the account pacing. Selected cleanups can use smaller batches.
 - **Profile and content insights**, inside Mutual Checker, summarize loaded posts, linked hashtags and media types, with text and JSON downloads. Results describe the loaded sample, not a complete account history.
 - **Workspace** keeps local imports, comparisons, reviewed plans, ledgers, and exports in the PWA or desktop app.
 

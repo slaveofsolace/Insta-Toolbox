@@ -27,7 +27,7 @@
       showSummary: boolean(source, 'showSummary', true),
       execution: choice(source.execution, ['foreground', 'background'], 'foreground'),
       workerCount: Number.isSafeInteger(Number(source.workerCount))
-        && Number(source.workerCount) >= 1 && Number(source.workerCount) <= 5
+        && Number(source.workerCount) >= 1 && Number(source.workerCount) <= 10
         ? Number(source.workerCount) : 1,
       scheduling: 'serial',
       notifications: boolean(source, 'notifications', false),

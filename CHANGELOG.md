@@ -2,6 +2,12 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Run **Start Ghost Mode** in groups of ten conversation tabs. Finish and close each group before opening the next; a smaller final group runs automatically.
+- Show batch progress and keep selected cleanup sizes configurable from one to ten without changing saved preferences.
+- Pause before opening another group if a managed tab cannot close. Keep retries and unfinished outcomes visible.
+
 ## 4.2.1 - 2026-09-25
 
 - Start inbox discovery at the top and keep the desktop conversation rail in place. Recognize the selected conversation without waiting for an unnecessary route change.

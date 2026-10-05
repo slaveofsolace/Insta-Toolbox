@@ -13,7 +13,10 @@ const button = label => `[...(${PANEL}).querySelectorAll('button')].find(node=>n
 // and Instagram page are fixtures. No live network or account is used.
 export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot, releaseVersion, withTimeout, waitForPageValue }) {
   const isolated = session.fromPartition(`insta-toolbox-ghost-windows-${process.pid}`);
-  const windows = new Map(), store = new Map(), outcomes = [], opened = [];
+  const windows = new Map(), store = new Map(), outcomes = [], opened = [], tabEvents = [];
+  const conversations = Array.from({ length: 12 }, (_, index) => ({
+    id: String(101 + index), title: `Synthetic conversation ${index + 1}`, username: null,
+  }));
   const problems = [];
   let coordinator, peakWorkers = 0;
   const assertSender = event => assert.ok(windows.has(event.sender.id), 'unowned fixture IPC sender');
@@ -40,10 +43,10 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
     assertSender(event); assert.equal(event.sender, coordinator.webContents);
     const target = new URL(url);
     assert.equal(target.origin, 'https://www.instagram.com');
-    assert.match(target.pathname, /^\/direct\/t\/(101|202|303)\/$/);
+    assert.ok(conversations.some(item => target.pathname === `/direct/t/${item.id}/`));
     assert.match(target.hash, /^#insta-toolbox-worker=/);
     assert.equal(options.active, false);
-    const worker = createWindow(); opened.push(target.pathname);
+    const worker = createWindow(); opened.push(target.pathname); tabEvents.push({ action: 'open', path: target.pathname });
     peakWorkers = Math.max(peakWorkers, windows.size - 1);
     await worker.loadURL(url);
     return worker.webContents.id;
@@ -52,10 +55,11 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
     assertSender(event); assert.equal(event.sender, coordinator.webContents);
     const worker = windows.get(id);
     assert.ok(worker && worker !== coordinator, 'only a managed worker may close');
-    outcomes.push(await worker.webContents.executeJavaScript(`({
+    const outcome = await worker.webContents.executeJavaScript(`({
       path:location.pathname, removals:fixtureUnsentCount,
       receivedIntact:Object.values(fixtureInboxMessages).flat().filter(item=>!item.sent).every(item=>!item.removed)
-    })`, true));
+    })`, true);
+    outcomes.push(outcome); tabEvents.push({ action: 'close', path: outcome.path });
     windows.delete(id); worker.destroy();
   });
   await isolated.protocol.handle('http', () => new Response('', { status: 403 }));
@@ -67,7 +71,7 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
     if (!file) return new Response('', { status: 404 });
     let body = await readFile(file);
     if (page) {
-      const setup = `${inboxFixturePrelude()}<script>
+      const setup = `${inboxFixturePrelude({ rows: conversations })}<script>
         const inboxLink=document.querySelector('nav a[href="/direct/inbox/"]');
         const messagesLink=document.createElement('a');messagesLink.href='/direct/t/101/';messagesLink.setAttribute('aria-label','Messages');messagesLink.textContent='Messages';
         inboxLink.replaceWith(messagesLink);
@@ -107,7 +111,13 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
       const mode=panel.querySelector('[aria-label="Worker tab opening"]');mode.value='background';mode.dispatchEvent(new Event('change',{bubbles:true}));
       ${button('Start Ghost Mode')}.click();
     })()`);
-    await waitForPageValue(web, `${ROOT}.querySelector('[data-role="action-confirmation"]').open`, 'Ghost discovery and review dialog', 25_000);
+    try {
+      // Twelve rows traverse several inbox windows using production readiness waits.
+      await waitForPageValue(web, `${ROOT}.querySelector('[data-role="action-confirmation"]').open`, 'Ghost discovery and review dialog', 60_000);
+    } catch (error) {
+      const state = await evaluate(`({path:location.pathname,visits:fixtureInboxVisits,panel:${PANEL}.textContent})`);
+      throw new Error(`${error.message} ${JSON.stringify(state)}`);
+    }
     assert.equal(opened.length, 0, 'review must not open execution tabs');
     const point = await evaluate(`(() => {const node=${ROOT}.querySelector('[data-action="confirm-accept"]');node.scrollIntoView({block:'center'});const r=node.getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)};})()`);
     web.focus();
@@ -119,17 +129,25 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
     }
     const job = store.get('instaToolboxGhostJobV1');
     assert.equal(job?.status, 'completed', JSON.stringify(job));
-    assert.equal(windows.size, 1); assert.equal(peakWorkers, 2);
-    assert.deepEqual([...opened].sort(), ['/direct/t/101/', '/direct/t/202/', '/direct/t/303/']);
+    assert.equal(windows.size, 1); assert.equal(peakWorkers, 10);
+    assert.equal(job.scheduling, 'batches'); assert.equal(job.workerCount, 10);
+    const approvedPaths = job.tasks.map(item => `/direct/t/${item.threadId}/`);
+    assert.deepEqual(opened, approvedPaths);
+    assert.deepEqual([...opened].sort(), conversations.map(item => `/direct/t/${item.id}/`).sort());
+    assert.deepEqual(tabEvents.slice(0, 10), approvedPaths.slice(0, 10).map(path => ({ action: 'open', path })));
+    assert.ok(tabEvents.slice(10, 20).every(item => item.action === 'close'), 'all first-batch windows close before the next batch opens');
+    assert.deepEqual(new Set(tabEvents.slice(10, 20).map(item => item.path)), new Set(opened.slice(0, 10)));
+    assert.deepEqual(tabEvents.slice(20, 22), approvedPaths.slice(10).map(path => ({ action: 'open', path })));
+    assert.ok(tabEvents.slice(22).every(item => item.action === 'close'));
     assert.ok(job.tasks.every(task => task.status === 'completed' && task.messageRemovals === 1));
     assert.equal(job.pendingMutation, null);
-    assert.equal(outcomes.length, 3); assert.ok(outcomes.every(item => item.removals === 1 && item.receivedIntact));
+    assert.equal(outcomes.length, 12); assert.ok(outcomes.every(item => item.removals === 1 && item.receivedIntact));
     assert.deepEqual(problems, []);
     const directory = path.join(resultsRoot, 'userscript-ghost-workers'); await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, 'result.json'), JSON.stringify({ version: releaseVersion, fixtureOnly: true,
-      transport: 'fixture GM API shim; real renderer windows and Web Locks', peakWorkers, opened, outcomes,
+      transport: 'fixture GM API shim; real renderer windows and Web Locks', peakWorkers, opened, tabEvents, outcomes,
       tasks: job.tasks.map(({ threadId, status, messageRemovals }) => ({ threadId, status, messageRemovals })) }, null, 2));
-    console.log('Accepted generated userscript Ghost: 3 conversations, 2 reusable worker windows, delayed mounts, real Web Locks, verified removals, received messages preserved.');
+    console.log('Accepted generated userscript Ghost: 12 conversations in ten-then-two tab batches, closed-group boundaries, delayed mounts, real Web Locks, verified removals, received messages preserved.');
   } finally {
     for (const window of windows.values()) if (!window.isDestroyed()) window.destroy();
     ipcMain.removeListener('fixture-ghost:get', get); ipcMain.removeListener('fixture-ghost:set', set);

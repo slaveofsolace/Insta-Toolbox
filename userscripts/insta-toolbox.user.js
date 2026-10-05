@@ -255,7 +255,7 @@ ${selector('dark')} { --insta-toolbox-bg:#101114; --insta-toolbox-bg-raised:#1e2
       showSummary: boolean(source, 'showSummary', true),
       execution: choice(source.execution, ['foreground', 'background'], 'foreground'),
       workerCount: Number.isSafeInteger(Number(source.workerCount))
-        && Number(source.workerCount) >= 1 && Number(source.workerCount) <= 5
+        && Number(source.workerCount) >= 1 && Number(source.workerCount) <= 10
         ? Number(source.workerCount) : 1,
       scheduling: 'serial',
       notifications: boolean(source, 'notifications', false),
@@ -7729,7 +7729,7 @@ localModules["extension/inbox-userscript-workers.js"] = (() => {
 const JOB_KEY = 'instaToolboxGhostJobV1';
 const VERSION = 1;
 const MAX_THREADS = 1_000;
-const MAX_WORKERS = 5;
+const MAX_WORKERS = 10;
 const MAX_TTL_MS = 12 * 60 * 60_000;
 const HEARTBEAT_MS = 3_000;
 const STALE_MS = 90_000;
@@ -7747,6 +7747,7 @@ function createUserscriptGhostReview({
   accountId,
   threadIds,
   workerCount = 2,
+  scheduling = 'rolling',
   openInBackground = true,
   scope = 'all',
   limit = null,
@@ -7760,6 +7761,7 @@ function createUserscriptGhostReview({
   if (!Number.isInteger(workerCount) || workerCount < 1 || workerCount > MAX_WORKERS) {
     fail('ghost-worker-count-invalid');
   }
+  if (!['rolling', 'batches'].includes(scheduling)) fail('ghost-scheduling-invalid');
   const expiry = Math.min(Number(expiresAt) || (now + MAX_TTL_MS), now + MAX_TTL_MS);
   if (!Number.isFinite(expiry) || expiry <= now) fail('ghost-review-expired');
   const review = Object.freeze({
@@ -7767,6 +7769,7 @@ function createUserscriptGhostReview({
     accountId,
     threadIds: Object.freeze(unique),
     workerCount: Math.min(workerCount, unique.length),
+    scheduling,
     openInBackground: openInBackground !== false,
     scope,
     limit: scope === 'all' ? null : limit,
@@ -7849,6 +7852,7 @@ function createUserscriptGhostBridge({
     const coordinatorId = randomId();
     const listeners = new Set();
     const handles = new Map();
+    const closing = new Map();
     let storageListener = null;
     let heartbeat = null;
     let current = null;
@@ -7861,6 +7865,16 @@ function createUserscriptGhostBridge({
     let resolveFinished = null;
     const finished = new Promise(resolve => { resolveFinished = resolve; });
     const snapshot = () => current ? clone(current) : null;
+    const closeOwned = threadId => {
+      if (closing.has(threadId)) return closing.get(threadId);
+      const handle = handles.get(threadId);
+      if (!handle) return Promise.resolve();
+      const pending = Promise.resolve().then(() => handle.close()).then(() => {
+        if (handles.get(threadId) === handle) handles.delete(threadId);
+      }).finally(() => closing.delete(threadId));
+      closing.set(threadId, pending);
+      return pending;
+    };
     const publish = (job) => {
       current = job ? clone(job) : null;
       const value = snapshot();
@@ -7888,9 +7902,9 @@ function createUserscriptGhostBridge({
         releaseActivityLock?.();
         releaseActivityLock = null;
         await Promise.resolve(activityLockPromise).catch(() => {});
-        for (const [threadId, handle] of handles) {
+        for (const [threadId] of handles) {
           if (current?.pendingMutation?.threadId === threadId) continue;
-          try { await handle?.close?.(); } catch {}
+          try { await closeOwned(threadId); } catch {}
         }
         handles.clear();
         resolveFinished(snapshot());
@@ -7899,16 +7913,33 @@ function createUserscriptGhostBridge({
       return finishing;
     };
     const closeSettled = async saved => {
+      if (saved?.jobId !== current?.jobId || finishing) return;
+      if (saved?.scheduling === 'batches') {
+        const batchFor = task => Math.floor(task.index / saved.workerCount);
+        const ownedBatches = new Set(saved.tasks.filter(task => handles.has(task.threadId)).map(batchFor));
+        for (const batch of ownedBatches) {
+          const group = saved.tasks.filter(task => batchFor(task) === batch);
+          if (!group.every(task => TERMINAL.has(task.status))
+            || group.some(task => task.threadId === saved.pendingMutation?.threadId)) continue;
+          for (const task of group) {
+            const handle = handles.get(task.threadId);
+            if (!handle) continue;
+            try { await closeOwned(task.threadId); }
+            catch { fail('worker-tab-close-failed'); }
+          }
+        }
+        return;
+      }
       if (saved?.jobId === current?.jobId) for (const [threadId, handle] of handles) {
         const task = saved.tasks.find(item => item.threadId === threadId);
         if (task && TERMINAL.has(task.status) && saved.pendingMutation?.threadId !== threadId) {
-          try { await handle?.close?.(); } catch {}
+          try { await closeOwned(threadId); } catch {}
           handles.delete(threadId);
         }
       }
     };
     const runTick = async () => {
-      // Reuse a bounded tab pool, not one tab per conversation until the end.
+      // Close a settled batch before opening any conversation in the next one.
       await closeSettled(await read());
       const launches = [];
       const retired = [];
@@ -7945,8 +7976,14 @@ function createUserscriptGhostBridge({
           value.status = 'paused'; value.reason = 'worker-lost';
           return value;
         }
+        const firstRemaining = value.tasks.find(task => !TERMINAL.has(task.status)
+          || task.threadId === value.pendingMutation?.threadId);
+        const batchIndex = firstRemaining ? Math.floor(firstRemaining.index / value.workerCount) : null;
+        const batchTasks = value.scheduling === 'batches'
+          ? value.tasks.filter(task => Math.floor(task.index / value.workerCount) === batchIndex)
+          : value.tasks;
         const active = value.tasks.filter(task => ['opening', 'running'].includes(task.status)).length;
-        for (const task of value.tasks.filter(task => task.status === 'pending'
+        for (const task of batchTasks.filter(task => task.status === 'pending'
           && (!task.retryAt || task.retryAt <= now())).slice(0, value.workerCount - active)) {
           task.status = 'opening';
           task.launchId = randomId();
@@ -7955,14 +7992,15 @@ function createUserscriptGhostBridge({
           task.reason = null;
           launches.push({ threadId: task.threadId, launchId: task.launchId });
         }
-        if (value.tasks.every(task => TERMINAL.has(task.status))) {
+        if (value.tasks.every(task => TERMINAL.has(task.status)) && !value.pendingMutation) {
           value.status = value.tasks.every(task => task.status === 'completed') ? 'completed' : 'partial';
         }
         value.updatedAt = now();
         return value;
       });
       for (const threadId of retired) {
-        try { await handles.get(threadId)?.close?.(); } catch {}
+        try { await closeOwned(threadId); }
+        catch { fail('worker-tab-close-failed'); }
         handles.delete(threadId);
       }
       await closeSettled(job);
@@ -7976,7 +8014,7 @@ function createUserscriptGhostBridge({
           if (!handle) throw new Error('tab-open-failed');
           handles.set(launch.threadId, handle);
           if (current?.status !== 'running') {
-            await handle?.close?.(); handles.delete(launch.threadId);
+            await closeOwned(launch.threadId);
           }
         } catch {
           const failed = await update((value) => {
@@ -8016,6 +8054,7 @@ function createUserscriptGhostBridge({
         current = {
           version: VERSION, jobId, coordinatorId, accountId: review.accountId,
           status: 'running', reason: null, workerCount: review.workerCount,
+          scheduling: review.scheduling,
           openInBackground: review.openInBackground,
           scope: review.scope, limit: review.limit,
           expiresAt: review.expiresAt, reviewedAt: review.reviewedAt,
@@ -8055,9 +8094,15 @@ function createUserscriptGhostBridge({
             if (!validJob(value) || value.jobId !== current?.jobId) return;
             publish(value);
           });
-          heartbeat = setIntervalFn(() => { void tick().catch(error => {
-            current.status = 'paused'; current.reason = error?.message || 'ghost-storage-failed';
-            publish(current);
+          heartbeat = setIntervalFn(() => { void tick().catch(async error => {
+            const reason = error?.message || 'ghost-storage-failed';
+            const paused = await update(value => {
+              if (!validJob(value) || value.jobId !== current?.jobId) return null;
+              value.status = 'paused'; value.reason = reason; value.updatedAt = now();
+              return value;
+            }).catch(() => null);
+            if (paused?.jobId === current?.jobId) publish(paused);
+            else publish({ ...current, status: 'paused', reason });
           }); }, HEARTBEAT_MS);
           await tick();
           return finished;
@@ -8275,7 +8320,7 @@ function mountUserscriptInboxPanel({
   runner = globalThis.InstaToolboxDmThreadUnsender,
   confirmAction, cancelConfirmation = () => {}, save, load = async () => null,
   workerTransport = null,
-  defaultWorkerCount = 2,
+  defaultWorkerCount = 10,
   openWorkersInBackground = true,
   discoveryTiming = {},
   messageOptions = () => ({ scope: 'all', limit: null }),
@@ -8307,18 +8352,18 @@ function mountUserscriptInboxPanel({
   const acknowledgment = create('label', null, 'inbox-choice');
   const acknowledged = create('input'); acknowledged.type = 'checkbox';
   acknowledgment.append(acknowledged, document.createTextNode(' Opening conversations may mark them read.'));
-  const note = create('p', 'Find your conversations, then unsend your messages after one confirmation. Opening chats may mark them read.', 'lead');
+  const note = create('p', 'Clean up your inbox in batches of ten tabs. Opening chats may mark them read.', 'lead');
   const advanced = create('details', null, 'settings-inline');
   advanced.append(create('summary', 'Choose conversations and tabs'));
-  const workersLabel = create('label', 'Worker tabs', 'field');
+  const workersLabel = create('label', 'Selected cleanup batch size', 'field');
   const workers = create('select');
   workers.setAttribute('aria-label', 'Managed worker tabs');
-  for (let value = 1; value <= 5; value += 1) {
+  for (let value = 1; value <= 10; value += 1) {
     const option = create('option', `${value}`); option.value = String(value); workers.append(option);
   }
   workers.value = String(Number.isInteger(Number(defaultWorkerCount))
-    && Number(defaultWorkerCount) >= 1 && Number(defaultWorkerCount) <= 5
-    ? Number(defaultWorkerCount) : 2);
+    && Number(defaultWorkerCount) >= 1 && Number(defaultWorkerCount) <= 10
+    ? Number(defaultWorkerCount) : 10);
   workersLabel.append(workers);
   const workerModeLabel = create('label', 'Open worker tabs', 'field');
   const workerMode = create('select');
@@ -8329,7 +8374,7 @@ function mountUserscriptInboxPanel({
   workerMode.value = openWorkersInBackground === false ? 'foreground' : 'background';
   workerModeLabel.append(workerMode);
   const workerNote = create('p', workerTransport
-    ? 'Worker tabs prepare conversations together. Removals run one conversation at a time.'
+    ? 'Each batch finishes and closes before the next opens. Unsend clicks share the account pacing.'
     : 'Multiple worker tabs are unavailable in this userscript manager.', 'lead');
   workers.disabled = !workerTransport; workerMode.disabled = !workerTransport;
   const inbox = create('a', 'Open inbox', 'button quiet');
@@ -8483,6 +8528,7 @@ function mountUserscriptInboxPanel({
       'ghost-coordinator-lost': 'The Ghost mode manager closed. No new removal will begin.',
       'worker-lost': 'A worker tab stopped responding. Review the conversation before continuing.',
       'tab-open-failed': 'A worker tab could not be opened. Check the userscript pop-up permission.',
+      'worker-tab-close-failed': 'A finished worker tab could not close. Cleanup paused before opening the next batch.',
       'removal-not-proven': 'Instagram did not confirm the last removal. Review the conversation before continuing.',
       'approval-expired': 'This cleanup approval expired. Review the conversations again.',
       cancelled: 'Stopped.', 'end-unverified': '', 'repeated-window-unverified': '',
@@ -8491,6 +8537,14 @@ function mountUserscriptInboxPanel({
   }
   function renderCheckpoint(value) {
     checkpoint = structuredClone(value);
+    if (value.scheduling === 'batches' && value.tasks?.length) {
+      const batchCount = Math.ceil(value.tasks.length / value.workerCount);
+      const remaining = value.tasks.find(task => !['completed', 'partial', 'skipped', 'failed', 'uncertain', 'stopped'].includes(task.status));
+      inventoryStatus.textContent = value.status === 'running' && remaining
+        ? `Batch ${Math.floor(remaining.index / value.workerCount) + 1} of ${batchCount} · ${value.tasks.filter(task => task.status === 'completed').length} conversations finished`
+        : `${value.tasks.filter(task => task.status === 'completed').length} of ${value.tasks.length} conversations finished · ${value.status}`;
+      inventoryStatus.hidden = false;
+    }
     results.hidden = !value.tasks?.length;
     results.replaceChildren(...(value.tasks || []).map(task => {
       const count = Number(task.messageRemovals) || 0;
@@ -8559,7 +8613,7 @@ function mountUserscriptInboxPanel({
     if (!ids.length) { announce('No conversations found. Nothing was removed.'); return; }
     for (const id of ids) { selected.add(id); if (rows.has(id)) rows.get(id).input.checked = true; }
     updateControls();
-    await startReview(ids);
+    await startReview(ids, { workerCount: 10 });
   });
   selectAll.addEventListener('click', () => {
     if (active) return;
@@ -8569,7 +8623,7 @@ function mountUserscriptInboxPanel({
     }
     updateControls();
   });
-  async function startReview(threadIds) {
+  async function startReview(threadIds, { workerCount = Number(workers.value) } = {}) {
     if (active || loading || loadFailed || busy() || !threadIds.length
       || (needsReconciliation && !reconciled.checked)) return;
     const epoch = ++operationEpoch;
@@ -8584,7 +8638,8 @@ function mountUserscriptInboxPanel({
           accountId: account.accountId,
           threadIds: captured.threadIds,
           scope: captured.scope, limit: captured.limit,
-          workerCount: Number(workers.value),
+          workerCount,
+          scheduling: 'batches',
           openInBackground: workerMode.value === 'background',
           expiresAt: Date.now() + 12 * 60 * 60_000,
         });
@@ -8593,7 +8648,7 @@ function mountUserscriptInboxPanel({
           title: `Clean up ${plan.threadIds.length} conversation${plan.threadIds.length === 1 ? '' : 's'}?`,
           message: plan.scope === 'all' ? 'Permanently unsend your messages in the selected conversations.'
             : `Permanently unsend the ${plan.scope} ${plan.limit} message${plan.limit === 1 ? '' : 's'} you sent in each selected conversation?`,
-          detail: 'Keep the inbox tab and worker tabs open. Worker tabs prepare conversations in parallel; removals stay account-paced and stop together.',
+          detail: `Keep the inbox tab open. Up to ${plan.workerCount} conversation tabs open together, finish, and close before the next batch. Unsend clicks share the account pacing.`,
           confirmLabel: 'Start Ghost mode',
           facts: [{ label: 'Account', value: account.accountLabel ? `@${account.accountLabel}` : 'Current signed-in account' },
             { label: 'Conversations', value: String(plan.threadIds.length) },
@@ -12254,7 +12309,7 @@ globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension
         <label><input type="checkbox" data-cleanup-preference="showSummary"> Show completed run details</label></details>
         <details class="settings-inline settings-section"><summary>Execution</summary>
         <div class="field"><label for="insta-toolbox-execution-mode">Worker tabs</label><select id="insta-toolbox-execution-mode" data-cleanup-preference="execution"><option value="foreground">Keep in front</option><option value="background">Open in background</option></select><p class="setting-note">Tabs must stay open and loaded. Sleep, tab discard, or closing Chrome pauses the job.</p></div>
-        <div class="field"><label for="insta-toolbox-workers">Tabs to prepare</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select><p class="setting-note">Ghost mode prepares tabs together, then removes messages one conversation at a time.</p></div>
+        <div class="field"><label for="insta-toolbox-workers">Selected cleanup batch size</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount">${Array.from({ length: 10 }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join('')}</select><p class="setting-note">Start Ghost Mode uses ten tabs. Selected cleanups use this size. Each batch closes before the next opens.</p></div>
         <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="notifications" disabled> Completion notifications</label><p class="setting-note">Not available yet</p></div></details>
         <details class="settings-inline settings-section"><summary>Data and troubleshooting</summary><p class="setting-note" data-role="settings-version"></p><p class="setting-note" data-role="storage-usage"></p>
         <div class="toolbar"><button class="button quiet" type="button" data-action="backup-local">Export local data</button><button class="button quiet" type="button" data-action="export-diagnostics">Export diagnostics</button></div>
