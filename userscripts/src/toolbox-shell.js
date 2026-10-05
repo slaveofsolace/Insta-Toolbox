@@ -208,6 +208,8 @@
       capabilityDigest: accountCapabilityDigest(action, approvedTargets),
       capabilityExpiresAt,
       capabilityId,
+      growthCampaignId: safeText(value.growthCampaignId),
+      growthAccount: normalizeUsername(value.growthAccount),
       nextAt: Number(value.nextAt) > Date.now() ? Number(value.nextAt) : null,
       results: (Array.isArray(value.results) ? value.results : []).slice(0, 40).map((item) => ({
         label: safeText(item?.label),
@@ -745,7 +747,8 @@
       .metric span, .metric strong { display: block; }
       .metric span { color: var(--insta-toolbox-text-muted, #687068); font-size: 11px; }
       .metric strong { margin-top: 2px; font-size: 21px; }
-      .field { display: grid; gap: 8px; margin: 16px 0; }
+      .field { display: grid; grid-template-columns: minmax(0,1fr); min-width: 0; gap: 8px; margin: 16px 0; }
+      .field > input:not([type="checkbox"]), .field > select { width: 100%; min-width: 0; max-width: 100%; }
       .field label { color: var(--insta-toolbox-text-muted, #687068); font-size: 12px; }
       select, input[type="range"] { width: 100%; }
       select { min-height: 44px; border: 1px solid var(--insta-toolbox-line, #cfd5cc); border-radius: 8px; padding: 8px; background: var(--insta-toolbox-bg, #fff); color: var(--insta-toolbox-text, #1b211c); }
@@ -869,7 +872,7 @@
       .settings-section .field label { min-height:0; line-height:20px; }
       .settings-section select, .settings-section input:not([type="checkbox"]), .settings-section button { min-height:44px; box-sizing:border-box; }
       .settings-section select, .settings-section input { max-width:100%; }
-      .settings-section > label, .setting-option > label { display:flex; align-items:center; gap:8px; min-height:44px; font-size:13px; }
+      .settings-section > label, .setting-option > label { display:flex; align-items:center; gap:8px; min-height:44px; font-size:13px; color:var(--insta-toolbox-text); -webkit-text-fill-color:currentColor; }
       .setting-option { display:grid; gap:4px; }
       .settings-section .settings-inline { margin:0; padding:0; }
       .settings-section.settings-inline { margin:0; padding:0; row-gap:0; }
@@ -881,7 +884,7 @@
       @keyframes insta-toolbox-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .run-bar span, .tab, .button { transition: none; } .panel { animation: none; } }
       @media (forced-colors: active) { .panel,.card,.tool,.metric,.header,.footer,.run-panel,.confirm-dialog,.settings-dialog { background:Canvas; } .panel,.card,.tool,.metric,.confirm-dialog,.settings-dialog { border:2px solid CanvasText; } .tab:focus-visible { outline:2px solid Highlight; outline-offset:-3px; box-shadow:none; } }
-      @media (forced-colors: active) { .settings-inline > summary { color: CanvasText; } }
+      @media (forced-colors: active) { .settings-inline > summary, .settings-section > label, .setting-option > label { color: CanvasText; } }
     </style>
     <button class="launcher" type="button" data-action="open" aria-label="Open Insta Toolbox; drag or use arrow keys to move" aria-expanded="false" title="Drag to move · Click to open">IT</button>
     <aside class="panel" aria-label="Insta Toolbox" hidden>
@@ -914,7 +917,7 @@
         <section id="insta-toolbox-panel-messages" class="view" role="tabpanel" aria-labelledby="insta-toolbox-tab-messages" data-panel="messages" hidden><p class="lead">Remove messages you sent in this conversation.</p><div class="toolbar"><button class="button danger big" type="button" data-action="run-unsend" data-role="unsend-primary">Unsend DMs</button></div>
           <div class="card" data-role="dm-summary" hidden><strong data-role="dm-summary-title"></strong><span data-role="dm-summary-detail"></span></div>
           <div class="setting-option" data-role="unsend-reactions-option" hidden><label><input type="checkbox" data-role="unsend-reactions"> Remove my reactions afterward</label></div>
-          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="toolbar"><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><section class="card" aria-label="Ghost Mode"><div data-role="inbox-cleanup"></div></section></section>
+          <details class="settings-inline"><summary>Message options</summary><div data-role="unsend-plan"><div class="field"><select id="insta-toolbox-unsend-scope" data-role="unsend-scope" aria-label="Messages to unsend"><option value="all">All messages you sent</option><option value="newest">Newest messages</option><option value="oldest">Oldest messages</option></select></div><div class="field" data-role="unsend-count-field"><label for="insta-toolbox-unsend-count">Number of messages</label><input id="insta-toolbox-unsend-count" type="number" min="1" max="250" value="1" data-role="unsend-count"></div></div><div class="field"><label for="insta-toolbox-reaction-limit">Reactions to remove</label><input id="insta-toolbox-reaction-limit" type="number" min="1" max="5000" placeholder="All" data-role="reaction-limit"><small>Leave blank for all your reactions.</small></div><div class="toolbar"><button class="button quiet" type="button" data-action="run-reactions" data-role="reactions-only" hidden>Remove reactions only</button><button class="button quiet" type="button" data-action="scan-sent">Check conversation</button><button class="button quiet" type="button" data-action="read-messages">Read visible thread</button><label class="file quiet">Import reviewed DM job<input type="file" accept=".json,application/json" data-file="dm"></label><button class="button quiet" type="button" data-action="dm-dry-run">Check exact message</button></div></details><div class="card" data-role="dm-result" hidden></div><ul class="list" data-role="message-list" hidden></ul><section class="card" aria-label="Ghost Mode"><div data-role="inbox-cleanup"></div></section></section>
       </div>
       <div class="run-panel" data-role="run-panel" hidden><div class="run-head"><strong data-role="run-title"></strong><button class="button danger" type="button" data-action="stop-run" data-role="stop-run">Stop</button></div><div class="run-bar"><span data-role="run-fill"></span></div><p class="lead" data-role="run-detail"></p><ul class="list" data-role="run-results"></ul></div>
       <footer class="footer"><a href="https://github.com/slaveofsolace" target="_blank" rel="noopener noreferrer">created by @slaveofsolace</a></footer>
@@ -944,7 +947,7 @@
         <label><input type="checkbox" data-cleanup-preference="showSummary"> Show completed run details</label></details>
         <details class="settings-inline settings-section"><summary>Execution</summary>
         <div class="field"><label for="insta-toolbox-execution-mode">Worker tabs</label><select id="insta-toolbox-execution-mode" data-cleanup-preference="execution"><option value="foreground">Keep in front</option><option value="background">Open in background</option></select><p class="setting-note">Tabs must stay open and loaded. Sleep, tab discard, or closing Chrome pauses the job.</p></div>
-        <div class="field"><label for="insta-toolbox-workers">Tabs to prepare</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select><p class="setting-note">Ghost mode prepares tabs together, then removes messages one conversation at a time.</p></div>
+        <div class="field"><label for="insta-toolbox-workers">Selected cleanup batch size</label><select id="insta-toolbox-workers" data-cleanup-preference="workerCount">${Array.from({ length: 10 }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join('')}</select><p class="setting-note">Start Ghost Mode uses ten tabs. Selected cleanups use this size. Each batch closes before the next opens.</p></div>
         <div class="setting-option"><label><input type="checkbox" data-cleanup-preference="notifications" disabled> Completion notifications</label><p class="setting-note">Not available yet</p></div></details>
         <details class="settings-inline settings-section"><summary>Data and troubleshooting</summary><p class="setting-note" data-role="settings-version"></p><p class="setting-note" data-role="storage-usage"></p>
         <div class="toolbar"><button class="button quiet" type="button" data-action="backup-local">Export local data</button><button class="button quiet" type="button" data-action="export-diagnostics">Export diagnostics</button></div>
@@ -1137,6 +1140,7 @@
     const effective = cleanupSettings.effective(cleanupPreferences, 'userscript');
     const reactionsSupported = cleanupSettings.capabilities('userscript').reactions;
     query('[data-role="unsend-reactions-option"]').hidden = !reactionsSupported;
+    query('[data-role="reactions-only"]').hidden = !reactionsSupported;
     query('[data-role="unsend-reactions"]').disabled = !reactionsSupported;
     query('[data-cleanup-preference="removeOwnReactions"]').disabled = !reactionsSupported;
     query('#insta-toolbox-reactions-note').hidden = reactionsSupported;
@@ -1522,6 +1526,7 @@
   let inboxPanel = null;
   let insightsPanel = null;
   let presencePanel = null;
+  let presenceGrowthPanel = null;
   let presenceSession = null;
   let presenceCapture = null;
 
@@ -1706,6 +1711,53 @@
     renderAll();
   }
 
+  function growthCampaignKey(account) {
+    const owner = normalizeUsername(account);
+    if (!owner) throw new Error('growth-account-unverified');
+    return `instaToolboxPresenceGrowthV1:${owner}`;
+  }
+
+  function readGrowthCampaigns(account) {
+    if (!normalizeUsername(account)) return [];
+    const saved = GM_getValue(growthCampaignKey(account), []);
+    return Array.isArray(saved) ? saved.slice(-100) : [];
+  }
+
+  function writeGrowthCampaigns(account, campaigns) {
+    if (!Array.isArray(campaigns) || campaigns.some((campaign) => campaign?.account !== account)) {
+      throw new Error('growth-account-mismatch');
+    }
+    GM_setValue(growthCampaignKey(account), campaigns.slice(-100));
+  }
+
+  function recordVerifiedGrowthAction(run, username) {
+    if (!run?.growthCampaignId) return;
+    const owner = normalizeUsername(engine.detectAuthenticatedUsername?.());
+    if (!owner || owner !== run.growthAccount) throw new Error('growth-account-changed');
+    const campaigns = readGrowthCampaigns(owner);
+    const index = campaigns.findIndex((campaign) => campaign.id === run.growthCampaignId);
+    if (index < 0 || campaigns[index].account !== owner) throw new Error('growth-campaign-missing');
+    const updated = globalThis.InstaToolboxPresenceGrowth.recordGrowthOutcome(campaigns[index], {
+      action: run.action, username, verifiedAt: Date.now(),
+    });
+    if (updated === campaigns[index]) throw new Error('growth-target-not-recorded');
+    campaigns[index] = updated;
+    writeGrowthCampaigns(owner, campaigns);
+  }
+
+  function growthRunStillApproved(run) {
+    if (!run.growthCampaignId) return true;
+    const campaign = readGrowthCampaigns(run.growthAccount)
+      .find((item) => item?.id === run.growthCampaignId && item.account === run.growthAccount);
+    if (!campaign || !Array.isArray(campaign.targets)
+      || !run.approvedTargets.every((target) => campaign.targets.includes(target))) return false;
+    if (run.action !== 'unfollow') return true;
+    const due = globalThis.InstaToolboxPresenceGrowth.dueGrowthUnfollows(campaign, {
+      account: run.growthAccount, now: Date.now(),
+    });
+    return run.queue.every((target) => due.includes(target));
+  }
+
   async function runOneAccount(username, action) {
     const observation = engine.inspectProfile(username);
     const stop = sessionStop(observation);
@@ -1760,6 +1812,17 @@
       stopForExpiredCapability();
       return;
     }
+    if (run.growthCampaignId
+      && normalizeUsername(engine.detectAuthenticatedUsername?.()) !== run.growthAccount) {
+      setRun({ status: 'stopped', stopReason: 'signed-in account changed', current: '', queue: [] });
+      status('Campaign stopped because the signed-in account could not be verified.');
+      return;
+    }
+    if (run.growthCampaignId && !growthRunStillApproved(run)) {
+      setRun({ status: 'stopped', stopReason: 'campaign targets changed', current: '', queue: [] });
+      status('Campaign targets changed. Review them again before any further action.');
+      return;
+    }
     const username = run.queue[0];
     const onTarget = engine.normalizeUsername(location.pathname) === username;
 
@@ -1776,6 +1839,15 @@
       outcome = await runOneAccount(username, run.action);
     } catch (error) {
       outcome = { status: 'failed', reason: error.message, fatal: false };
+    }
+
+    if (outcome.status === 'completed' && run.growthCampaignId
+      && globalThis.InstaToolboxPresenceGrowth.growthOutcomeVerified(run.action, outcome.reason)) {
+      try { recordVerifiedGrowthAction(run, username); }
+      catch {
+        outcome = { status: 'completed', fatal: true,
+          reason: 'Action verified, but the campaign record could not be saved. Check this profile before continuing.' };
+      }
     }
 
     const current = state.run || {};
@@ -1812,7 +1884,11 @@
     await continueAccountRun();
   }
 
-  async function startAccountRun({ action, usernames }) {
+  async function startAccountRun({ action, usernames, growthCampaignId = '', growthAccount = '' }) {
+    if (growthCampaignId && normalizeUsername(engine.detectAuthenticatedUsername?.()) !== growthAccount) {
+      status('Campaign account changed. No account action started.');
+      return;
+    }
     if (!managerTabStorageAvailable) {
       status('This userscript manager cannot keep a run active while opening profiles. Account batches are unavailable; scans and no-click checks still work.');
       return;
@@ -1840,6 +1916,8 @@
       capabilityDigest: accountCapabilityDigest(action, queue),
       capabilityExpiresAt: Date.now() + RUN_CAPABILITY_MS,
       capabilityId,
+      growthCampaignId,
+      growthAccount,
       results: [],
     });
     await continueAccountRun();
@@ -2534,6 +2612,7 @@
     const active = Boolean(dmCleanupController)
       || ['preparing', 'running', 'waiting', 'stopping'].includes(dmRunnerSnapshot?.status);
     if (summary) {
+      summary.dataset.reactionReason = reactionSnapshot?.reason || '';
       const finished = dmRunnerSnapshot?.status === 'completed';
       const needsAttention = dmRunnerSnapshot?.status === 'needs-attention';
       const failed = dmRunnerSnapshot?.status === 'error';
@@ -2592,6 +2671,79 @@
     return outcome;
   }
 
+  function reactionRemovalLimit() {
+    const value = query('[data-role="reaction-limit"]')?.value.trim();
+    if (!value) return null;
+    const limit = Number(value);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) throw new Error('Choose a whole reaction count from 1 to 5,000, or leave it blank for all.');
+    return limit;
+  }
+
+  async function performReactionCleanup(plan, controller) {
+    let recordedReactions = 0;
+    return reactionCleanup.start({ plan, signal: controller.signal,
+      onVerifiedRemoval: async ({ removed }) => {
+        const increment = Math.max(0, removed - recordedReactions);
+        if (!increment) return;
+        const ledger = state.ledger?.day === today()
+          ? state.ledger : { day: today(), actions: 0, unsends: 0 };
+        ledger.reactions = Number(ledger.reactions || 0) + increment;
+        state.ledger = ledger;
+        recordedReactions = removed;
+        await saveState();
+      },
+    });
+  }
+
+  async function runReactionsOnly() {
+    if (inboxPanel?.busy() || (typeof presencePanel !== 'undefined' && presencePanel?.busy())) {
+      status('Stop the current run before removing reactions.'); return;
+    }
+    if (stopDmCleanup() || confirmationController?.isPending()) return;
+    if (dmRunner?.snapshot().canStop) { status('Stop DM Unsend first.'); return; }
+    if (!cleanupSettings.capabilities('userscript').reactions || !reactionCleanup) {
+      throw new Error('Reaction cleanup is not available in this installation.');
+    }
+    const viewer = globalThis.InstaToolboxInstagramViewer?.inspect();
+    if (!viewer?.accountVerified || !viewer.usable || !viewer.threadId || viewer.restriction) {
+      throw new Error('Open a conversation and close any Instagram popup first.');
+    }
+    const plan = globalThis.InstaToolboxOwnReactions.createPlan({
+      threadId: viewer.threadId, accountUsername: viewer.accountId,
+      expiresAt: Date.now() + DM_PLAN_CAPABILITY_MS, limit: reactionRemovalLimit(),
+    });
+    if (!plan) throw new Error('Reaction cleanup could not be prepared.');
+    const confirmation = await confirmRun({
+      title: 'Remove your reactions?',
+      message: `Remove ${plan.limit === null ? 'all your reactions' : `up to ${plan.limit} of your reactions`} in this conversation?`,
+      detail: 'Messages stay unchanged. Stop stays available.',
+      confirmLabel: 'Remove reactions',
+      facts: [{ label: 'Conversation', value: `Thread ${plan.threadId}` },
+        { label: 'Account', value: `@${plan.accountUsername}` }],
+      binding: { kind: 'reactions-only', threadId: plan.threadId, accountUsername: plan.accountUsername,
+        limit: plan.limit, expiresAt: plan.expiresAt },
+    });
+    if (!confirmation) { status('Canceled. Nothing was changed.'); return; }
+    const current = globalThis.InstaToolboxInstagramViewer?.inspect();
+    if (!current?.accountVerified || !current.usable || current.restriction
+      || current.accountId !== plan.accountUsername || current.threadId !== plan.threadId
+      || plan.expiresAt <= Date.now() || reactionRemovalLimit() !== plan.limit
+      || confirmation.kind !== 'reactions-only' || confirmation.threadId !== plan.threadId
+      || confirmation.accountUsername !== plan.accountUsername || confirmation.limit !== plan.limit
+      || confirmation.expiresAt !== plan.expiresAt) {
+      status('The conversation or reaction selection changed. Nothing was removed.'); return;
+    }
+    const controller = new AbortController();
+    dmCleanupController = controller;
+    reactionSnapshot = null;
+    renderDmSummary();
+    try { await performReactionCleanup(plan, controller); }
+    finally {
+      if (dmCleanupController === controller) dmCleanupController = null;
+      renderDmSummary();
+    }
+  }
+
   async function runDmUnsend() {
     if (inboxPanel?.busy()) { inboxPanel.stop(); return; }
     if (typeof presencePanel !== 'undefined' && presencePanel?.busy()) {
@@ -2630,6 +2782,7 @@
     if (!plan) throw new Error('The Unsend plan could not be created. Keep this conversation open and try again.');
     const reactionPlan = removeReactions ? globalThis.InstaToolboxOwnReactions.createPlan({
       threadId: plan.threadId, accountUsername: viewer.accountId, expiresAt: plan.expiresAt,
+      limit: reactionRemovalLimit(),
     }) : null;
     if (removeReactions && !reactionPlan) throw new Error('Reaction cleanup could not be prepared.');
     const scopeLabel = scope === 'all'
@@ -2639,7 +2792,7 @@
       title: 'Unsend DMs?',
       message: `Permanently unsend ${scopeLabel} in this conversation?`,
       detail: removeReactions
-        ? 'Then remove your reactions from messages left in this conversation. This cannot be undone. Stop stays available.'
+        ? `Then remove ${reactionPlan.limit === null ? 'your reactions' : `up to ${reactionPlan.limit} of your reactions`} from messages left in this conversation. This cannot be undone. Stop stays available.`
         : 'This cannot be undone. Stop stays available while it runs.',
       confirmLabel: scope === 'all' ? 'Unsend all my messages' : `Unsend ${limit} message${limit === 1 ? '' : 's'}`,
       facts: [
@@ -2657,6 +2810,7 @@
         scope: plan.scope,
         threadId: plan.threadId,
         removeReactions,
+        reactionLimit: reactionPlan?.limit ?? null,
         reactionAccount: viewer?.accountId || null,
       },
     });
@@ -2684,6 +2838,8 @@
       || confirmedScope !== plan.scope
       || confirmedLimit !== plan.limit
       || confirmation.removeReactions !== removeReactions
+      || (removeReactions && (confirmation.reactionLimit !== reactionPlan.limit
+        || reactionRemovalLimit() !== reactionPlan.limit))
       || (cleanupSettings.capabilities('userscript').reactions
         && query('[data-role="unsend-reactions"]')?.checked === true) !== removeReactions
       || (removeReactions && (confirmation.reactionAccount !== viewer.accountId
@@ -2716,19 +2872,7 @@
       });
       finalizeUnsendOutcome(plan, outcome);
       if (reactionPlan && outcome.status === 'completed' && !controller.signal.aborted) {
-        let recordedReactions = 0;
-        await reactionCleanup.start({ plan: reactionPlan, signal: controller.signal,
-          onVerifiedRemoval: async ({ removed }) => {
-            const increment = Math.max(0, removed - recordedReactions);
-            if (!increment) return;
-            const ledger = state.ledger?.day === today()
-              ? state.ledger : { day: today(), actions: 0, unsends: 0 };
-            ledger.reactions = Number(ledger.reactions || 0) + increment;
-            state.ledger = ledger;
-            recordedReactions = removed;
-            await saveState();
-          },
-        });
+        await performReactionCleanup(reactionPlan, controller);
       }
     } finally {
       activeUnsendCapability = null;
@@ -2948,6 +3092,7 @@
       await startAccountRun({ action: approved.action, usernames: approved.items.map((item) => item.username) });
     },
     'run-unsend': () => runDmUnsend(),
+    'run-reactions': () => runReactionsOnly(),
     'save-limits': () => {
       state.limits = {
         ...(state.limits || {}),
@@ -3403,6 +3548,7 @@
     inboxPanel?.dispose();
     insightsPanel?.dispose();
     presencePanel?.dispose();
+    presenceGrowthPanel?.dispose();
     presenceSession?.stop();
     invalidatePresence();
     window.removeEventListener('pagehide', stopPresenceSession);
@@ -3446,9 +3592,36 @@
         return GM_setValue(`instaToolboxPresenceActivityLogV1:${account.accountKey}`, value);
       },
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
-        || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()),
+        || relationshipController || state.run?.status === 'running' || inboxPanel?.busy()
+        || presenceGrowthPanel?.busy()),
       onStatus: status,
     });
+    if (globalThis.InstaToolboxPresenceGrowthPanel && globalThis.InstaToolboxPresenceGrowth) {
+      try {
+        presenceGrowthPanel = globalThis.InstaToolboxPresenceGrowthPanel.mount({
+        container: query('[data-role="presence-routine"]'), document,
+        inspectAccount: inspectPresenceAccount,
+        readFollowing: () => state.capture.subjectUsername === inspectPresenceAccount().accountId
+          && state.capture.verified?.following === true ? state.capture.following : [],
+        readFollowers: () => state.capture.subjectUsername === inspectPresenceAccount().accountId
+          && state.capture.verified?.followers === true ? state.capture.followers : [],
+        scanSeed: (username, signal, onProgress) => engine.fetchFollowerComparison({
+          username, signal, onProgress, maxAccounts: 2_000,
+          maxDurationMs: 4 * 60_000, retryRateLimits: false,
+        }),
+        readCampaigns: () => readGrowthCampaigns(inspectPresenceAccount().accountId),
+        writeCampaigns: (campaigns) => writeGrowthCampaigns(inspectPresenceAccount().accountId, campaigns),
+        confirmAction: confirmRun,
+        runBatch: startAccountRun,
+        canRunBatch: () => managerTabStorageAvailable,
+        busy: () => Boolean(presencePanel?.busy() || inboxPanel?.busy()
+          || relationshipController || dmCleanupController || state.run?.status === 'running'),
+        onStatus: status,
+        });
+      } catch {
+        status('Growth campaign controls could not load. Other tools remain available.');
+      }
+    }
     window.addEventListener('pagehide', stopPresenceSession);
     document.addEventListener('freeze', stopPresenceSession);
   }
@@ -3494,6 +3667,11 @@
           openTab: (url, options) => GM_openInTab(url, options),
         } : null,
       defaultWorkerCount: cleanupSettings.effective(cleanupPreferences, 'userscript').workerCount,
+      messageOptions: () => {
+        const scope = query('[data-role="unsend-scope"]')?.value || 'all';
+        return { scope, limit: scope === 'all' ? null
+          : Math.max(1, Math.floor(Number(query('[data-role="unsend-count"]')?.value) || 1)) };
+      },
       openWorkersInBackground: cleanupSettings.effective(cleanupPreferences, 'userscript').execution === 'background',
       busy: () => Boolean(dmCleanupController || dmRunner?.snapshot().canStop
         || relationshipController || state.run?.status === 'running' || presencePanel?.busy()),

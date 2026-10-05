@@ -2,26 +2,49 @@
 
 Presence runs a small, reviewed Instagram session from the userscript.
 
-## Development status
+## Activities
 
-The 4.1.4 candidate exposes five choices:
+The current userscript exposes five activities:
 
 - View stories
 - React to stories
 - Like posts
-- Follow people
+- Follow on Explore
 - Accept incoming requests
 
 Choose the allowed activities and either run one session of 1 to 50 actions or
 select **Live like me** for a reviewed 30-minute to 12-hour window. Live runs
-remain finite, stop after at most 500 verified actions, and insert the selected
-rest period after each bounded burst. One confirmation names the signed-in
+continue until that window ends or Stop. Scheduled breaks are optional and off
+by default. One confirmation names the signed-in
 account and exact choices. Pause, Resume, and Stop remain available while the
 session runs.
 
-This is a userscript-first development build. Deterministic browser fixtures
-pass, but current authenticated Instagram compatibility still requires
-disposable-target acceptance before release.
+Tampermonkey is the primary surface. Deterministic browser fixtures are separate
+from current authenticated Instagram compatibility; see the
+[4.3.0 acceptance record](../acceptance/4.3.0.md).
+
+## Grow through mutuals
+
+Presence includes a separate reviewed growth campaign:
+
+1. Check your own Following list in Mutual Checker, then enter up to three of
+   those accounts as seeds.
+2. Presence reads each seed's Followers and Following. A candidate appears only
+   when both lists positively show a two-way connection with that seed. More
+   independently observed seed connections rank higher. Existing follows,
+   known followers, the selected seeds, and your own account are excluded.
+3. Select up to 25 exact candidates. One confirmation starts the existing
+   Follow batch, which rechecks each profile and records only verified follows.
+4. Choose seven to fourteen days. When the time arrives, the verified follows
+   appear as due. Reopen Instagram and confirm that exact Unfollow batch; each
+   relationship is checked again before the action.
+
+Instagram may return partial lists. Missing records are unknown; they cannot
+establish a candidate connection. The campaign stores usernames and verified
+action times locally, not message bodies or credentials. It cannot run while
+the browser is closed, and it does not silently restore action authority weeks
+later. Automatic unattended unfollow is **not implemented**. The campaign is
+fixture-tested, not a proven growth strategy or an authenticated acceptance claim.
 
 ## Runtime behavior
 
@@ -48,8 +71,9 @@ skipped or stops the session; it is never guessed.
 
 The selected activities, mode, and finite run choices are stored under
 `instaToolboxPresenceSessionV1`. The confirmation and action authority are kept
-only in the current runtime, are bound to the verified account and exact choice
-set, and expire within 15 minutes. Reloading does not restore action authority.
+only in the current runtime and are bound to the verified account and choices.
+Sessions expire within 15 minutes; Live like me expires at the reviewed window,
+at most 12 hours. Reloading does not restore action authority.
 
 Saved comparisons, imported files, old Presence preferences, screenshots, and
 page messages cannot authorize a session. Verified results are copied into a
@@ -65,6 +89,8 @@ The log stores no message bodies, cookies, session data, or reusable authority.
 | `extension/presence-native-actions.js` | Exact visible-DOM candidates and postconditions for the five activities. |
 | `extension/presence-session-panel.js` | Compact choices, confirmation, progress, and controls. |
 | `extension/presence-activity-log.js` | Bounded sanitized activity history and the separate read-only log window. |
+| `extension/presence-growth.js` | Positive-evidence candidate ranking and verified follow/unfollow schedule. |
+| `extension/presence-growth-panel.js` | Seed selection, candidate review, and due-unfollow review. |
 | `userscripts/src/toolbox-shell.js` | Userscript integration and overlap prevention with other tools. |
 | `tests/presence-session.test.js` | Controller, authority, interruption, and restriction coverage. |
 | `scripts/lib/userscript-presence-acceptance.mjs` | Generated-userscript interaction and responsive browser acceptance. |
@@ -88,16 +114,15 @@ before the first click, all five activity paths, native navigation, local-log
 sanitization and recovery, separate-window rendering, cancellation, narrow and
 short layouts, light and dark themes, and true 200% zoom.
 
-See [Production integration](PRODUCTION_INTEGRATION.md) for the exact acceptance
-boundary and [Continuation brief](CODEX_HANDOFF.md) for the remaining work.
+See [Production integration](PRODUCTION_INTEGRATION.md) and
+[4.3.0 acceptance](../acceptance/4.3.0.md) for verified scope and remaining checks.
 
 ## Release boundary
 
-Fixture success is not authenticated Instagram acceptance. Before release,
-verify each activity against specifically approved disposable targets, connect
-the existing account-level owner shared with Ghost, and prove that account
-changes, restrictions, stale documents, background throttling, and uncertain
-outcomes cannot start another action.
+Fixture success is not authenticated Instagram acceptance. The shared
+account-level owner is implemented and fixture-tested. Current native acceptance
+must separately verify approved disposable targets, account changes, restrictions,
+stale documents, background throttling and uncertain outcomes.
 
 Presence does not promise follower growth, stealth, restriction avoidance, or
 operation after the browser closes or the computer sleeps.

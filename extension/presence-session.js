@@ -19,8 +19,6 @@ const LIVE_REVIEW_TTL_MS = 12 * 60 * 60_000;
 const MAX_ACTIONS = 50;
 const MAX_LIVE_ACTIONS = 500;
 const MIN_ACTIONS = 1;
-const LIVE_STARTUP_SWEEPS = 3;
-const LIVE_STARTUP_RETRY_MS = 2_000;
 const reviews = new WeakSet();
 const consumed = new WeakSet();
 
@@ -176,11 +174,11 @@ export function createPresenceSession({
       const { signal } = controller;
       const results = [];
       const seen = new Set();
-      const empty = new Set();
+      const unavailableUntil = new Map();
+      const emptyAttempts = new Map();
       const runId = `${now()}:${++runSequence}`;
       let resultSequence = 0;
       let cursor = 0;
-      let emptySweeps = 0;
       let verifiedInBurst = 0;
       // Stay on a surface for a short visit instead of bouncing between feed,
       // stories and notifications after every click. Story reactions follow
@@ -214,6 +212,17 @@ export function createPresenceSession({
           context(review.accountId);
           const action = itinerary[cursor % itinerary.length];
           cursor += 1;
+          if ((unavailableUntil.get(action) || 0) > now()) {
+            // An empty activity must not make every other activity wait for
+            // another identical navigation/readiness timeout in this burst.
+            if (review.enabledActions.every(value => (unavailableUntil.get(value) || 0) > now())) {
+              if (review.options.mode !== 'live') break;
+              const next = Math.min(...review.enabledActions.map(value => unavailableUntil.get(value)));
+              publish({ status: 'searching', current: null });
+              await waitWithinReview(next - now());
+            }
+            continue;
+          }
           publish({
             status: 'searching',
             current: { action, id: null, label: PRESENCE_ACTION_LABELS[action] },
@@ -233,28 +242,16 @@ export function createPresenceSession({
           if (signal.aborted || now() >= review.expiresAt) break;
           assertCurrent();
           if (!candidate) {
-            empty.add(action);
-            if (empty.size === review.enabledActions.length) {
-              if (review.options.mode !== 'live') break;
-              empty.clear();
-              emptySweeps += 1;
-              if (emptySweeps < LIVE_STARTUP_SWEEPS) {
-                publish({ status: 'searching', current: null });
-                await waitWithinReview(LIVE_STARTUP_RETRY_MS);
-              } else {
-                publish({ status: 'searching', current: null });
-                await waitWithinReview(Math.min(30_000, 5_000 * (emptySweeps - 2)));
-              }
-              await awaitResume(signal);
-              if (!signal.aborted && now() < review.expiresAt) publish({ status: 'running' });
-            }
+            const misses = (emptyAttempts.get(action) || 0) + 1;
+            emptyAttempts.set(action, misses);
+            unavailableUntil.set(action, now() + Math.min(30_000, 2_000 * 2 ** Math.min(misses - 1, 4)));
             continue;
           }
           if (!text(candidate.id) || candidate.action !== action || seen.has(candidate.id)) {
             fail('presence-target-invalid');
           }
-          empty.delete(action);
-          emptySweeps = 0;
+          unavailableUntil.delete(action);
+          emptyAttempts.delete(action);
           const actionId = `${action}:${candidate.id}`;
           publish({ status: 'running', current: { action, id: candidate.id,
             label: text(candidate.label) || PRESENCE_ACTION_LABELS[action] } });
@@ -272,6 +269,10 @@ export function createPresenceSession({
           }
           seen.add(candidate.id);
           if (outcome?.verified === true) {
+            if (action === 'viewStories') {
+              unavailableUntil.delete('reactStories');
+              emptyAttempts.delete('reactStories');
+            }
             results.unshift({ action, id: candidate.id, label: text(outcome.label) || text(candidate.label),
               status: 'completed', reason: text(outcome.reason), at: now(),
               eventId: `${runId}:${++resultSequence}` });

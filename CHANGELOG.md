@@ -2,6 +2,25 @@
 
 This project uses [Semantic Versioning](https://semver.org/).
 
+## 4.3.0 - 2026-10-05
+
+- Run **Start Ghost Mode** in groups of ten conversation tabs. Finish and close each group before opening the next; a smaller final group runs automatically.
+- Show batch progress and keep selected cleanup sizes configurable from one to ten without changing saved preferences.
+- Pause before opening another group if a managed tab cannot close. Keep retries and unfinished outcomes visible.
+- Review growth candidates from selected accounts' mutuals and track verified follows for a later 7–14 day Unfollow review.
+- Keep narrow Ghost review fields inside the panel, including macOS and 200% zoom.
+- Update installation downloads and all delivery versions together; patch the build-time HTTP cache dependency.
+
+## 4.2.1 - 2026-09-25
+
+- Start inbox discovery at the top and keep the desktop conversation rail in place. Recognize the selected conversation without waiting for an unnecessary route change.
+- Wait for the Home feed to load before Presence looks for posts. Support native reels links and skip temporarily empty activities while other selected activities continue.
+- Apply newest/oldest message choices to each Ghost worker and name the count in its confirmation.
+- Add an optional reaction count under Message options; leave it blank to remove all your reactions.
+- Resolve individual reactions inside mixed-emoji badges instead of waiting for a combined emoji that no participant selected. Preserve exact flag, keycap and skin-tone variants.
+- Wait for the native reaction popup to finish opening before rechecking the account. Add **Remove reactions only** under Message options to retry without unsending another message.
+- Keep cleanup checkbox labels readable after switching between light and dark themes.
+
 ## 4.2.0 - 2026-09-24
 
 - Keep Live like me running continuously for the selected duration. Scheduled breaks are optional and off by default; the hidden 200-action limit is removed. Empty feeds use short, bounded backoff instead of a long rest.

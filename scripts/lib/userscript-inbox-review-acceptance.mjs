@@ -10,10 +10,10 @@ const conversations = [
   { id: '303', title: 'Weekend makers and exceptionally long conversation names', username: null },
 ];
 
-export function inboxFixturePrelude() {
+export function inboxFixturePrelude({ rows = conversations } = {}) {
   return `<script>
     history.replaceState({}, '', '/direct/inbox/');
-    const inboxRows = ${JSON.stringify(conversations)};
+    const inboxRows = ${JSON.stringify(rows)};
     const surface = document.querySelector('main');
     surface.innerHTML = '<section aria-label="Thread list" style="height:310px;overflow:auto"><div role="button" tabindex="0"><h2>fixture.owner</h2></div><div role="tab" aria-selected="true">Primary</div></section>';
     const rail = document.createElement('nav');
@@ -99,6 +99,7 @@ export function inboxFixturePrelude() {
       const preview = document.createElement('span'); preview.textContent = 'Inbox preview ' + item.id;
       row.append(avatar, preview);
       row.addEventListener('click', () => {
+        for (const other of surface.querySelectorAll('[data-fixture-thread]')) other.setAttribute('aria-pressed', String(other === row));
         chat?.remove(); chat = document.createElement('section');
         const header = document.createElement('div'); header.setAttribute('data-pagelet', 'IGDInboxHeaderOffMsys');
         const heading = document.createElement('h2'); heading.textContent = item.title;
@@ -196,7 +197,8 @@ export async function acceptUserscriptInboxReview({
     assert.deepEqual(discovered.rows.map(row => row.title), conversations.map(row => row.title), 'render native headers, not inbox previews');
     assert.match(discovered.rows[0].identity, /@alex\.example/);
     assert.ok(discovered.rows.slice(1).every(row => !row.identity.includes('@')), 'chat names never become inferred usernames');
-    assert.deepEqual(discovered.visits, ['101', '202', '303']); assert.equal(discovered.returns, 3);
+    assert.deepEqual(discovered.visits, ['101', '202', '303']);
+    assert.equal(discovered.returns, 0, 'keep the desktop inbox rail instead of racing return navigation');
     assert.ok(discovered.rows.every(row => !row.selected));
     assert.match(discovered.text, /This may not include your whole inbox/);
     checks.push('native discovery renders exact headers and verified profile links without claiming a complete inbox');
@@ -291,7 +293,7 @@ export async function acceptUserscriptInboxReview({
         `${viewport.label}: worker opening control`);
       assert.ok(metrics.controls.every(control => control.height >= 44 && control.width >= 44), `${viewport.label}: undersized controls ${JSON.stringify(metrics)}`);
       assert.ok(metrics.controls.every(control => control.reachable && control.receivesPointer), `${viewport.label}: inaccessible controls ${JSON.stringify(metrics)}`);
-      assert.ok(metrics.controls.every(control => control.left >= metrics.panel.left - 1 && control.right <= metrics.panel.right + 1));
+      assert.ok(metrics.controls.every(control => control.left >= metrics.panel.left - 1 && control.right <= metrics.panel.right + 1), `${viewport.label}: controls outside panel ${JSON.stringify(metrics)}`);
       assert.ok(metrics.panel.left >= -1 && metrics.panel.top >= -1 && metrics.panel.right <= metrics.width + 1 && metrics.panel.bottom <= metrics.height + 1);
       assert.ok(metrics.overflow <= 1 && metrics.scrollOverflow <= 1, `${viewport.label}: horizontal overflow`);
       assert.equal(metrics.overlap, false); assert.equal(metrics.liveRegions, 1);
@@ -368,7 +370,8 @@ export async function acceptUserscriptInboxReview({
     assert.deepEqual(execution.trace, ['101', '303'].flatMap(thread =>
       ['menu', 'choose-unsend', 'confirm-unsend'].map(action => ({thread,message:'sent',action}))));
     assert.equal(execution.nativeClicks, 6); assert.equal(execution.removals, 2);
-    assert.deepEqual(execution.visits, ['101', '202', '303', '101', '303']); assert.equal(execution.returns, 4);
+    assert.deepEqual(execution.visits, ['101', '202', '303', '101', '303']);
+    assert.equal(execution.returns, 2, 'execution re-enters each reviewed chat; discovery does not bounce through the inbox');
     for (const thread of ['101', '303']) {
       assert.deepEqual(execution.messages[thread].map(message => message.removed), [false, true, false]);
     }

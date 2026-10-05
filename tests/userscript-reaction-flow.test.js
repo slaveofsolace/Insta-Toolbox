@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const source = await readFile(new URL('../userscripts/src/toolbox-shell.js', import.meta.url), 'utf8');
-const start = source.indexOf('  async function runDmUnsend()');
+const start = source.indexOf('  function reactionRemovalLimit()');
 const end = source.indexOf('  // --- Section 7:', start);
 assert.ok(start > 0 && end > start, 'actual DM handlers must be present');
 const handlers = source.slice(start, end);
@@ -16,6 +16,7 @@ function fixture(options = {}) {
   const controls = {
     'unsend-scope': { value: 'all' }, 'unsend-count': { value: '3' },
     'unsend-reactions': { checked: options.selected ?? false },
+    'reaction-limit': { value: options.reactionLimit ?? '' },
   };
   const inspection = { ready: true, threadId: '12345' };
   const viewer = { accountId: 'fixture_owner', accountVerified: true, usable: true, threadId: '12345' };
@@ -59,7 +60,7 @@ function fixture(options = {}) {
   vm.runInContext(`let dmThreadPreview = null, reactionSnapshot = null, inboxPanel = fixtureInboxPanel;
     let dmCleanupController = null, activeUnsendCapability = {};
     ${handlers}
-    globalThis.flow = { run: runDmUnsend, stop: stopDmCleanup,
+    globalThis.flow = { run: runDmUnsend, reactionsOnly: runReactionsOnly, stop: stopDmCleanup,
       active: () => dmCleanupController !== null,
       capability: () => activeUnsendCapability };`, context);
   const api = { ...context.flow, calls, controls, viewer, inspection, state,
@@ -78,6 +79,51 @@ test('ordinary Unsend has no viewer dependency and no reaction pass', async () =
   assert.equal(f.calls.dm[0].minDelayMs, 1000);
   assert.equal(f.active(), false);
   assert.equal(f.capability(), null);
+});
+
+test('reaction-only cleanup confirms a finite pass without running or reserving Unsend', async () => {
+  const f = fixture({ supported: true, reactionLimit: '1' });
+  await f.reactionsOnly();
+  assert.equal(f.calls.dm.length, 0);
+  assert.equal(f.calls.reservations, 0);
+  assert.equal(f.calls.reactions.length, 1);
+  assert.equal(f.calls.reactions[0].plan.limit, 1);
+  assert.match(f.calls.confirmations[0].message, /up to 1/);
+  assert.equal(f.calls.confirmations[0].binding.kind, 'reactions-only');
+  assert.equal(f.active(), false);
+});
+
+test('reaction-only Cancel and changed selection dispatch nothing', async () => {
+  for (const change of ['cancel', 'thread', 'account', 'limit', 'expiry']) {
+    const f = fixture({ supported: true, reactionLimit: '1', confirm(request, api) {
+      if (change === 'cancel') return null;
+      if (change === 'thread') api.viewer.threadId = '67890';
+      if (change === 'account') api.viewer.accountId = 'another_owner';
+      if (change === 'limit') api.controls['reaction-limit'].value = '';
+      if (change === 'expiry') api.advance(900_001);
+      return request.binding;
+    } });
+    await f.reactionsOnly();
+    assert.equal(f.calls.dm.length, 0, change);
+    assert.equal(f.calls.reservations, 0, change);
+    assert.equal(f.calls.reactions.length, 0, change);
+  }
+});
+
+test('reaction-only Stop and verified ledgers use the shared pass', async () => {
+  const f = fixture({ supported: true, reactionLimit: '1', async reactionStart(args, api) {
+    await args.onVerifiedRemoval({ removed: 1 });
+    await args.onVerifiedRemoval({ removed: 1 });
+    api.stop();
+    assert.equal(args.signal.aborted, true);
+    return { status: 'stopped', removed: 1 };
+  } });
+  await f.reactionsOnly();
+  assert.equal(f.calls.dm.length, 0);
+  assert.equal(f.state.ledger.reactions, 3);
+  assert.equal(f.state.ledger.unsends, 8);
+  assert.equal(f.calls.saves, 1);
+  assert.equal(f.calls.reactionStops, 1);
 });
 
 test('the primary Stop button stops an active inbox cleanup instead of starting another run', async () => {
@@ -123,6 +169,21 @@ test('Cancel dispatches neither Unsend nor reactions and reserves nothing', asyn
   assert.equal(f.calls.reservations, 0);
   assert.equal(f.calls.saves, 0);
   assert.match(f.calls.statuses[0][0], /Canceled/);
+});
+
+test('a selected reaction limit is named, confirmed, and passed unchanged to the runner', async () => {
+  const f = fixture({ supported: true, selected: true, reactionLimit: '1' });
+  await f.run();
+  assert.equal(f.calls.reactions[0].plan.limit, 1);
+  assert.equal(f.calls.confirmations[0].binding.reactionLimit, 1);
+  assert.match(f.calls.confirmations[0].detail, /up to 1 of your reactions/);
+  const changed = fixture({ supported: true, selected: true, reactionLimit: '1', confirm(request, api) {
+    api.controls['reaction-limit'].value = '';
+    return request.binding;
+  } });
+  await changed.run();
+  assert.equal(changed.calls.dm.length, 0);
+  assert.equal(changed.calls.reactions.length, 0);
 });
 
 test('changed account, thread, expiry, or reaction choice invalidates confirmation', async () => {

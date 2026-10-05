@@ -48,13 +48,14 @@ test('userscript cleanup copy stays concise and reaction cleanup is selectable',
   assert.match(userscript, /conversation or message selection changed after review/);
   assert.doesNotMatch(userscript, /Own-reaction removal has not been verified|<strong>DM Unsend\.<\/strong>|>Scope<\/label>|>Default N<\/label>/);
   assert.match(userscript, />Open in background<\/option>/);
-  assert.match(userscript, />Tabs to prepare<\/label>/);
+  assert.match(userscript, />Selected cleanup batch size<\/label>/);
   assert.doesNotMatch(userscript, /Multiple tabs are not available yet|Background — not available yet/);
 });
 
 test('userscript disclosure text paints with its selected theme and system contrast colors', () => {
   assert.match(userscript, /\.settings-inline > summary \{[^}]+color: var\(--insta-toolbox-text, #1b211c\); -webkit-text-fill-color: currentColor;/);
-  assert.match(userscript, /@media \(forced-colors: active\) \{ \.settings-inline > summary \{ color: CanvasText; \} \}/);
+  assert.match(userscript, /@media \(forced-colors: active\) \{ \.settings-inline > summary, \.settings-section > label, \.setting-option > label \{ color: CanvasText; \} \}/);
+  assert.match(userscript, /\.setting-option > label \{[^}]+color:var\(--insta-toolbox-text\); -webkit-text-fill-color:currentColor;/);
 });
 
 test('tool views leave configurable panel blur to the shell', () => {

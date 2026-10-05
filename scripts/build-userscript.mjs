@@ -19,7 +19,8 @@ const moduleFiles = [
   ...['inbox-discovery', 'inbox-native-navigation', 'inbox-coordinator', 'inbox-userscript-discovery',
     'inbox-single-tab', 'inbox-userscript-workers', 'inbox-userscript-panel', 'inbox-checkpoint-store',
     'presence-native-inputs',
-    'presence-native-actions', 'presence-session', 'presence-activity-log', 'presence-session-panel', 'insights']
+    'presence-native-actions', 'presence-session', 'presence-activity-log', 'presence-session-panel',
+    'presence-growth', 'presence-growth-panel', 'insights']
     .map(name => `extension/${name}.js`),
   'src/core/presence.js',
 ];
@@ -82,7 +83,8 @@ const singletonGuardEnd = `
 const localSources = Object.fromEntries(await Promise.all(moduleFiles.map(async file => [file, await readFile(path.join(repositoryRoot, file), 'utf8')])));
 const inboxModules = bundleLocalModules(localSources, ['extension/inbox-userscript-panel.js', 'extension/inbox-checkpoint-store.js',
   'extension/presence-native-inputs.js',
-  'extension/presence-native-actions.js', 'extension/presence-session.js', 'extension/presence-session-panel.js', 'extension/insights.js']);
+  'extension/presence-native-actions.js', 'extension/presence-session.js', 'extension/presence-session-panel.js',
+  'extension/presence-growth-panel.js', 'extension/insights.js']);
 const inboxExport = `globalThis.InstaToolboxInboxDiscovery = Object.freeze({ create: localModules['extension/inbox-userscript-discovery.js'].createUserscriptInboxDiscovery });
 globalThis.InstaToolboxInboxPanel = Object.freeze({ mount: localModules['extension/inbox-userscript-panel.js'].mountUserscriptInboxPanel });
 globalThis.InstaToolboxInboxCheckpoints = Object.freeze({ create: localModules['extension/inbox-checkpoint-store.js'].createInboxCheckpointStore });
@@ -90,6 +92,8 @@ globalThis.InstaToolboxPresenceInputs = Object.freeze({ create: localModules['ex
 globalThis.InstaToolboxPresenceNativeActions = Object.freeze({ create: localModules['extension/presence-native-actions.js'].createPresenceNativeActions });
 globalThis.InstaToolboxPresenceSession = Object.freeze({ create: localModules['extension/presence-session.js'].createPresenceSession });
 globalThis.InstaToolboxPresenceSessionPanel = Object.freeze({ mount: localModules['extension/presence-session-panel.js'].mountPresenceSessionPanel });
+globalThis.InstaToolboxPresenceGrowth = Object.freeze({ ...localModules['extension/presence-growth.js'] });
+globalThis.InstaToolboxPresenceGrowthPanel = Object.freeze({ mount: localModules['extension/presence-growth-panel.js'].mountPresenceGrowthPanel });
 globalThis.InstaToolboxInsights = Object.freeze({ mount: localModules['extension/insights.js'].mountLoadedInsights });`;
 const engine = [...sources.slice(0, -1), inboxModules, inboxExport, sources.at(-1)].join('\n');
 if (!engine.includes('performReviewedProfileAction')

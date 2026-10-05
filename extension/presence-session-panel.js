@@ -5,7 +5,7 @@ const ACTIONS = Object.freeze([
   ['viewStories', 'View stories'],
   ['reactStories', 'React to stories'],
   ['likePosts', 'Like posts'],
-  ['followPeople', 'Follow people'],
+  ['followPeople', 'Follow on Explore'],
   ['acceptRequests', 'Accept incoming requests'],
 ]);
 
@@ -74,9 +74,9 @@ export function mountPresenceSessionPanel({
     @media(max-width:600px){.presence-session .presence-options,.presence-session .presence-run-grid,.presence-session .presence-live-options{grid-template-columns:1fr}.presence-session .presence-option:last-child:nth-child(odd){grid-column:auto}}
     @media(forced-colors:active){.presence-session .presence-option,.presence-session .presence-limit input,.presence-session .presence-limit select,.presence-session .presence-status{border:1px solid CanvasText}.presence-session .presence-log>summary{color:LinkText;-webkit-text-fill-color:LinkText}.presence-session :focus-visible{outline-color:Highlight}}
   `);
-  const heading = create('h2', 'Presence');
+  const heading = create('h2', 'Browse and interact');
   heading.id = 'insta-toolbox-presence-title';
-  const intro = create('p', 'Choose what Presence can do.', 'lead');
+  const intro = create('p', 'Choose the activities for this session.', 'lead');
   const options = create('div', null, 'presence-options');
   const controls = new Map();
   for (const [key, label] of ACTIONS) {

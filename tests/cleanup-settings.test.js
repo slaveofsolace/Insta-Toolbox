@@ -36,7 +36,9 @@ test('finite scopes, workers and enum values are normalized without mutating inp
   for (const limit of [0, -1, 251, Infinity, NaN, 1.5, null]) assert.equal(settings.normalize({ messageLimit: limit }).messageLimit, 1);
   assert.equal(settings.normalize({ messageLimit: 250, messageScope: 'oldest', workerCount: 2 }).messageLimit, 250);
   assert.equal(settings.normalize({ workerCount: 5 }).workerCount, 5);
-  assert.equal(settings.normalize({ workerCount: 6 }).workerCount, 1);
+  assert.equal(settings.normalize({ workerCount: 10 }).workerCount, 10);
+  assert.equal(settings.normalize({ workerCount: 11 }).workerCount, 1);
+  assert.equal(settings.normalize({ workerCount: 1 }).workerCount, 1);
   assert.equal(settings.normalize({ scheduling: 'parallel', speed: 'turbo' }).scheduling, 'serial');
   assert.deepEqual(plain(settings.normalize([])), plain(settings.defaults()));
 });

@@ -234,6 +234,10 @@ export function createNativeInboxDiscovery({
   async function returnToInbox(threadId, position, section, context = discoveryContext, retainList = false) {
     guard(context);
     if (inboxThreadId(href()) !== threadId) throw new Error('conversation-changed');
+    // Desktop keeps the inbox rail mounted beside the conversation. Clicking
+    // Messages again can asynchronously restore the last chat after the next
+    // row has opened. Keep that rail in place instead of racing two routes.
+    if (retainList && inboxSurface()) return;
     const links = [...document.querySelectorAll('a[href]')].filter((node) => visible(node) && inboxUrl(node.getAttribute('href')));
     if (!links.length) {
       if (!retainList || !inboxSurface()) throw new Error('inbox-return-unavailable');
@@ -247,6 +251,10 @@ export function createNativeInboxDiscovery({
   }
   async function scan(state) {
     await selectSection(state.section);
+    // A previous visit can leave the virtual rail halfway down the inbox.
+    // Discovery always starts at its beginning, not at that saved viewport.
+    scroller(listRoot()).scrollTop = 0;
+    await settle();
     let priorWindow = null;
     for (; state.samples < maxSamples;) {
       guard(); if (!inboxSurface()) throw new Error('inbox-route-changed');
@@ -272,14 +280,20 @@ export function createNativeInboxDiscovery({
         // The desktop inbox remains visible alongside an open conversation.
         // A selected row may not change the URL. Revisit it after another row
         // instead of attributing the previous URL to the row just clicked.
-        visits += 1; row.click();
+        const alreadySelected = priorThread && row.getAttribute('aria-pressed') === 'true'
+          && rows(currentRoot).filter(node => node.getAttribute('aria-pressed') === 'true').length === 1
+          && readyMessagePane();
         let threadId;
         try {
-          threadId = await waitFor(() => {
+          if (alreadySelected) threadId = priorThread;
+          else {
+            visits += 1; row.click();
+            threadId = await waitFor(() => {
             const id = inboxThreadId(href());
             if (!id && !inboxUrl(href())) throw new Error('unexpected-route');
             return id && id !== priorThread ? id : false;
-          });
+            });
+          }
         } catch (error) {
           if (error.message !== 'navigation-timeout' || !priorThread || !inboxSurface()) throw error;
           if (turn < count && count > 1) deferredRows.push(index);
@@ -295,8 +309,8 @@ export function createNativeInboxDiscovery({
         const captures = navigationEvidence.get(threadId) || new Map();
         captures.set(state.section, evidence); navigationEvidence.set(threadId, captures);
         try {
-          const ready = await freshMessagePane(threadId, priorPanes, priorActions, discoveryContext, Math.min(routeTimeoutMs, 1_500));
-          const label = nativeDisplayLabel(ready.pane, priorHeaders);
+          const ready = alreadySelected || await freshMessagePane(threadId, priorPanes, priorActions, discoveryContext, Math.min(routeTimeoutMs, 1_500));
+          const label = nativeDisplayLabel(ready.pane, alreadySelected ? [] : priorHeaders);
           if (label) displayLabels.set(threadId, label); else displayLabels.delete(threadId);
         } catch (error) {
           displayLabels.delete(threadId);

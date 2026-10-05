@@ -173,6 +173,63 @@ test('own reaction on a received message is removed without removing the message
   assert.equal(f.counters.mutations, 1); assert.equal(f.row.isConnected, true);
   assert.equal(f.body.textContent, 'Disposable received message');
 });
+
+test('opening reaction details waits for transient hidden account controls before mutation', async () => {
+  const f = fixture();
+  const original = { ...f.context };
+  f.badge.onclick = () => {
+    Object.assign(f.context, { accountId: null, accountVerified: false, usable: false, reason: 'account-picker-unavailable' });
+    setTimeout(() => { Object.assign(f.context, original); f.show(); }, 20);
+  };
+  assert.equal((await f.remove()).verified, true);
+  assert.equal(f.counters.mutations, 1);
+});
+
+test('Stop during the reaction popup transition dispatches no removal', async () => {
+  const f = fixture(); const controller = new AbortController();
+  f.badge.onclick = () => {
+    Object.assign(f.context, { accountId: null, accountVerified: false, usable: false, reason: 'account-picker-unavailable' });
+    setTimeout(() => controller.abort(), 10);
+  };
+  await assert.rejects(f.remove(controller.signal), { name: 'AbortError' });
+  assert.equal(f.counters.mutations, 0);
+});
+
+test('a different verified account during popup loading is not treated as a transient gap', async () => {
+  const f = fixture();
+  f.badge.onclick = () => { f.context.accountId = '999'; f.show(); };
+  await assert.rejects(f.remove(), /reaction-context-changed/);
+  assert.equal(f.counters.mutations, 0);
+});
+
+test('post-removal account controls can settle without losing the verified result', async () => {
+  let f;
+  f = fixture({ onDispatch() {
+    const original = { ...f.context };
+    Object.assign(f.context, { accountId: null, accountVerified: false, usable: false, reason: 'account-navigation-unavailable' });
+    setTimeout(() => Object.assign(f.context, original), 20);
+  } });
+  assert.equal((await f.remove()).verified, true);
+  assert.equal(f.counters.mutations, 1);
+});
+
+test('a grouped badge resolves my individual emoji instead of waiting for a combined emoji reactor', async () => {
+  const f = fixture({ emoji: '👍', otherEmoji: '❤️', shared: true, count: '2' });
+  f.extraBadge.remove();
+  f.badge.children[0].value = '👍 ❤️ 3';
+  const result = await f.remove();
+  assert.equal(result.verified, true);
+  assert.equal(f.counters.mutations, 1);
+  assert.equal(f.row.isConnected, true);
+});
+
+test('flag, keycap and skin-tone reaction variants preserve the exact selected emoji', async () => {
+  for (const emoji of ['🇵🇸', '1️⃣', '👍🏽', '👩🏽‍💻']) {
+    const f = fixture({ emoji });
+    assert.equal((await f.remove()).verified, true, emoji);
+    assert.equal(f.counters.mutations, 1);
+  }
+});
 test('opening reaction details may aria-hide the conversation without changing message identity', async () => {
   const f = fixture();
   const show = f.badge.onclick;

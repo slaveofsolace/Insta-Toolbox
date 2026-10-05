@@ -53,6 +53,18 @@ test('Ghost review can explicitly keep managed tabs in front', () => {
   assert.equal(review.openInBackground, false);
 });
 
+test('Ghost freezes per-conversation message options instead of widening a finite selection', () => {
+  for (const scope of ['newest', 'oldest']) {
+    const review = createUserscriptGhostReview({ accountId: 'demo', threadIds: ['one', 'two'], scope, limit: 1 }, NOW);
+    assert.equal(review.scope, scope); assert.equal(review.limit, 1);
+    assert.equal(Object.isFrozen(review), true);
+    assert.match(userscriptGhostReviewKey(review), /"limit":1/);
+  }
+  for (const limit of [null, 0, -1, 0.5, 5001, Infinity]) {
+    assert.throws(() => createUserscriptGhostReview({ accountId: 'demo', threadIds: ['one'], scope: 'newest', limit }, NOW), /message-options-invalid/);
+  }
+});
+
 test('manager opens only reviewed inactive worker tabs and Stop closes only owned tabs', async () => {
   let id = 0;
   const storage = sharedStorage();
@@ -160,11 +172,12 @@ test('worker serializes verified removals through the shared mutation lane', asy
   assert.equal(storage.value().pendingMutation, null);
 });
 
-function workerFixture({ readyAfter = 0, execute, hash = '#insta-toolbox-worker=job_1.launch_1' } = {}) {
+function workerFixture({ readyAfter = 0, execute, hash = '#insta-toolbox-worker=job_1.launch_1', messageOptions = {} } = {}) {
   let clock = NOW, inspections = 0, starts = 0;
+  const plans = [];
   const storage = sharedStorage({ version: 1, jobId: 'job_1', coordinatorId: 'coordinator_1',
     accountId: 'demo', status: 'running', expiresAt: NOW + 120_000, nextActionAt: 0,
-    pendingMutation: null, tasks: [{ threadId: 'one', launchId: 'launch_1', status: 'opening',
+    pendingMutation: null, ...messageOptions, tasks: [{ threadId: 'one', launchId: 'launch_1', status: 'opening',
       messageRemovals: 0, openedAt: NOW }] });
   const bridge = createUserscriptGhostBridge({ storage,
     locks: { request: async (name, _options, callback) => callback(name.includes('ghost-coordinator:') ? null : {}) },
@@ -173,7 +186,8 @@ function workerFixture({ readyAfter = 0, execute, hash = '#insta-toolbox-worker=
     now: () => clock, random: () => 0, randomId: () => 'worker_1',
     inspectContext: () => ++inspections <= readyAfter ? { usable: false }
       : { usable: true, accountId: 'demo', threadId: 'one' },
-    runner: { ...runnerStub, async start({ workerAdapter }) {
+    runner: { ...runnerStub, async start({ workerAdapter, plan }) {
+      plans.push(plan);
       starts += 1;
       return execute ? execute(workerAdapter, storage) : { status: 'completed', processed: 0 };
     } },
@@ -181,8 +195,14 @@ function workerFixture({ readyAfter = 0, execute, hash = '#insta-toolbox-worker=
     setTimeoutFn: (callback, ms) => { clock += ms; queueMicrotask(callback); return 1; },
     clearTimeoutFn: () => {},
   });
-  return { bridge, storage, get starts() { return starts; }, get clock() { return clock; } };
+  return { bridge, storage, plans, get starts() { return starts; }, get clock() { return clock; } };
 }
+
+test('worker dispatch preserves the reviewed per-conversation newest count', async () => {
+  const f = workerFixture({ messageOptions: { scope: 'newest', limit: 1 } });
+  assert.equal((await f.bridge.attachWorker()).status, 'completed');
+  assert.equal(f.plans[0].scope, 'newest'); assert.equal(f.plans[0].limit, 1);
+});
 
 test('managed workers wait for the authenticated React pane instead of attaching only once', async () => {
   const f = workerFixture({ readyAfter: 8 });
@@ -328,4 +348,137 @@ test('coordinator account changes pause the entire pool before any new tab opens
   const manager = bridge.createManager(bridge.createReview({ accountId: 'demo', threadIds: ['one'] }));
   const result = await manager.start();
   assert.equal(result.status, 'paused'); assert.equal(result.reason, 'account-changed'); assert.equal(opens, 0);
+});
+
+test('ten-tab batch reviews bind scheduling and reject invalid sizes', () => {
+  const input = { accountId: 'demo', threadIds: Array.from({ length: 25 }, (_, i) => `thread_${i}`),
+    workerCount: 10, scheduling: 'batches' };
+  const review = createUserscriptGhostReview(input, NOW);
+  assert.equal(review.workerCount, 10);
+  assert.equal(review.scheduling, 'batches');
+  assert.equal(Object.isFrozen(review), true);
+  assert.match(userscriptGhostReviewKey(review), /"scheduling":"batches"/);
+  assert.throws(() => createUserscriptGhostReview({ ...input, workerCount: 11 }, NOW), /worker-count-invalid/);
+  assert.throws(() => createUserscriptGhostReview({ ...input, scheduling: 'other' }, NOW), /scheduling-invalid/);
+});
+
+const flushBatch = async () => { for (let i = 0; i < 5; i += 1) await new Promise(resolve => setTimeout(resolve, 0)); };
+function batchFixture({ length = 25, closeFailure = false, beforeClose = async () => {} } = {}) {
+  let clock = NOW, sequence = 0, heartbeat, live = 0, maximum = 0;
+  const storage = sharedStorage(), events = [], handles = new Map();
+  const bridge = createUserscriptGhostBridge({ storage, locks, runner: runnerStub,
+    inspectContext: () => ({ accountId: 'demo', usable: true }), location: { pathname: '/direct/inbox/' },
+    now: () => clock, randomId: () => `batch_${++sequence}`,
+    setIntervalFn: callback => { heartbeat = callback; return 1; }, clearIntervalFn: () => {},
+    openTab: async url => {
+      const threadId = new URL(url).pathname.split('/')[3];
+      events.push(['open', threadId]); maximum = Math.max(maximum, ++live);
+      const handle = { closed: false, close: async () => {
+        await beforeClose(threadId);
+        if (closeFailure) throw new Error('native-close-failed');
+        assert.equal(handle.closed, false, 'a managed tab closes only once');
+        handle.closed = true; live -= 1; events.push(['close', threadId]);
+      } };
+      handles.set(threadId, handle); return handle;
+    },
+  });
+  const manager = bridge.createManager(bridge.createReview({ accountId: 'demo',
+    threadIds: Array.from({ length }, (_, i) => `thread_${i}`), workerCount: 10, scheduling: 'batches' }));
+  return { storage, events, handles, manager,
+    async tick(ms = 3_000) { clock += ms; heartbeat(); await flushBatch(); },
+    async edit(change) { const value = storage.value(); change(value); await storage.set('', value); },
+    get live() { return live; }, get maximum() { return maximum; },
+  };
+}
+
+test('25 conversations open as ten, ten and five; each entire group closes before the next opens', { timeout: 5_000 }, async () => {
+  const f = batchFixture(), finished = f.manager.start(); await flushBatch();
+  assert.deepEqual(f.events, Array.from({ length: 10 }, (_, i) => ['open', `thread_${i}`]));
+  await f.edit(job => { for (const task of job.tasks.slice(0, 9)) task.status = 'completed'; });
+  await f.tick();
+  assert.equal(f.events.length, 10, 'finished tabs wait for the tenth conversation');
+  await f.edit(job => { job.tasks[9].status = 'uncertain'; job.tasks[9].uncertain = 1; });
+  await f.tick();
+  assert.deepEqual(f.events.slice(10, 20), Array.from({ length: 10 }, (_, i) => ['close', `thread_${i}`]));
+  assert.deepEqual(f.events.slice(20), Array.from({ length: 10 }, (_, i) => ['open', `thread_${i + 10}`]));
+  await f.edit(job => { for (const task of job.tasks.slice(10, 20)) task.status = 'completed'; });
+  await f.tick();
+  assert.deepEqual(f.events.slice(30, 40), Array.from({ length: 10 }, (_, i) => ['close', `thread_${i + 10}`]));
+  assert.deepEqual(f.events.slice(40), Array.from({ length: 5 }, (_, i) => ['open', `thread_${i + 20}`]));
+  await f.edit(job => { for (const task of job.tasks.slice(20)) task.status = 'completed'; });
+  await f.tick();
+  assert.equal((await finished).status, 'partial', 'an uncertain conversation never becomes a success');
+  assert.equal(f.maximum, 10); assert.equal(f.live, 0);
+  assert.equal(f.events.filter(([kind]) => kind === 'open').length, 25);
+  assert.equal(f.events.filter(([kind]) => kind === 'close').length, 25);
+  assert.equal(new Set(f.events.filter(([kind]) => kind === 'open').map(([, id]) => id)).size, 25);
+});
+
+test('Stop in a ten-tab batch closes that group without opening the next group', { timeout: 5_000 }, async () => {
+  const f = batchFixture(), finished = f.manager.start(); await flushBatch();
+  await f.manager.stop();
+  assert.equal((await finished).status, 'stopped');
+  assert.equal(f.events.filter(([kind]) => kind === 'open').length, 10);
+  assert.equal(f.events.filter(([kind]) => kind === 'close').length, 10);
+  assert.equal(f.live, 0);
+  assert.ok(f.storage.value().tasks.slice(10).every(task => task.status === 'stopped'));
+});
+
+test('a pending removal holds the batch boundary until its result settles', { timeout: 5_000 }, async () => {
+  const f = batchFixture({ length: 11 }), finished = f.manager.start(); await flushBatch();
+  await f.edit(job => {
+    for (const task of job.tasks.slice(0, 10)) task.status = 'completed';
+    job.pendingMutation = { threadId: 'thread_9', phase: 'dispatched' };
+  });
+  await f.tick(); assert.equal(f.events.length, 10);
+  await f.edit(job => { job.pendingMutation = null; });
+  await f.tick(); assert.deepEqual(f.events.at(-1), ['open', 'thread_10']);
+  await f.manager.stop(); await finished;
+});
+
+test('a batch retries an unready tab before advancing, then records bounded exhaustion', { timeout: 5_000 }, async () => {
+  const f = batchFixture({ length: 11 }), finished = f.manager.start(); await flushBatch();
+  await f.edit(job => { for (const task of job.tasks.slice(0, 9)) task.status = 'completed'; });
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await f.tick(61_000);
+    assert.equal(f.storage.value().tasks[9].openAttempts, attempt);
+    if (attempt < 3) {
+      assert.equal(f.storage.value().tasks[9].status, 'pending');
+      assert.equal(f.events.some(([kind, id]) => kind === 'open' && id === 'thread_10'), false);
+      await f.tick(attempt * 2_000);
+      assert.equal(f.storage.value().tasks[9].openAttempts, attempt + 1);
+    }
+  }
+  assert.equal(f.storage.value().tasks[9].status, 'failed');
+  assert.equal(f.storage.value().tasks[9].messageRemovals, 0);
+  assert.deepEqual(f.events.at(-1), ['open', 'thread_10']);
+  await f.manager.stop(); await finished;
+});
+
+test('native tab-close failure persists a pause and does not launch another batch', { timeout: 5_000 }, async () => {
+  const f = batchFixture({ length: 11, closeFailure: true }), finished = f.manager.start(); await flushBatch();
+  await f.edit(job => { for (const task of job.tasks.slice(0, 10)) task.status = 'completed'; });
+  await f.tick();
+  const result = await finished;
+  assert.equal(result.status, 'paused'); assert.equal(result.reason, 'worker-tab-close-failed');
+  assert.equal(f.storage.value().status, 'paused');
+  assert.equal(f.events.filter(([kind]) => kind === 'open').length, 10);
+});
+
+test('Stop racing with a completed batch closes each tab once and opens no next batch', { timeout: 5_000 }, async () => {
+  let release, entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const closing = new Promise(resolve => { entered = resolve; });
+  const f = batchFixture({ length: 11, beforeClose: async id => {
+    if (id === 'thread_0') { entered(); await gate; }
+  } });
+  const finished = f.manager.start(); await flushBatch();
+  await f.edit(job => { for (const task of job.tasks.slice(0, 10)) task.status = 'completed'; });
+  const boundary = f.tick(); await closing;
+  const stopped = f.manager.stop(); release();
+  await Promise.all([boundary, stopped]);
+  assert.equal((await finished).status, 'stopped');
+  assert.equal(f.events.filter(([kind]) => kind === 'open').length, 10);
+  assert.equal(f.events.filter(([kind]) => kind === 'close').length, 10);
+  assert.equal(f.live, 0);
 });

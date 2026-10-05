@@ -396,10 +396,11 @@
         menu.append(choice);
       });
     };
-    globalThis.fixtureSetReactionMessages = () => {
+    globalThis.fixtureSetReactionMessages = ({ dialogDelayMs = 0 } = {}) => {
       history.replaceState({}, '', '/direct/t/123/');
       globalThis.fixtureReactionRemoved = 0;
       globalThis.fixtureReactionBadgeClicks = 0;
+      document.body.append(document.querySelector('main'));
       document.querySelectorAll('[data-fixture-viewer]').forEach((node) => node.remove());
       const accountPicker = document.createElement('div');
       accountPicker.dataset.fixtureViewer = 'picker';
@@ -461,7 +462,8 @@
         });
         dialog.append(heading, close, mine);
         app.setAttribute('aria-hidden', 'true');
-        document.body.append(dialog);
+        if (dialogDelayMs > 0) setTimeout(() => document.body.append(dialog), dialogDelayMs);
+        else document.body.append(dialog);
       });
       return { messageConnected: message.isConnected, badgeConnected: badge.isConnected };
     };

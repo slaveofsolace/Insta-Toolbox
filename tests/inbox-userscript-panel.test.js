@@ -110,7 +110,7 @@ function fixture(options = {}) {
   };
   const section = document.createElement('div'); section.setAttribute('role', 'tab');
   section.setAttribute('aria-selected', 'true'); section.textContent = 'Primary'; root.append(section);
-  for (const threadId of ['101', '202']) {
+  for (const threadId of options.threadIds || ['101', '202']) {
     const row = document.createElement('div'); row.setAttribute('role', 'button');
     row.textContent = `Synthetic participant ${threadId} · preview`;
     const avatar = document.createElement('img'); avatar.setAttribute('alt', `Synthetic ${threadId}`); row.append(avatar);
@@ -148,6 +148,7 @@ function fixture(options = {}) {
       usable: true, threadId: /^\/direct\/t\/(\d+)\/$/.exec(url.pathname)?.[1] || null }),
   };
   const runner = {
+    stop: () => true,
     createPlan(input) { return Object.freeze({ ...input }); },
     async start({ plan, workerAdapter }) {
       starts.push(plan);
@@ -167,6 +168,7 @@ function fixture(options = {}) {
   };
   const container = document.createElement('section');
   const panel = mountUserscriptInboxPanel({ container, document, window, viewer, runner,
+    workerTransport: options.workerTransport, defaultWorkerCount: options.defaultWorkerCount,
     discoveryTiming: { routeTimeoutMs: 100, settleMs: 1 },
     confirmAction: async value => { confirmations.push(value); return options.confirm ? options.confirm(value) : null; },
     cancelConfirmation: () => options.onCancelConfirmation?.(),
@@ -387,6 +389,26 @@ test('Start Ghost Mode uses the existing runner for every confirmed conversation
   assert.deepEqual(f.dispatches, ['101', '202']);
   assert.equal(f.panel.snapshot().status, 'completed');
   assert.equal(f.lockNames.size, 0);
+});
+
+test('primary Ghost confirms ten-tab batches even when selected cleanup preferences use one tab', { timeout: 15_000 }, async t => {
+  const workerTransport = { storage: { get: async () => null, set: async () => {}, listen: () => 1, unlisten: () => {} },
+    openTab: async () => { throw new Error('Cancel must not open worker tabs'); } };
+  const f = fixture({ workerTransport, defaultWorkerCount: 1,
+    threadIds: Array.from({ length: 12 }, (_, i) => String(100 + i)) });
+  t.after(() => f.dispose()); await f.panel.ready;
+  await f.button('Start Ghost Mode').click();
+  assert.equal(f.confirmations.length, 1);
+  const confirmation = f.confirmations[0], review = JSON.parse(confirmation.binding.reviewKey);
+  assert.equal(review.workerCount, 10); assert.equal(review.scheduling, 'batches');
+  assert.equal(review.threadIds.length, 12);
+  assert.match(confirmation.detail, /10 conversation tabs open together, finish, and close before the next batch/);
+  assert.deepEqual(f.dispatches, []); assert.deepEqual(f.checkpoints, []);
+  const workers = f.container.all().find(node => node.getAttribute('aria-label') === 'Managed worker tabs');
+  assert.equal(workers.value, '1', 'selected cleanup preferences remain unchanged');
+  assert.equal(workers.children.length, 10);
+  await f.button('Review 12 conversations').click();
+  assert.equal(JSON.parse(f.confirmations[1].binding.reviewKey).workerCount, 1);
 });
 
 test('Ghost explains an active Presence run instead of silently doing nothing', async t => {
