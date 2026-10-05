@@ -84,19 +84,28 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
         let listenerId=0; const listeners=new Map();
         GM_getValue=(key,fallback)=>fixtureGhostTransport.get(key,Object.hasOwn(fixtureGmStore,key)?fixtureGmStore[key]:fallback);
         GM_setValue=(key,value)=>fixtureGhostTransport.set(key,value);
+        const fixtureThread=new URL(fixtureLaunchHref).pathname.match(/^\\/direct\\/t\\/(\\d+)\\/$/)?.[1];
+        let fixtureRedirected=false;
         GM_getTab=callback=>callback(fixtureGhostTransport.getTab());
-        GM_saveTab=value=>fixtureGhostTransport.saveTab(value);
+        GM_saveTab=value=>{
+          fixtureGhostTransport.saveTab(value);
+          // A document-start userscript runs before Instagram startup. Trigger
+          // that startup only after its early tab correlation is captured,
+          // not on a timer racing the fixture's external script download.
+          if(fixtureThread && !fixtureRedirected && value.instaToolboxGhostLaunchV1){
+            fixtureRedirected=true;
+            if(Number(fixtureThread)%2) location.replace('/direct/inbox/');
+            else history.replaceState({},'','/direct/inbox/');
+          }
+        };
         globalThis.GM_addValueChangeListener=(key,callback)=>{const id=++listenerId;listeners.set(id,{key,callback});return id;};
         globalThis.GM_removeValueChangeListener=id=>listeners.delete(id);
         fixtureGhostTransport.listen((key,previous,next)=>{for(const item of listeners.values())if(item.key===key)item.callback(key,previous,next,true);});
         globalThis.GM_openInTab=async(url,options)=>{const id=await fixtureGhostTransport.open(url,options);return {close:()=>fixtureGhostTransport.close(id)};};
-        const fixtureThread=new URL(fixtureLaunchHref).pathname.match(/^\\/direct\\/t\\/(\\d+)\\/$/)?.[1];
         if(fixtureThread){
           history.replaceState({},'',fixtureLaunchHref);
           // Instagram may restore the inbox instead of honoring a new-tab
           // deep link. Only production navigation may open the assigned row.
-          setTimeout(()=>Number(fixtureThread)%2
-            ? location.replace('/direct/inbox/') : history.replaceState({},'','/direct/inbox/'),20);
         }else history.replaceState({},'',new URL(fixtureLaunchHref).pathname==='/direct/inbox/' ? '/direct/inbox/' : '/');
       </script>`;
       body = body.toString().replace('<head>', '<head><script>const fixtureLaunchHref=location.href;</script>')
@@ -135,6 +144,15 @@ export async function acceptUserscriptGhostWorkers({ fixtureAssets, resultsRoot,
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     const job = store.get('instaToolboxGhostJobV1');
+    if(job?.status !== 'completed' || windows.size !== 1){
+      const diagnostics=[];
+      for(const worker of windows.values()) if(worker !== coordinator && !worker.isDestroyed()){
+        diagnostics.push(await worker.webContents.executeJavaScript(`({path:location.pathname,
+          visits:globalThis.fixtureInboxVisits,tab:fixtureGhostTransport.getTab(),
+          panel:document.querySelector('#insta-toolbox-userscript-root')?.shadowRoot?.querySelector('[data-role="inbox-cleanup"]')?.textContent})`,true));
+      }
+      console.error('Synthetic Ghost worker diagnostics:',JSON.stringify(diagnostics));
+    }
     assert.equal(job?.status, 'completed', JSON.stringify(job));
     assert.equal(windows.size, 1); assert.equal(peakWorkers, 10);
     assert.equal(job.scheduling, 'batches'); assert.equal(job.workerCount, 10);
