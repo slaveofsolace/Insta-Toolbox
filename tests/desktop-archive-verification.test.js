@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import asar from '@electron/asar';
+import * as asar from '@electron/asar';
 
 import {
   requiredDesktopEntries,

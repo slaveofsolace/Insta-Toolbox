@@ -120,7 +120,7 @@ test('Chrome acceptance loads and pairs the real extension through the restricte
   assert.match(chromeAcceptance, /await rm\(resolvedResultsRoot/);
   assert.match(
     workflow,
-    /browser-actions\/setup-chrome@e574b4b3a21156ab45dd6b5f67e884fd26eed829/,
+    /browser-actions\/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd/,
   );
   assert.match(workflow, /CHROME_BIN: \$\{\{ steps\.setup-chrome\.outputs\.chrome-path \}\}/);
   assert.match(workflow, /xvfb-run --auto-servernum pnpm run qa:chrome/);
@@ -248,7 +248,7 @@ test('desktop CI builds and exercises confined packaged lifecycles without relea
   assert.match(macInheritedEntitlements, /com\.apple\.security\.cs\.disable-library-validation/);
   assert.match(
     workflow,
-    /actions\/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f/,
+    /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/,
   );
 });
 

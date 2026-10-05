@@ -71,7 +71,8 @@ export function createUserscriptInboxDiscovery({
       if (state.inventory && current.accountId !== state.inventory.accountId) return rejectContext('inbox-account-changed');
       return (active || captured)?.reviewLabels() || [];
     },
-    async discover({ navigationAcknowledged = false, sections = null, expiresAt = now() + 20 * 60_000 } = {}) {
+    async discover({ navigationAcknowledged = false, sections = null, expiresAt = now() + 20 * 60_000,
+      targetThreadId = null, signal = null } = {}) {
       if (active || opening) throw new Error('inbox-discovery-active');
       if (navigationAcknowledged !== true) throw new Error('navigation-acknowledgment-required');
       if (!Number.isFinite(expiresAt) || expiresAt <= now() || expiresAt > now() + 20 * 60_000) throw new Error('discovery-expired');
@@ -114,6 +115,7 @@ export function createUserscriptInboxDiscovery({
         accountId: identity.accountId, resolveAccount: context,
         navigationAcknowledged, document, window, sections, expiresAt, now,
         routeTimeoutMs, settleMs, resolveSection: section,
+        targetThreadId, signal,
         onProgress: (value) => publish({ inventory: value }),
       });
       active = operation;

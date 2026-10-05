@@ -47,35 +47,35 @@ Mutual Checker waits before retrying rate-limited reads: Instagram's reset time 
 
 ## Other ways to run it
 
-Download files from the [latest release](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest).
+**Tampermonkey is the active update channel.** All other packages are **On hold after 4.3.1**. Their existing code, data and downloads remain available; future feature work focuses on the userscript.
 
-The Tampermonkey link always serves the latest published release. Use the links below for its other packages.
+The Tampermonkey link always serves the latest published release. Other downloads stay pinned to [4.3.1](https://github.com/slaveofsolace/Insta-Toolbox/releases/tag/v4.3.1).
 
-| Surface | Release file | Use it when |
+| Surface | Status | Release file |
 | --- | --- | --- |
-| Tampermonkey | `insta-toolbox.user.js` | You want the simplest Instagram overlay install. |
-| Chrome extension | [Download ZIP](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/Insta-Toolbox-Extension-4.3.0.zip) | You prefer an unpacked browser extension. |
-| Windows desktop | [Download installer](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/Insta-Toolbox-Setup-4.3.0.exe) | You want one downloadable Windows installer. |
-| macOS desktop | [Download DMG](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/Insta-Toolbox-4.3.0-universal.dmg) | You want the recommended drag-to-Applications package for Intel or Apple Silicon. |
-| macOS portable | [Download ZIP](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/Insta-Toolbox-4.3.0-universal.zip) | You prefer to extract the universal app directly. |
-| Web/PWA | [Download web package](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox-web-4.3.0.zip) | You want to self-host the local-first workspace. |
+| Tampermonkey | Active | [Install userscript](https://github.com/slaveofsolace/Insta-Toolbox/releases/latest/download/insta-toolbox.user.js) |
+| Chrome extension | On hold after 4.3.1 | [Download ZIP](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/Insta-Toolbox-Extension-4.3.1.zip) |
+| Windows desktop | On hold after 4.3.1 | [Download installer](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/Insta-Toolbox-Setup-4.3.1.exe) |
+| macOS desktop | On hold after 4.3.1 | [Download DMG](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/Insta-Toolbox-4.3.1-universal.dmg) |
+| macOS portable | On hold after 4.3.1 | [Download ZIP](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/Insta-Toolbox-4.3.1-universal.zip) |
+| Web/PWA | On hold after 4.3.1 | [Download web package](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/insta-toolbox-web-4.3.1.zip) |
 
 Windows packages are unsigned. macOS packages are ad-hoc signed, but not Developer ID signed or notarized. Confirm the checksum before opening a download.
 
 ### Check a download
 
-Download `SHA256SUMS.txt` from the same release.
+Download [SHA256SUMS.txt for 4.3.1](https://github.com/slaveofsolace/Insta-Toolbox/releases/download/v4.3.1/SHA256SUMS.txt) for the held packages. For the latest userscript, use checksums from its release.
 
 Windows PowerShell:
 
 ```powershell
-Get-FileHash .\Insta-Toolbox-Setup-4.3.0.exe -Algorithm SHA256
+Get-FileHash .\Insta-Toolbox-Setup-4.3.1.exe -Algorithm SHA256
 ```
 
 macOS:
 
 ```sh
-shasum -a 256 Insta-Toolbox-4.3.0-universal.dmg
+shasum -a 256 Insta-Toolbox-4.3.1-universal.dmg
 ```
 
 Match the printed hash to the file's entry in `SHA256SUMS.txt`.
@@ -117,9 +117,9 @@ pnpm run qa:overlay:check
 pnpm run verify:repo-hygiene
 ```
 
-The 4.3.0 development matrix covers the PWA, extension, userscript, layout controls, and packaged apps. The service worker uses cache generation `insta-toolbox-v430`. Automated fixtures do not prove current authenticated Instagram behavior; disposable-content acceptance is recorded separately.
+The 4.3.1 development matrix covers the PWA, extension, userscript, layout controls, and packaged apps. The service worker uses cache generation `insta-toolbox-v431`. Automated fixtures do not prove current authenticated Instagram behavior; disposable-content acceptance is recorded separately.
 
-See [Contributing](CONTRIBUTING.md), [Maintainer Guide](docs/MAINTAINER_GUIDE.md), [4.3.0 compatibility](docs/compatibility/4.3.0.md), and [4.3.0 acceptance](docs/acceptance/4.3.0.md).
+See [Contributing](CONTRIBUTING.md), [Maintainer Guide](docs/MAINTAINER_GUIDE.md), [4.3.1 compatibility](docs/compatibility/4.3.1.md), and [4.3.1 acceptance](docs/acceptance/4.3.1.md).
 
 ## License and credit
 

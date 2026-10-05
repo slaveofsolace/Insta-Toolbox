@@ -22,6 +22,7 @@ export function createNativeInboxDiscovery({
   maxThreads = 1_000, maxSamples = 1_000, maxVisits = 20_000,
   routeTimeoutMs = 8_000, settleMs = 400, paginationTimeoutMs = routeTimeoutMs,
   proveTerminal = null, resolveSection = null, onProgress = null,
+  targetThreadId = null,
 } = {}) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(accountId || '') || typeof resolveAccount !== 'function') throw new Error('account-identity-required');
   if (!Array.isArray(sections) || !sections.length || sections.some((name) => !Object.hasOwn(SECTION_LABELS, name))) throw new Error('inbox-section-invalid');
@@ -32,6 +33,7 @@ export function createNativeInboxDiscovery({
   if (proveTerminal !== null && typeof proveTerminal !== 'function') throw new Error('terminal-adapter-invalid');
   if (resolveSection !== null && typeof resolveSection !== 'function') throw new Error('section-adapter-invalid');
   if (onProgress !== null && typeof onProgress !== 'function') throw new Error('progress-adapter-invalid');
+  if (targetThreadId !== null && !/^[A-Za-z0-9_-]{1,128}$/.test(targetThreadId)) throw new Error('thread-identity-invalid');
   const sectionState = [...new Set(sections)].map((section) => ({ section, samples: 0, complete: false, reason: 'not-scanned' }));
   const inventory = new Map();
   // Native row evidence is private to this instance; snapshots never retain it.
@@ -98,10 +100,44 @@ export function createNativeInboxDiscovery({
       } catch (error) { finish(error); }
     });
   }
-  const settle = async (context = discoveryContext) => {
-    const until = now() + settleMs;
-    await waitFor(() => now() >= until, settleMs + 100, context);
-  };
+  const settle = (context = discoveryContext) => new Promise((resolve, reject) => {
+    let timer, observer, settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      observer?.disconnect();
+      window.removeEventListener?.('popstate', checkContext);
+      window.removeEventListener?.('hashchange', checkContext);
+      context.signal?.removeEventListener('abort', inspect);
+      context.controller.signal.removeEventListener('abort', inspect);
+      error ? reject(error) : resolve();
+    };
+    function inspect() {
+      try { guard(context); finish(); }
+      catch (error) { finish(error); }
+    }
+    function checkContext() {
+      try { guard(context); }
+      catch (error) { finish(error); }
+    }
+    try {
+      guard(context);
+      if (window.MutationObserver) {
+        observer = new window.MutationObserver(checkContext);
+        observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+      }
+      window.addEventListener?.('popstate', checkContext);
+      window.addEventListener?.('hashchange', checkContext);
+      context.signal?.addEventListener('abort', inspect, { once: true });
+      context.controller.signal.addEventListener('abort', inspect, { once: true });
+      // A layout delay is a minimum wait, not a navigation deadline. A busy
+      // background renderer may deliver its timer late; revalidate authority
+      // on wake instead of misreporting a valid route as navigation-timeout.
+      timer = setTimeout(inspect, settleMs);
+      if (context.signal?.aborted || context.controller.signal.aborted) inspect();
+    } catch (error) { finish(error); }
+  });
   function listRoot() {
     const roots = [...document.querySelectorAll('[aria-label="Thread list"]')].filter(visible);
     if (roots.length !== 1) throw new Error('inbox-container-unavailable');
@@ -309,14 +345,18 @@ export function createNativeInboxDiscovery({
         const captures = navigationEvidence.get(threadId) || new Map();
         captures.set(state.section, evidence); navigationEvidence.set(threadId, captures);
         try {
-          const ready = alreadySelected || await freshMessagePane(threadId, priorPanes, priorActions, discoveryContext, Math.min(routeTimeoutMs, 1_500));
+          const ready = alreadySelected || await freshMessagePane(threadId, priorPanes, priorActions,
+            discoveryContext, threadId === targetThreadId ? routeTimeoutMs : Math.min(routeTimeoutMs, 1_500));
           const label = nativeDisplayLabel(ready.pane, alreadySelected ? [] : priorHeaders);
           if (label) displayLabels.set(threadId, label); else displayLabels.delete(threadId);
         } catch (error) {
           displayLabels.delete(threadId);
-          if (error.message !== 'navigation-timeout') throw error;
+          if (threadId === targetThreadId || error.message !== 'navigation-timeout') throw error;
         }
         windowIds.push(threadId); publish();
+        // A worker only needs to find its assigned conversation. Do not make
+        // every worker rescan the entire inbox before it can begin.
+        if (threadId === targetThreadId) return;
         await returnToInbox(threadId, position, state.section, discoveryContext, true);
       }
       guard();
@@ -484,6 +524,7 @@ export function createNativeInboxDiscovery({
           try { await scan(state); }
           catch (error) { state.reason = error.message; throw error; }
           publish();
+          if (targetThreadId && inventory.has(targetThreadId)) break;
         }
       } catch (error) { stopped = true; reason = error.message; }
       finished = true;

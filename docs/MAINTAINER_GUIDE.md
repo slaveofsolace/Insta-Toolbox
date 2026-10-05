@@ -1,5 +1,13 @@
 # Maintainer guide
 
+## Development focus
+
+Tampermonkey is the active update channel. All other packages are **On hold
+after 4.3.1**: Chrome extension, Windows/macOS desktop and web/PWA. Preserve
+their code, local data and published downloads. Complete the existing 4.3.1
+release gates; do not remove package checks or shared-engine coverage as part
+of this status change. Future feature work focuses on the userscript.
+
 ## Invariants
 
 - Preserve the PWA, migrations, userscript, tests, and data contracts.
@@ -119,7 +127,7 @@ The `Release` workflow promotes tested artifacts; it does not rebuild them.
 3. Run the `Release` workflow manually with that run ID and the
    `v<package.version>` tag.
 4. Approve the protected `release` environment after reviewing the run and
-   [acceptance record](./acceptance/4.3.0.md).
+   [acceptance record](./acceptance/4.3.1.md).
 5. Confirm that the workflow rejects a stale, non-`main`, non-push, failed, or
    version-mismatched CI run.
 6. Verify every promoted file against `SHA256SUMS.txt`, then inspect the SBOM,
@@ -132,8 +140,8 @@ Pages to use GitHub Actions; the Pages workflow extracts the exact successful
 Keep the repository description, homepage, and topics aligned with
 [GITHUB_METADATA.md](./GITHUB_METADATA.md).
 
-Version 4.3.0 publishes `insta-toolbox.user.js`,
-`Insta-Toolbox-Extension-4.3.0.zip`, and `insta-toolbox-web-4.3.0.zip`. Do not
+Version 4.3.1 publishes `insta-toolbox.user.js`,
+`Insta-Toolbox-Extension-4.3.1.zip`, and `insta-toolbox-web-4.3.1.zip`. Do not
 publish old-name aliases or a raw-branch userscript update channel.
 
 ## Source integrations
