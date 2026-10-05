@@ -237,7 +237,14 @@ export async function acceptUserscriptInboxReview({
       { label: 'short', width: 900, height: 500, zoom: 1, theme: 'dark' },
       { label: 'zoom-200', width: 1280, height: 900, zoom: 2, theme: 'dark' },
     ]) {
-      webContents.setZoomFactor(1); await resizeViewport(webContents, viewport); webContents.setZoomFactor(viewport.zoom);
+      webContents.setZoomFactor(1); await resizeViewport(webContents, viewport);
+      const unzoomed = await evaluate('({width:innerWidth,height:innerHeight})');
+      webContents.setZoomFactor(viewport.zoom);
+      await waitForPageValue(webContents,
+        `innerWidth === ${Math.round(unzoomed.width / viewport.zoom)} && innerHeight === ${Math.round(unzoomed.height / viewport.zoom)}`,
+        `${viewport.label}: Chromium zoomed viewport`);
+      await withTimeout(evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))'),
+        `${viewport.label}: zoom layout settled`);
       await filter('');
       await evaluate(`(() => {
         const root = ${rootExpression}, theme = root.querySelector('[data-preference="theme"]');
