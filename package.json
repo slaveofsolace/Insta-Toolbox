@@ -129,7 +129,7 @@
   },
   "devDependencies": {
     "@electron/asar": "4.3.1",
-    "electron": "44.5.1",
+    "electron": "44.7.0",
     "electron-builder": "26.15.3",
     "fake-indexeddb": "6.2.5"
   }
